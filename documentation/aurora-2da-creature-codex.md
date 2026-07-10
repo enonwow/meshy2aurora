@@ -212,6 +212,34 @@ related_2da:
     usage: "dzwieki creature; nie blokuje pierwszego visual proofu"
 ```
 
+## Appearance_Type: zakres wartosci i wybor wiersza
+
+Status: POTWIERDZONE dla szerokosci pola w `.utc`; NIE WIEM dla zarezerwowanego bezpiecznego pasma custom rows w retailowym `appearance.2da`.
+
+```yaml
+appearance_type:
+  utc_storage:
+    type: "uint16 / ushort"
+    representable_range: [0, 65535]
+    aurora_first_anchor:
+      read: "C:\\Projects\\New Folder\\export\\decompiled_all.c:194114-194115"
+      write: "C:\\Projects\\New Folder\\export\\decompiled_all.c:195146"
+  row_selection:
+    required:
+      - "row id exists in the derived appearance.2da output"
+      - "row id is within 0..65535"
+      - "row id is unused in the selected base table or intentionally updated"
+      - "generated UTC Appearance_Type equals that row id"
+    not_confirmed:
+      - "a universal safe custom range such as 9000+"
+      - "the maximum retail table row count accepted by every NWN EE target"
+  fixture_9000:
+    status: HIPOTEZA
+    meaning: "test example only; not an engine rule"
+```
+
+The converter must inspect the selected base table, choose an available representable row deterministically, write it automatically, and record the choice in the conversion manifest. It must not hard-code `9000` as a production rule before NWN EE proof.
+
 ## Integracja z HAK
 
 Status: POTWIERDZONE.

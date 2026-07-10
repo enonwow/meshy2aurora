@@ -1,6 +1,6 @@
 # implementacja-m1-odpowiedz-codex.md
 
-Status 2026-07-09: CZESCIOWO SUPERSEDED przez D7-D8. Fakty o formatach i lokalnych sciezkach moga byc uzyte jako reference-only. Rekomendacje CLI/subprocess/importow z `aurora-web` sa uniewaznione: `meshy2aurora` musi miec wlasny parser/writer i wlasne testy.
+Status 2026-07-10: HISTORYCZNE / SUPERSEDED przez D7-D12. Fakty o formatach i lokalnych sciezkach moga byc uzyte jako reference-only. Rekomendacje CLI/subprocess/importow z `aurora-web`, Node/TypeScript i proofu przez `aurora-web` sa uniewaznione. Aktywny M1A to Rust 1.96.1 + WASM adapter opisany w `prompt-dla-claude-prototyp-parsera.md`.
 Data: 2026-07-08 | Odpowiada na: implementacja-m1-pytania-cloud.md
 
 ## Q1: Postac zrodlowego c_kocrachn.mdl

@@ -2,6 +2,8 @@
 
 Ten folder jest jedynym miejscem dokumentacji projektu `meshy2aurora`.
 
+Przed uzyciem starszego dokumentu sprawdz jego klase w [status-dokumentacji-web-2026-07-10-codex.md](status-dokumentacji-web-2026-07-10-codex.md). D11-D14 i aktywne dokumenty webowe maja pierwszenstwo przed historycznymi rekomendacjami CLI/Node/aurora-web.
+
 ## Aktualny kierunek
 
 Aktualny kierunek po audycie 2026-07-09:
@@ -10,13 +12,23 @@ Aktualny kierunek po audycie 2026-07-09:
 - `C:\Projects\aurora-web` jest tylko read-only reference. Nie jest dependency, CLI, oracle, walidatorem ani proof base dla `meshy2aurora`.
 - Twardy proof podstawowy ma isc przez NWN EE Toolset/gra oraz wlasny wygenerowany HAK/modul testowy.
 - `c_kocrachn` jest technicznym proxy dla creature pipeline, nie assetem The Last City.
+- Produkt jest aplikacja webowa local-first: UI w przegladarce, Rust 1.96.1 skompilowany do WebAssembly oraz pobieranie wygenerowanych HAK/raportow jako plikow. Studio bedzie osobnym etapem po proofie M6.
 
 ## Dokumenty
 
 - [PROJECT_RULES.md](PROJECT_RULES.md) - zasady projektu i implementacji.
+- [audyt-gotowosci-startowej-2026-07-10-codex.md](audyt-gotowosci-startowej-2026-07-10-codex.md) - kanoniczny gate przed implementacja: stan repo, toolchain, bootstrap, CI, M1A DoD i otwarte decyzje.
 - [reguly-dokumentacji-cloud.md](reguly-dokumentacji-cloud.md) - aktualne reguly wymiany plikow Cloud/Codex.
 - [audyt-dokumentacji-plan-2026-07-09-codex.md](audyt-dokumentacji-plan-2026-07-09-codex.md) - aktualna mapa rozjazdow, luk i plan naprawczy.
 - [architektura-meshy2aurora-codex.md](architektura-meshy2aurora-codex.md) - architektura standalone `meshy2aurora`.
+- [architektura-web-wasm-codex.md](architektura-web-wasm-codex.md) - architektura webowa: Rust/WASM, React, Three.js, lokalne pliki i granice opcjonalnego backendu.
+- [engine-mdl-odpowiedz-codex.md](engine-mdl-odpowiedz-codex.md) - aktualny stan odpowiedzi o binary writerze, polityce MDX i bind pose.
+- [status-dokumentacji-web-2026-07-10-codex.md](status-dokumentacji-web-2026-07-10-codex.md) - klasyfikacja wszystkich dokumentow po decyzji D12.
+- [plan-implementacji-orkiestrator-codex.md](plan-implementacji-orkiestrator-codex.md) - aktywny plan etapow, Definition of Done i kontrakt dla orkiestratora.
+- [orchestrator-state.yaml](orchestrator-state.yaml) - maszynowy aktualny stan etapow, blockerow, problemow, bledow i evidence.
+- [evidence/README.md](evidence/README.md) - append-only szablon dowodow dla jednego etapu.
+- [prompt-dla-claude-prototyp-parsera.md](prompt-dla-claude-prototyp-parsera.md) - gotowy prompt dla Claude: prototype M1a parsera binary MDL.
+- [przyszle-featurey-studio-codex.md](przyszle-featurey-studio-codex.md) - backlog Studio po MVP: diagnostyka, materialy, geometria, rig, animacje i proof packet.
 - [neverblender-audyt-2026-07-09-codex.md](neverblender-audyt-2026-07-09-codex.md) - audyt NeverBlender jako narzedzia pomocniczego/debug dla modeli NWN/Aurora.
 - [repozytoria-pomocnicze-2026-07-09-codex.md](repozytoria-pomocnicze-2026-07-09-codex.md) - mapa repozytoriow drugiej linii po Aurora First.
 - [audyt-repozytoriow-pomocniczych-2026-07-10-codex.md](audyt-repozytoriow-pomocniczych-2026-07-10-codex.md) - lokalny audyt 27 repozytoriow z `C:\Projects\Claude`, z priorytetami, kluczowymi plikami i mapowaniem na pipeline.

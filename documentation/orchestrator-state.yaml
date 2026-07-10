@@ -1,0 +1,314 @@
+schema_version: 1
+last_updated: "2026-07-10"
+project:
+  canonical_repo: "C:\\Projects\\meshy2aurora"
+  documentation_root: "C:\\Projects\\meshy2aurora\\documentation"
+  implementation_target: "local-first web application: Meshy -> native Aurora/NWN content"
+  primary_proof: "NWN EE Toolset/game"
+  aurora_web: "reference-only; never dependency, oracle, validator, fixture source or runtime"
+  product_delivery: "browser application; no desktop host and no MVP backend"
+  core_stack: "Rust 1.96.1 + Cargo + WASM adapter; browser UI is React/TypeScript/Three.js"
+
+status_vocabulary:
+  - "NOT_STARTED"
+  - "READY"
+  - "IN_PROGRESS"
+  - "BLOCKED"
+  - "VERIFYING"
+  - "DONE"
+  - "SUPERSEDED"
+
+orchestration:
+  active_stage: "P0"
+  next_ready_stage: null
+  next_action: "Review the readiness gate, install Rust 1.96.1 with the wasm32 target and wasm-pack 0.15.0, then unblock M1A."
+  one_active_stage_only: true
+  current_attempt_id: "P0-20260710-01"
+  update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
+  done_rule: "A stage may be DONE only when every definition_of_done item has evidence."
+  stop_rule: "Stop and mark BLOCKED when a needed Aurora fact, decision, local tool state, or proof artifact is missing. Do not guess."
+
+global_blockers:
+  - id: "GB-001"
+    severity: "P0"
+    status: "OPEN"
+    title: "Binary MDL writer contract"
+    detail: "Minimal required writer fields and offsets are not fully resolved."
+    affects: ["M4", "M5", "M6", "M7"]
+    owner: "Codex"
+    source: "documentation/engine-mdl-pytania-cloud.md Q1"
+    next_action: "Answer from Aurora First anchors and record confirmed/deferred fields."
+  - id: "GB-002"
+    severity: "P1"
+    status: "RESOLVED_FOR_PROFILE_A"
+    title: "MDX placement policy for initial direct-creature profile"
+    detail: "Profile A emits one type-2002 MDL resource with an appended MDX block and no separate type-2003 entry. The local cep3_core1.hak has 3517 MDL entries and zero MDX entries; c_kocrachn size is exactly 12 + p_start_mdx + size_mdx."
+    affects: ["M4", "M5", "M6", "M7"]
+    owner: "Codex"
+    source: "documentation/engine-mdl-odpowiedz-codex.md Q2"
+    next_action: "Implement the profile-A layout in M4, verify with own readback, then confirm in NWN EE during M6. Reopen only for a different model family with contrary Aurora First evidence."
+  - id: "GB-003"
+    severity: "P1"
+    status: "OPEN"
+    title: "Rust 1.96.1 toolchain unavailable"
+    detail: "Rust 1.96.1, cargo, the wasm32-unknown-unknown target and wasm-pack 0.15.0 are required, but are not installed. MSVC 14.50 and Windows SDK 10.0.26100.0 are present."
+    affects: ["M1A", "M1B", "M1C", "M2", "M3", "M4", "M5", "M6", "M7"]
+    owner: "Mateusz + Codex"
+    source: "documentation/decyzje-i-zadania-cloud.md D11/D12; local check 2026-07-10"
+    next_action: "Install Rust 1.96.1 with rustfmt, clippy and wasm32-unknown-unknown plus wasm-pack 0.15.0, then record versions in M1A evidence."
+  - id: "GB-004"
+    severity: "P0"
+    status: "OPEN"
+    title: "2DA existing-table edit contract"
+    detail: "The web app must derive and prove how it automatically edits an existing appearance.2da selected either directly or from a user-selected HAK, selects a safe row id and how the generated HAK resolves it."
+    affects: ["M5", "M6", "M7"]
+    owner: "Codex"
+    source: "Aurora First plus NWN EE runtime proof"
+    next_action: "Inspect Aurora table resolution and row-id constraints, then prove the selected edit path without committing retail data."
+  - id: "GB-005"
+    severity: "P0"
+    status: "OPEN"
+    title: "Full animation contract"
+    detail: "Required animation names, events and the inherited-versus-emitted route must be confirmed per selected Aurora profile."
+    affects: ["M4A", "M5", "M6", "M7"]
+    owner: "Codex"
+    source: "Aurora First animation anchors and NWN EE runtime proof"
+    next_action: "Record the confirmed animation inventory, then implement and prove every required route."
+
+stages:
+  P0:
+    status: "IN_PROGRESS"
+    status_reason: "The readiness gate and orchestration contract are prepared as an intentional Git baseline; toolchain installation, explicit M1A start approval and later-stage format decisions remain open."
+    owner: "Codex + Mateusz"
+    risk: "MEDIUM"
+    dependencies: []
+    current_problems:
+      - "GB-001 binary writer contract is unresolved."
+      - "GB-003 Rust 1.96.1, its WASM target and wasm-pack 0.15.0 are not installed."
+      - "GB-004 existing appearance.2da edit contract is unresolved."
+      - "GB-005 full animation contract is unresolved."
+    bugs: []
+    next_actions:
+      - "Review and accept the readiness audit and this orchestration contract."
+      - "Install Rust 1.96.1 with the WASM target and wasm-pack 0.15.0 before starting M1A."
+      - "Hand off the Rust M1A prompt after P0 scope acceptance."
+    evidence:
+      - "documentation/plan-implementacji-orkiestrator-codex.md"
+      - "documentation/orchestrator-state.yaml"
+      - "documentation/audyt-gotowosci-startowej-2026-07-10-codex.md"
+    documentation:
+      - "documentation/PROJECT_RULES.md"
+      - "documentation/decyzje-i-zadania-cloud.md"
+      - "documentation/architektura-web-wasm-codex.md"
+    expected_artifacts:
+      - "Accepted current plan and state file"
+      - "Verified Rust/Cargo/WASM/wasm-pack version output"
+    changed_files:
+      - "documentation/PROJECT_RULES.md"
+      - "documentation/README.md"
+      - "documentation/architektura-meshy2aurora-codex.md"
+      - "documentation/architektura-web-wasm-codex.md"
+      - "documentation/audyt-gotowosci-startowej-2026-07-10-codex.md"
+      - "documentation/engine-mdl-odpowiedz-codex.md"
+      - "documentation/evidence/README.md"
+      - "documentation/plan-implementacji-orkiestrator-codex.md"
+      - "documentation/orchestrator-state.yaml"
+      - "documentation/prompt-dla-claude-prototyp-parsera.md"
+      - "documentation/standalone-odpowiedz-codex.md"
+      - "documentation/status-dokumentacji-web-2026-07-10-codex.md"
+      - "documentation/viewport-walidacja-animacje-plan-codex.md"
+
+  M1A:
+    status: "BLOCKED"
+    status_reason: "Rust/WASM was selected, but rustc, cargo, the WASM target and wasm-pack are not installed. No code has started."
+    owner: "Claude"
+    risk: "LOW"
+    dependencies: ["P0 scope acceptance"]
+    current_problems:
+      - "GB-003: Rust 1.96.1 WASM toolchain is unavailable on this machine."
+      - "wasm-pack 0.15.0 is unavailable, so the JavaScript/WASM boundary cannot be executed yet."
+      - "Repository has no Cargo workspace, m2a-core/m2a-wasm crates, source files or tests."
+      - "No synthetic binary MDL fixture builder exists."
+    bugs: []
+    next_actions:
+      - "Install Rust 1.96.1 with the WASM target and wasm-pack 0.15.0, then implement only the M1A prompt scope."
+      - "Write documentation/prototyp-parsera-m1a-claude.md with evidence."
+    evidence:
+      - "documentation/prompt-dla-claude-prototyp-parsera.md"
+    documentation:
+      - "documentation/standalone-odpowiedz-codex.md"
+      - "documentation/architektura-web-wasm-codex.md"
+      - "documentation/evidence/M1A-evidence.md"
+    expected_artifacts:
+      - "Cargo.toml, rust-toolchain.toml, crates/m2a-core, crates/m2a-wasm"
+      - "cargo test --workspace and WASM target build output"
+      - "wasm-pack Node test output proving the public adapter executes"
+      - "deterministic inspect-mdl JSON report"
+    changed_files: []
+
+  M1B:
+    status: "NOT_STARTED"
+    status_reason: "Requires M1A parser foundation."
+    owner: "implementation agent"
+    risk: "HIGH"
+    dependencies: ["M1A DONE", "Aurora First layout anchors"]
+    current_problems:
+      - "Deep binary sections are not implemented."
+    bugs: []
+    next_actions: ["Wait for M1A evidence."]
+    evidence: []
+    documentation: ["documentation/evidence/M1B-evidence.md"]
+    expected_artifacts: ["Synthetic deep-section fixtures", "Reference inspection report"]
+    changed_files: []
+
+  M1C:
+    status: "NOT_STARTED"
+    status_reason: "Requires M1A parser foundation."
+    owner: "implementation agent"
+    risk: "MEDIUM"
+    dependencies: ["M1A DONE"]
+    current_problems:
+      - "No own HAK/ERF reader exists."
+    bugs: []
+    next_actions: ["Wait for M1A evidence."]
+    evidence: []
+    documentation: ["documentation/evidence/M1C-evidence.md"]
+    expected_artifacts: ["Synthetic HAK reader tests", "Env-gated reference lookup"]
+    changed_files: []
+
+  M2:
+    status: "NOT_STARTED"
+    status_reason: "Requires parser foundation and the selected Rust toolchain."
+    owner: "implementation agent"
+    risk: "MEDIUM"
+    dependencies: ["M1A DONE", "GB-003 resolved"]
+    current_problems:
+      - "No canonical AuroraAssetIR schema or GLB fixture exists."
+    bugs: []
+    next_actions: ["Do not start before M1A and Rust toolchain installation."]
+    evidence: []
+    documentation: ["documentation/evidence/M2-evidence.md"]
+    expected_artifacts: ["AuroraAssetIR schema", "Axis/UV fixtures", "GLB inspection report"]
+    changed_files: []
+
+  M3:
+    status: "NOT_STARTED"
+    status_reason: "Depends on reference reader, HAK locator and GLB IR."
+    owner: "implementation agent"
+    risk: "HIGH"
+    dependencies: ["M1B DONE", "M1C DONE", "M2 DONE"]
+    current_problems:
+      - "No skeleton transfer, scale policy implementation or real GLB sample."
+    bugs: []
+    next_actions: ["Wait for M1B, M1C and M2."]
+    evidence: []
+    documentation: ["documentation/evidence/M3-evidence.md"]
+    expected_artifacts: ["Conversion report", "Axis/UV/weight gates"]
+    changed_files: []
+
+  M4:
+    status: "NOT_STARTED"
+    status_reason: "Blocked by the writer contract; the MDX layout is resolved for profile A."
+    owner: "implementation agent"
+    risk: "HIGH"
+    dependencies: ["M1B DONE", "M3 DONE", "GB-001 resolved", "GB-002 profile-A decision recorded"]
+    current_problems:
+      - "GB-001 is open."
+    bugs: []
+    next_actions: ["Resolve GB-001 before implementation; preserve the profile-A MDX evidence in writer/readback tests."]
+    evidence: []
+    documentation: ["documentation/evidence/M4-evidence.md"]
+    expected_artifacts: ["Writer/readback tests", "Semantic diff report"]
+    changed_files: []
+
+  M4A:
+    status: "NOT_STARTED"
+    status_reason: "Required product scope after the structural writer/readback path exists."
+    owner: "implementation agent"
+    risk: "HIGH"
+    dependencies: ["M4 DONE", "GB-005 resolved"]
+    current_problems:
+      - "Required animation inventory and own clip emission are not implemented."
+    bugs: []
+    next_actions: ["Resolve GB-005, then implement inherited and emitted animation routes."]
+    evidence: []
+    documentation: ["documentation/evidence/M4A-evidence.md"]
+    expected_artifacts: ["Animation inventory report", "Animation readback diff", "Toolset/game animation proof"]
+    changed_files: []
+
+  M5:
+    status: "NOT_STARTED"
+    status_reason: "Depends on native model output, full animation support and the confirmed existing-table edit path."
+    owner: "implementation agent"
+    risk: "HIGH"
+    dependencies: ["M4A DONE", "GB-004 resolved"]
+    current_problems:
+      - "No own TGA/2DA/HAK writer exists."
+      - "GB-004 existing-table edit contract is unresolved."
+    bugs: []
+    next_actions: ["Wait for M4A and GB-004 evidence."]
+    evidence: []
+    documentation: ["documentation/evidence/M5-evidence.md"]
+    expected_artifacts: ["Generated TGA", "Generated 2DA", "Generated HAK", "Resource manifest"]
+    changed_files: []
+
+  M6:
+    status: "NOT_STARTED"
+    status_reason: "Requires generated native HAK and content."
+    owner: "Mateusz + implementation agent"
+    risk: "HIGH"
+    dependencies: ["M5 DONE"]
+    current_problems:
+      - "No generated HAK/module exists."
+      - "Headless visual proof is not available; manual visual proof is expected."
+    bugs: []
+    next_actions: ["Wait for M5 and prepare manual runbook."]
+    evidence: []
+    documentation: ["documentation/evidence/M6-evidence.md"]
+    expected_artifacts: ["Generated creature UTC", "Generated GIT instance", "Toolset screenshots", "Game screenshot", "Animation proof", "HAK hash and resource manifest"]
+    changed_files: []
+
+  M7:
+    status: "NOT_STARTED"
+    status_reason: "Requires a proved native path and an original Meshy source corpus."
+    owner: "Mateusz + implementation agent"
+    risk: "HIGH"
+    dependencies: ["M6 DONE", "Approved original GLB corpus"]
+    current_problems:
+      - "No real Meshy GLB corpus or approved art direction is available."
+    bugs: []
+    next_actions: ["Wait for M6 and source corpus approval."]
+    evidence: []
+    documentation: ["documentation/evidence/M7-evidence.md"]
+    expected_artifacts: ["Three full source-to-game proof packets"]
+    changed_files: []
+
+  S1:
+    status: "NOT_STARTED"
+    status_reason: "Studio must consume a proved pipeline, not invent a parallel preview path."
+    owner: "product/UI implementation agent"
+    risk: "MEDIUM"
+    dependencies: ["M6 DONE"]
+    current_problems:
+      - "No proved native pipeline exists yet."
+    bugs: []
+    next_actions: ["Wait for M6."]
+    evidence: []
+    documentation: ["documentation/evidence/S1-evidence.md"]
+    expected_artifacts: ["Canonical preview and validation UI proof"]
+    changed_files: []
+
+  S2:
+    status: "NOT_STARTED"
+    status_reason: "Future Studio backlog is intentionally deferred."
+    owner: "product/UI implementation agent"
+    risk: "MEDIUM"
+    dependencies: ["S1 DONE"]
+    current_problems:
+      - "Future features must not displace native E2E proof."
+    bugs: []
+    next_actions: ["Follow documented F1-F10 order after S1."]
+    evidence: []
+    documentation: ["documentation/przyszle-featurey-studio-codex.md", "documentation/evidence/S2-evidence.md"]
+    expected_artifacts: ["Per-feature evidence packets"]
+    changed_files: []

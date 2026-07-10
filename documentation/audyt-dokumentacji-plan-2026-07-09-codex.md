@@ -1,6 +1,8 @@
 # audyt-dokumentacji-plan-2026-07-09-codex.md
 
-Data: 2026-07-09 | Autor: Codex | Status: PLAN NAPRAWCZY PO AUDYCIE DOKUMENTOW
+Data: 2026-07-09 | Autor: Codex | Status: HISTORYCZNE / SUPERSEDED przez D11-D12
+
+Aktualizacja 2026-07-10: liczby, luki i fakty z audytu pozostaja referencja historyczna. Propozycje Node/TypeScript/CLI, `package.json` i sciezki `src/` nie sa aktywnym planem. Zastepuja je Rust/WASM i dokumenty wskazane w `status-dokumentacji-web-2026-07-10-codex.md`.
 
 ## 0. Zakres audytu
 

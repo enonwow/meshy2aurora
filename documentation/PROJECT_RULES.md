@@ -14,7 +14,7 @@ Dekompilacja Aurory jest glownym zrodlem wiedzy. Nie ma strzelania. Jezeli dany 
 
 `C:\Projects\aurora-web` jest osobnym projektem. W `meshy2aurora` wolno czytac jego kod, dokumenty i artefakty jako material porownawczy, ale nie wolno uzywac go jako dependency, CLI/subprocess, oracle, walidatora, fixture source ani elementu runtime/testow. Implementacja `meshy2aurora` ma miec wlasny parser MDL, wlasny emiter/writer, wlasny writer 2DA i wlasny writer ERF/HAK.
 
-Formatem docelowym modelu dla gry jest natywny binary MDL oraz polityka MDX rozstrzygnieta w dokumentacji `engine-mdl-pytania-cloud.md`. ASCII MDL nie jest sciezka runtime/proofu; moze istniec tylko jako debug dump albo golden snapshot do czytania przez czlowieka.
+Formatem docelowym modelu dla gry jest natywny binary MDL oraz polityka MDX rozstrzygnieta dla pierwszego profilu w `engine-mdl-odpowiedz-codex.md` Q2. ASCII MDL nie jest sciezka runtime/proofu; moze istniec tylko jako debug dump albo golden snapshot do czytania przez czlowieka.
 
 Kazde twierdzenie implementacyjne musi byc oznaczone jako jedno z:
 
@@ -41,3 +41,16 @@ Format takich plikow i format odpowiedzi cloud sa opisane w `documentation/CLOUD
 Pliki w formacie `[temat]-odpowiedz-codex.md` sa odpowiedziami lokalnego Codexa na pytania Cloud z plikow `[temat]-pytania-cloud.md`. Odpowiedz musi byc pod kazdym numerowanym pytaniem `Q1`, `Q2`, ... i miec status `POTWIERDZONE`, `HIPOTEZA` albo `NIE WIEM`.
 
 Pelne reguly wymiany Cloud/Codex sa w `documentation/reguly-dokumentacji-cloud.md`. Wymagany zestaw startowy jest opisany w `documentation/wymagania-startowe-cloud.md`.
+
+## 6. Aktualny produkt webowy
+
+Od decyzji D12-D14 produktem jest aplikacja webowa local-first, a nie desktopowe narzedzie ani CLI jako interfejs uzytkownika. Aktywny kontrakt znajduje sie w:
+
+- `documentation/decyzje-i-zadania-cloud.md` (D11 i D12);
+- `documentation/architektura-meshy2aurora-codex.md`;
+- `documentation/architektura-web-wasm-codex.md`;
+- `documentation/audyt-gotowosci-startowej-2026-07-10-codex.md`;
+- `documentation/plan-implementacji-orkiestrator-codex.md`;
+- `documentation/orchestrator-state.yaml`.
+
+Starsze dokumenty zachowuja fakty i kontekst z chwili utworzenia, ale nie moga nadpisac D11-D14. Pelna klasyfikacja wszystkich plikow jest w `documentation/status-dokumentacji-web-2026-07-10-codex.md`. Nie edytujemy historycznych plikow `*-cloud.md` tylko po to, aby zmienic ich decyzje; ich status zmienia centralny indeks i nowszy suplement Codexa.

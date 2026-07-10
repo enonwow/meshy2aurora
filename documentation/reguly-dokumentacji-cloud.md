@@ -56,7 +56,7 @@ Wymagania dla odpowiedzi:
 
 ## 5. Stan bieżący
 
-Aktualizacja 2026-07-09: ponizszy pierwszy zestaw pytan jest historyczny. Aktualny kierunek i kolejka po D7-D8 sa w `decyzje-i-zadania-cloud.md`, `audyt-dokumentacji-plan-2026-07-09-codex.md` i `architektura-meshy2aurora-codex.md`. `aurora-web` jest reference-only.
+Aktualizacja 2026-07-10: ponizszy pierwszy zestaw pytan jest historyczny. Aktualny kierunek po D11-D14 jest webowy: Rust/WASM core, aplikacja local-first w przegladarce, GitHub Pages jako hosting statyczny, bez desktop hosta i bez backendu w MVP. Zrodla nadrzedne to `decyzje-i-zadania-cloud.md`, `architektura-meshy2aurora-codex.md`, `architektura-web-wasm-codex.md` i `status-dokumentacji-web-2026-07-10-codex.md`. `aurora-web` jest reference-only.
 
 Pierwszy zestaw pytań znajduje się w `wymagania-startowe-cloud.md` (sekcje 1–5). Oczekiwane odpowiedzi:
 

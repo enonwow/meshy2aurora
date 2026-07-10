@@ -1,15 +1,17 @@
 # architektura-meshy2aurora-codex.md
 
-Data: 2026-07-09 | Autor: Codex | Status: AKTYWNY SZKIELET ARCHITEKTURY
+Data: 2026-07-10 | Autor: Codex | Status: AKTYWNY SZKIELET ARCHITEKTURY
 
 ## Cel
 
 `meshy2aurora` jest samodzielnym konwerterem:
 
 ```text
-Meshy GLB/FBX
-  -> meshy2aurora
+Meshy GLB (FBX deferred after MVP)
+  -> aplikacja webowa Meshy2Aurora Studio
+  -> Rust/WASM converter
   -> Aurora/NWN MDL + 2DA + HAK
+  -> pobrany plik HAK + report
   -> NWN EE Toolset/gra
 ```
 
@@ -22,12 +24,13 @@ in_scope:
   - "wlasny parser MDL"
   - "wlasny binary MDL writer jako format docelowy gry"
   - "opcjonalny ASCII MDL/debug dump tylko do czytelnych snapshotow i diagnostyki"
-  - "wlasny 2DA reader/writer/merger"
+  - "wlasny 2DA reader/writer that automatically updates a user-selected existing table"
   - "wlasny ERF/HAK reader/writer"
-  - "GLB ingest z Meshy"
+  - "GLB-only ingest z Meshy for MVP"
   - "normalizacja osi/skali"
   - "mapowanie szkieletu, skin weights i animacji"
   - "bake/konwersja tekstur do TGA/TXI"
+  - "niedestrukcyjna inspekcja i edycja materialow/tekstur przed eksportem"
   - "wygenerowany HAK i modul/proof path dla NWN EE"
 out_of_scope_for_dependency:
   - "importy z C:\\Projects\\aurora-web"
@@ -36,54 +39,75 @@ out_of_scope_for_dependency:
   - "commitowanie retail/CEP assetow do repo"
 ```
 
-## Proponowany stack
+## Stack rdzenia
 
-Status: DO POTWIERDZENIA jako decyzja `P-tech`.
+Status: POTWIERDZONE decyzje `D11` i `D12` z 2026-07-10.
 
 ```yaml
-runtime: "Node.js >= 22"
-language: "TypeScript 5.9"
-package_manager: "npm"
-tests: "Jest + ts-jest"
-glb_library: "@gltf-transform/core"
-style: "CLI batch-first"
+core_language: "Rust 1.96.1 (pinned toolchain)"
+package_manager: "Cargo"
+tests: "cargo test --workspace"
+build: "cargo build --workspace"
+product_delivery: "web application, local-first in a browser"
+web_ui: "React + TypeScript + Vite"
+viewport: "Three.js"
+wasm_adapter: "wasm-bindgen over a Rust core with no DOM dependency"
+file_io: "user-selected File/Blob input and Blob download output"
+background_work: "Web Worker for conversion and packaging"
+server_mvp: "none; a backend is a separate later decision for protected Meshy API credentials or collaboration"
+initial_hosting: "GitHub Pages static files only"
+supported_browsers: "current desktop Chromium, Firefox and Safari; capability fallbacks are required"
+binary_io: "Rust standard library; checked little-endian reader owned by meshy2aurora"
+glb_library: "Rust crate gltf; exact version locked with Cargo.lock in M2"
+studio_ui: "S1 after M6 native proof; the WASM boundary is established in M1A"
 ```
 
-Uzasadnienie: kod bedzie operowal na binarnych zasobach, GLB, manifestach i testach TDD. TypeScript pasuje do istniejacej wiedzy zespolu, ale po D7 nie oznacza to zaleznosci od `aurora-web`.
+Uzasadnienie: rdzen pracuje na niezaufanych, binarnych zasobach MDL/MDX/ERF i musi dawac identyczny wynik w przegladarkach na kazdej wspieranej platformie. Rust daje kontrolowane granice pamieci i jeden kontrakt TDD; WebAssembly wystawia ten sam rdzen aplikacji webowej bez uzalezniania implementacji od `aurora-web`.
+
+MVP nie wysyla modelu ani HAK-a na serwer. Przegladarka moze czytac tylko pliki wybrane przez uzytkownika i musi miec fallback do standardowego wyboru pliku; wynikowy HAK i raport powstaja jako `Blob` do pobrania. Sekret Meshy API nie moze trafic do JavaScript bundle - ewentualny backend dla API jest osobnym, pozniejszym etapem.
 
 ## Moduly
 
 ```yaml
 modules:
-  cli:
+  wasm_adapter:
     responsibility:
-      - "parse command line"
-      - "route convert/inspect/pack/proof commands"
-    proposed_path: "src/cli"
+      - "accept Uint8Array/ArrayBuffer from JavaScript"
+      - "call pure m2a-core operations"
+      - "return versioned JSON reports and output bytes"
+      - "never access DOM, browser filesystem or network"
+    proposed_path: "crates/m2a-wasm/src"
+
+  web_app:
+    responsibility:
+      - "file selection, drag/drop and download UX"
+      - "run conversion in a Web Worker"
+      - "render Source Preview and Aurora Preview"
+      - "show diagnostics and generated reports"
+    proposed_path: "apps/studio-web/src"
 
   config:
     responsibility:
-      - "read env paths"
-      - "validate optional local references"
+      - "validate user-selected files and project settings"
+      - "keep browser configuration serializable"
       - "never require retail/CEP assets for unit tests"
-    env:
-      M2A_NWN_ROOT: "optional local NWN EE root"
-      M2A_CEP_CORE1_HAK: "optional read-only CEP HAK path"
-    proposed_path: "src/config"
+    proposed_path: "crates/m2a-core/src/config"
 
   erf_hak:
     responsibility:
       - "read ERF/HAK V1.0"
       - "write generated HAK"
       - "lookup resources by resref/type"
-    proposed_path: "src/erf"
+    proposed_path: "crates/m2a-core/src/erf"
 
   two_da:
     responsibility:
       - "parse 2DA"
       - "write 2DA"
-      - "merge/add generated appearance.2da rows"
-    proposed_path: "src/two-da"
+      - "automatically apply the confirmed row edit to a user-selected existing appearance.2da"
+      - "never ship a retail base table in the repository"
+      - "never assume HAK table merge without Aurora First and runtime proof"
+    proposed_path: "crates/m2a-core/src/two_da"
 
   mdl:
     responsibility:
@@ -91,59 +115,71 @@ modules:
       - "write binary MDL as native game output"
       - "write/read MDX data according to resolved Q2 policy"
       - "optionally emit deterministic ASCII/debug dump for snapshots"
-    proposed_path: "src/mdl"
+    proposed_path: "crates/m2a-core/src/mdl"
 
   glb:
     responsibility:
       - "read Meshy GLB"
       - "extract mesh, materials, textures, bones, skin, animations"
       - "normalize axes and scale"
-    proposed_path: "src/glb"
+    proposed_path: "crates/m2a-core/src/glb"
 
   conversion:
     responsibility:
       - "map Meshy data to Aurora node/model contract"
       - "apply geometry budget gates"
       - "prepare animation names/events"
-    proposed_path: "src/conversion"
+    proposed_path: "crates/m2a-core/src/conversion"
 
   textures:
     responsibility:
+      - "inspect material -> primitive -> texture -> image and UV links"
+      - "keep source PBR state separate from Aurora target state"
+      - "apply declared non-destructive texture recipes from m2a.project.json"
       - "bake PBR/diffuse into Aurora-friendly TGA"
       - "emit optional TXI"
-    proposed_path: "src/textures"
+    proposed_path: "crates/m2a-core/src/textures"
+
+  project_manifest:
+    responsibility:
+      - "store versioned conversion settings without modifying the source GLB"
+      - "store material/texture recipes, output resrefs and validation policy"
+      - "record source hashes so stale derived textures are detectable"
+    proposed_path: "crates/m2a-core/src/project"
 
   proof:
     responsibility:
-      - "build generated HAK"
-      - "prepare proof module instructions/assets"
-      - "produce manifest for manual NWN EE Toolset/game proof"
-    proposed_path: "src/proof"
+      - "build generated HAK bytes"
+      - "produce a downloadable proof manifest and manual NWN EE runbook"
+      - "for creature proof: automatically generate or losslessly update a target-specific UTC blueprint"
+      - "for creature proof: automatically place the UTC through a generated module/GIT instance"
+      - "never treat one fixed UTC as universal for every creature or asset type"
+      - "use UTP/UTI or another confirmed template family for non-creature asset types"
+    proposed_path: "crates/m2a-core/src/proof"
 ```
 
-## Przeplywy CLI
+## Przeplywy aplikacji webowej
 
 ```yaml
-commands:
+web_actions:
   inspect_hak:
-    example: "meshy2aurora inspect-hak --hak <path> --resref c_kocrachn"
+    input: "user-selected .hak File"
     purpose: "read-only reference inspection"
 
   inspect_mdl:
-    example: "meshy2aurora inspect-mdl --input <model.mdl>"
+    input: "user-selected .mdl File"
     purpose: "parser gate and debug"
 
   convert:
-    example: "meshy2aurora convert --input sample.glb --type creature --resref m2a_koc01 --out dist\\m2a_koc01"
-    purpose: "Meshy GLB -> generated native binary MDL/MDX policy/2DA/textures/manifest"
+    input: "user-selected .glb File + project settings"
+    output: "in-memory native binary MDL/MDX policy/2DA/textures/manifest"
 
   pack_hak:
-    example: "meshy2aurora pack-hak --input dist\\m2a_koc01 --out dist\\m2a_koc01.hak"
-    purpose: "generated content -> HAK"
+    input: "in-memory converted asset"
+    output: "downloadable .hak Blob"
 
   proof_pack:
-    example: "meshy2aurora proof-pack --resref m2a_koc01 --hak dist\\m2a_koc01.hak --out proof\\m2a_koc01"
-    purpose: "manual NWN EE proof package"
+    output: "downloadable proof manifest + manual NWN EE runbook"
 ```
 
 ## TDD gates
@@ -155,6 +191,8 @@ test_layers:
     - "synthetic 2DA parse/write fixture"
     - "synthetic minimal MDL parser fixture"
     - "GLB axis/UV probe fixtures"
+    - "synthetic GLB material -> primitive -> image inspection fixture"
+    - "texture recipe -> deterministic TGA output fixture"
 
   integration_optional:
     - name: "CEP c_kocrachn read-only inspection"
@@ -168,25 +206,24 @@ test_layers:
     - "capture screenshot and proof notes"
 ```
 
-## Otwarte decyzje blokujace architekture
+## Otwarte i profilowo rozstrzygniete decyzje formatu
 
 ```yaml
 blocking_questions:
   L1_binary_mdl_writer_contract:
     source: "C:\\Projects\\meshy2aurora\\documentation\\engine-mdl-pytania-cloud.md Q1"
     impact: "decides minimal binary MDL fields/sections needed for M1 writer"
-
+resolved_for_profile_A:
   L2_mdx_policy:
     source: "C:\\Projects\\meshy2aurora\\documentation\\engine-mdl-pytania-cloud.md Q2"
-    impact: "decides expected resources in generated HAK"
-
+    decision: "one resource type 2002 containing binary MDL followed by the appended MDX block; no separate type 2003 resource"
+    evidence: "cep3_core1.hak has 3517 type-2002 entries and zero type-2003 entries; c_kocrachn MDL size equals 12 + p_start_mdx + size_mdx"
+    final_gate: "own readback plus NWN EE Toolset/game proof"
   L3_bind_pose_preview:
     source: "C:\\Projects\\meshy2aurora\\documentation\\engine-mdl-pytania-cloud.md Q3"
-    impact: "decides how to trust nwnexplorer screenshots for sample-2d"
+    decision: "the audited NwnExplorer version renders the base/rest pose at time 0.0 and does not auto-play cpause1"
+    caveat: "this confirms that viewer version, not the NWN EE runtime"
 
-  P_tech:
-    source: "C:\\Projects\\meshy2aurora\\documentation\\decyzje-i-zadania-cloud.md"
-    impact: "final tech stack before repo scaffold"
 ```
 
 ## Aktualny proof baseline
@@ -207,6 +244,8 @@ proof_baseline:
       - "m2a_*.tga or .txi"
       - "appearance.2da row/full file"
       - "m2a_*.hak"
+      - "m2a_*.utc for creature blueprint proof"
+      - "generated module GIT creature instance for placement proof"
 ```
 
 ## Status

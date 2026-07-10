@@ -1,6 +1,8 @@
 # audyt-rozjazdu-od-pierwotnego-planu-2026-07-09-codex.md
 
-Data: 2026-07-09 | Autor: Codex | Status: AUDYT POROWNACZY PO KOREKCIE D9
+Data: 2026-07-09 | Autor: Codex | Status: HISTORYCZNE / SUPERSEDED przez D11-D12
+
+Aktualizacja 2026-07-10: audyt zachowuje opis odjazdow od pierwotnego planu, ale jego rekomendacje scaffold/CLI nie sa aktywne. Aktualny model produktu to web local-first z Rust/WASM zgodnie z `architektura-web-wasm-codex.md`.
 
 ## 0. Punkt odniesienia
 

@@ -16,7 +16,7 @@ Odpowiada na pytania:
 Aktywny kierunek projektu pozostaje:
 
 ```text
-Meshy GLB/FBX
+Meshy GLB (FBX deferred after MVP)
   -> meshy2aurora
   -> binary MDL + MDX policy + 2DA + HAK
   -> NWN EE Toolset/gra
@@ -105,7 +105,7 @@ Tak. Viewport powinien istniec bardzo wczesnie, ale musi pokazywac dwa tryby:
 ```yaml
 viewport_modes:
   source_preview:
-    input: "oryginalny Meshy GLB/FBX"
+    input: "oryginalny Meshy GLB; FBX deferred after MVP"
     purpose: "zobaczyc, co przyszlo z Meshy bez udawania zgodnosci z Aurora"
     shows:
       - "raw mesh"
@@ -138,7 +138,7 @@ Tak. Po imporcie robimy automatyczny audit i pokazujemy model w stanie:
 ```yaml
 import_pipeline:
   on_load:
-    - "parse GLB/FBX"
+    - "parse GLB only in MVP"
     - "collect stats"
     - "normalize axes preview"
     - "detect skeleton/skin/animations"
@@ -259,8 +259,9 @@ Dodawanie animacji traktujemy jako osobny asset/workflow:
 ```yaml
 add_animation_workflow:
   inputs:
-    - "GLB/FBX animation clip z Meshy Animation API"
-    - "GLB/FBX z Blender/inna aplikacja"
+    - "GLB animation clip z Meshy Animation API"
+    - "GLB z Blender/inna aplikacja"
+    - "FBX tylko po osobnej decyzji i implementacji importera po MVP"
     - "referencyjny clip z Aurory/NWN, read-only, jezeli legalnie dostepny lokalnie"
   steps:
     - "import animation source"
@@ -302,9 +303,14 @@ editor_scope_mvp:
     - "segment preview: primitives/mesh nodes"
 
   texture:
-    - "select base color"
+    - "read-only Material/Texture Inspector: material -> primitive -> image -> UV"
+    - "select base color/baseColor texture and replace the source image"
+    - "tint color, hue, saturation, brightness and contrast"
+    - "opacity and explicit alpha/cutout policy"
+    - "UV flip, offset, scale and rotation"
     - "resize 512/1024"
     - "bake PBR -> diffuse TGA"
+    - "reset recipe to untouched source GLB"
 
   rig_animation:
     - "choose reference skeleton path or Meshy rig path"
@@ -317,6 +323,7 @@ Poza zakresem MVP:
 
 ```yaml
 not_mvp:
+  - "manual pixel painting like a raster editor"
   - "reczne malowanie wag jak w Blenderze"
   - "pelne modelowanie siatki"
   - "timeline animation editor"
@@ -324,6 +331,40 @@ not_mvp:
 ```
 
 Jesli trzeba edytowac siatke/rigi recznie, robimy round-trip przez Blender i ponowny import do `meshy2aurora`.
+
+### 9.1 Kontrakt edycji materialow i tekstur
+
+Status: PLAN ZATWIERDZONY 2026-07-10.
+
+Edycja tekstury nie zmienia oryginalnego GLB. Edytor zapisuje deklaratywna recipe w `m2a.project.json`; compiler ponownie buduje Aurora Preview oraz wynikowy TGA. Dzieki temu reset, porownanie i ponowny eksport sa deterministyczne.
+
+```yaml
+texture_editing_contract:
+  source_preservation:
+    source_glb: "read-only input; never overwritten"
+    source_pbr_preview: "shows original GLB material state"
+  editable_recipe:
+    stored_in: "m2a.project.json"
+    fields:
+      - "selected base color texture or replacement image"
+      - "tint RGBA"
+      - "hue, saturation, brightness, contrast"
+      - "opacity/alpha cutout policy"
+      - "UV flip, offset, scale, rotation"
+      - "target size, output texture resref and bake policy"
+  derived_output:
+    aurora_preview: "renders the baked/converted texture recipe"
+    export: "writes generated TGA and optional TXI; never reuses a stale derived image"
+  pbr_policy:
+    rule: "normal, metallic-roughness, occlusion and emissive maps must be baked or explicitly reported as unsupported/discarded"
+  validation:
+    blocker:
+      - "missing base color/diffuse output"
+      - "invalid texture resref"
+    warning:
+      - "unsupported PBR map without an explicit bake/discard decision"
+      - "texture dimensions over active policy"
+```
 
 ## 10. Proponowana architektura viewportu
 
@@ -333,6 +374,7 @@ viewport_architecture:
     tabs:
       - "Source"
       - "Aurora Preview"
+      - "Materials"
       - "Validation"
       - "Animations"
       - "Export"
@@ -340,7 +382,7 @@ viewport_architecture:
     recommended: "Three.js for preview only"
     rule: "preview engine nie jest walidatorem finalnym"
   data_flow:
-    - "Meshy GLB/FBX parse"
+    - "Meshy GLB parse in MVP"
     - "canonical model in memory"
     - "validation report"
     - "Aurora preview scene"
@@ -397,10 +439,10 @@ viewport_architecture:
 ```yaml
 phases:
   V0_import_stats:
-    goal: "CLI import GLB + raport JSON"
+    goal: "web import GLB + raport JSON"
     includes:
       - "triangle/vertex/material/primitive count"
-      - "texture detection"
+      - "texture detection and material -> primitive -> image -> UV mapping"
       - "skin/animation detection"
 
   V1_viewport_source:
@@ -413,24 +455,39 @@ phases:
       - "status badges"
       - "validation panel"
       - "source vs aurora preview toggle"
+      - "read-only Material/Texture Inspector"
 
-  V3_animation_preview:
+  V3_texture_editing:
+    goal: "niedestrukcyjna korekta materialu i tekstury przed eksportem"
+    includes:
+      - "replace image, tint and basic color correction"
+      - "alpha/cutout and UV transform policy"
+      - "resize and bake to target TGA"
+      - "recipe stored in m2a.project.json; reset to source"
+    gates:
+      - "derived Aurora Preview matches current recipe"
+      - "texture validation passes"
+
+  V4_animation_preview:
     goal: "lista klipow + bind pose + preview mapped animation"
     gates:
       - "valid skeleton"
       - "mapped clip name"
       - "weights pass"
 
-  V4_export_readback:
+  V5_export_readback:
     goal: "binary MDL/MDX writer + readback preview"
     reason: "najblizsze prawdzie 'tak bedzie w Aurorze'"
 
-  V5_editor:
-    goal: "non-destructive editor konwersji"
+  V6_advanced_editor:
+    goal: "zaawansowany niedestrukcyjny edytor konwersji"
     stores:
       - "m2a.project.json"
       - "validation-report.json"
       - "export-manifest.json"
+    includes:
+      - "history/revert of conversion recipes"
+      - "advanced material and TXI/MTR profiles only after Aurora proof"
 ```
 
 ## 13. Decyzje do zamkniecia
@@ -438,7 +495,7 @@ phases:
 ```yaml
 decisions:
   D_viewport:
-    recommendation: "TAK, viewport jest czescia narzedzia od V1"
+    recommendation: "TAK, viewport jest czescia pierwszego wydania produktu, ale implementacyjnie zaczyna sie w S1 po M6 native proof"
     default_mode: "Aurora Preview"
 
   D_validation_budget:
@@ -448,11 +505,15 @@ decisions:
   D_animation_auto:
     recommendation: "auto-preview tak, auto-export tylko po mapping gates"
 
+  D_animation_product_scope:
+    recommendation: "wszystkie animacje wymagane przez wybrany profil Aurora/NWN musza miec potwierdzona sciezke: supermodel albo emisja wlasnego klipu"
+    rule: "nie zamykac produktu samym bind pose albo jednym idle, gdy profil wymaga wiecej"
+
   D_editing:
     recommendation: "edytor konwersji tak; pelny modeler/rig editor poza MVP"
 
   D_first_focus:
-    recommendation: "najpierw import stats + walidacja + source viewport, potem binary MDL writer/readback"
+    recommendation: "najpierw M1A-M6: parser/report + canonical IR + binary writer/readback + native proof; potem S1 source/Aurora viewport konsumujacy ten sam pipeline"
 ```
 
 ## 14. Najwazniejszy wniosek

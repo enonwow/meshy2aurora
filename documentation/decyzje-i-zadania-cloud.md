@@ -9,7 +9,7 @@ Rejestr decyzji projektowych i otwartych zadań. Aktualizowany przez Claude po k
 |---|---|---|---|
 | D1 | Kanoniczny folder dokumentacji: `C:\Projects\meshy2aurora\documentation` | Mateusz | 2026-07-08 |
 | D2 | Protokół wymiany: `reguly-dokumentacji-cloud.md` | Claude+Codex | 2026-07-08 |
-| D3 | Stack konwertera: Node.js + TypeScript, CLI batch-first | Codex | 2026-07-08 |
+| D3 | Pierwotna propozycja stacku: Node.js + TypeScript, CLI batch-first; ZASTAPIONA przez D11. | Codex | 2026-07-08 |
 | D4 | MVP: creature (direct model), wzorzec c_kocrachn/c_horror | Mateusz | 2026-07-08 |
 | D5 | Animacje: retarget na istniejące klipy NWN, nie 1:1 z meshy | Codex+Claude | 2026-07-08 |
 
@@ -17,6 +17,10 @@ Rejestr decyzji projektowych i otwartych zadań. Aktualizowany przez Claude po k
 | D7 | meshy2aurora jest projektem STANDALONE — bez zależności runtime/build od aurora-web (żadnych importów ani subprocess CLI w kodzie i testach). Wolno POSIŁKOWAĆ SIĘ rozwiązaniami aurora-web jako referencją wiedzy (czytanie kodu, kotwice, algorytmy), ale implementacja musi być własna — może okazać się skuteczniejsza. Weryfikacja podstawowa: NWN EE (toolset/gra); aurora-web jako zewnętrzny konsument standardowego haka. | Mateusz | 2026-07-08 (doprecyzowane) |
 | D8 | Rozjazdy po audycie 2026-07-09 poprawiamy przez zasade: dokumenty sprzed D7 zostaja jako historia/reference-only, a aktywna implementacja idzie przez `architektura-meshy2aurora-codex.md`, `standalone-odpowiedz-codex.md`, `engine-mdl-pytania-cloud.md` i ten rejestr. | Codex | 2026-07-09 |
 | D9 | Nie robimy ASCII MDL jako ścieżki runtime/proofu. Aktywny output projektu to natywne zasoby gry: binary MDL (+ MDX zgodnie z polityką Q2), 2DA, HAK. ASCII może być tylko debug dump/golden snapshot. | Mateusz+Codex | 2026-07-09 |
+| D11 | Rdzeń konwertera: Rust 1.96.1 + Cargo, TDD przez `cargo test --workspace`. Rdzeń jest niezależny od DOM i wystawiany do aplikacji webowej przez WASM. | Mateusz | 2026-07-10 |
+| D12 | Produkt: aplikacja webowa local-first, nie desktop CLI. UI: React/TypeScript/Vite + Three.js; rdzeń Rust przez WebAssembly. MVP nie ma backendu ani nie wysyła plików użytkownika na serwer. Backend może powstać później wyłącznie dla chronionych kredencjałów Meshy API lub współpracy. | Mateusz | 2026-07-10 |
+| D13 | Animacje są wymaganym zakresem produktu. Narzędzie musi obsłużyć zarówno animacje odziedziczone przez potwierdzony supermodel, jak i własne klipy wejściowe. Dokładna lista klipów, eventów i format emisji wynika wyłącznie z Aurora First. M3 może udowodnić ścieżkę supermodelu, ale nie zamyka obsługi animacji. | Mateusz | 2026-07-10 |
+| D14 | Pierwszy hosting: GitHub Pages jako hosting plików statycznych. Całe przetwarzanie GLB, MDL, 2DA i HAK wykonuje przeglądarka w Web Worker + Rust/WASM; GitHub Pages nie dostaje ani nie przetwarza modeli użytkownika. | Mateusz | 2026-07-10 |
 
 ## Decyzje oczekujące
 
@@ -27,7 +31,6 @@ Rejestr decyzji projektowych i otwartych zadań. Aktualizowany przez Claude po k
 | P3 | ~~Animacje meshy vs supermodel~~ Rozstrzygnięte przez ograniczenie meshy (auto-rig tylko humanoidy) → ścieżka A: supermodel; ścieżka B (humanoid, animacje meshy) jako M5 | — | `kierunek-implementacji-cloud.md` |
 | P4 | Akceptacja kierunku: ścieżka A pierwsza, plan M1–M5 | Mateusz | `kierunek-implementacji-cloud.md` |
 | P5 | Klucz API meshy + budżet kredytów (potrzebne od M2) | Mateusz | `kierunek-implementacji-cloud.md` |
-| P-tech | Potwierdzenie stacku standalone: Node.js >=22 + TypeScript 5.9 + Jest/ts-jest + npm | Mateusz | `architektura-meshy2aurora-codex.md` |
 | P-proof | Potwierdzenie, ze pierwszy proof techniczny idzie na proxy `c_kocrachn`, a The Last City ma osobny pozniejszy kontrakt artystyczny | Mateusz | `audyt-dokumentacji-plan-2026-07-09-codex.md` |
 
 ## Zadania otwarte
@@ -41,15 +44,35 @@ active_truth:
   architecture: "C:\\Projects\\meshy2aurora\\documentation\\architektura-meshy2aurora-codex.md"
   audit: "C:\\Projects\\meshy2aurora\\documentation\\audyt-dokumentacji-plan-2026-07-09-codex.md"
   implementation_target: "standalone converter: Meshy -> native binary MDL/MDX policy + 2DA + HAK"
+  product_delivery: "local-first web application; Rust/WASM core + browser UI"
+  initial_hosting: "GitHub Pages static hosting; no server-side conversion"
   primary_proof: "NWN EE Toolset/gra"
   aurora_web_policy: "read-only reference; not dependency/CLI/oracle/validator/test runtime"
   external_assets_policy: "retail/CEP read-only via env; generated proof assets inside meshy2aurora"
+  texture_editor_policy: "Source PBR, Aurora Preview and generated TGA are separate states; edits are recipes in m2a.project.json"
 open_decisions:
-  P_tech: "confirm Node.js >=22 + TypeScript 5.9 + Jest/ts-jest + npm"
+  P_backend: "defer any backend until a protected Meshy API credential or collaboration requires it; no backend in MVP or GitHub Pages deployment"
   P_proof: "confirm first technical proof on c_kocrachn proxy; The Last City later as separate original asset contract"
 ```
 
 Dokumenty sprzed D7, ktore opisuja `aurora-web` jako target/proof/CLI, sa od 2026-07-09 traktowane jako historyczne albo reference-only. Nie wolno z nich brac aktywnego planu implementacji, jesli przecza D7 albo temu blokowi.
+
+## Decyzja D10 - edytor materialow i tekstur
+
+Status: PODJETA 2026-07-10 | Kto: Mateusz + Codex
+
+```yaml
+D10_texture_editor:
+  V2: "read-only Material/Texture Inspector"
+  V3: "replace image, tint, basic color correction, alpha/cutout, UV policy, resize and bake to TGA"
+  V6: "history/revert and advanced TXI/MTR material profiles after Aurora proof"
+  source_glb: "never overwritten"
+  persisted_state: "m2a.project.json texture recipes"
+  required_previews:
+    - "Source PBR"
+    - "Aurora Preview"
+    - "readback output after export"
+```
 
 ### Codex
 - [x] `koncepcja-meshy-pytania-cloud.md` → odpowiedziano 2026-07-08 (wszystkie POTWIERDZONE).
@@ -64,9 +87,9 @@ Dokumenty sprzed D7, ktore opisuja `aurora-web` jako target/proof/CLI, sa od 202
 - B3: brak headless proofu nwmain/nwtoolset → proof M1 manualno-wizualny (screenshoty wg toolset_runbook).
 
 ### Claude — plan M1 STANDALONE (zaktualizowany)
-- [ ] Repo: package.json (npm, TS 5.9, jest/ts-jest, Node >=22), tsconfig strict, env config (M2A_NWN_ROOT, M2A_CEP_CORE1_HAK...).
+- [ ] Repo: Cargo workspace, `rust-toolchain.toml`, crate `m2a-core`, crate `m2a-wasm`, strict lint/test config oraz adapter `wasm-bindgen` bez dostepu do DOM/filesystemu/sieci.
 - [ ] Własny czytnik HAK/ERF V1.0 (read) + parser binary MDL wg layoutu z standalone-odpowiedz-codex.md (header→node tree→controllery→mesh/MDX→skin→animacje).
-- [ ] Testy: syntetyczne fixtures w repo; integracja z cep3_core1.hak/c_kocrachn przez env (skip gdy brak). Bez commitowania assetów gry (polityka Q5).
+- [ ] Testy: syntetyczne fixtures w repo; opcjonalna integracja deweloperska z cep3_core1.hak/c_kocrachn przez env (skip gdy brak). Nie jest to funkcja aplikacji webowej. Bez commitowania assetów gry (polityka Q5).
 - [ ] Binary MDL writer + MDX policy + golden snapshot strukturalny. ASCII dump tylko opcjonalnie do debugowania.
 
 ### Claude (nowe, po konwersja-meshy-odpowiedz-codex.md)
@@ -76,6 +99,7 @@ Dokumenty sprzed D7, ktore opisuja `aurora-web` jako target/proof/CLI, sa od 202
 ### Codex
 - [ ] **PILNE**: odpowiedzieć na `engine-mdl-pytania-cloud.md` (Q1: minimalny binary MDL writer; Q2: MDX embedded vs osobny zasób; Q3: bind pose w nwnexplorer).
 - [x] `architektura-meshy2aurora-codex.md` -> utworzono 2026-07-09 jako aktywny dokument architektury standalone.
+- [x] Plan edytora materialow/tekstur -> V2 Inspector, V3 niedestrukcyjna korekta/bake, V6 zaawansowane profile; zapisane 2026-07-10.
 - [ ] `sample-2d-generacja-cloud.md`: przygotować prompty OpenAI dla próbki koc01 (po otrzymaniu screenshotów referencji) → `sample-2d-prompty-codex.md`; poprosić Mateusza o generację obrazów.
 - [ ] (PÓŹNIEJ, z M1) `korpus-testowy-cloud.md`: dostarczyć `korpus-testowy-oracle-codex.md` — pomiary ~10 modeli z cep3_core1.hak (oracle poziomu 2).
 
@@ -86,7 +110,7 @@ Dokumenty sprzed D7, ktore opisuja `aurora-web` jako target/proof/CLI, sa od 202
 - [ ] P4: akceptacja kierunku M1–M5 (ścieżka A pierwsza).
 
 ### Claude
-- [ ] Po odpowiedzi Codexa na Q1–Q2: spec konwertera `konwerter-spec-cloud.md` i start implementacji szkieletu CLI.
+- [ ] Po odpowiedzi Codexa na Q1–Q2: spec konwertera `konwerter-spec-cloud.md` i start Rust/WASM web foundation.
 - [ ] Przygotować obraz referencyjny bind pose c_kocrachn dla generacji meshy (po odpowiedzi na Q4).
 
 ## Kolejność
@@ -94,8 +118,8 @@ Dokumenty sprzed D7, ktore opisuja `aurora-web` jako target/proof/CLI, sa od 202
 AKTUALNE PO D7/D8:
 
 ```text
-F0 dokumentacja/rules -> F1 engine-mdl Q1-Q3 + P-tech -> scaffold standalone CLI
--> parser/writer TDD -> generated HAK/module -> proof NWN EE Toolset/gra
+F0 dokumentacja/rules -> F1 engine-mdl Q1-Q3 + D11-D14 Rust/WASM web foundation -> parser/writer TDD
+-> full animation stage -> generated HAK/module -> proof NWN EE Toolset/gra
 -> dopiero potem opcjonalny test aurora-web jako zewnetrznego konsumenta HAK-a
 ```
 

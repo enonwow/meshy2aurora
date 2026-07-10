@@ -2,6 +2,8 @@
 
 Status 2026-07-09: CZESCIOWO SUPERSEDED przez D9. Fragmenty o szukaniu referencyjnego ASCII MDL i emisji ASCII jako M1 sa historyczne. Aktualny output `meshy2aurora` to natywny binary MDL + MDX policy + 2DA + HAK; ASCII moze byc tylko debug dump/snapshot.
 
+Status 2026-07-10: ten plik jest REFERENCJA, nie aktywnym planem wykonawczym. Aktualny M1A emituje deterministyczny JSON inspection report, nie ASCII MDL. Dla pierwszego profilu `direct creature` obowiazuje jeden zasob MDL typu 2002 z appended MDX block; osobny zasob MDX typu 2003 nie wystepuje w potwierdzonym `cep3_core1.hak` i nie jest oczekiwany. Aktywny gate znajduje sie w `audyt-gotowosci-startowej-2026-07-10-codex.md` oraz `engine-mdl-odpowiedz-codex.md`.
+
 Data: 2026-07-08  
 Adresat: `standalone-pytania-cloud.md`  
 Zakres: standalone M1 po decyzji D7
@@ -418,7 +420,7 @@ m1_parser_scope:
     - "read mesh faces, vertices, normals, texture0"
     - "read skin weights and bone indices where has_skin is set"
     - "read animation headers, events and animation node controllers"
-    - "emit deterministic ASCII MDL; golden snapshot only after external/manual confirmation"
+    - "emit deterministic versioned JSON inspection report; optional human-readable debug snapshot only"
   defer:
     - "binary MDL writer"
     - "full emitter/light/dangly/aabb semantics beyond safe parse/skip"
@@ -460,8 +462,7 @@ m1_hak_install:
     - "prebuilt community module"
     - "aurora-web output"
   expected_resources:
-    - { resref: "m2a_koc01", type: "MDL", resource_type: 2002 }
-    - { resref: "m2a_koc01", type: "MDX", resource_type: 2003 }
+    - { resref: "m2a_koc01", type: "MDL", resource_type: 2002, payload: "binary MDL plus appended MDX block" }
     - { resref: "appearance", type: "2DA", resource_type: 2017 }
     - { resref: "m2a_koc01", type: "TGA_or_DDS", resource_type: "3_or_2033" }
 ```

@@ -1,6 +1,6 @@
 # srodowisko-zakres-odpowiedz-codex.md
 
-Status 2026-07-09: CZESCIOWO SUPERSEDED. Rekomendacja Node.js + TypeScript zostaje jako propozycja `P-tech`, ale uzasadnienie "blisko aurora-web" nie oznacza reuse/import/CLI z `aurora-web`. Po D7 stack ma sluzyc samodzielnemu narzedziu.
+Status 2026-07-10: HISTORYCZNE / CALKOWICIE SUPERSEDED przez D11-D12. Rekomendacja Node.js + TypeScript, CLI batch-first i integracja z backendem `aurora-web` nie sa aktywne. Produkt jest aplikacja webowa local-first z rdzeniem Rust/WASM; szczegoly sa w `architektura-web-wasm-codex.md`.
 Data: 2026-07-08 | Odpowiada na: srodowisko-zakres-pytania-cloud.md
 
 ## Q1: Stack konwertera
