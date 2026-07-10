@@ -4,7 +4,7 @@ Data: 2026-07-10 | Autor: Codex | Status: AKTYWNY INDEKS CALOSCI DOKUMENTACJI
 
 ## 1. Cel
 
-Ten indeks klasyfikuje wszystkie 63 pliki z `C:\Projects\meshy2aurora\documentation` po decyzjach D11-D14. Ma usunac rozjazd miedzy aktualnym produktem webowym a starszymi planami Node/TypeScript/CLI lub dawnym targetem `aurora-web`.
+Ten indeks klasyfikuje wszystkie 68 plikow z `C:\Projects\meshy2aurora\documentation` po decyzjach D11-D14. Ma usunac rozjazd miedzy aktualnym produktem webowym a starszymi planami Node/TypeScript/CLI lub dawnym targetem `aurora-web`.
 
 ```yaml
 active_product:
@@ -20,6 +20,11 @@ authority_order:
   - "architektura-meshy2aurora-codex.md"
   - "architektura-web-wasm-codex.md"
   - "audyt-gotowosci-startowej-2026-07-10-codex.md"
+  - "macierz-gotowosci-wiedzy-codex.md"
+  - "mdl-binary-crosswalk-codex.md"
+  - "mdx-polityka-codex.md"
+  - "animacje-kontrakt-profil-a-codex.md"
+  - "hak-2da-gff-crosswalk-codex.md"
   - "status-dokumentacji-web-2026-07-10-codex.md"
   - "plan-implementacji-orkiestrator-codex.md"
   - "orchestrator-state.yaml"
@@ -35,6 +40,11 @@ active:
   - "README.md"
   - "PROJECT_RULES.md"
   - "audyt-gotowosci-startowej-2026-07-10-codex.md"
+  - "macierz-gotowosci-wiedzy-codex.md"
+  - "mdl-binary-crosswalk-codex.md"
+  - "mdx-polityka-codex.md"
+  - "animacje-kontrakt-profil-a-codex.md"
+  - "hak-2da-gff-crosswalk-codex.md"
   - "reguly-dokumentacji-cloud.md"
   - "CLOUD_SUPPLEMENT_FORMAT.md"
   - "decyzje-i-zadania-cloud.md"
@@ -115,8 +125,8 @@ historical:
 
 ```yaml
 inventory:
-  audited_files: 63
-  active: 19
+  audited_files: 68
+  active: 24
   reference: 22
   historical: 22
   unclassified: 0

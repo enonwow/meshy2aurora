@@ -4,9 +4,9 @@ Data: 2026-07-10 | Odpowiada na: `engine-mdl-pytania-cloud.md`
 
 ## Q1: Binary MDL jako format docelowy
 
-Status: NIE WIEM dla kompletnego kontraktu writera.
+Status: POTWIERDZONY KIERUNEK PROFILU A; CZESCIOWO OTWARTE EVIDENCE dla wariantu skin header i runtime acceptance.
 
-Tak: odpowiedz musi wynikac z Aurora First. Docelowy layout binarnego MDL, wymagane offsety i pola nie sa pytaniem do Meshy ani do `aurora-web`. Nalezy je wyprowadzic najpierw z `C:\Projects\New Folder\export\decompiled_all.c`, a potem potwierdzic przez odczyt wygenerowanego pliku i proof w NWN EE.
+Tak: odpowiedz musi wynikac z Aurora First. Docelowy layout binarnego MDL, wymagane offsety i pola nie sa pytaniem do Meshy ani do `aurora-web`. Aktywny inventory i podzial required/deferred/open znajduje sie w `mdl-binary-crosswalk-codex.md`; polityka raw/MDX jest w `mdx-polityka-codex.md`.
 
 ```yaml
 question_owner: "Aurora/NWN binary format"
@@ -18,7 +18,8 @@ not_a_source_of_truth:
   - "Meshy"
   - "C:\\Projects\\aurora-web"
 closure_condition:
-  - "confirmed minimal writer field and offset inventory"
+  - "confirmed minimal writer field and offset inventory: DONE for direction"
+  - "GB-001-SKIN 17/64 mapping variant resolved by M1B corpus report"
   - "own reader parses own emitted MDL"
   - "NWN EE Toolset and game proof accepts the generated asset"
 ```
@@ -37,19 +38,20 @@ decompilation_search:
     - "MdlNodeAnimMesh"
   direct_writer_field_names_found: false
   p_start_mdx_symbol_found: false
-  conclusion: "The export confirms the MDL resource and runtime node families, but it does not yet expose a named minimal writer structure. External templates cannot promote GB-001 to confirmed."
+  conclusion: "The export confirms the MDL resource and runtime node families but not a named writer struct. Local binary plus independent parser cross-checks define the profile-A direction; only own readback and runtime proof can close evidence."
 ```
 
-Plan zamkniecia GB-001:
+Plan zamkniecia pozostalej czesci GB-001:
 
 ```yaml
 writer_contract_closure:
+  direction_contract: "documentation/mdl-binary-crosswalk-codex.md"
   step_1: "M1A/M1B own reader records every supported field with provenance and unsupported diagnostics"
-  step_2: "follow Ghidra xrefs from CResMDL/MdlNode RTTI and resource type 2002 to the loader and constructors"
-  step_3: "derive the smallest profile-A model from fields observed across read-only references; do not copy payloads"
-  step_4: "write a synthetic model, parse it with the own reader and produce a semantic readback diff"
+  step_2: "resolve GB-001-SKIN by checking both 0x2d4/17 and 64-map variants against local binary boundaries"
+  step_3: "write a synthetic profile-A model from own IR; do not copy payloads"
+  step_4: "parse it with the own reader and produce a semantic readback diff"
   step_5: "run the generated HAK through NWN EE Toolset and game"
-  stop_condition: "if a required field has no Aurora/binary evidence, keep GB-001 open and do not invent its value"
+  stop_condition: "if a required field has no Aurora/binary evidence, reject that feature/profile; do not invent its value"
 ```
 
 ## Q2: MDX - osobny zasob czy embedded

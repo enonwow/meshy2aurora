@@ -1,6 +1,6 @@
 # aurora-2da-creature-codex.md
 Data: 2026-07-08  
-Status: POTWIERDZONE dla kontraktu `aurora-web`; NIE WIEM dla pelnego retail wiersza potwora, bo lokalne `appearance.2da` nie zostalo odnalezione w tej rundzie
+Status: AKTYWNA REFERENCJA; lokalny `appearance.2da` POTWIERDZONY 2026-07-10. Produkcyjny writer contract jest w `hak-2da-gff-crosswalk-codex.md`.
 
 ## Zakres
 
@@ -38,7 +38,9 @@ internet_supplement:
 
 Status: POTWIERDZONE.
 
-Nie znaleziono lokalnego pliku `appearance.2da` w standardowych skanach `C:\Projects\New Folder`, `C:\Projects\aurora-web`, `C:\Users\enonw\Documents\Neverwinter Nights`, Steam NWN oraz aktualnym mirrorze `__aurora/sources`. Dlatego wzorcowy retail wiersz potwora ma status `NIE WIEM` i nie jest tu zmyslany.
+Odnaleziono lokalny read-only resource `appearance` typu 2017 w `C:\Users\enonw\Documents\Neverwinter Nights\hak\lc_2da.hak`. Tabela ma 35 kolumn, 15 219 fizycznych wierszy `0..15218`, zero tabulatorow i SHA-256 `ca0b80b74e068d8ebbd94df6005b5971e50eca5c8662fca10a40688ea2c033a2`.
+
+Wiersz 15216 potwierdza lokalny direct-creature pattern: `MODELTYPE=S`, `RACE=c_squirrel`, `MOVERATE=VSLOW`, `TARGETABLE=1`. Payload pozostaje poza repo i nie jest fixture/proof base.
 
 Jednoczesnie istnieje zainstalowany edytor/schemat:
 
@@ -112,7 +114,7 @@ Dla `meshy2aurora` MVP interesuje nas `direct-model`, czyli `MODELTYPE` inne niz
 
 ## Minimalny wiersz dla nowego direct creature
 
-Status: HIPOTEZA wdrozeniowa oparta na potwierdzonym parserze.
+Status: KIERUNEK WDROZENIOWY; wartosci gameplay pozostaja do runtime proofu.
 
 ```yaml
 minimal_direct_creature_appearance_row:
@@ -129,7 +131,7 @@ minimal_direct_creature_appearance_row:
     - "WEAPONSCALE"
     - "SIZECATEGORY"
   example_row:
-    row_id: 9000
+    row_id: "append_index derived from selected base table"
     Label: "M2A_Kocrachn_Test"
     MOVERATE: "NORM"
     MODELTYPE: "S"
@@ -159,10 +161,10 @@ Ten fixture jest POTWIERDZONY jako test parsera, ale nie jest direct creature.
 
 Status: NIE WIEM lokalnie.
 
-Cloud pyta o m.in. `PERSPACE`, `HEIGHT`, `TARGETABLE`. Te kolumny sa opisane w internetowym NWNWiki `Appearance.2da`, ale w tej rundzie nie zostaly potwierdzone jako czytane przez `aurora-web` ani zakotwiczone w lokalnym retail `appearance.2da`.
+Cloud pyta o m.in. `PERSPACE`, `HEIGHT`, `TARGETABLE`. Wszystkie ponizsze kolumny sa teraz potwierdzone jako obecne w lokalnym `appearance.2da`; ich dokladna semantyka gameplay nadal wymaga dekompilacji/proofu.
 
 ```yaml
-columns_not_confirmed_in_local_code_for_mvp:
+columns_confirmed_in_local_table_but_semantics_not_fully_proved:
   - "PERSPACE"
   - "HEIGHT"
   - "TARGETABLE"
@@ -226,9 +228,9 @@ appearance_type:
       write: "C:\\Projects\\New Folder\\export\\decompiled_all.c:195146"
   row_selection:
     required:
-      - "row id exists in the derived appearance.2da output"
-      - "row id is within 0..65535"
-      - "row id is unused in the selected base table or intentionally updated"
+      - "new row is appended after the last physical row"
+      - "new physical row id is within 0..65535"
+      - "all existing columns and rows are preserved"
       - "generated UTC Appearance_Type equals that row id"
     not_confirmed:
       - "a universal safe custom range such as 9000+"
@@ -238,7 +240,7 @@ appearance_type:
     meaning: "test example only; not an engine rule"
 ```
 
-The converter must inspect the selected base table, choose an available representable row deterministically, write it automatically, and record the choice in the conversion manifest. It must not hard-code `9000` as a production rule before NWN EE proof.
+Konwerter musi odczytac jawnie wybrana base table, zachowac wszystkie kolumny i wiersze, a nowy wiersz dopisac na koncu. Oficjalna specyfikacja 2DA zabrania wstawiania wierszy pomiedzy istniejace oraz fizycznego usuwania wierszy. Nie wybieramy "wolnej dziury" po `****`. Nowy fizyczny index musi byc `<= 65535`, a UTC `Appearance_Type` musi byc mu rowny. `9000` pozostaje tylko historycznym przykladem fixture.
 
 ## Integracja z HAK
 
@@ -277,4 +279,8 @@ tests:
   end_to_end:
     - "UTC Appearance_Type points to new row id"
     - "catalog render package resolves direct model resref from appearance.2da.RACE"
+  writer:
+    - "new row is appended after the last physical row, never inserted into a **** hole"
+    - "tabs are rejected and quoted labels with spaces round-trip"
+    - "append above uint16 range is rejected"
 ```

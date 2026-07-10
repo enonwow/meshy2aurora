@@ -2,7 +2,7 @@
 
 Status 2026-07-09: AKTYWNA REFERENCJA FORMATU/SYSTEMU, ale proofy i sciezki z `aurora-web` sa reference-only. Implementacja `meshy2aurora` nie moze importowac ani odpalac `aurora-web`.
 Data: 2026-07-08  
-Status: POTWIERDZONE czesciowo; HIPOTEZA dla minimalnego zestawu gameplayowego; NIE WIEM dla pelnej semantyki eventow retail
+Status: AKTYWNA REFERENCJA; kierunek produktu i korekta lokalnego binary sa w `animacje-kontrakt-profil-a-codex.md`.
 
 ## Zakres
 
@@ -82,16 +82,18 @@ newanim:
   end: "doneanim <clip_name>"
 ```
 
-## Lista klipow potwierdzona na wzorcu `c_kocrachn`
+## Lista klipow obserwowana dla rodziny horror
 
-Status: POTWIERDZONE z runtime proof `c_kocrachn` / `c_Horror`.
+Status: POTWIERDZONE jako reference-only runtime resolution w `aurora-web` i jako namespace dwoch pokrewnych lokalnych modeli; NIE jest to lista wlasnych animacji payloadu `c_kocrachn`.
 
 ```yaml
 c_kocrachn_supermodel_chain:
   model: "c_kocrachn"
   supermodel: "c_Horror"
-  animation_scale: 0.7200000286102295
-  available_clip_count: 42
+  animation_scale: 0.72
+  own_animation_count_in_local_binary: 0
+  c_Horror_found_in_114_scanned_local_haks: false
+  reference_only_resolved_clip_count: 42
   clips:
     - ca1slashl
     - ca1slashr
@@ -137,7 +139,7 @@ c_kocrachn_supermodel_chain:
     - ccturnr
 ```
 
-To jest najlepszy lokalny wzorzec dla pierwszego MVP, bo decyzja projektowa D4 wskazuje `c_kocrachn/c_horror`.
+Lista jest dobrym wzorcem nazw i zakresu stanow, ale nie jest samodzielnym proofem ani zrodlem keyframes. Produkcyjny profil A jest self-contained; `c_kocrachn/c_Horror` pozostaje materialem do obserwacji struktury.
 
 ## Minimalny zestaw dla grywalnego direct creature
 
@@ -177,11 +179,11 @@ Implementacyjnie pierwszy etap moze miec dwa tryby:
 ```yaml
 implementation_modes:
   reference_supermodel_mode:
-    status: POTWIERDZONE w aurora-web dla odtwarzania
+    status: "pozniejszy compatibility profile; POTWIERDZONE w aurora-web tylko jako reference-only"
     description: "model ma wlasna siatke/szkielet zgodny z referencja i korzysta z supermodelu"
     required: "zgodne nazwy kosci z supermodelem"
   self_contained_direct_mode:
-    status: HIPOTEZA do proofu w grze
+    status: "wymagany kierunek produktowego proofu; runtime proof otwarty"
     description: "MDL zawiera wlasne newanim dla minimalnych klipow"
     required: "kazdy wymagany clip jako newanim targetujacy model"
 ```
@@ -201,8 +203,8 @@ event_policy:
     status: NIE WIEM
     value: "nazwy eventow dla trafienia, krokow i dzwiekow wymagaja retail/decomp testu"
   emitter_rule_for_mvp:
-    - "emituj animacje bez eventow dla proofu wizualnego"
-    - "dodaj eventy dopiero po znalezieniu retail anchorow w modelach/supermodelach"
+    - "loader smoke moze testowac zero eventow jako jawna hipoteze"
+    - "gameplay acceptance wymaga osobnego proofu eventow hit/footstep/sound"
 ```
 
 ## Petle i one-shot
@@ -226,10 +228,11 @@ meshy_pipeline_animation_decision:
       - "validate in meshy2aurora animation validator and binary readback parser"
   monster_or_quadruped:
     source: "meshy-api-cloud.md"
-    path: "mesh only + Aurora reference skeleton"
+    path: "mesh plus own/user-provided compatible skeleton"
     conversion:
-      - "fit mesh to reference skeleton"
-      - "reuse/retarget c_kocrachn/c_Horror style clips"
+      - "use read-only Aurora models only to understand naming and structure"
+      - "fit mesh to an own or user-provided skeleton"
+      - "emit own/generated clips using compatible state names"
       - "do not rely on Meshy auto-rig"
 ```
 

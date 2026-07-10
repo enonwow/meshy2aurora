@@ -110,7 +110,7 @@ scope:
   - "stack i test runner zapisane jako decyzja albo jawna provisional assumption"
   - "M1a parser prompt and orchestration state"
   - "start-readiness audit, toolchain bootstrap and real WASM/JavaScript smoke gate"
-  - "writer and 2DA blockers plus the profile-A MDX decision are recorded"
+  - "full-pipeline knowledge matrix plus MDL/MDX/animation/HAK/2DA/GFF direction contracts"
 out_of_scope:
   - "parser/writer implementation"
   - "Meshy asset production"
@@ -119,17 +119,26 @@ definition_of_done:
   - "M1a scope, tests and no-go rules are accepted"
   - "Rust 1.96.1 core decision D11 is recorded and the toolchain blocker has an owner"
   - "wasm-pack is pinned and the M1A DoD executes the public adapter in Node"
-  - "open writer/2DA decisions and the resolved profile-A MDX decision have owner, evidence and next action"
+  - "writer/animation/2DA runtime-evidence gaps and the resolved profile-A MDX direction have owner, evidence and a named closure test"
 current_problems_initial:
   - "Rust 1.96.1 toolchain is not installed on the current machine"
-  - "minimal binary writer contract remains unresolved"
-  - "documentation changes after initial commit are not yet committed"
+resolved_initial_problems_2026_07_10:
+  - "initial documentation baseline committed and pushed as 1747b29"
+  - "full-pipeline direction contracts recorded; runtime evidence remains staged"
+current_knowledge_status_2026_07_10:
+  direction: "READY"
+  runtime_evidence: "staged in M4/M4A/M5/M6"
 bugs_initial: []
 documentation:
   - "documentation/PROJECT_RULES.md"
   - "documentation/architektura-meshy2aurora-codex.md"
   - "documentation/decyzje-i-zadania-cloud.md"
   - "documentation/orchestrator-state.yaml"
+  - "documentation/macierz-gotowosci-wiedzy-codex.md"
+  - "documentation/mdl-binary-crosswalk-codex.md"
+  - "documentation/mdx-polityka-codex.md"
+  - "documentation/animacje-kontrakt-profil-a-codex.md"
+  - "documentation/hak-2da-gff-crosswalk-codex.md"
 ```
 
 ### M1a. Structural binary MDL parser prototype

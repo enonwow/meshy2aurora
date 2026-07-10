@@ -13,22 +13,26 @@ readiness:
   M1A_scope: "READY"
   canonical_repository: "READY"
   documentation_inventory: "READY after fixes recorded in this audit"
+  full_pipeline_knowledge_direction: "READY; runtime evidence remains staged"
   local_toolchain: "BLOCKED: rustup/rustc/cargo/wasm-pack missing"
   repository_scaffold: "NOT_STARTED"
   native_runtime_proof_environment: "READY for later manual proof"
   M1A_start: "READY_AFTER_P0_GATES"
-  M4_writer: "BLOCKED by GB-001"
-  M4A_animations: "BLOCKED by GB-005"
-  M5_2DA_HAK: "BLOCKED by GB-004"
+  M4_writer: "DIRECTION READY; implementation/readback/runtime evidence pending"
+  M4A_animations: "DIRECTION READY; state/event/runtime evidence pending"
+  M5_2DA_HAK: "DIRECTION READY; generated module runtime evidence pending"
 ```
 
-M1A moze zaczac po trzech czynnosciach:
+Initial documentation baseline zostal zapisany i wypchniety w commicie `1747b29` na `codex/docs-readiness-baseline`. Biezacy knowledge update domyka kierunek calego pipeline i ma zostac zapisany w kolejnym commicie dokumentacyjnym.
 
-1. przegladzie i zapisaniu stabilnego baseline dokumentacji w Git;
-2. instalacji i weryfikacji Rust 1.96.1 oraz `wasm-pack 0.15.0`;
-3. utworzeniu minimalnego Cargo workspace zgodnie z kontraktem ponizej.
+M1A moze zaczac po dwoch pozostalych gate'ach:
 
-Otwarte pytania o pelny writer, 2DA i animacje nie blokuja strukturalnego parsera M1A. Nie wolno jednak przenosic ich do implementacji jako zgadywanych zalozen.
+1. jawnej zgodzie wlasciciela `start M1A` po przegladzie aktualnej dokumentacji;
+2. instalacji i weryfikacji Rust 1.96.1 oraz `wasm-pack 0.15.0`.
+
+Minimalny Cargo workspace z sekcji 6 jest pierwszym krokiem M1A po zgodzie, a nie czynnoscia wykonywana teraz w ramach dokumentacji.
+
+Kierunek pelnego writera, 2DA/HAK/GFF i animacji jest zapisany w macierzy wiedzy i kontraktach przekrojowych. Otwarte proofy nie blokuja strukturalnego parsera M1A, ale nie wolno promowac ich do faktow runtime przed przejsciem nazwanych testow.
 
 ## 2. Kanoniczne repozytorium i granice
 
@@ -273,7 +277,8 @@ evidence_classification:
     status: "secondary layout reference plus local binary observations; not fully loader-confirmed"
     action: "implement only fields needed by M1A and preserve unsupported diagnostics"
   writer_contract:
-    status: "OPEN GB-001"
+    status: "DIRECTION_DEFINED_EVIDENCE_OPEN GB-001"
+    contract: "documentation/mdl-binary-crosswalk-codex.md"
   mdx_initial_profile:
     status: "CONFIRMED for c_kocrachn/cep3_core1 reference"
     evidence:
@@ -283,9 +288,11 @@ evidence_classification:
     implementation_decision: "profile A emits one MDL resource 2002 with appended MDX block; no separate 2003 resource"
     final_gate: "own readback plus NWN EE Toolset/game proof"
   two_da_edit_contract:
-    status: "OPEN GB-004"
+    status: "DIRECTION_DEFINED_RUNTIME_OPEN GB-004"
+    contract: "documentation/hak-2da-gff-crosswalk-codex.md"
   animation_contract:
-    status: "OPEN GB-005"
+    status: "DIRECTION_DEFINED_RUNTIME_OPEN GB-005"
+    contract: "documentation/animacje-kontrakt-profil-a-codex.md"
 ```
 
 Wynik dla MDX nie jest uniwersalnym twierdzeniem o kazdym modelu NWN. Jest wystarczajacym, lokalnym dowodem dla pierwszego profilu `direct creature`. Inny profil moze zmienic polityke dopiero po osobnym Aurora First evidence.
@@ -313,9 +320,9 @@ forbidden:
 |---|---|---|---|---|
 | P0-ACCEPT | Akceptacja aktualnego planu i gate M1A | start M1A | Mateusz | jawne `start M1A` po przegladzie dokumentacji |
 | GB-003 | Instalacja Rust/WASM/wasm-pack | start M1A | Mateusz + Codex | wszystkie komendy z sekcji 5 przechodza |
-| GB-001 | Minimalny kontrakt binary writera | M4+ | Codex | pole/offset inventory + reader evidence + writer/readback plan |
-| GB-004 | Automatyczna edycja wybranego `appearance.2da` | M5+ | Codex | Aurora First + test wyboru row id + runtime proof plan |
-| GB-005 | Pelny kontrakt animacji wybranego profilu | M4A+ | Codex | lista klipow/eventow i route inherited/emitted |
+| GB-001 | Runtime evidence binary writera i wariant skin 17/64 | M4+ | Codex | M1B corpus report + semantic write/readback + Toolset/game |
+| GB-004 | Runtime proof append-only `appearance.2da` i generated HAK/module | M5+ | Codex | own readback + `Appearance_Type`/RACE resolution w grze |
+| GB-005 | Runtime proof self-contained animacji wybranego profilu | M4A+ | Codex | motion/state/event proof bez kopiowania external payloads |
 | P-LICENSE | Licencja wlasnego repo | publiczne wydanie | Mateusz | dodany LICENSE albo jawna decyzja private/proprietary |
 | P-NODE | Pin Node/package manager dla React/Vite | S1 | Mateusz + implementacja | `.node-version`/`packageManager` i lockfile |
 | P-PROOF | Pierwszy proof na proxy `c_kocrachn` | M6 plan | Mateusz | potwierdzony profil proofu |
@@ -325,8 +332,8 @@ Brak prawdziwego Meshy GLB, prompty 2D i budzet API nie blokuja M1A.
 ## 12. Kolejnosc startowa
 
 ```text
-1. Review current dirty documentation and this readiness gate
-2. Commit an intentional documentation baseline
+1. Review the committed readiness and knowledge contracts
+2. Receive explicit owner approval: start M1A
 3. Install Rust 1.96.1 + wasm32 target + wasm-pack 0.15.0
 4. Record tool versions in M1A evidence
 5. Scaffold only Cargo workspace, CI and repository hygiene files

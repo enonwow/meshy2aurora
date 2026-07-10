@@ -872,6 +872,18 @@ next_steps:
 
 ## 11. Konkluzja
 
+Aktualizacja 2026-07-10: artefakty K1-K3 i K5 zostaly dostarczone:
+
+```yaml
+delivered_knowledge_artifacts:
+  K1: "documentation/mdl-binary-crosswalk-codex.md"
+  K2: "documentation/mdx-polityka-codex.md"
+  K3: "documentation/hak-2da-gff-crosswalk-codex.md"
+  K5: "documentation/PROJECT_RULES.md section 2.1"
+  central_gate: "documentation/macierz-gotowosci-wiedzy-codex.md"
+remaining: "runtime evidence stays in M4/M4A/M5/M6; it is not treated as missing direction"
+```
+
 Status: POTWIERDZONE + decyzja robocza.
 
 Mamy dobry ekosystem referencyjny. Najsilniejszy zestaw dla `meshy2aurora`:

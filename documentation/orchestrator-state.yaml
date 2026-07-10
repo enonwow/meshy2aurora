@@ -31,13 +31,13 @@ orchestration:
 global_blockers:
   - id: "GB-001"
     severity: "P0"
-    status: "OPEN"
+    status: "DIRECTION_DEFINED_EVIDENCE_OPEN"
     title: "Binary MDL writer contract"
-    detail: "Minimal required writer fields and offsets are not fully resolved."
+    detail: "Profile-A layout, required/deferred fields and writer/readback direction are recorded. M1B must resolve the 17/64 skin mapping variant; own readback and NWN EE proof remain open."
     affects: ["M4", "M5", "M6", "M7"]
     owner: "Codex"
-    source: "documentation/engine-mdl-pytania-cloud.md Q1"
-    next_action: "Answer from Aurora First anchors and record confirmed/deferred fields."
+    source: "documentation/mdl-binary-crosswalk-codex.md"
+    next_action: "M1B records the skin-header variant from binary boundaries; M4 then closes semantic readback and runtime evidence."
   - id: "GB-002"
     severity: "P1"
     status: "RESOLVED_FOR_PROFILE_A"
@@ -58,35 +58,35 @@ global_blockers:
     next_action: "Install Rust 1.96.1 with rustfmt, clippy and wasm32-unknown-unknown plus wasm-pack 0.15.0, then record versions in M1A evidence."
   - id: "GB-004"
     severity: "P0"
-    status: "OPEN"
+    status: "DIRECTION_DEFINED_RUNTIME_OPEN"
     title: "2DA existing-table edit contract"
-    detail: "The web app must derive and prove how it automatically edits an existing appearance.2da selected either directly or from a user-selected HAK, selects a safe row id and how the generated HAK resolves it."
+    detail: "The app reads a user-selected base table/HAK, preserves it and appends one full row at EOF within uint16 range. Own HAK/GFF readback and NWN EE resolution remain open."
     affects: ["M5", "M6", "M7"]
     owner: "Codex"
-    source: "Aurora First plus NWN EE runtime proof"
-    next_action: "Inspect Aurora table resolution and row-id constraints, then prove the selected edit path without committing retail data."
+    source: "documentation/hak-2da-gff-crosswalk-codex.md"
+    next_action: "Implement append-only 2DA plus HAK/GFF writers in M5, then prove the generated module without committing retail data."
   - id: "GB-005"
     severity: "P0"
-    status: "OPEN"
+    status: "DIRECTION_DEFINED_RUNTIME_OPEN"
     title: "Full animation contract"
-    detail: "Required animation names, events and the inherited-versus-emitted route must be confirmed per selected Aurora profile."
+    detail: "Profile A uses self-contained generated clips; supermodel inheritance is a later compatibility route. Loader/movement/gameplay levels and event proof gates are recorded."
     affects: ["M4A", "M5", "M6", "M7"]
     owner: "Codex"
-    source: "Aurora First animation anchors and NWN EE runtime proof"
-    next_action: "Record the confirmed animation inventory, then implement and prove every required route."
+    source: "documentation/animacje-kontrakt-profil-a-codex.md"
+    next_action: "M4A implements loader smoke first, then proves selected movement/gameplay states and event behavior in NWN EE."
 
 stages:
   P0:
     status: "IN_PROGRESS"
-    status_reason: "The readiness gate and orchestration contract are prepared as an intentional Git baseline; toolchain installation, explicit M1A start approval and later-stage format decisions remain open."
+    status_reason: "The readiness gate, orchestration contract and full-pipeline knowledge direction are prepared. Toolchain installation and explicit M1A start approval remain open; later runtime proofs stay assigned to their stages."
     owner: "Codex + Mateusz"
     risk: "MEDIUM"
     dependencies: []
     current_problems:
-      - "GB-001 binary writer contract is unresolved."
+      - "GB-001 direction is defined; its skin-variant/readback/runtime evidence remains staged."
       - "GB-003 Rust 1.96.1, its WASM target and wasm-pack 0.15.0 are not installed."
-      - "GB-004 existing appearance.2da edit contract is unresolved."
-      - "GB-005 full animation contract is unresolved."
+      - "GB-004 append-only direction is defined; runtime resolution proof remains staged."
+      - "GB-005 self-contained direction is defined; gameplay/event proof remains staged."
     bugs: []
     next_actions:
       - "Review and accept the readiness audit and this orchestration contract."
@@ -96,6 +96,11 @@ stages:
       - "documentation/plan-implementacji-orkiestrator-codex.md"
       - "documentation/orchestrator-state.yaml"
       - "documentation/audyt-gotowosci-startowej-2026-07-10-codex.md"
+      - "documentation/macierz-gotowosci-wiedzy-codex.md"
+      - "documentation/mdl-binary-crosswalk-codex.md"
+      - "documentation/mdx-polityka-codex.md"
+      - "documentation/hak-2da-gff-crosswalk-codex.md"
+      - "documentation/animacje-kontrakt-profil-a-codex.md"
     documentation:
       - "documentation/PROJECT_RULES.md"
       - "documentation/decyzje-i-zadania-cloud.md"
@@ -117,6 +122,11 @@ stages:
       - "documentation/standalone-odpowiedz-codex.md"
       - "documentation/status-dokumentacji-web-2026-07-10-codex.md"
       - "documentation/viewport-walidacja-animacje-plan-codex.md"
+      - "documentation/macierz-gotowosci-wiedzy-codex.md"
+      - "documentation/mdl-binary-crosswalk-codex.md"
+      - "documentation/mdx-polityka-codex.md"
+      - "documentation/animacje-kontrakt-profil-a-codex.md"
+      - "documentation/hak-2da-gff-crosswalk-codex.md"
 
   M1A:
     status: "BLOCKED"
@@ -208,14 +218,14 @@ stages:
 
   M4:
     status: "NOT_STARTED"
-    status_reason: "Blocked by the writer contract; the MDX layout is resolved for profile A."
+    status_reason: "The writer and MDX directions are defined; M4 waits for reader/IR dependencies and will close semantic/runtime evidence."
     owner: "implementation agent"
     risk: "HIGH"
-    dependencies: ["M1B DONE", "M3 DONE", "GB-001 resolved", "GB-002 profile-A decision recorded"]
+    dependencies: ["M1B DONE", "M3 DONE", "GB-001 direction defined", "GB-002 profile-A decision recorded"]
     current_problems:
-      - "GB-001 is open."
+      - "GB-001-SKIN 17/64 mapping variant must be resolved by M1B before skin emission."
     bugs: []
-    next_actions: ["Resolve GB-001 before implementation; preserve the profile-A MDX evidence in writer/readback tests."]
+    next_actions: ["Follow the MDL/MDX crosswalk; implement only the proved profile and close own readback before runtime proof."]
     evidence: []
     documentation: ["documentation/evidence/M4-evidence.md"]
     expected_artifacts: ["Writer/readback tests", "Semantic diff report"]
@@ -226,11 +236,11 @@ stages:
     status_reason: "Required product scope after the structural writer/readback path exists."
     owner: "implementation agent"
     risk: "HIGH"
-    dependencies: ["M4 DONE", "GB-005 resolved"]
+    dependencies: ["M4 DONE", "GB-005 direction defined"]
     current_problems:
       - "Required animation inventory and own clip emission are not implemented."
     bugs: []
-    next_actions: ["Resolve GB-005, then implement inherited and emitted animation routes."]
+    next_actions: ["Implement the self-contained loader-smoke route, then prove selected movement/gameplay/event behavior; defer supermodel compatibility."]
     evidence: []
     documentation: ["documentation/evidence/M4A-evidence.md"]
     expected_artifacts: ["Animation inventory report", "Animation readback diff", "Toolset/game animation proof"]
@@ -241,12 +251,12 @@ stages:
     status_reason: "Depends on native model output, full animation support and the confirmed existing-table edit path."
     owner: "implementation agent"
     risk: "HIGH"
-    dependencies: ["M4A DONE", "GB-004 resolved"]
+    dependencies: ["M4A DONE", "GB-004 direction defined"]
     current_problems:
       - "No own TGA/2DA/HAK writer exists."
-      - "GB-004 existing-table edit contract is unresolved."
+      - "GB-004 runtime proof is open; append-only writer direction is defined."
     bugs: []
-    next_actions: ["Wait for M4A and GB-004 evidence."]
+    next_actions: ["Wait for M4A, then implement the documented append-only 2DA and deterministic HAK/GFF path and close runtime evidence."]
     evidence: []
     documentation: ["documentation/evidence/M5-evidence.md"]
     expected_artifacts: ["Generated TGA", "Generated 2DA", "Generated HAK", "Resource manifest"]

@@ -16,6 +16,8 @@ Dekompilacja Aurory jest glownym zrodlem wiedzy. Nie ma strzelania. Jezeli dany 
 
 Formatem docelowym modelu dla gry jest natywny binary MDL oraz polityka MDX rozstrzygnieta dla pierwszego profilu w `engine-mdl-odpowiedz-codex.md` Q2. ASCII MDL nie jest sciezka runtime/proofu; moze istniec tylko jako debug dump albo golden snapshot do czytania przez czlowieka.
 
+Przed implementacja obszaru trzeba sprawdzic `documentation/macierz-gotowosci-wiedzy-codex.md` i jego kanoniczny kontrakt. Odlegly etap nie moze pozostac bez kierunku: dopuszczalny jest otwarty runtime proof, ale nie brak decyzji, zrodla i testu zamykajacego.
+
 Kazde twierdzenie implementacyjne musi byc oznaczone jako jedno z:
 
 - fakt z dekompilacji Aurory;
@@ -25,6 +27,12 @@ Kazde twierdzenie implementacyjne musi byc oznaczone jako jedno z:
 - hipoteza do sprawdzenia.
 
 Hipoteza nie jest podstawa implementacji bez testu albo proofu.
+
+## 2.1 Licencje i provenance zrodel
+
+Zewnetrzne repozytoria, dekompilacja, retail i CEP sa materialem read-only. Fakty o publicznym formacie wolno niezaleznie zaimplementowac, ale nie kopiujemy kodu GPL, payloadow, animacji, szkieletow, tekstur ani fixture z tych zrodel do `meshy2aurora`. Kazdy zewnetrzny fragment kodu wymaga przed uzyciem jawnej decyzji licencyjnej i zapisu provenance.
+
+Domyslny proof base to wlasne syntetyczne fixture oraz wygenerowany przez `meshy2aurora` HAK/modul/asset. Licencja samego repozytorium pozostaje decyzja wlasciciela przed publicznym wydaniem; brak tej decyzji nie daje zgody na kopiowanie materialow referencyjnych.
 
 ## 3. TDD
 
@@ -50,6 +58,7 @@ Od decyzji D12-D14 produktem jest aplikacja webowa local-first, a nie desktopowe
 - `documentation/architektura-meshy2aurora-codex.md`;
 - `documentation/architektura-web-wasm-codex.md`;
 - `documentation/audyt-gotowosci-startowej-2026-07-10-codex.md`;
+- `documentation/macierz-gotowosci-wiedzy-codex.md`;
 - `documentation/plan-implementacji-orkiestrator-codex.md`;
 - `documentation/orchestrator-state.yaml`.
 

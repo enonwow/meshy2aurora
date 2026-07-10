@@ -155,9 +155,9 @@ Szczegoly: `aurora-animation-system-codex.md`.
 
 ## Q4: appearance.2da
 
-Status: POTWIERDZONE dla kolumn czytanych przez `aurora-web`; NIE WIEM dla pelnego istniejacego retail wiersza potwora; HIPOTEZA dla minimalnego direct row z `MODELTYPE=S`.
+Status: ZAKTUALIZOWANE 2026-07-10. Lokalny `appearance.2da` i `MODELTYPE=S` sa potwierdzone; aktywny writer contract jest w `hak-2da-gff-crosswalk-codex.md`.
 
-Lokalnie nie odnaleziono pelnego retail `appearance.2da`, wiec nie podaje zmyslonego wzorcowego wiersza potwora. Potwierdzony kontrakt `aurora-web`:
+Lokalny read-only `appearance.2da` odnaleziono w `lc_2da.hak`: 35 kolumn, 15 219 wierszy, a wiersz 15216 ma `MODELTYPE=S` i `RACE=c_squirrel`. Payload nie wchodzi do repo. Ponizszy zestaw pozostaje minimalnym kierunkiem profilu:
 
 ```yaml
 q4_aurora_web_columns:
@@ -180,7 +180,7 @@ q4_aurora_web_columns:
     - "PREFATCKDIST"
     - "TARGETHEIGHT"
 minimal_row:
-  row_id: 9000
+  row_id: "append index from the user-selected base table"
   Label: "M2A_Kocrachn_Test"
   MOVERATE: "NORM"
   MODELTYPE: "S"
@@ -202,9 +202,9 @@ Szczegoly: `aurora-2da-creature-codex.md`.
 
 ## Q5: Budowa HAK
 
-Status: POTWIERDZONE dla odczytu ERF/HAK w `aurora-web`; POTWIERDZONE dla prostych writerow ERF V1.0 w skryptach; HIPOTEZA dla docelowego reusable writer.
+Status: KIERUNEK POTWIERDZONY; own Rust writer/readback i runtime proof pozostaja do M5/M6.
 
-`aurora-web` ma czytnik `ERF/HAK/MOD/NWM` V1.0/V1.1. Skrypty maja funkcje `buildErfV10FromEntries`, ktore skladaja ERF V1.0 i odrzucaja resref > 16 znakow. To nie jest jeszcze biblioteka HAK dla `meshy2aurora`, ale jest bezposredni kod do wydzielenia/przepisania TDD.
+`aurora-web` pozostaje read-only cross-checkiem. `meshy2aurora` implementuje niezaleznie wlasny Rust writer ERF/HAK V1.0 wedlug oficjalnej specyfikacji BioWare i `hak-2da-gff-crosswalk-codex.md`; nie wydziela ani nie kopiuje kodu z osobnego projektu.
 
 ```yaml
 q5_hak_build:

@@ -1,6 +1,6 @@
 # aurora-hak-erf-codex.md
 Data: 2026-07-08  
-Status: POTWIERDZONE dla odczytu ERF/HAK i prostych writerow ERF V1.0 w skryptach; HIPOTEZA dla docelowego pakera `meshy2aurora`; NIE WIEM dla pelnej polityki priorytetu engine poza lokalnym kodem
+Status: AKTYWNA REFERENCJA. Produkcyjny kontrakt Rust writerow i proofu jest w `hak-2da-gff-crosswalk-codex.md`.
 
 ## Zakres
 
@@ -172,7 +172,7 @@ minimal_creature_hak:
       extension: "mdl"
       type: 2002
       required: true
-      note: "native binary MDL direct creature; MDX embedded/separate according to engine-mdl-pytania-cloud.md Q2"
+      note: "native binary MDL direct creature; profil A ma appended volatile/MDX w tym samym type-2002 payload"
     - resref: "<texture_resref>"
       extension: "tga|dds|plt"
       type: "3|2033|6"
@@ -265,7 +265,7 @@ local_erf_hak_code:
 
 Status: REKOMENDACJA.
 
-Nie uzywac recznego skladania HAK w aplikacji bez testow binarnych. Wydzielic maly `ErfHakWriter` w Node.js/TypeScript z testami zlotego pliku:
+Nie uzywac recznego skladania HAK w UI bez testow binarnych. Wydzielic maly `ErfHakWriter` w rdzeniu Rust zgodnie z aktywna architektura web/WASM i testami deterministycznego readbacku:
 
 ```yaml
 tdd_plan:
@@ -273,10 +273,10 @@ tdd_plan:
     - "writes HAK V1.0 signature and 160-byte header"
     - "rejects resref longer than 16 chars"
     - "writes key list/resource list offsets correctly"
-    - "readNwnErfResource can read back appearance.2da"
-    - "readNwnErfResource can read back model .mdl and texture"
+    - "own Rust reader reads back appearance.2da"
+    - "own Rust reader reads back model .mdl and texture"
   integration_tests:
     - "meshy2aurora HAK reader reads back generated appearance.2da/model/texture"
     - "NWN EE Toolset/gra manual proof opens generated HAK/module"
-    - "aurora-web optional later: external consumer reads standard generated HAK"
+    - "optional independent consumer check is supplementary only, never the final oracle"
 ```
