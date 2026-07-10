@@ -6,12 +6,14 @@ Data: 2026-07-10 | Status: AKTYWNY KONTRAKT TESTOW REGRESYJNYCH
 
 Jeden model nie jest dowodem zgodnosci implementacji binary MDL. Jest tylko dowodem, ze jeden konkretny uklad pol i pointerow zostal obsluzony.
 
+Modele NWN nie sa wejsciem produktu ani zrodlem dla konwersji. Wejsciem produktu pozostaje GLB z Meshy. Model NWN jest **okazem referencyjnym formatu docelowego**: nasz reader/preview go odczytuje, aby udowodnic kompatybilnosc z realnym outputem engine'u.
+
 Dlatego projekt ma trzy rozdzielne klasy danych testowych:
 
 | Klasa | Miejsce | Commitowana | Cel |
 |---|---|---:|---|
-| Synthetic fixtures | przyszle `crates/*/tests` | tak | pelne TDD, bledy graniczne, CI |
-| Reference corpus | zainstalowany NWN i lokalne HAK, czytane in-place | nie | regresja na wielu realnych rodzinach modelu |
+| Synthetic fixtures | przyszle `crates/*/tests` | tak | wlasciwe test inputs: pelne TDD, bledy graniczne, CI |
+| Reference corpus | zainstalowany NWN i lokalne HAK, czytane in-place | nie | proof kompatybilnosci na wielu realnych rodzinach modelu |
 | Generated proof assets | output `meshy2aurora` | tylko manifest/evidence | Toolset/game proof wlasnego outputu |
 
 Retail/CEP modelu nie przenosimy, nie wypakowujemy do repo i nie commitujemy. Kazdy model referencyjny ma jednak obowiazkowy proof naszej implementacji: nie wystarcza sam manifest albo zielony wynik testu. W razie potrzeby lokalny test czyta go ze wskazanej przez zmienna srodowiskowa instalacji/HAK i pomija przypadek, gdy zrodla brak.
@@ -26,7 +28,7 @@ committed:
 never_committed:
   - "retail/CEP MDL, MDX, textures, animations, skeletons"
   - "extracted BIF/HAK payloads"
-reference_inputs:
+reference_sources:
   nwn_base_key: "M2A_REFERENCE_NWN_KEY; e.g. <NWN EE>/data/nwn_base.key"
   cep_hak: "M2A_REFERENCE_CEP_HAK; e.g. cep3_core1.hak"
   optional_direct_file: "M2A_REFERENCE_MDL_FILE; user-selected local file only"
@@ -90,6 +92,13 @@ no_single_model_rule: "A green result for one model can never promote a feature 
 ```
 
 `c_kocrachn` jest R1, nie calym corpus. Jego rola to sprawdzenie konkretnego derived-model/MDX chain, a nie walidacja geometrii, skina, eventow ani wszystkich node families.
+
+W konsekwencji sa dwa rozne przeplywy:
+
+```text
+Meshy GLB -> own IR -> own binary MDL/HAK -> Toolset/game proof
+NWN reference model -> own reader/preview -> P-REF compatibility proof
+```
 
 ## 6. Kolejnosc pracy
 
