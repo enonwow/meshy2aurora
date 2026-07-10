@@ -168,7 +168,7 @@ stages:
     next_actions: ["Wait for M1A evidence."]
     evidence: []
     documentation: ["documentation/evidence/M1B-evidence.md", "documentation/korpus-referencyjny-mdl-codex.md"]
-    expected_artifacts: ["Synthetic deep-section fixtures", "Multi-model reference inspection report", "Reference corpus manifest without payloads"]
+    expected_artifacts: ["Synthetic deep-section fixtures", "Multi-model reference inspection report", "P-REF packets with own-reader invariants", "Reference corpus manifest without payloads"]
     changed_files: []
 
   M1C:

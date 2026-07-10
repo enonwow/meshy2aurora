@@ -203,7 +203,7 @@ definition_of_done:
   - "all pointers and counts have bounds checks"
   - "unsupported node families report structured diagnostics"
   - "optional local reference test is env-gated and never writes extracted payload"
-  - "corpus report covers named models from more than one family and records unsupported diagnostics"
+  - "P-REF packets cover named models from more than one family and record own-reader invariants and unsupported diagnostics"
 current_problems_initial:
   - "no reader beyond M1A exists"
   - "unknown fields and non-core node semantics require explicit deferral"

@@ -36,6 +36,8 @@ Domyslny proof base to wlasne syntetyczne fixture oraz wygenerowany przez `meshy
 
 Jeden realny model nie wystarcza do uznania parsera albo writera za zgodny. Reguly corpusu wielomodelowego sa w `documentation/korpus-referencyjny-mdl-codex.md`: realne zasoby sa czytane in-place przez env-gated testy regresyjne, a CI i finalny proof pozostaja oparte na fixture/generated content.
 
+Kazdy faktycznie uruchomiony model referencyjny wymaga packetu `P-REF`: hash wejscia, raport naszego readera, wyniki invariantow i - po dodaniu preview - widoczny screenshot lub motion capture naszego preview. Screenshot Toolsetu z niezmienionym assetem gry nie jest proofem naszego kodu.
+
 ## 3. TDD
 
 Implementujemy zgodnie z zasada TDD. Najpierw powstaje test lub gate opisujacy oczekiwane zachowanie, potem minimalna implementacja, potem refactor i proof. Dla modeli, animacji, parserow i konwersji assetow test musi byc oparty na realnym zasobie albo na minimalnej fixture opisanej wprost jako fixture.
