@@ -228,7 +228,7 @@ stages:
     next_actions: ["Follow the MDL/MDX crosswalk; implement only the proved profile and close own readback before runtime proof."]
     evidence: []
     documentation: ["documentation/evidence/M4-evidence.md"]
-    expected_artifacts: ["Writer/readback tests", "Semantic diff report"]
+    expected_artifacts: ["Writer/readback tests", "Semantic diff report", "Aurora P-REF invariant-conformance report"]
     changed_files: []
 
   M4A:

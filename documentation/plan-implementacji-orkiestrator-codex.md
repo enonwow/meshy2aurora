@@ -315,7 +315,7 @@ id: "M4"
 initial_status: "NOT_STARTED"
 goal: "wyemitowac native binary MDL z AuroraAssetIR i odczytac go ponownie wlasnym parserem"
 owner: "implementation agent"
-dependencies: ["M1B DONE", "M3 DONE", "writer contract Q1 resolved", "GB-002 profile-A decision recorded"]
+dependencies: ["M1B DONE", "M3 DONE", "GB-001 direction defined", "GB-002 profile-A decision recorded"]
 scope:
   - "deterministic binary layout writer"
   - "pointer/offset planner"
@@ -329,13 +329,15 @@ definition_of_done:
   - "synthetic writer/readback tests pass"
   - "all emitted pointers are in bounds"
   - "readback semantic diff has no unexpected change"
+  - "supported profile satisfies its linked Aurora P-REF invariant map or records an explicit deviation"
   - "writer contract evidence is linked"
 current_problems_initial:
-  - "minimal writer field contract is unresolved"
+  - "writer and Aurora invariant-map conformance are not implemented"
 bugs_initial: []
 documentation:
   - "documentation/engine-mdl-pytania-cloud.md"
   - "documentation/aurora-mdl-format-codex.md"
+  - "documentation/korpus-referencyjny-mdl-codex.md"
   - "documentation/evidence/M4-evidence.md"
 ```
 

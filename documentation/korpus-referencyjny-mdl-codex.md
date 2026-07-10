@@ -93,12 +93,21 @@ no_single_model_rule: "A green result for one model can never promote a feature 
 
 `c_kocrachn` jest R1, nie calym corpus. Jego rola to sprawdzenie konkretnego derived-model/MDX chain, a nie walidacja geometrii, skina, eventow ani wszystkich node families.
 
-W konsekwencji sa dwa rozne przeplywy:
+W konsekwencji sa dwa rozne, ale polaczone przeplywy. Referencyjny model Aurory nie jest zrodlem danych dla Meshy, lecz tworzy mape invariantow dla implementacji writera:
 
-```text
-Meshy GLB -> own IR -> own binary MDL/HAK -> Toolset/game proof
-NWN reference model -> own reader/preview -> P-REF compatibility proof
+```mermaid
+flowchart LR
+  A["Model Aurora/NWN"] --> B["Own reader + P-REF"]
+  B --> C["Mapa invariantow profilu"]
+  D["Meshy GLB"] --> E["Own AuroraAssetIR"]
+  C --> F["Own binary MDL writer"]
+  E --> F
+  F --> G["Own readback"]
+  G --> H["Generated HAK/module"]
+  H --> I["NWN Toolset/game proof"]
 ```
+
+Przyklad: `c_kocrachn` ustala dla profilu R1, ze model ma header z core/volatile blockiem, `supermodel=c_Horror`, `animationScale=0.72` i zero wlasnych animacji. Writer nie przepisuje `c_kocrachn`; ma jawnie obsluzyc albo odrzucic ten profil i - gdy go obsluguje - wyemitowac wlasny model spelniajacy te same istotne invarianty.
 
 ## 6. Kolejnosc pracy
 
@@ -106,7 +115,7 @@ NWN reference model -> own reader/preview -> P-REF compatibility proof
 2. M1B wykonuje in-place inventory R1-R3, tworzy P-REF structural packets, wybiera R4-R6 na podstawie rzeczywistych flags/layoutow i zapisuje manifest bez payloadow.
 3. M1B zamyka `GB-001-SKIN` dopiero po porownaniu co najmniej dwoch skin candidates lub po nazwanym braku takiego corpus.
 4. M1C dodaje locator HAK; odczyt base KEY/BIF dla R2 pozostaje optional reference adapter, nie wymaganiem produktu HAK.
-5. M4+ waliduje writer na synthetic fixtures i macierzy referencyjnej, a M6 dowodzi wlasnym wygenerowanym contentem.
+5. M4+ laczy AuroraAssetIR z mapa invariantow z P-REF, waliduje writer na synthetic fixtures i macierzy referencyjnej, a M6 dowodzi wlasnym wygenerowanym contentem.
 
 ## 7. Definition of Done corpus run
 

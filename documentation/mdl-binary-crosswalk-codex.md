@@ -113,6 +113,7 @@ writer_gates:
   - "every addition/multiplication and pointer range is checked"
   - "reader consumes exact core and volatile ranges"
   - "semantic readback matches the input IR"
+  - "for every supported profile, emitted semantic invariants match the linked P-REF invariant map or an explicit product deviation"
   - "unsupported node/controller emits a stable diagnostic, never silent loss"
   - "generated type-2002 payload is readable after HAK round-trip"
   - "Toolset and game load the generated asset"

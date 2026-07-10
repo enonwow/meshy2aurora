@@ -16,6 +16,8 @@ Dekompilacja Aurory jest glownym zrodlem wiedzy. Nie ma strzelania. Jezeli dany 
 
 Formatem docelowym modelu dla gry jest natywny binary MDL oraz polityka MDX rozstrzygnieta dla pierwszego profilu w `engine-mdl-odpowiedz-codex.md` Q2. ASCII MDL nie jest sciezka runtime/proofu; moze istniec tylko jako debug dump albo golden snapshot do czytania przez czlowieka.
 
+Aurora First dla modelu oznacza lancuch: realny model Aurory -> own reader -> mapa potwierdzonych invariantow -> own IR/writer -> own readback -> Toolset/game. Reader nie produkuje assetu do gry; odkrywa kontrakt, ktory writer musi spelnic. Nie wymagamy identycznych bajtow ani nie kopiujemy payloadu, ale wymagamy analogicznej semantyki, layoutu profilu i zachowania akceptowanego przez engine.
+
 Przed implementacja obszaru trzeba sprawdzic `documentation/macierz-gotowosci-wiedzy-codex.md` i jego kanoniczny kontrakt. Odlegly etap nie moze pozostac bez kierunku: dopuszczalny jest otwarty runtime proof, ale nie brak decyzji, zrodla i testu zamykajacego.
 
 Kazde twierdzenie implementacyjne musi byc oznaczone jako jedno z:
