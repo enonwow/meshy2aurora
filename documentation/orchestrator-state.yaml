@@ -167,8 +167,8 @@ stages:
     bugs: []
     next_actions: ["Wait for M1A evidence."]
     evidence: []
-    documentation: ["documentation/evidence/M1B-evidence.md"]
-    expected_artifacts: ["Synthetic deep-section fixtures", "Reference inspection report"]
+    documentation: ["documentation/evidence/M1B-evidence.md", "documentation/korpus-referencyjny-mdl-codex.md"]
+    expected_artifacts: ["Synthetic deep-section fixtures", "Multi-model reference inspection report", "Reference corpus manifest without payloads"]
     changed_files: []
 
   M1C:

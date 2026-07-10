@@ -19,6 +19,7 @@ Brak etapu M4/M5 w biezacym sprincie nie oznacza zgody na brak wiedzy. Przed M1A
 | Produkt i granice repo | `DIRECTION_LOCKED` | Web local-first, Rust/WASM, `meshy2aurora` standalone | Brak; decyzja produktowa zamknieta |
 | Binary MDL reader | `DIRECTION_LOCKED` | Checked little-endian reader, core pointers wzgledem bajtu 12, raw pointers wzgledem bloku MDX | M1A/M1B readback na syntetycznych fixture i opcjonalnych lokalnych referencjach |
 | Binary MDL writer | `EVIDENCE_PARTIAL` | Writer sklada `12-byte header + core + volatile`, tylko profil A i jawnie wspierane typy nodow | Rozstrzygnac konflikt skin header 17/64 mapowan kosci przez M1B corpus report; potem wlasny write/readback i Toolset |
+| Reference corpus MDL | `DIRECTION_LOCKED` | Synthetic CI + env-gated in-place corpus wielomodelowy + own generated runtime proof | M1B inventory wybiera i hashuje R4-R6 bez payloadow w Git |
 | MDX | `DIRECTION_LOCKED` dla profilu A | Jeden zasob HAK typu 2002; MDX jest doklejonym blokiem volatile, bez osobnego typu 2003 | Wlasny write/readback i NWN EE proof |
 | Animacje | `DIRECTION_LOCKED`, semantyka gameplay `EVIDENCE_PARTIAL` | Produktowy proof ma byc self-contained; klipy wlasne/generowane, retail/CEP tylko do obserwacji struktury | Mapowanie wymaganych stanow gry, eventow i petli w NWN EE |
 | `appearance.2da` | `DIRECTION_LOCKED` | Uzytkownik dostarcza jawny base table lub HAK; zachowujemy kolumny i wiersze, dopisujemy nowy wiersz na koncu | Proof, ze wybrany `MODELTYPE=S`, `RACE` i `Appearance_Type` sa rozwiazywane przez gre |
@@ -36,6 +37,7 @@ knowledge_contracts:
   mdx: "documentation/mdx-polityka-codex.md"
   animation_profile_a: "documentation/animacje-kontrakt-profil-a-codex.md"
   hak_2da_gff: "documentation/hak-2da-gff-crosswalk-codex.md"
+  mdl_reference_corpus: "documentation/korpus-referencyjny-mdl-codex.md"
   live_state: "documentation/orchestrator-state.yaml"
 ```
 

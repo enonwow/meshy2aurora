@@ -4,7 +4,7 @@ Data: 2026-07-10 | Autor: Codex | Status: AKTYWNY INDEKS CALOSCI DOKUMENTACJI
 
 ## 1. Cel
 
-Ten indeks klasyfikuje wszystkie 68 plikow z `C:\Projects\meshy2aurora\documentation` po decyzjach D11-D14. Ma usunac rozjazd miedzy aktualnym produktem webowym a starszymi planami Node/TypeScript/CLI lub dawnym targetem `aurora-web`.
+Ten indeks klasyfikuje wszystkie 69 plikow z `C:\Projects\meshy2aurora\documentation` po decyzjach D11-D14. Ma usunac rozjazd miedzy aktualnym produktem webowym a starszymi planami Node/TypeScript/CLI lub dawnym targetem `aurora-web`.
 
 ```yaml
 active_product:
@@ -25,6 +25,7 @@ authority_order:
   - "mdx-polityka-codex.md"
   - "animacje-kontrakt-profil-a-codex.md"
   - "hak-2da-gff-crosswalk-codex.md"
+  - "korpus-referencyjny-mdl-codex.md"
   - "status-dokumentacji-web-2026-07-10-codex.md"
   - "plan-implementacji-orkiestrator-codex.md"
   - "orchestrator-state.yaml"
@@ -45,6 +46,7 @@ active:
   - "mdx-polityka-codex.md"
   - "animacje-kontrakt-profil-a-codex.md"
   - "hak-2da-gff-crosswalk-codex.md"
+  - "korpus-referencyjny-mdl-codex.md"
   - "reguly-dokumentacji-cloud.md"
   - "CLOUD_SUPPLEMENT_FORMAT.md"
   - "decyzje-i-zadania-cloud.md"
@@ -125,8 +127,8 @@ historical:
 
 ```yaml
 inventory:
-  audited_files: 68
-  active: 24
+  audited_files: 69
+  active: 25
   reference: 22
   historical: 22
   unclassified: 0

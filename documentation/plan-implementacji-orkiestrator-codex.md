@@ -194,6 +194,7 @@ scope:
   - "controller keys/data"
   - "animation headers, events and animation node trees"
   - "read-only local reference integration when available"
+  - "multi-model reference corpus inventory according to korpus-referencyjny-mdl-codex.md"
 out_of_scope:
   - "writer"
   - "semantic support for unconfirmed unknown fields"
@@ -202,6 +203,7 @@ definition_of_done:
   - "all pointers and counts have bounds checks"
   - "unsupported node families report structured diagnostics"
   - "optional local reference test is env-gated and never writes extracted payload"
+  - "corpus report covers named models from more than one family and records unsupported diagnostics"
 current_problems_initial:
   - "no reader beyond M1A exists"
   - "unknown fields and non-core node semantics require explicit deferral"
@@ -210,6 +212,7 @@ documentation:
   - "documentation/standalone-odpowiedz-codex.md"
   - "documentation/aurora-mdl-format-codex.md"
   - "documentation/evidence/M1B-evidence.md"
+  - "documentation/korpus-referencyjny-mdl-codex.md"
 ```
 
 ### M1c. Read-only HAK/ERF resource locator

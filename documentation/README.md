@@ -23,6 +23,7 @@ Aktualny kierunek po audycie 2026-07-09:
 - [mdx-polityka-codex.md](mdx-polityka-codex.md) - aktywna polityka appended volatile/MDX dla profilu A.
 - [animacje-kontrakt-profil-a-codex.md](animacje-kontrakt-profil-a-codex.md) - self-contained kierunek animacji oraz korekta faktow o `c_kocrachn`/`c_Horror`.
 - [hak-2da-gff-crosswalk-codex.md](hak-2da-gff-crosswalk-codex.md) - kontrakt writerow HAK/ERF, 2DA i GFF oraz generated module proof.
+- [korpus-referencyjny-mdl-codex.md](korpus-referencyjny-mdl-codex.md) - polityka wielomodelowej regresji bez kopiowania retail/CEP payloadow do repo.
 - [reguly-dokumentacji-cloud.md](reguly-dokumentacji-cloud.md) - aktualne reguly wymiany plikow Cloud/Codex.
 - [audyt-dokumentacji-plan-2026-07-09-codex.md](audyt-dokumentacji-plan-2026-07-09-codex.md) - aktualna mapa rozjazdow, luk i plan naprawczy.
 - [architektura-meshy2aurora-codex.md](architektura-meshy2aurora-codex.md) - architektura standalone `meshy2aurora`.
