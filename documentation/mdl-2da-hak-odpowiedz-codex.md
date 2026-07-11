@@ -320,9 +320,12 @@ anchors:
 
 ```yaml
 open_items:
-  retail_appearance_row:
+  retail_appearance_table:
+    status: POTWIERDZONE
+    evidence: "nwn_base.key entry 26168 -> data/base_2da.bif variable resource 4, type 2017; 35 columns and rows 0..15099"
+  selected_row_gameplay_semantics:
     status: NIE WIEM
-    reason: "brak lokalnego appearance.2da w tej rundzie"
+    reason: "obecnosc tabeli jest potwierdzona, ale wymagane wartosci dla konkretnego output profile musza przejsc own generated Toolset/game proof"
   exact_required_creature_event_names:
     status: NIE WIEM
     reason: "parser event potwierdzony, semantyka hit/footstep/sound nie"

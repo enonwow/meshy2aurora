@@ -1,6 +1,6 @@
 # audyt-gotowosci-startowej-2026-07-10-codex.md
 
-Data: 2026-07-10 | Autor: Codex | Status: AKTYWNY GATE PRZED IMPLEMENTACJA
+Data: 2026-07-10 | Aktualizacja: 2026-07-11 | Autor: Codex | Status: AKTYWNY GATE PRZED IMPLEMENTACJA
 
 ## 1. Werdykt
 
@@ -23,7 +23,7 @@ readiness:
   M5_2DA_HAK: "DIRECTION READY; generated module runtime evidence pending"
 ```
 
-Initial documentation baseline zostal zapisany i wypchniety w commicie `1747b29` na `codex/docs-readiness-baseline`. Biezacy knowledge update domyka kierunek calego pipeline i ma zostac zapisany w kolejnym commicie dokumentacyjnym.
+Initial documentation baseline i kolejne knowledge updates zostaly zapisane oraz wypchniete na `codex/docs-readiness-baseline`. Stan `main` nie zawiera jeszcze tej serii dokumentacji; przed M1A wlasciciel wybiera merge do `main` albo jawnie zatwierdza kontynuacje implementacji na obecnej galezi. Nie zmieniamy `main` bez osobnego polecenia.
 
 M1A moze zaczac po dwoch pozostalych gate'ach:
 
@@ -39,7 +39,9 @@ Kierunek pelnego writera, 2DA/HAK/GFF i animacji jest zapisany w macierzy wiedzy
 ```yaml
 canonical:
   repository: "C:\\Projects\\meshy2aurora"
-  branch: "main"
+  default_branch: "main"
+  current_documentation_branch: "codex/docs-readiness-baseline"
+  current_documentation_branch_merge_to_main: "PENDING OWNER DECISION"
   remote: "https://github.com/enonwow/meshy2aurora.git"
   documentation: "C:\\Projects\\meshy2aurora\\documentation"
 non_canonical:

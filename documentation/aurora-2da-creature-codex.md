@@ -1,5 +1,5 @@
 # aurora-2da-creature-codex.md
-Data: 2026-07-08  
+Data: 2026-07-08 | Aktualizacja: 2026-07-11
 Status: AKTYWNA REFERENCJA; lokalny `appearance.2da` POTWIERDZONY 2026-07-10. Produkcyjny writer contract jest w `hak-2da-gff-crosswalk-codex.md`.
 
 ## Zakres
@@ -38,9 +38,33 @@ internet_supplement:
 
 Status: POTWIERDZONE.
 
-Odnaleziono lokalny read-only resource `appearance` typu 2017 w `C:\Users\enonw\Documents\Neverwinter Nights\hak\lc_2da.hak`. Tabela ma 35 kolumn, 15 219 fizycznych wierszy `0..15218`, zero tabulatorow i SHA-256 `ca0b80b74e068d8ebbd94df6005b5971e50eca5c8662fca10a40688ea2c033a2`.
+Odnaleziono dwa lokalne read-only warianty `appearance` typu 2017:
 
-Wiersz 15216 potwierdza lokalny direct-creature pattern: `MODELTYPE=S`, `RACE=c_squirrel`, `MOVERATE=VSLOW`, `TARGETABLE=1`. Payload pozostaje poza repo i nie jest fixture/proof base.
+```yaml
+base_nwn_retail:
+  key: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Neverwinter Nights\\data\\nwn_base.key"
+  key_entry: 26168
+  res_id: "0x00E00004"
+  bif: "data\\base_2da.bif"
+  bif_index: 14
+  bif_variable_resource_index: 4
+  bytes: 6901169
+  sha256: "815c0b3bce0895e9f17d4b92cb02a6d34366267b5a4b9081dece0f4eee7d7a1a"
+  columns: 35
+  rows: 15100
+  row_range: [0, 15099]
+local_hak_variant:
+  hak: "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\hak\\lc_2da.hak"
+  bytes: 7655336
+  sha256: "ca0b80b74e068d8ebbd94df6005b5971e50eca5c8662fca10a40688ea2c033a2"
+  columns: 35
+  rows: 15219
+  row_range: [0, 15218]
+```
+
+Oba payloady pozostaja poza repo. Pierwszy jest canonicalnym lokalnym punktem odniesienia retail; drugi dowodzi, ze writer musi obslugiwac jawnie wybrana base table, a nie zakladac jednego stalego last-row index.
+
+Wiersz 15216 wariantu HAK potwierdza lokalny direct-creature pattern: `MODELTYPE=S`, `RACE=c_squirrel`, `MOVERATE=VSLOW`, `TARGETABLE=1`. Payload pozostaje poza repo i nie jest fixture/proof base.
 
 Jednoczesnie istnieje zainstalowany edytor/schemat:
 

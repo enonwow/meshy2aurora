@@ -1,6 +1,6 @@
 # HAK, 2DA i GFF crosswalk
 
-Data: 2026-07-10 | Status: AKTYWNY KONTRAKT WIEDZY DLA M1C/M5/M6
+Data: 2026-07-10 | Aktualizacja: 2026-07-11 | Status: AKTYWNY KONTRAKT WIEDZY DLA M1C/M5/M6
 
 ## 1. Werdykt
 
@@ -65,7 +65,23 @@ Official format rules, ktore staja sie kontraktem writera:
 
 ### Lokalny `appearance.2da`
 
-Read-only resource w `lc_2da.hak`:
+Read-only retail resource w bazowym `nwn_base.key`:
+
+```yaml
+appearance_base_retail:
+  key: "nwn_base.key"
+  key_entry: 26168
+  resource: { resref: "appearance", type: 2017, res_id: "0x00E00004" }
+  bif: "data/base_2da.bif"
+  bif_variable_resource_index: 4
+  bytes: 6901169
+  sha256: "815c0b3bce0895e9f17d4b92cb02a6d34366267b5a4b9081dece0f4eee7d7a1a"
+  columns: 35
+  rows: 15100
+  row_range: [0, 15099]
+```
+
+Read-only wariant HAK w `lc_2da.hak`:
 
 ```yaml
 appearance_reference:
@@ -88,7 +104,7 @@ appearance_reference:
     TARGETABLE: 1
 ```
 
-Payloadu nie kopiujemy do repo. Zachowujemy tylko strukturalne fakty i hash.
+Payloadow nie kopiujemy do repo. Zachowujemy tylko strukturalne fakty i hashe. Roznica `15100` vs `15219` wierszy potwierdza, ze produkcyjny writer musi dopisywac do faktycznie wybranej tabeli, nie do globalnej stalej.
 
 ### Algorytm dopisania appearance row
 

@@ -678,7 +678,15 @@ fixture_policy:
       key_files_seen:
         - "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Neverwinter Nights\\data\\nwn_base.key"
         - "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Neverwinter Nights\\data\\nwn_retail.key"
-      c_horror_exact_container: "NIE WIEM until KEY/BIF lookup or nwnexplorer confirms"
+      c_horror_exact_container:
+        status: "POTWIERDZONE 2026-07-11 przez own KEY/BIF metadata inspection"
+        key: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Neverwinter Nights\\data\\nwn_base.key"
+        key_entry: 112691
+        resource_type: 2002
+        res_id: "0x03B00156"
+        bif: "data\\models_01.bif"
+        bif_index: 59
+        bif_variable_resource_index: 342
   env_config:
     M2A_NWN_ROOT: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Neverwinter Nights"
     M2A_NWN_USER_ROOT: "C:\\Users\\enonw\\Documents\\Neverwinter Nights"

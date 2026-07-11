@@ -1,5 +1,5 @@
 schema_version: 1
-last_updated: "2026-07-10"
+last_updated: "2026-07-11"
 project:
   canonical_repo: "C:\\Projects\\meshy2aurora"
   documentation_root: "C:\\Projects\\meshy2aurora\\documentation"
@@ -23,7 +23,7 @@ orchestration:
   next_ready_stage: null
   next_action: "Review the readiness gate, install Rust 1.96.1 with the wasm32 target and wasm-pack 0.15.0, then unblock M1A."
   one_active_stage_only: true
-  current_attempt_id: "P0-20260710-01"
+  current_attempt_id: "P0-20260711-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
   done_rule: "A stage may be DONE only when every definition_of_done item has evidence."
   stop_rule: "Stop and mark BLOCKED when a needed Aurora fact, decision, local tool state, or proof artifact is missing. Do not guess."
@@ -54,7 +54,7 @@ global_blockers:
     detail: "Rust 1.96.1, cargo, the wasm32-unknown-unknown target and wasm-pack 0.15.0 are required, but are not installed. MSVC 14.50 and Windows SDK 10.0.26100.0 are present."
     affects: ["M1A", "M1B", "M1C", "M2", "M3", "M4", "M5", "M6", "M7"]
     owner: "Mateusz + Codex"
-    source: "documentation/decyzje-i-zadania-cloud.md D11/D12; local check 2026-07-10"
+    source: "documentation/decyzje-i-zadania-cloud.md D11/D12; local check 2026-07-11"
     next_action: "Install Rust 1.96.1 with rustfmt, clippy and wasm32-unknown-unknown plus wasm-pack 0.15.0, then record versions in M1A evidence."
   - id: "GB-004"
     severity: "P0"

@@ -1,6 +1,6 @@
 # Macierz gotowosci wiedzy
 
-Data: 2026-07-10 | Status: AKTYWNY GATE WIEDZY PRZED IMPLEMENTACJA
+Data: 2026-07-10 | Aktualizacja: 2026-07-11 | Status: AKTYWNY GATE WIEDZY PRZED IMPLEMENTACJA
 
 ## 1. Cel
 
@@ -44,6 +44,8 @@ knowledge_contracts:
 ```
 
 Starsze dokumenty nadal zachowuja kontekst, ale powyzsze kontrakty maja pierwszenstwo, gdy starszy tekst mowi `NIE WIEM`, wybiera wolny wiersz 2DA albo opiera produkcyjny proof na `aurora-web`.
+
+Aktualizacja faktow 2026-07-11: checklist entry w `decyzje-i-zadania-cloud.md` o wyciagnieciu retail `appearance.2da` jest juz merytorycznie wykonany przez read-only KEY/BIF inspection (`nwn_base.key` -> `data/base_2da.bif`, type 2017). Pliku `*-cloud.md` nie zmieniamy zgodnie z regulami wspolpracy; aktualne fakty sa w `aurora-2da-creature-codex.md` i `hak-2da-gff-crosswalk-codex.md`.
 
 ## 4. Warunek startu implementacji
 
