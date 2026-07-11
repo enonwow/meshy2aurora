@@ -25,28 +25,52 @@ fn synthetic_identity() -> ReferenceIdentity {
 }
 
 fn capabilities() -> Vec<CapabilityResult> {
-    vec![
-        CapabilityResult {
-            capability: ReferenceCapability::Header,
-            status: CapabilityStatus::Pass,
-            diagnostics: vec![],
-        },
-        CapabilityResult {
-            capability: ReferenceCapability::NodeTree,
-            status: CapabilityStatus::Pass,
-            diagnostics: vec![],
-        },
+    [
+        (ReferenceCapability::Header, CapabilityStatus::Pass),
+        (ReferenceCapability::CoreRanges, CapabilityStatus::Pass),
+        (ReferenceCapability::NodeTree, CapabilityStatus::Pass),
+        (ReferenceCapability::Mesh, CapabilityStatus::NotPresent),
+        (ReferenceCapability::Skin, CapabilityStatus::NotPresent),
+        (
+            ReferenceCapability::Controllers,
+            CapabilityStatus::NotPresent,
+        ),
+        (
+            ReferenceCapability::Animations,
+            CapabilityStatus::NotPresent,
+        ),
+        (ReferenceCapability::Events, CapabilityStatus::NotPresent),
+        (
+            ReferenceCapability::UnsupportedNodeFamily,
+            CapabilityStatus::NotPresent,
+        ),
     ]
+    .into_iter()
+    .map(|(capability, status)| CapabilityResult {
+        capability,
+        status,
+        diagnostics: vec![],
+    })
+    .collect()
 }
 
 fn invariants() -> Vec<InvariantResult> {
-    vec![InvariantResult {
-        invariant: "binary-mdl-id-is-zero".to_owned(),
-        status: InvariantStatus::Pass,
-        expected: Some("0".to_owned()),
-        actual: Some("0".to_owned()),
-        diagnostics: vec![],
-    }]
+    vec![
+        InvariantResult {
+            invariant: "binary-mdl-id-is-zero".to_owned(),
+            status: InvariantStatus::Pass,
+            expected: Some("0".to_owned()),
+            actual: Some("0".to_owned()),
+            diagnostics: vec![],
+        },
+        InvariantResult {
+            invariant: "file-header-core-raw-cover-payload".to_owned(),
+            status: InvariantStatus::Pass,
+            expected: Some("reader-validated".to_owned()),
+            actual: Some("reader-validated".to_owned()),
+            diagnostics: vec![],
+        },
+    ]
 }
 
 fn manifest_for(bytes: &[u8]) -> ReferenceManifest {
@@ -55,8 +79,14 @@ fn manifest_for(bytes: &[u8]) -> ReferenceManifest {
         entries: vec![ReferenceManifestEntry {
             identity: synthetic_identity(),
             expected_input: InputFingerprint::from_bytes(bytes),
-            expected_capabilities: vec![ReferenceCapability::Header, ReferenceCapability::NodeTree],
-            expected_invariants: vec!["binary-mdl-id-is-zero".to_owned()],
+            expected_capabilities: capabilities()
+                .into_iter()
+                .map(|result| result.capability)
+                .collect(),
+            expected_invariants: invariants()
+                .into_iter()
+                .map(|result| result.invariant)
+                .collect(),
         }],
     }
 }

@@ -52,7 +52,7 @@ M1B semantycznie wspiera dummy/header, trimesh i skin common prefix. Pozostale r
 - animation length, transition, animroot i events;
 - faces, vertices, UV0, normals i texture resrefs dla trimesh;
 - walidacja zakresow pozostalych raw mesh pointerow bez deklarowania pelnej semantyki UV1-3/colors/tangents;
-- skin raw weights `f32[4]`, bone refs `u16[4]`, common bind arrays i jawny wariant mappingu;
+- skin raw weights `f32[4]`, bone refs `u16[4]`, common bind arrays i jawny wariant boundary mappingu; szerokosc `17/64` nie jest capacity limitem `map count` ani bone refs;
 - synthetic fixture dla kazdej wspieranej sekcji oraz obu skin variants;
 - stabilne diagnostics dla nieznanych flag/controller types;
 - czysty-bytes P-REF packet: identity, SHA-256, reader/schema, capabilities i invariants;
@@ -77,7 +77,7 @@ Negative matrix REQUIRED:
 - `declared < reachable` jako invalid oraz `declared > reachable` jako dozwolony budzet, osobno dla base root i animation roots;
 - ujemne signed controller fields, niepoprawny layout, time/data index OOB i nieznany controller type zachowany w inventory;
 - addytywne mesh/skin flags, kazda znana deferred family oraz prawdziwie nieznany node bit;
-- skin boundary `16/17` i `63/64`, classifier niezalezny od `map count` oraz brak pasujacego wariantu;
+- skin header boundary `0x2d4/0x330`, classifier niezalezny od `map count` oraz brak pasujacego wariantu; nie wolno tworzyc testu capacity `16/17` lub `63/64` z samej szerokosci inline mappingu;
 - cycle pod base root i pod animation root;
 - truncation-no-panic dla kazdej deep fixture, nie tylko dla minimalnego R0.
 
@@ -127,7 +127,7 @@ extended64 size 0x330, i16[64]
 
 Classifier nie uzywa `map count`. Dla canonical evidence sprawdza, czy pierwszy nalezacy do skina core payload (`node-to-bone map`) zaczyna sie dokladnie przy `node + 0x2d4` albo `node + 0x330`, oraz waliduje wszystkie arrays/raw ranges. Dokladnie jeden z tych warunkow equality moze pasowac, poniewaz istnieje jeden pointer. Brak dopasowania daje `M2A-MDL-SKIN-VARIANT-AMBIGUOUS`. Dawne sformulowanie "oba lub zero" bylo nieprecyzyjne: przypadek "oba" nie jest konstruowalny dla jednego pointera porownywanego equality z dwoma roznymi offsetami i nie jest osobnym wymaganym testem.
 
-Reference-only inventory wskazal oba warianty i kandydatow (`c_kocrachn` jako extended64, `c_vampire_f` jako legacy17), ale GB-001-SKIN zostaje OPEN do canonical M1C/P-REF run.
+`17` i `64` opisuja szerokosc inline header mappingu, nie capacity `map count`, bind arrays ani bone refs. Canonical bug evidence raportuje `c_kocrachn` jako extended64 z count `38` oraz `c_vampire_f` jako legacy17 z count `28`; parser fix i rozszerzony P-REF pozostaja `PENDING`. Dla `c_kocrachn` `0xffff` zaobserwowano w lanes o zerowej wadze i reader ma je zachowac bez aktywnego bone lookup. Szczegoly finalnej macierzy sa w `documentation/m1b-canonical-corpus-suplement-codex.md`.
 
 ## 6. DEFERRED i OPEN
 
@@ -144,18 +144,18 @@ OPEN:
 
 ## 7. Stop conditions
 
-Semantic decode danego payloadu zatrzymuje sie z diagnostyka, gdy zakres wychodzi poza core/raw, wystepuje overflow, `count > allocated`, cycle/reused offset o sprzecznym typie, nieznany node bit, niepoprawny controller index/layout, niejednoznaczny skin variant albo bone ref przekracza wybrany profil.
+Semantic decode danego payloadu zatrzymuje sie z diagnostyka, gdy zakres wychodzi poza core/raw, wystepuje overflow, `count > allocated`, cycle/reused offset o sprzecznym typie, nieznany node bit, niepoprawny controller index/layout, niejednoznaczny skin variant albo bone ref przekracza potwierdzona domene node-to-bone. Sama szerokosc headera `17/64` nie jest taka domena.
 
 ## 8. Canonical corpus identity i aktualna dostepnosc
 
-Ponizsze hashe sa zaobserwowanym read-only inventory bajtow zasobu na poziomie kontenera. Nie sa jeszcze wynikiem own-reader P-REF ani dowodem locatora M1C. Committable identity nie zawiera host paths:
+Ponizsze identity sa zwiazane z canonical own-locator/own-reader P-REF dla R1/R3; R2 pozostaje opcjonalnym adapterem. Committable identity nie zawiera host paths:
 
 | ID | Source class | Container identity | Resref | Type | SHA-256 observed | Status |
 |---|---|---|---|---:|---|---|
-| R1 | `named_hak` | `cep3_core1` | `c_kocrachn` | 2002 | `f16426310f826ae2ab15034ac979c65f812ee8bda0d13ee459bf2b293d7db270` | `PENDING_CANONICAL_M1C_P-REF` |
-| R2 | `base_nwn` | `models_01.bif` | `c_horror` | 2002 | `2faf553a0665da200b232bd52d03c0e1d79b88959cabdbe840f35f16e5878c8e` | `PENDING_CANONICAL_M1C_P-REF`; KEY/BIF adapter optional |
-| R3a | `named_hak` | `cep3_core1` | `c_phod_horror_b` | 2002 | `62ab1f512f709f9acd0fe0c5deb9bc65691277c848799d261086bc3d63b28f2a` | `PENDING_CANONICAL_M1C_P-REF` |
-| R3b | `named_hak` | `cep3_core1` | `c_phod_horror_p` | 2002 | `09e43ee9493d2fe2bbf9cbeb44f24dcb999e5f38e651bdc79eefdd5e1f19722f` | `PENDING_CANONICAL_M1C_P-REF` |
+| R1 | `named_hak` | `cep3_core1` | `c_kocrachn` | 2002 | `f16426310f826ae2ab15034ac979c65f812ee8bda0d13ee459bf2b293d7db270` | `CANONICAL_PACKET_PASS`; extended64/sentinel invariants PASS |
+| R2 | `base_nwn` | `models_01.bif` | `c_horror` | 2002 | `2faf553a0665da200b232bd52d03c0e1d79b88959cabdbe840f35f16e5878c8e` | `OPTIONAL_NOT_RUN`; KEY/BIF adapter optional |
+| R3a | `named_hak` | `cep3_core1` | `c_phod_horror_b` | 2002 | `62ab1f512f709f9acd0fe0c5deb9bc65691277c848799d261086bc3d63b28f2a` | `CANONICAL_PACKET_PASS`; animation/event invariants PASS |
+| R3b | `named_hak` | `cep3_core1` | `c_phod_horror_p` | 2002 | `09e43ee9493d2fe2bbf9cbeb44f24dcb999e5f38e651bdc79eefdd5e1f19722f` | `CANONICAL_PACKET_PASS`; animation/event invariants PASS |
 
 Hash mismatch podczas canonical run nie jest automatycznie bledem parsera: najpierw trzeba nazwac wersje/pochodzenie lokalnego kontenera. Zadnego z tych payloadow nie wolno commitowac ani utrwalac jako fixture.
 
@@ -163,9 +163,9 @@ Hash mismatch podczas canonical run nie jest automatycznie bledem parsera: najpi
 
 Direct-file env nie zamyka corpus DoD: canonical R1/R3 sa subranges HAK, a kopie `aurora-web` sa zabronione jako test source. Wykonawcza kolejnosc:
 
-1. M1B implementuje deep reader, synthetic fixtures i pure-bytes P-REF contract;
-2. po przejsciu synthetic/native/WASM gates M1B przechodzi do `VERIFYING`, nigdy bezposrednio do `DONE`;
-3. orkiestrator aktywuje M1C, ktory dostarcza minimalny own HAK/ERF read-only locator;
-4. po M1C M1B wraca do `IN_PROGRESS`, wykonuje canonical own-reader P-REF R1/R3, wybiera R4-R6 i dopiero potem przechodzi przez finalne `VERIFYING`;
+1. M1B zaimplementowal deep reader, synthetic fixtures i pure-bytes P-REF contract;
+2. synthetic/native/WASM checkpoint przeszedl przez `VERIFYING`, nigdy bezposrednio do `DONE`;
+3. M1C dostarczyl zweryfikowany own HAK/ERF read-only locator i ma status `DONE`;
+4. M1B ma status `VERIFYING`: canonical R1/R3/R4/R5/R6, skin boundary/sentinel, capability matrix i role invariants przechodza; finalny clean re-review pozostaje wymagany przed `DONE`;
 5. M1B moze byc `DONE` dopiero po canonical packetach i evidence albo po jawnym, nazwanym statusie pozostalego problemu zgodnym z jego DoD; samo container inventory nie wystarcza;
 6. R2 KEY/BIF adapter pozostaje opcjonalny, jesli R1/R3 daja wymagane rodziny.

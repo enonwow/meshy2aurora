@@ -19,11 +19,11 @@ status_vocabulary:
   - "SUPERSEDED"
 
 orchestration:
-  active_stage: "M1B"
-  next_ready_stage: "M2 remains READY and inactive while M1B completes canonical R4-R6 selection and GB-001-SKIN evidence"
-  next_action: "Select and run canonical R4-R6 through the own M1C locator/M1B reader, then close or explicitly classify GB-001-SKIN evidence without marking M1B DONE early."
+  active_stage: "M2"
+  next_ready_stage: "M3 remains NOT_STARTED until M2 is DONE"
+  next_action: "Define the canonical AuroraAssetIR schema and add synthetic GLB axis/UV fixtures according to the M2 contract; do not start MDL writer work."
   one_active_stage_only: true
-  current_attempt_id: "M1B-20260711-02"
+  current_attempt_id: "M2-20260711-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
   done_rule: "A stage may be DONE only when every definition_of_done item has evidence."
   stop_rule: "Stop and mark BLOCKED when a needed Aurora fact, decision, local tool state, or proof artifact is missing. Do not guess."
@@ -33,11 +33,11 @@ global_blockers:
     severity: "P0"
     status: "DIRECTION_DEFINED_EVIDENCE_OPEN"
     title: "Binary MDL writer contract"
-    detail: "Profile-A layout, required/deferred fields and writer/readback direction are recorded. M1B must resolve the 17/64 skin mapping variant; own readback and NWN EE proof remain open."
+    detail: "M1B structural skin evidence is CLOSED: 17/64 is a header boundary, not capacity, and canonical zero-weight 0xffff lanes are preserved. Profile-A writer/readback and NWN EE runtime proof remain open for M4."
     affects: ["M4", "M5", "M6", "M7"]
     owner: "Codex"
     source: "documentation/mdl-binary-crosswalk-codex.md"
-    next_action: "M1B records the skin-header variant from binary boundaries; M4 then closes semantic readback and runtime evidence."
+    next_action: "M4 closes writer emission, semantic readback and NWN EE runtime evidence; do not treat the M1B reader proof as runtime acceptance."
   - id: "GB-002"
     severity: "P1"
     status: "RESOLVED_FOR_PROFILE_A"
@@ -177,14 +177,12 @@ stages:
       - "documentation/prototyp-parsera-m1a-claude.md"
 
   M1B:
-    status: "IN_PROGRESS"
-    status_reason: "M1C is DONE and canonical own-locator/own-reader P-REF R1/R3 passes with exact IDs, offsets, hashes and ranges. M1B is active again and is not DONE because R4-R6 selection and GB-001-SKIN canonical evidence remain open."
+    status: "DONE"
+    status_reason: "M1B passed 68 native tests, 4 WASM tests, the real-env six-packet R1/R3/R4/R5/R6 canonical run, fmt, clippy, WASM build and diff checks. Structural GB-001-SKIN evidence is CLOSED, no binaries/private paths/payloads were committed, and the independent final re-review reported no findings."
     owner: "Codex orchestrator + M1B implementation subagents"
     risk: "HIGH"
     dependencies: ["M1A DONE", "Aurora First layout anchors"]
-    current_problems:
-      - "R4-R6 must be selected from canonical inventory."
-      - "GB-001-SKIN requires canonical boundary evidence or an explicit named corpus gap."
+    current_problems: []
     bugs:
       - id: "M1B-BUG-001"
         severity: "P1"
@@ -192,12 +190,20 @@ stages:
         repro: "A real binary root contains nonzero runtime parent_ptr/geometry_ptr values."
         expected: "Parent relationship is derived only from children traversal; runtime fields are inventory/ignore values."
         actual: "The correction passes the 34-test MDL matrix and canonical R1/R3 own-locator/own-reader P-REF handback."
-        next_action: "Preserve the regression while R4-R6 broaden canonical coverage."
+        next_action: "Preserve the regression in later stages."
+      - id: "M1B-BUG-002"
+        severity: "P1"
+        status: "FIXED"
+        repro: "Canonical c_vampire_f is legacy17 with map/bind count 28, while the old parser treated header width 17 as a capacity limit."
+        expected: "Classify skin by the 0x2d4/0x330 payload boundary; validate counts by arrays/ranges and preserve zero-weight 0xffff lanes."
+        actual: "Synthetic legacy17/count28 regression and the real-env R5 packet pass; R1 extended64 count38 and zero-weight 0xffff evidence also pass."
+        next_action: "Preserve the regression in later stages."
+    named_non_blocking_gaps:
+      - "Full-scan null-UV0, diagnostic-limit, text-MDL and absent-success-family gaps are inventory context; exact selected R4/R5/R6 role DoD passes."
     next_actions:
-      - "Select canonical R4-R6 to cover the remaining model families and skin boundaries."
-      - "Run own-locator/own-reader P-REF and close or explicitly classify GB-001-SKIN before final VERIFYING."
+      - "Keep the read-only MDL/P-REF foundation stable while M2 builds AuroraAssetIR."
     evidence: ["documentation/evidence/M1B-evidence.md", "documentation/raport-m1b-deep-reader-codex.md"]
-    documentation: ["documentation/evidence/M1B-evidence.md", "documentation/raport-m1b-deep-reader-codex.md", "documentation/m1b-kontrakt-suplement-codex.md", "documentation/korpus-referencyjny-mdl-codex.md", "documentation/mdl-binary-crosswalk-codex.md"]
+    documentation: ["documentation/evidence/M1B-evidence.md", "documentation/raport-m1b-deep-reader-codex.md", "documentation/m1b-kontrakt-suplement-codex.md", "documentation/m1b-canonical-corpus-suplement-codex.md", "documentation/korpus-referencyjny-mdl-codex.md", "documentation/mdl-binary-crosswalk-codex.md"]
     expected_artifacts: ["Synthetic deep-section fixtures", "Multi-model reference inspection report", "P-REF packets with own-reader invariants", "Reference corpus manifest without payloads"]
     changed_files:
       - "documentation/orchestrator-state.yaml"
@@ -233,15 +239,16 @@ stages:
       - "documentation/orchestrator-state.yaml"
 
   M2:
-    status: "READY"
-    status_reason: "M1A is DONE and the Rust/WASM toolchain is verified; keep M2 inactive while M1B is selected next."
+    status: "IN_PROGRESS"
+    status_reason: "M1A, M1B and M1C are DONE, GB-003 is RESOLVED, and the orchestrator activated M2 as the only active stage for AuroraAssetIR and synthetic GLB axis/UV work."
     owner: "implementation agent"
     risk: "MEDIUM"
+    attempt_id: "M2-20260711-01"
     dependencies: ["M1A DONE", "GB-003 resolved"]
     current_problems:
       - "No canonical AuroraAssetIR schema or GLB fixture exists."
     bugs: []
-    next_actions: ["Remain READY but inactive until the orchestrator completes M1B and M1C or explicitly changes stage order."]
+    next_actions: ["Define the canonical AuroraAssetIR schema.", "Add synthetic minimal GLB axis and UV fixtures with stable inspection reports and gates."]
     evidence: []
     documentation: ["documentation/evidence/M2-evidence.md"]
     expected_artifacts: ["AuroraAssetIR schema", "Axis/UV fixtures", "GLB inspection report"]

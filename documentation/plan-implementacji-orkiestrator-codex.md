@@ -203,7 +203,7 @@ definition_of_done:
   - "synthetic fixtures cover every supported section"
   - "all pointers and counts have bounds checks"
   - "unsupported node families report structured diagnostics"
-  - "optional local reference test is env-gated and never writes extracted payload"
+  - "local reference test is env-gated, optional/clean-skip in CI and never writes extracted payload; recorded canonical local evidence run is mandatory before M1B DONE"
   - "P-REF packets cover named models from more than one family and record own-reader invariants and unsupported diagnostics"
 current_problems_initial:
   - "no reader beyond M1A exists"
@@ -214,6 +214,7 @@ documentation:
   - "documentation/aurora-mdl-format-codex.md"
   - "documentation/evidence/M1B-evidence.md"
   - "documentation/korpus-referencyjny-mdl-codex.md"
+  - "documentation/m1b-canonical-corpus-suplement-codex.md"
 ```
 
 ### M1c. Read-only HAK/ERF resource locator
@@ -548,12 +549,12 @@ Najwazniejsze dodatki to `attempt_id`, `stop_condition`, `expected_artifacts`, `
 
 ```yaml
 next_stage:
-  id: "M1C"
-  action: "zaimplementowac wlasny read-only HAK/ERF V1.0 resource locator, synthetic lookup tests, stable missing-resource diagnostic i env-gated local integration; potem oddac sterowanie do M1B dla canonical P-REF"
-  status: "IN_PROGRESS attempt M1C-20260711-01 po zielonym synthetic checkpoint M1B; M1B pozostaje VERIFYING, nie DONE"
+  id: "M2"
+  action: "zdefiniowac canonical AuroraAssetIR schema i dodac synthetic minimal GLB axis/UV fixtures ze stabilnym inspection reportem i gates"
+  status: "IN_PROGRESS attempt M2-20260711-01 po M1B/M1C DONE"
   do_not_start_in_parallel:
-    - "M2 implementation"
+    - "M3 creature conversion"
     - "MDL writer"
     - "Studio UI"
-  success_signal: "synthetic HAK lookup + stable missing-resource diagnostic + clean env skip/local read-only integration, bez payloadow w Git; nastepnie M1B canonical P-REF R1/R3"
+  success_signal: "valid minimal synthetic GLB produces stable AuroraAssetIR/report; axis and UV probes pass; invalid/missing UV and non-triangle inputs produce stable gates without mutating source data"
 ```

@@ -7,6 +7,7 @@ pub struct ParserLimits {
     pub max_nodes: usize,
     pub max_depth: usize,
     pub max_diagnostics: usize,
+    pub max_skin_bone_count: usize,
 }
 
 impl Default for ParserLimits {
@@ -16,6 +17,7 @@ impl Default for ParserLimits {
             max_nodes: 65_536,
             max_depth: 256,
             max_diagnostics: 1_024,
+            max_skin_bone_count: 4_096,
         }
     }
 }
@@ -163,6 +165,9 @@ pub enum SkinVariant {
 #[serde(rename_all = "camelCase")]
 pub struct SkinReport {
     pub variant: SkinVariant,
+    pub node_offset: u32,
+    pub header_size: usize,
+    pub node_to_bone_pointer: u32,
     pub weights_header: ArrayReport,
     pub node_to_bone_map: Vec<i16>,
     pub inverse_bone_rotations_raw: Vec<[f32; 4]>,

@@ -254,3 +254,95 @@ bugs: []
 ### Nastepny krok
 
 Wybrac R4-R6 z canonical inventory, preferujac kandydatow zamykajacych oba warianty skin i bind-pose/bone-ref boundary, potem uruchomic P-REF. M1B pozostaje `IN_PROGRESS`, nie `DONE`.
+
+## M1B-20260711-02 - canonical corpus implementation gate
+
+Status: VERIFYING, NIE DONE
+Owner: Codex orchestrator + M1B implementation/review subagents
+Stage: M1B
+
+### Wynik i gates
+
+Implementation i canonical corpus gate sa zielone. Final review wykryl dodatkowe P1 w explicit sentinel/boundary/R0/R6/nonzero-bind proofie; ich fix i clean re-review sa wymagane przed `DONE`.
+
+| Command or action | Actual | Status |
+|---|---|---|
+| `cargo test --workspace` | 68 native: 2 unit + 18 ERF + 1 env integration clean-skip + 34 MDL + 13 P-REF; 0 failed | PASS |
+| real `M2A_REFERENCE_CEP_HAK` integration | 1 test, 6 P-REF packets; 0 failed | PASS |
+| `wasm-pack test --node crates/m2a-wasm` | 4 Node/WASM tests; 0 failed | PASS |
+| fmt/clippy/WASM build/diff gates | zielone | PASS |
+| independent final review | explicit proof findings wymagaja fixu i re-review | VERIFYING |
+
+### Canonical six-packet matrix
+
+| Ref | Resref/type | Resource ID | Container range | SHA-256 | Role result |
+|---|---|---:|---|---|---|
+| R1 | `c_kocrachn` / 2002 | 724 | `[179725952,179889144)` | `f16426310f826ae2ab15034ac979c65f812ee8bda0d13ee459bf2b293d7db270` | 3 extended64 skins, count `38,38,38`, zero-weight `0xffff`; PASS |
+| R3a | `c_phod_horror_b` / 2002 | 1026 | `[264142176,264988240)` | `62ab1f512f709f9acd0fe0c5deb9bc65691277c848799d261086bc3d63b28f2a` | 42 animations, 41 events; PASS |
+| R3b | `c_phod_horror_p` / 2002 | 1027 | `[264988240,265834304)` | `09e43ee9493d2fe2bbf9cbeb44f24dcb999e5f38e651bdc79eefdd5e1f19722f` | 42 animations, 41 events; PASS |
+| R4 | `c_nulltail` / 2002 | 6390 | `[1420456988,1420458032)` | `b51542cc752421a41ff605d4c348794fff15ebfdb8973572d51a3a06fc7f8b76` | mesh-only, zero MDX/skin/animation/unsupported; PASS |
+| R5 | `c_vampire_f` / 2002 | 6240 | `[1161251268,1161482260)` | `964b015298743216a0d78fa0ddf2dedc9fb6ad45c39f54457767fd60cd96c5d4` | 2 legacy17 skins, map/q/t/constants `28,28`; PASS |
+| R6 | `c_eye` / 2002 | 552 | `[136663067,136686127)` | `401672fa00074c34b6c68e982242d5f0499ec657978826f15921f69200d719ea` | dangly diagnostic, 6 preserved mesh prefixes; PASS |
+
+Own locator zwrocil borrowed slices, own reader zbudowal reports, a P-REF zwiazal te same bytes z exact fingerprintem. Packet/evidence nie zawiera host paths, `payload`/`bytes` ani zewnetrznych binaries.
+
+### GB-001-SKIN i bug
+
+`GB-001-SKIN` jest strukturalnie `CLOSED`: `legacy17`/`extended64` wynika z boundary `node + 0x2d4/0x330`; 17/64 nie jest capacity limitem; R1 count `38` i R5 count `28` przechodza; `0xffff` wystepuje w zero-weight lanes.
+
+```yaml
+bugs:
+  - id: "M1B-BUG-002"
+    severity: "P1"
+    status: "FIXED"
+    repro: "c_vampire_f legacy17 ma map/bind count 28, a stary parser odrzucal count > 17."
+    expected: "17/64 klasyfikuje header boundary; counts waliduja arrays/ranges."
+    actual: "Synthetic count28 i canonical R5 przechodza; R1 count38 i zero-weight 0xffff rowniez przechodza."
+    next_action: "Uzupelnic explicit final-review invariants i wykonac clean re-review."
+```
+
+Globalny `GB-001` writer/readback/runtime pozostaje `DIRECTION_DEFINED_EVIDENCE_OPEN` dla M4+.
+
+### Full-scan context
+
+Scan wszystkich `3517` type-2002 entries dal `2146` parser successes, `1255` null-UV0 gaps, `96` header-invalid (`87` text MDL i `9` starych skin failures) oraz `20` diagnostic-limit cases. Brak camera/reference/animmesh/aabb w sukcesach jest named gapem. Te fakty nie blokuja role DoD wybranych R4/R5/R6.
+
+M1B pozostaje `VERIFYING`, nie `DONE`. Nastepna akcja: naprawa final-review findings, full gates i clean re-review.
+
+### Final-review P1 fix handoff
+
+Status: FIXED_PENDING_REVIEW, M1B nadal VERIFYING
+
+- R0 ma komplet 9 capability results i zgodny manifest: Header/CoreRanges/NodeTree `PASS`, pozostale `NOT_PRESENT`, plus core/raw coverage invariant.
+- `SkinReport` raportuje generic `nodeOffset`, `headerSize` i `nodeToBonePointer`; canonical R1/R5 obliczaja exact boundary oraz `skin-map-count-observed` z own reportu.
+- Sentinel classification jest obliczana z weights/bone refs: R1 `zero=881;nonzero=0`, R5 `zero=3208;nonzero=0`.
+- R5 ma explicit `skin-nonzero-bind-pose-observed`; canonical run potwierdza wynik dodatni.
+- R6 packet porownuje exact diagnostic: code `M2A-MDL-UNSUPPORTED-NODE-FAMILY`, severity `warning`, offset `476`, context `node \"Bat_body\" uses deferred node family dangly`.
+- Clean-env 68 native, 4 WASM, fmt, clippy, WASM build i diff checks przechodza; real-env six-packet test przechodzi.
+
+Niezalezny clean re-review pozostaje wymagany przed `DONE`.
+
+## M1B-20260711-02 - final independent re-review
+
+Status: DONE
+Owner: Codex orchestrator + independent review agent
+Stage: M1B
+
+### Final result
+
+- Independent final re-review po wszystkich P1 fixes: `NO FINDINGS`.
+- `cargo test --workspace`: 68 native tests, w tym 2 unit + 18 ERF + 1 clean-skip integration + 34 MDL + 13 P-REF; 0 failed.
+- `wasm-pack test --node crates/m2a-wasm`: 4 tests; 0 failed.
+- Real `M2A_REFERENCE_CEP_HAK` run: 6 canonical packets R1/R3a/R3b/R4/R5/R6; 0 failed.
+- fmt, clippy `-D warnings`, WASM build i `git diff --check`: PASS.
+- `M1B-BUG-001` runtime pointer interpretation: `FIXED`.
+- `M1B-BUG-002` legacy17 false capacity limit: `FIXED`.
+- Structural `GB-001-SKIN`: `CLOSED`; 17/64 jest header boundary, nie capacity, a zero-weight `0xffff` lanes sa jawnie klasyfikowane.
+- Full-scan named gaps nie blokuja wybranych R4/R5/R6 role DoD.
+- Repo nie zawiera retail/CEP binaries, extracted payloadow, prywatnych host paths ani embedded `payload`/`bytes` w P-REF/evidence.
+
+Globalny `GB-001` pozostaje `DIRECTION_DEFINED_EVIDENCE_OPEN`: writer emission, semantic readback, HAK round-trip i NWN EE runtime proof naleza do M4+.
+
+### Handoff
+
+M1B spelnia Definition of Done i ma status `DONE`. Jedyny aktywny etap przechodzi do M2 jako `IN_PROGRESS`, attempt `M2-20260711-01`; pierwsza akcja to AuroraAssetIR schema oraz synthetic GLB axis/UV fixtures. Ten checkpoint nie implementuje M2.

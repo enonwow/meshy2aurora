@@ -1054,18 +1054,27 @@ fn read_and_validate_raw_pointer(
 }
 
 fn validate_skin_bind_count(
-    reader: &BinaryReader<'_>,
+    header: ArrayHeader,
     header_absolute: usize,
-    capacity: usize,
+    map_count: usize,
+    max_skin_bone_count: usize,
     context: &str,
 ) -> Result<(), ParseError> {
-    let used = reader.read_u32(header_absolute + 4, context)? as usize;
-    let allocated = reader.read_u32(header_absolute + 8, context)? as usize;
-    if used > capacity || allocated > capacity {
+    if header.allocated > max_skin_bone_count {
+        return Err(ParseError::limit(
+            header_absolute + 8,
+            format!(
+                "{context} allocated count {} exceeds skin bone guardrail {max_skin_bone_count}",
+                header.allocated
+            ),
+        ));
+    }
+    if header.used != map_count {
         return Err(ParseError::header(
             header_absolute + 4,
             format!(
-                "{context} used/allocated counts {used}/{allocated} exceed selected profile capacity {capacity}"
+                "{context} used count {} does not match skin node-to-bone count {map_count}",
+                header.used
             ),
         ));
     }
@@ -1103,12 +1112,9 @@ fn read_skin(
         })?;
     let legacy_matches = map_pointer == legacy_pointer;
     let extended_matches = map_pointer == extended_pointer;
-    let (variant, profile_size, inline_count, bone_capacity) = match (
-        legacy_matches,
-        extended_matches,
-    ) {
-        (true, false) => (SkinVariant::Legacy17, SKIN_LEGACY17_SIZE, 17, 17),
-        (false, true) => (SkinVariant::Extended64, SKIN_EXTENDED64_SIZE, 64, 64),
+    let (variant, profile_size, inline_count) = match (legacy_matches, extended_matches) {
+        (true, false) => (SkinVariant::Legacy17, SKIN_LEGACY17_SIZE, 17),
+        (false, true) => (SkinVariant::Extended64, SKIN_EXTENDED64_SIZE, 64),
         _ => {
             return Err(ParseError::skin_variant(
                 common_absolute + SKIN_NODE_TO_BONE_OFFSET,
@@ -1136,11 +1142,12 @@ fn read_skin(
         ));
     }
     let map_count = map_count_signed as usize;
-    if map_count > bone_capacity {
-        return Err(ParseError::header(
+    if map_count > context.limits.max_skin_bone_count {
+        return Err(ParseError::limit(
             absolute + SKIN_MAP_COUNT_OFFSET,
             format!(
-                "skin node-to-bone count {map_count} exceeds selected profile capacity {bone_capacity}"
+                "skin node-to-bone count {map_count} exceeds skin bone guardrail {}",
+                context.limits.max_skin_bone_count
             ),
         ));
     }
@@ -1158,29 +1165,18 @@ fn read_skin(
         );
     }
 
-    validate_skin_bind_count(
-        context.reader,
-        absolute + SKIN_Q_INV_OFFSET,
-        bone_capacity,
-        "skin inverse bone rotations",
-    )?;
-    validate_skin_bind_count(
-        context.reader,
-        absolute + SKIN_T_INV_OFFSET,
-        bone_capacity,
-        "skin inverse bone translations",
-    )?;
-    validate_skin_bind_count(
-        context.reader,
-        absolute + SKIN_CONSTANTS_OFFSET,
-        bone_capacity,
-        "skin bone constants",
-    )?;
     let q_header = context.read_array_header(
         absolute + SKIN_Q_INV_OFFSET,
         16,
         "skin inverse bone rotations",
         "skin-q-inverse",
+    )?;
+    validate_skin_bind_count(
+        q_header,
+        absolute + SKIN_Q_INV_OFFSET,
+        map_count,
+        context.limits.max_skin_bone_count,
+        "skin inverse bone rotations",
     )?;
     let t_header = context.read_array_header(
         absolute + SKIN_T_INV_OFFSET,
@@ -1188,11 +1184,25 @@ fn read_skin(
         "skin inverse bone translations",
         "skin-t-inverse",
     )?;
+    validate_skin_bind_count(
+        t_header,
+        absolute + SKIN_T_INV_OFFSET,
+        map_count,
+        context.limits.max_skin_bone_count,
+        "skin inverse bone translations",
+    )?;
     let constants_header = context.read_array_header(
         absolute + SKIN_CONSTANTS_OFFSET,
         4,
         "skin bone constants",
         "skin-bone-constants",
+    )?;
+    validate_skin_bind_count(
+        constants_header,
+        absolute + SKIN_CONSTANTS_OFFSET,
+        map_count,
+        context.limits.max_skin_bone_count,
+        "skin bone constants",
     )?;
     let inverse_bone_rotations_raw = read_core_f32x4(context, q_header, "skin qBoneRefInv")?;
     let inverse_bone_translations = read_core_vec3(context, t_header, "skin tBoneRefInv")?;
@@ -1223,11 +1233,15 @@ fn read_skin(
         context,
         raw_refs_pointer,
         vertex_count,
-        bone_capacity,
+        map_count,
+        &vertex_weights,
         "skin raw bone references",
     )?;
     Ok(SkinReport {
         variant,
+        node_offset,
+        header_size: profile_size,
+        node_to_bone_pointer: map_pointer,
         weights_header: weights_header.into(),
         node_to_bone_map,
         inverse_bone_rotations_raw,
@@ -1496,7 +1510,8 @@ fn read_raw_u16x4(
     context: &ParseContext<'_, '_>,
     pointer: i32,
     count: usize,
-    capacity: usize,
+    map_count: usize,
+    weights: &[[f32; 4]],
     value_context: &str,
 ) -> Result<Vec<[u16; 4]>, ParseError> {
     if count == 0 {
@@ -1508,7 +1523,7 @@ fn read_raw_u16x4(
         .raw_absolute(pointer, length, value_context, true)?
         .expect("required pointer was checked");
     let mut values = Vec::with_capacity(count);
-    for index in 0..count {
+    for (index, weight_row) in weights.iter().enumerate().take(count) {
         let base = absolute + index * 8;
         let row = [
             context.reader.read_u16(base, value_context)?,
@@ -1516,14 +1531,23 @@ fn read_raw_u16x4(
             context.reader.read_u16(base + 4, value_context)?,
             context.reader.read_u16(base + 6, value_context)?,
         ];
-        if let Some(value) = row
-            .iter()
-            .find(|value| **value != u16::MAX && **value as usize >= capacity)
-        {
-            return Err(ParseError::bone_ref(
-                base,
-                format!("bone reference {value} exceeds selected profile capacity {capacity}"),
-            ));
+        for (influence, value) in row.iter().enumerate() {
+            if *value == u16::MAX {
+                if weight_row[influence] != 0.0 {
+                    return Err(ParseError::bone_ref(
+                        base + influence * 2,
+                        format!(
+                            "bone reference 0xffff has non-zero weight {}",
+                            weight_row[influence]
+                        ),
+                    ));
+                }
+            } else if *value as usize >= map_count {
+                return Err(ParseError::bone_ref(
+                    base + influence * 2,
+                    format!("bone reference {value} exceeds skin node-to-bone count {map_count}"),
+                ));
+            }
         }
         values.push(row);
     }

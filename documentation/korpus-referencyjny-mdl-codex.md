@@ -71,9 +71,9 @@ Screenshot Toolsetu z niezmienionym retailowym modelem jest tylko referencja wiz
 | R1 | `c_kocrachn`, `cep3_core1.hak`, type 2002 | `12 + core + volatile`, `supermodel=c_Horror`, animationScale `0.72`, zero wlasnych animacji | potwierdzony metadata |
 | R2 | `c_horror`, base NWN `nwn_base.key -> data/models_01.bif`, type 2002 | model bazowego supermodelu; funkcje ustalane dopiero przez own reader | potwierdzony locator |
 | R3 | `c_phod_horror_b` i `c_phod_horror_p`, `cep3_core1.hak`, type 2002 | 42 wlasne animacje, animroot, transition time, eventy | potwierdzony metadata |
-| R4 | prosty trimesh bez skin/animacji | mesh-only path | do znalezienia automatycznym inventory M1B |
-| R5 | skin mesh z niezerowym bind pose | skin header, weights, bone refs, 17/64 variant | do znalezienia automatycznym inventory M1B |
-| R6 | model z nieobslugiwanym node family | structured unsupported diagnostic | do znalezienia automatycznym inventory M1B |
+| R4 | `c_nulltail`, `cep3_core1.hak`, type 2002 | najmniejszy plain trimesh: 1 mesh, zero skin/animacji/unsupported, poprawny zerowy MDX | `CANONICAL_PACKET_PASS`; M1B `VERIFYING` |
+| R5 | `c_vampire_f`, `cep3_core1.hak`, type 2002 | canonical `legacy17`, boundary `0x2d4`, map count `28`; 17/64 to width, nie capacity | `CANONICAL_PACKET_PASS`; M1B `VERIFYING` |
+| R6 | `c_eye`, `cep3_core1.hak`, type 2002 | `dangly` jako structured unsupported diagnostic przy zachowanych 6 mesh common prefixes | `CANONICAL_PACKET_PASS`; M1B `VERIFYING` |
 
 R1-R3 nie sa payloadami projektu. Zapisane sa jedynie ich locator, typ, cechy i hash odczytany lokalnie podczas evidence run.
 
@@ -112,9 +112,9 @@ Przyklad: `c_kocrachn` ustala dla profilu R1, ze model ma header z core/volatile
 ## 6. Kolejnosc pracy
 
 1. M1A buduje syntetyczne fixture i bezpieczny structural reader.
-2. M1B wykonuje in-place inventory R1-R3, tworzy P-REF structural packets, wybiera R4-R6 na podstawie rzeczywistych flags/layoutow i zapisuje manifest bez payloadow.
-3. M1B zamyka `GB-001-SKIN` dopiero po porownaniu co najmniej dwoch skin candidates lub po nazwanym braku takiego corpus.
-4. M1C dodaje locator HAK; odczyt base KEY/BIF dla R2 pozostaje optional reference adapter, nie wymaganiem produktu HAK.
+2. M1C ma status `DONE`; own HAK/ERF locator dostarczyl canonical R1/R3 baseline bez extraction. Odczyt base KEY/BIF dla R2 pozostaje optional reference adapter.
+3. M1B ma status `VERIFYING`: canonical P-REF R1/R3/R4/R5/R6, capabilities i role invariants przechodza; manifest nie zawiera payloadow.
+4. Structural `GB-001-SKIN` jest `CLOSED`; writer/readback/runtime acceptance pozostaja M4+.
 5. M4+ laczy AuroraAssetIR z mapa invariantow z P-REF, waliduje writer na synthetic fixtures i macierzy referencyjnej, a M6 dowodzi wlasnym wygenerowanym contentem.
 
 ## 7. Definition of Done corpus run
@@ -124,7 +124,7 @@ evidence_packet:
   required:
     - "manifest z resref/type/source class/hash i bez sciezek prywatnych, jezeli raport ma byc commitowany"
     - "P-REF packet z own reader JSON, invariant results i stable diagnostics dla kazdego faktycznie uruchomionego modelu"
-    - "capability matrix R0-R6 z PASS/UNSUPPORTED/NOT_PRESENT"
+    - "capability matrix R0-R6 zgodna z m1b-canonical-corpus-suplement-codex.md; kazdy wykonany packet uzywa PASS/UNSUPPORTED/NOT_PRESENT, a opcjonalny R2 moze miec execution status OPTIONAL_NOT_RUN"
     - "preview screenshot/motion capture lokalnie, gdy dana klasa preview jest juz obslugiwana"
     - "stable diagnostics dla przypadkow nieobslugiwanych"
     - "explicit statement, ze payloady nie zostaly dodane do Git"
@@ -132,3 +132,5 @@ evidence_packet:
     - "one successful model proves universal format support"
     - "reference parser result replaces own generated Toolset/game proof"
 ```
+
+Env-gated reference test moze cleanly skipowac w CI, ale M1B `DONE` wymaga zapisanego lokalnego canonical evidence runu. Skip nie jest proofem zgodnosci.

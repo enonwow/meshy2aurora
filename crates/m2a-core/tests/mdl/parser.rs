@@ -4,8 +4,9 @@ use m2a_core::{ParserLimits, inspect_binary_mdl, inspect_binary_mdl_with_limits}
 
 use crate::fixtures::{
     FILE_HEADER_SIZE, ROOT_NODE_ABSOLUTE, build_deep_binary_mdl, build_minimal_binary_mdl,
-    build_skin_binary_mdl, build_two_node_binary_mdl, make_animation_declared_too_small,
-    make_animation_root_cycle, make_root_cycle, write_i16, write_i32, write_u32,
+    build_skin_binary_mdl, build_skin_binary_mdl_with_map_count, build_two_node_binary_mdl,
+    make_animation_declared_too_small, make_animation_root_cycle, make_root_cycle, write_i16,
+    write_i32, write_u32,
 };
 
 #[test]
@@ -64,14 +65,26 @@ fn parses_deep_model_controllers_trimesh_and_all_animation_roots() {
 
 #[test]
 fn parses_both_explicit_skin_variants_without_using_map_count_as_classifier() {
-    let legacy = inspect_binary_mdl(&build_skin_binary_mdl(false)).expect("legacy17 skin");
-    let extended = inspect_binary_mdl(&build_skin_binary_mdl(true)).expect("extended64 skin");
+    let legacy = inspect_binary_mdl(&build_skin_binary_mdl_with_map_count(false, 28))
+        .expect("canonical-shaped legacy17/count28 skin");
+    let extended = inspect_binary_mdl(&build_skin_binary_mdl_with_map_count(true, 38))
+        .expect("canonical-shaped extended64/count38 skin");
     let legacy = legacy.node_tree.roots[0].skin.as_ref().unwrap();
     let extended = extended.node_tree.roots[0].skin.as_ref().unwrap();
     assert_eq!(format!("{:?}", legacy.variant), "Legacy17");
     assert_eq!(format!("{:?}", extended.variant), "Extended64");
-    assert_eq!(legacy.node_to_bone_map.len(), 3);
-    assert_eq!(extended.node_to_bone_map.len(), 3);
+    assert_eq!(
+        legacy.node_offset as usize + legacy.header_size,
+        legacy.node_to_bone_pointer as usize
+    );
+    assert_eq!(legacy.header_size, 0x2d4);
+    assert_eq!(
+        extended.node_offset as usize + extended.header_size,
+        extended.node_to_bone_pointer as usize
+    );
+    assert_eq!(extended.header_size, 0x330);
+    assert_eq!(legacy.node_to_bone_map.len(), 28);
+    assert_eq!(extended.node_to_bone_map.len(), 38);
     assert_eq!(legacy.inline_mapping.len(), 17);
     assert_eq!(extended.inline_mapping.len(), 64);
     assert_eq!(legacy.vertex_weights.len(), 3);
@@ -228,17 +241,44 @@ fn common_controller_layouts_require_exact_signed_columns() {
 
 #[test]
 fn skin_profile_limits_map_bind_counts_and_preserves_ffff_bone_refs() {
-    let mut map_count = build_skin_binary_mdl(false);
-    write_i32(&mut map_count, ROOT_NODE_ABSOLUTE + 0x288, 18);
+    let map_count = build_skin_binary_mdl_with_map_count(false, 28);
+    let limits = ParserLimits {
+        max_skin_bone_count: 27,
+        ..ParserLimits::default()
+    };
     assert_eq!(
-        inspect_binary_mdl(&map_count).unwrap_err().code,
-        "M2A-MDL-HEADER-INVALID"
+        inspect_binary_mdl_with_limits(&map_count, &limits)
+            .unwrap_err()
+            .code,
+        "M2A-LIMIT-EXCEEDED"
+    );
+    inspect_binary_mdl_with_limits(
+        &map_count,
+        &ParserLimits {
+            max_skin_bone_count: 28,
+            ..ParserLimits::default()
+        },
+    )
+    .expect("skin bone count exactly on the guardrail is accepted");
+
+    let mut allocated_over_limit = build_skin_binary_mdl(false);
+    write_u32(&mut allocated_over_limit, ROOT_NODE_ABSOLUTE + 0x28c + 8, 4);
+    assert_eq!(
+        inspect_binary_mdl_with_limits(
+            &allocated_over_limit,
+            &ParserLimits {
+                max_skin_bone_count: 3,
+                ..ParserLimits::default()
+            },
+        )
+        .unwrap_err()
+        .code,
+        "M2A-LIMIT-EXCEEDED"
     );
 
     for header in [0x28c, 0x298, 0x2a4] {
         let mut bind_count = build_skin_binary_mdl(false);
-        write_u32(&mut bind_count, ROOT_NODE_ABSOLUTE + header + 4, 18);
-        write_u32(&mut bind_count, ROOT_NODE_ABSOLUTE + header + 8, 18);
+        write_u32(&mut bind_count, ROOT_NODE_ABSOLUTE + header + 4, 2);
         assert_eq!(
             inspect_binary_mdl(&bind_count).unwrap_err().code,
             "M2A-MDL-HEADER-INVALID",
@@ -248,25 +288,31 @@ fn skin_profile_limits_map_bind_counts_and_preserves_ffff_bone_refs() {
 
     let mut sentinel = build_skin_binary_mdl(false);
     let raw = FILE_HEADER_SIZE + read_u32_at(&sentinel, 4) as usize;
-    write_i16(&mut sentinel, raw + 144, -1);
-    let report = inspect_binary_mdl(&sentinel).expect("0xffff bone ref remains open/preserved");
+    write_i16(&mut sentinel, raw + 146, -1);
+    let report = inspect_binary_mdl(&sentinel).expect("0xffff with zero weight is preserved");
     assert_eq!(
         report.node_tree.roots[0]
             .skin
             .as_ref()
             .unwrap()
-            .bone_references[0][0],
+            .bone_references[0][1],
         u16::MAX
+    );
+
+    write_i16(&mut sentinel, raw + 144, -1);
+    assert_eq!(
+        inspect_binary_mdl(&sentinel).unwrap_err().code,
+        "M2A-MDL-BONE-REF-OOB"
     );
 }
 
 #[test]
-fn extended64_bone_reference_accepts_63_and_rejects_64() {
-    let mut boundary = build_skin_binary_mdl(true);
+fn bone_reference_uses_map_count_not_profile_width() {
+    let mut boundary = build_skin_binary_mdl_with_map_count(true, 38);
     let raw = FILE_HEADER_SIZE + read_u32_at(&boundary, 4) as usize;
-    write_i16(&mut boundary, raw + 144, 63);
-    inspect_binary_mdl(&boundary).expect("extended64 bone 63");
-    write_i16(&mut boundary, raw + 144, 64);
+    write_i16(&mut boundary, raw + 144, 37);
+    inspect_binary_mdl(&boundary).expect("map entry 37");
+    write_i16(&mut boundary, raw + 144, 38);
     assert_eq!(
         inspect_binary_mdl(&boundary).unwrap_err().code,
         "M2A-MDL-BONE-REF-OOB"
@@ -632,6 +678,7 @@ fn parser_limits_accept_values_exactly_on_the_boundary() {
             max_nodes: 1,
             max_depth: 0,
             max_diagnostics: 0,
+            max_skin_bone_count: ParserLimits::default().max_skin_bone_count,
         },
     )
     .expect("exact guardrail boundary must be accepted");
@@ -647,6 +694,7 @@ fn parser_limits_accept_values_exactly_on_the_boundary() {
             max_nodes: 1,
             max_depth: 0,
             max_diagnostics: 1,
+            max_skin_bone_count: ParserLimits::default().max_skin_bone_count,
         },
     )
     .expect("one diagnostic at a limit of one must be accepted");

@@ -100,10 +100,13 @@ Lokalne referencje nie sa zgodne:
 
 To jest nazwany problem `GB-001-SKIN`, a nie powod do zgadywania. Zamkniecie:
 
-1. M1B raportuje dla lokalnego corpus offset nastepnego obiektu po kazdym skin node i oba kandydackie rozmiary;
+1. M1B raportuje dla kazdego canonical skin node node offset, node-to-bone pointer i equality z `node + 0x2d4` albo `node + 0x330`; to superseduje nieprecyzyjne "offset nastepnego obiektu";
 2. fixture boundary test odrzuca odczyt poza core;
 3. writer wybiera wariant per jawny profil formatu, nie globalna magiczna stala;
-4. oba warianty, jesli realnie wystepuja, maja oddzielne testy.
+4. oba warianty, jesli realnie wystepuja, maja oddzielne testy;
+5. `17/64` jest szerokoscia inline mappingu/header boundary, nie capacity limitem `map count`, bind arrays ani bone refs.
+
+Canonical M1B bug evidence obserwuje `c_vampire_f` legacy17 z count `28` oraz `c_kocrachn` extended64 z count `38`; `0xffff` w `c_kocrachn` wystepuje w zero-weight lanes. Parser fix i finalny P-REF sa `PENDING`. Nie jest to jeszcze dowod emission/runtime acceptance writera.
 
 ## 7. TDD i warunek zamkniecia GB-001
 

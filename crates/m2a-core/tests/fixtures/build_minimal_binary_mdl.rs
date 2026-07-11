@@ -152,6 +152,10 @@ pub fn build_deep_binary_mdl() -> Vec<u8> {
 }
 
 pub fn build_skin_binary_mdl(extended64: bool) -> Vec<u8> {
+    build_skin_binary_mdl_with_map_count(extended64, 3)
+}
+
+pub fn build_skin_binary_mdl_with_map_count(extended64: bool, map_count: usize) -> Vec<u8> {
     let root = ROOT_NODE_OFFSET;
     let profile_size = if extended64 { 0x330 } else { 0x2d4 };
     let inline_count = if extended64 { 64 } else { 17 };
@@ -168,23 +172,41 @@ pub fn build_skin_binary_mdl(extended64: bool) -> Vec<u8> {
     );
     write_node_core(&mut core, root, 0, "skin_root", 0x61);
     write_mesh_raw_headers(&mut core, root);
-    let map = append_zeros(&mut core, 3 * 2);
-    let quaternions = append_zeros(&mut core, 16);
-    let translations = append_zeros(&mut core, 12);
-    let constants = append_zeros(&mut core, 4);
+    let map = append_zeros(&mut core, map_count * 2);
+    let quaternions = append_zeros(&mut core, map_count * 16);
+    let translations = append_zeros(&mut core, map_count * 12);
+    let constants = append_zeros(&mut core, map_count * 4);
     let face = append_zeros(&mut core, 0x20);
     write_array_core(&mut core, root as usize + 0x78, face, 1, 1);
     write_face_core(&mut core, face);
     write_i32_core(&mut core, root as usize + 0x284, map as i32);
-    write_i32_core(&mut core, root as usize + 0x288, 3);
-    write_array_core(&mut core, root as usize + 0x28c, quaternions, 1, 1);
-    write_array_core(&mut core, root as usize + 0x298, translations, 1, 1);
-    write_array_core(&mut core, root as usize + 0x2a4, constants, 1, 1);
+    write_i32_core(&mut core, root as usize + 0x288, map_count as i32);
+    write_array_core(
+        &mut core,
+        root as usize + 0x28c,
+        quaternions,
+        map_count as u32,
+        map_count as u32,
+    );
+    write_array_core(
+        &mut core,
+        root as usize + 0x298,
+        translations,
+        map_count as u32,
+        map_count as u32,
+    );
+    write_array_core(
+        &mut core,
+        root as usize + 0x2a4,
+        constants,
+        map_count as u32,
+        map_count as u32,
+    );
     for index in 0..inline_count {
         write_i16_core(&mut core, root as usize + 0x2b0 + index * 2, index as i16);
     }
-    for (index, value) in [0_i16, 1, 2].into_iter().enumerate() {
-        write_i16_core(&mut core, map as usize + index * 2, value);
+    for index in 0..map_count {
+        write_i16_core(&mut core, map as usize + index * 2, index as i16);
     }
     write_f32_core(&mut core, quaternions as usize, 1.0);
     write_f32_core(&mut core, translations as usize, 4.0);
@@ -192,7 +214,7 @@ pub fn build_skin_binary_mdl(extended64: bool) -> Vec<u8> {
     write_i16_core(&mut core, constants as usize + 2, 8);
     write_i32_core(&mut core, root as usize + 0x27c, 96);
     write_i32_core(&mut core, root as usize + 0x280, 144);
-    let raw = build_mesh_raw(true, inline_count);
+    let raw = build_mesh_raw(true, map_count);
     finish_binary(core, raw)
 }
 
@@ -302,7 +324,7 @@ fn write_mesh_raw_headers(core: &mut [u8], root: u32) {
     }
 }
 
-fn build_mesh_raw(with_skin: bool, _capacity: usize) -> Vec<u8> {
+fn build_mesh_raw(with_skin: bool, map_count: usize) -> Vec<u8> {
     let mut raw = vec![0_u8; if with_skin { 168 } else { 96 }];
     for (index, value) in [0.0_f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
         .into_iter()
@@ -320,7 +342,11 @@ fn build_mesh_raw(with_skin: bool, _capacity: usize) -> Vec<u8> {
         for vertex in 0..3 {
             write_f32_bytes(&mut raw, 96 + vertex * 16, 1.0);
             for bone in 0..4 {
-                write_u16_bytes(&mut raw, 144 + vertex * 8 + bone * 2, bone as u16);
+                write_u16_bytes(
+                    &mut raw,
+                    144 + vertex * 8 + bone * 2,
+                    (bone % map_count.max(1)) as u16,
+                );
             }
         }
     }
