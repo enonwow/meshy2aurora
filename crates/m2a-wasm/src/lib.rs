@@ -30,6 +30,14 @@ mod wasm_tests {
     use super::inspect_binary_mdl;
     use wasm_bindgen_test::*;
 
+    #[allow(dead_code)]
+    mod fixtures {
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../m2a-core/tests/fixtures/build_minimal_binary_mdl.rs"
+        ));
+    }
+
     #[wasm_bindgen_test]
     fn public_adapter_returns_stable_json_error_for_empty_input() {
         let first = inspect_binary_mdl(&[]);
@@ -61,6 +69,76 @@ mod wasm_tests {
         assert_eq!(report["format"], "nwn1-binary-mdl");
         assert_eq!(report["byteLength"].as_u64(), Some(mdl.len() as u64));
         assert_eq!(report["nodeTree"]["nodeCount"], 1);
+    }
+
+    #[wasm_bindgen_test]
+    fn public_adapter_exposes_deep_m1b_report_deterministically() {
+        let mdl = fixtures::build_deep_binary_mdl();
+        let first = inspect_binary_mdl(&mdl);
+        let second = inspect_binary_mdl(&mdl);
+
+        assert_eq!(first, second);
+
+        let report: serde_json::Value =
+            serde_json::from_str(&first).expect("adapter must return JSON");
+        let root = &report["nodeTree"]["roots"][0];
+        let controllers = root["controllers"]
+            .as_array()
+            .expect("deep fixture controllers");
+        assert_eq!(controllers.len(), 5);
+        assert_eq!(controllers[0]["controllerName"], "position");
+        assert_eq!(controllers[4]["controllerName"], "alpha");
+
+        let mesh = root["mesh"].as_object().expect("deep fixture mesh");
+        assert_eq!(mesh["vertexCount"], 3);
+        assert_eq!(mesh["faces"].as_array().map(Vec::len), Some(1));
+        assert_eq!(mesh["textures"][0], "m2a_diffuse");
+
+        let animations = report["animations"]
+            .as_array()
+            .expect("deep fixture animations");
+        assert_eq!(animations.len(), 2);
+        assert_eq!(animations[0]["name"], "walk");
+        assert_eq!(
+            animations[0]["nodeTree"]["roots"][0]["controllers"][0]["controllerName"],
+            "position"
+        );
+        assert_eq!(animations[1]["name"], "idle");
+    }
+
+    #[wasm_bindgen_test]
+    fn public_adapter_exposes_both_m1b_skin_variants_deterministically() {
+        for (extended64, expected_variant, expected_inline_count) in
+            [(false, "legacy17", 17), (true, "extended64", 64)]
+        {
+            let mdl = fixtures::build_skin_binary_mdl(extended64);
+            let first = inspect_binary_mdl(&mdl);
+            let second = inspect_binary_mdl(&mdl);
+
+            assert_eq!(first, second);
+
+            let report: serde_json::Value =
+                serde_json::from_str(&first).expect("adapter must return JSON");
+            let root = &report["nodeTree"]["roots"][0];
+            assert!(root["mesh"].is_object());
+            assert_eq!(root["skin"]["variant"], expected_variant);
+            assert_eq!(
+                root["skin"]["inlineMapping"].as_array().map(Vec::len),
+                Some(expected_inline_count)
+            );
+            assert_eq!(
+                root["skin"]["nodeToBoneMap"].as_array().map(Vec::len),
+                Some(3)
+            );
+            assert_eq!(
+                root["skin"]["vertexWeights"].as_array().map(Vec::len),
+                Some(3)
+            );
+            assert_eq!(
+                root["skin"]["boneReferences"].as_array().map(Vec::len),
+                Some(3)
+            );
+        }
     }
 
     fn minimal_binary_mdl() -> Vec<u8> {

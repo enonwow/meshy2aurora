@@ -36,6 +36,8 @@ Aktualny kierunek po audycie 2026-07-09:
 - [prompt-dla-claude-prototyp-parsera.md](prompt-dla-claude-prototyp-parsera.md) - gotowy prompt dla Claude: prototype M1a parsera binary MDL.
 - [m1a-kontrakt-suplement-codex.md](m1a-kontrakt-suplement-codex.md) - aktywne rozstrzygniecia schematu JSON, bledow, offsetow i roli orkiestratora dla M1A.
 - [prototyp-parsera-m1a-claude.md](prototyp-parsera-m1a-claude.md) - wynik implementacji M1A, klasyfikacja pol, testy, ograniczenia i changed files.
+- [m1b-kontrakt-suplement-codex.md](m1b-kontrakt-suplement-codex.md) - aktywny deep-reader layout, oba profile skin, stop conditions oraz sekwencja M1B-M1C-P-REF.
+- [raport-m1b-deep-reader-codex.md](raport-m1b-deep-reader-codex.md) - zielony synthetic/native/WASM checkpoint M1B w statusie VERIFYING oraz dokladny pozostaly warunek canonical P-REF po M1C.
 - [przyszle-featurey-studio-codex.md](przyszle-featurey-studio-codex.md) - backlog Studio po MVP: diagnostyka, materialy, geometria, rig, animacje i proof packet.
 - [neverblender-audyt-2026-07-09-codex.md](neverblender-audyt-2026-07-09-codex.md) - audyt NeverBlender jako narzedzia pomocniczego/debug dla modeli NWN/Aurora.
 - [repozytoria-pomocnicze-2026-07-09-codex.md](repozytoria-pomocnicze-2026-07-09-codex.md) - mapa repozytoriow drugiej linii po Aurora First.

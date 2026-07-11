@@ -19,11 +19,11 @@ status_vocabulary:
   - "SUPERSEDED"
 
 orchestration:
-  active_stage: "NONE"
-  next_ready_stage: "M1B, M1C and M2 are READY; select only one after the M1A checkpoint push"
-  next_action: "Commit and push the completed M1A checkpoint, then activate M1B as the next evidence-critical stage."
+  active_stage: "M1C"
+  next_ready_stage: "M2 remains READY and inactive while M1C is active; M1B waits in VERIFYING for canonical locator handback"
+  next_action: "Implement and verify the own read-only HAK/ERF resource locator under M1C attempt M1C-20260711-01, then return to M1B for canonical P-REF R1/R3 and R4-R6 selection."
   one_active_stage_only: true
-  current_attempt_id: "M1A-20260711-01-COMPLETE"
+  current_attempt_id: "M1C-20260711-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
   done_rule: "A stage may be DONE only when every definition_of_done item has evidence."
   stop_rule: "Stop and mark BLOCKED when a needed Aurora fact, decision, local tool state, or proof artifact is missing. Do not guess."
@@ -177,30 +177,47 @@ stages:
       - "documentation/prototyp-parsera-m1a-claude.md"
 
   M1B:
-    status: "READY"
-    status_reason: "M1A is DONE. M1B is the next evidence-critical stage and may start after the M1A checkpoint push."
-    owner: "implementation agent"
+    status: "VERIFYING"
+    status_reason: "Synthetic checkpoint is green: 49 native tests, 4 Node/WASM tests, fmt, clippy, build and diff check pass; all deep/P-REF review findings are FIXED and final reviews report no findings. M1B is not DONE because canonical P-REF depends on M1C."
+    owner: "Codex orchestrator + M1B implementation subagents"
     risk: "HIGH"
     dependencies: ["M1A DONE", "Aurora First layout anchors"]
     current_problems:
-      - "Deep binary sections are not implemented."
-    bugs: []
-    next_actions: ["Activate M1B after the M1A checkpoint push; begin with synthetic deep-section fixtures and corpus manifest/provenance."]
-    evidence: []
-    documentation: ["documentation/evidence/M1B-evidence.md", "documentation/korpus-referencyjny-mdl-codex.md"]
+      - "M1C own HAK/ERF locator is required before canonical corpus packets can be produced."
+      - "Canonical own-reader P-REF R1/R3 remains pending after M1C handback."
+      - "R4-R6 must be selected from canonical inventory."
+      - "GB-001-SKIN requires canonical boundary evidence or an explicit named corpus gap."
+    bugs:
+      - id: "M1B-BUG-001"
+        severity: "P1"
+        status: "FIXED"
+        repro: "A real binary root contains nonzero runtime parent_ptr/geometry_ptr values."
+        expected: "Parent relationship is derived only from children traversal; runtime fields are inventory/ignore values."
+        actual: "The correction and synthetic regression pass in the final 34-test MDL matrix; canonical repetition follows after M1C as corpus evidence, not as a pending code fix."
+        next_action: "Repeat the assertion in canonical P-REF after M1C."
+    next_actions:
+      - "Wait while M1C implements and verifies the own HAK/ERF locator."
+      - "After M1C, return M1B to IN_PROGRESS for canonical own-reader P-REF R1/R3, R4-R6 selection and final VERIFYING."
+    evidence: ["documentation/evidence/M1B-evidence.md", "documentation/raport-m1b-deep-reader-codex.md"]
+    documentation: ["documentation/evidence/M1B-evidence.md", "documentation/raport-m1b-deep-reader-codex.md", "documentation/m1b-kontrakt-suplement-codex.md", "documentation/korpus-referencyjny-mdl-codex.md", "documentation/mdl-binary-crosswalk-codex.md"]
     expected_artifacts: ["Synthetic deep-section fixtures", "Multi-model reference inspection report", "P-REF packets with own-reader invariants", "Reference corpus manifest without payloads"]
-    changed_files: []
+    changed_files:
+      - "documentation/orchestrator-state.yaml"
+      - "documentation/evidence/M1B-evidence.md"
+      - "documentation/m1b-kontrakt-suplement-codex.md"
+      - "documentation/README.md"
 
   M1C:
-    status: "READY"
-    status_reason: "M1A is DONE; keep M1C inactive while M1B is the selected next stage."
+    status: "IN_PROGRESS"
+    status_reason: "M1B synthetic checkpoint reached VERIFYING with green gates. M1C is now the only active stage and owns the read-only HAK/ERF locator required for canonical P-REF."
     owner: "implementation agent"
     risk: "MEDIUM"
+    attempt_id: "M1C-20260711-01"
     dependencies: ["M1A DONE"]
     current_problems:
       - "No own HAK/ERF reader exists."
     bugs: []
-    next_actions: ["Remain READY but inactive until the orchestrator completes M1B or explicitly changes stage order."]
+    next_actions: ["Implement synthetic HAK/ERF V1.0 lookup, stable missing-resource diagnostics and env-gated read-only local integration; then hand control back to M1B for canonical P-REF."]
     evidence: []
     documentation: ["documentation/evidence/M1C-evidence.md"]
     expected_artifacts: ["Synthetic HAK reader tests", "Env-gated reference lookup"]

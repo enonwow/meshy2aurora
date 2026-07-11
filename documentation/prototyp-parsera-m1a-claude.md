@@ -20,7 +20,8 @@ Parser obsluguje file header, core/MDX boundary, pelny minimalny ModelHeader pro
 | ModelHeader `0xE8`, name i root pointer | HIPOTEZA Z SILNYM CROSS-CHECKIEM | Lokalna obserwacja binary i niezalezne opisy layoutu; M1B ma potwierdzic na wielomodelowym corpusie P-REF. |
 | NodeHeader `0x70`, name, parent, children i content | HIPOTEZA Z SILNYM CROSS-CHECKIEM | Zaimplementowane tylko strukturalnie; runtime loader proof pozostaje pozniejszym gate'em. |
 | `contentFlags & 0x001` jako obslugiwany header | POTWIERDZONE W KONTRAKCIE M1A | Nie generuje falszywego `unsupported`; pozostale bity sa jawnie odroczone. |
-| `p_geometry`, controller keys/data | POTWIERDZONE STRUKTURALNIE | Pointery i zakresy sa walidowane, payloady nie sa parsowane w M1A. |
+| runtime `geometry_ptr`/`parent_ptr` | POTWIERDZONE JAKO IGNORE/RUNTIME W M1B | Nie sa traktowane jak core pointery; relacja parent wynika z tablicy children. Korekta po realnym read-only smoke. |
+| controller keys/data | POTWIERDZONE STRUKTURALNIE | Pointery i zakresy sa walidowane, payloady nie sa parsowane w M1A. |
 | `ParserLimits` | POTWIERDZONE JAKO DECYZJA PRODUKTOWA | Guardraile bezpieczenstwa, nie deklarowane limity engine Aurora. |
 | Schemat JSON `schemaVersion: 1`, camelCase | POTWIERDZONE JAKO KONTRAKT API | Zdefiniowane w `m1a-kontrakt-suplement-codex.md`, testowane natywnie i przez Node/WASM. |
 | Mesh/skin/controllers/animations payload | NIE WIEM W M1A | Celowo poza zakresem; M1B. |
@@ -70,7 +71,7 @@ Pierwotna kolejnosc argumentow `wasm-pack test crates/m2a-wasm --node` nie jest 
 - root nachodzacy na ModelHeader;
 - cykl/repeated node;
 - `used > allocated` oraz nieograniczony allocated count;
-- OOB `p_geometry`, controller keys i controller data;
+- runtime `geometry_ptr`/`parent_ptr` nie steruja relacja drzewa; OOB controller keys i controller data jest odrzucane;
 - overflow `offset + size` i `count * element_size`;
 - przekroczenie i dokladna granica kazdego `ParserLimits`;
 - niemutowalnosc inputu;

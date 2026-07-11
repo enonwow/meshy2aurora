@@ -548,13 +548,12 @@ Najwazniejsze dodatki to `attempt_id`, `stop_condition`, `expected_artifacts`, `
 
 ```yaml
 next_stage:
-  id: "M1B"
-  action: "po checkpoint commit/push M1A uruchom deep reference reader: syntetyczne sekcje mesh/skin/controllers/animations, env-gated corpus i pakiety P-REF"
-  status: "READY po M1A DONE 2026-07-11"
+  id: "M1C"
+  action: "zaimplementowac wlasny read-only HAK/ERF V1.0 resource locator, synthetic lookup tests, stable missing-resource diagnostic i env-gated local integration; potem oddac sterowanie do M1B dla canonical P-REF"
+  status: "IN_PROGRESS attempt M1C-20260711-01 po zielonym synthetic checkpoint M1B; M1B pozostaje VERIFYING, nie DONE"
   do_not_start_in_parallel:
-    - "M1C implementation"
     - "M2 implementation"
     - "MDL writer"
     - "Studio UI"
-  success_signal: "deep-section fixtures + wielomodelowy raport readera + P-REF packets bez skopiowanych payloadow"
+  success_signal: "synthetic HAK lookup + stable missing-resource diagnostic + clean env skip/local read-only integration, bez payloadow w Git; nastepnie M1B canonical P-REF R1/R3"
 ```

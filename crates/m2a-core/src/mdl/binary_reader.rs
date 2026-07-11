@@ -9,9 +9,37 @@ impl<'a> BinaryReader<'a> {
         Self { bytes }
     }
 
+    pub(crate) fn read_u8(&self, offset: usize, context: &str) -> Result<u8, ParseError> {
+        Ok(self.read_slice(offset, 1, context)?[0])
+    }
+
+    pub(crate) fn read_i8(&self, offset: usize, context: &str) -> Result<i8, ParseError> {
+        Ok(self.read_u8(offset, context)? as i8)
+    }
+
+    pub(crate) fn read_u16(&self, offset: usize, context: &str) -> Result<u16, ParseError> {
+        let bytes = self.read_slice(offset, 2, context)?;
+        Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
+    }
+
+    pub(crate) fn read_i16(&self, offset: usize, context: &str) -> Result<i16, ParseError> {
+        let bytes = self.read_slice(offset, 2, context)?;
+        Ok(i16::from_le_bytes([bytes[0], bytes[1]]))
+    }
+
     pub(crate) fn read_u32(&self, offset: usize, context: &str) -> Result<u32, ParseError> {
         let bytes = self.read_slice(offset, 4, context)?;
         Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+    }
+
+    pub(crate) fn read_i32(&self, offset: usize, context: &str) -> Result<i32, ParseError> {
+        let bytes = self.read_slice(offset, 4, context)?;
+        Ok(i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+    }
+
+    pub(crate) fn read_f32(&self, offset: usize, context: &str) -> Result<f32, ParseError> {
+        let bytes = self.read_slice(offset, 4, context)?;
+        Ok(f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
     }
 
     pub(crate) fn read_fixed_string(
