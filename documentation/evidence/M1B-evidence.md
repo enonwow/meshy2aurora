@@ -214,3 +214,43 @@ bugs: []
 ### Nastepny krok
 
 Ustawic M1B na `VERIFYING`, aktywowac M1C jako `IN_PROGRESS` z attempt `M1C-20260711-01`, a po locatorze wrocic do M1B dla canonical P-REF. M1B nie jest `DONE`.
+
+## M1B-20260711-02 - canonical M1C handback
+
+Status: IN_PROGRESS, NIE DONE
+Owner: Codex orchestrator + M1B implementation/review subagents
+Stage: M1B
+
+### Cel proby
+
+Przyjac zweryfikowany locator M1C i canonical own-reader P-REF R1/R3, a nastepnie wybrac R4-R6 i dostarczyc brakujace GB-001-SKIN boundary evidence.
+
+### Handback z M1C
+
+- M1C ma status `DONE`: 18 synthetic ERF tests i 1 canonical env test sa zielone, piec findings ma status `FIXED`, finalny re-review nie znalazl findings.
+- R1/R3 sa odczytane in-place przez own HAK locator, przekazane jako borrowed slices do own MDL readera i zwiazane z P-REF bez extraction.
+- Exact resource ID, container offset/size, SHA-256 oraz MDL core/raw ranges sa zapisane w `documentation/evidence/M1C-evidence.md`.
+- Canonical packets nie zawieraja host path, `payload`/`bytes`, retail/CEP payloadu ani binaries.
+
+### Canonical R1/R3 status
+
+| Ref | Resref/type | Resource ID | Container range | SHA-256 | Status |
+|---|---|---:|---|---|---|
+| R1 | `c_kocrachn` / 2002 | 724 | `[179725952,179889144)` | `f16426310f826ae2ab15034ac979c65f812ee8bda0d13ee459bf2b293d7db270` | CANONICAL_OWN_READER_PASS |
+| R3a | `c_phod_horror_b` / 2002 | 1026 | `[264142176,264988240)` | `62ab1f512f709f9acd0fe0c5deb9bc65691277c848799d261086bc3d63b28f2a` | CANONICAL_OWN_READER_PASS |
+| R3b | `c_phod_horror_p` / 2002 | 1027 | `[264988240,265834304)` | `09e43ee9493d2fe2bbf9cbeb44f24dcb999e5f38e651bdc79eefdd5e1f19722f` | CANONICAL_OWN_READER_PASS |
+
+`M1B-BUG-001` pozostaje `FIXED`: canonical packets przechodza own reader, a runtime `parent_ptr`/`geometry_ptr` nie sa interpretowane jako serialized parentage. R1/R3 nie sa juz `PENDING_CANONICAL_M1C_P-REF`.
+
+### Pozostale problemy
+
+```yaml
+current_problems:
+  - "R4-R6 musza zostac wybrane z canonical inventory i uruchomione przez own locator/reader."
+  - "GB-001-SKIN wymaga canonical legacy17/extended64 boundary evidence, w tym rozstrzygniecia lub jawnej klasyfikacji 0xffff przy zerowej wadze."
+bugs: []
+```
+
+### Nastepny krok
+
+Wybrac R4-R6 z canonical inventory, preferujac kandydatow zamykajacych oba warianty skin i bind-pose/bone-ref boundary, potem uruchomic P-REF. M1B pozostaje `IN_PROGRESS`, nie `DONE`.

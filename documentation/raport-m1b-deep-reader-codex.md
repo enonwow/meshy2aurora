@@ -1,10 +1,10 @@
 # Raport M1B - deep binary MDL reader
 
-Data: 2026-07-11 | Autor: Codex | Status: VERIFYING, NIE DONE
+Data: 2026-07-11 | Autor: Codex | Status: IN_PROGRESS, NIE DONE
 
 ## 1. Wynik checkpointu
 
-Synthetic M1B checkpoint jest zielony. Deep reader, pure-bytes P-REF contract i publiczna granica WASM przeszly aktualna macierz native/Node. M1B nie jest `DONE`: canonical own-reader P-REF R1/R3, wybor R4-R6 i evidence GB-001-SKIN wymagaja najpierw wlasnego locatora M1C.
+Synthetic M1B checkpoint jest zielony, a M1C locator zostal zamkniety. Canonical own-locator/own-reader P-REF R1/R3 przechodzi z exact IDs, offsetami, hashami i core/raw ranges. M1B jest ponownie `IN_PROGRESS` i nie jest `DONE`: pozostaja wybor canonical R4-R6 oraz evidence GB-001-SKIN.
 
 ## 2. Zaimplementowane funkcje
 
@@ -23,7 +23,8 @@ Synthetic M1B checkpoint jest zielony. Deep reader, pure-bytes P-REF contract i 
 
 | Command | Actual | Status |
 |---|---|---|
-| `cargo test --workspace` | 49 native tests: 2 unit + 34 MDL + 13 P-REF; 0 failed | PASS |
+| `cargo test --workspace` | 67 synthetic/native tests: 2 unit + 18 ERF + 34 MDL + 13 P-REF; 0 failed | PASS |
+| canonical env integration | 1 R1/R3 HAK locator/P-REF test; 0 failed | PASS |
 | `wasm-pack test --node crates/m2a-wasm` | 4 Node/WASM tests; 0 failed | PASS |
 | `cargo fmt --all -- --check` | brak roznic formatowania | PASS |
 | `cargo clippy --workspace --all-targets -- -D warnings` | brak warnings | PASS |
@@ -41,18 +42,18 @@ Synthetic M1B checkpoint jest zielony. Deep reader, pure-bytes P-REF contract i 
 
 - Syntetyczne builders sa jedynymi payloadami testowymi w repo.
 - Nie dodano retail/CEP MDL, MDX, tekstur, animacji, szkieletow ani extracted HAK/BIF payloadow.
-- Container-level R1/R2/R3 hashes pozostaja inventory, nie canonical own-reader P-REF.
+- R1/R3 sa canonical own-locator/own-reader P-REF; exact identity i ranges sa w `documentation/evidence/M1C-evidence.md`. R2 KEY/BIF pozostaje opcjonalny.
 - P-REF identity nie zapisuje prywatnych host paths i rekurencyjnie odrzuca payload/bytes keys.
 
 ## 6. Real-binary correction
 
-Pierwszy read-only real-binary smoke ujawnil, ze runtime `parent_ptr` nie jest serialized core pointerem. Poprawka wyprowadza parent relationship wylacznie z children traversal. Regresja jest zielona i finding ma status `FIXED`; ponowienie na canonical bytes nastapi po M1C.
+Pierwszy read-only real-binary smoke ujawnil, ze runtime `parent_ptr` nie jest serialized core pointerem. Poprawka wyprowadza parent relationship wylacznie z children traversal. Regresja i canonical R1/R3 handback sa zielone; finding ma status `FIXED`.
 
 ## 7. Pozostaly warunek M1B
 
-M1B pozostaje `VERIFYING`. Nastepna sekwencja jest obowiazkowa:
+M1B pozostaje `IN_PROGRESS`. Nastepna sekwencja jest obowiazkowa:
 
-1. M1C implementuje wlasny read-only HAK/ERF locator;
-2. M1B wraca do `IN_PROGRESS` dla canonical P-REF R1/R3;
-3. M1B wybiera R4-R6 i zamyka albo jawnie klasyfikuje GB-001-SKIN;
-4. dopiero finalne evidence moze promowac M1B z `VERIFYING` do `DONE`.
+1. M1B wybiera R4-R6 z canonical inventory;
+2. own locator/reader buduje ich P-REF i zamyka wymagane rodziny;
+3. M1B zamyka albo jawnie klasyfikuje GB-001-SKIN;
+4. dopiero finalne evidence moze przeniesc M1B przez `VERIFYING` do `DONE`.

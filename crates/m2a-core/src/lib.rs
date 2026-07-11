@@ -1,5 +1,6 @@
 //! Format-safe core for the standalone Meshy-to-Aurora pipeline.
 
+pub mod erf;
 pub mod mdl;
 pub mod reference_proof;
 
