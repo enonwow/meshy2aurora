@@ -125,7 +125,7 @@ Testy musza pokrywac co najmniej:
 7. arithmetic overflow i count*element_size overflow sa odrzucane stabilnym kodem;
 8. obciety input nie powoduje panic;
 9. przekroczenie `ParserLimits` zwraca `M2A-LIMIT-EXCEEDED`;
-10. `wasm-bindgen-test` uruchamiany przez `wasm-pack test crates/m2a-wasm --node` rzeczywiscie wywoluje publiczne API adaptera.
+10. `wasm-bindgen-test` uruchamiany przez `wasm-pack test --node crates/m2a-wasm` rzeczywiscie wywoluje publiczne API adaptera.
 
 Uzyj czytelnych, stabilnych kodow diagnostycznych, np.:
 - M2A-MDL-HEADER-INVALID
@@ -138,7 +138,7 @@ KRYTERIA AKCEPTACJI
 - `cargo clippy --workspace --all-targets -- -D warnings` przechodzi;
 - `cargo test --workspace` przechodzi;
 - `cargo build -p m2a-wasm --target wasm32-unknown-unknown` przechodzi;
-- `wasm-pack test crates/m2a-wasm --node` przechodzi i wywoluje publiczny adapter WASM;
+- `wasm-pack test --node crates/m2a-wasm` przechodzi i wywoluje publiczny adapter WASM;
 - publiczny adapter WASM dla syntetycznej fixture zwraca poprawny JSON albo czytelny kod bledu;
 - parser nie wykonuje zapisu do inputu;
 - brak importow, CLI/subprocess, dostepu do DOM/filesystemu/sieci i fixture payloadow z aurora-web;

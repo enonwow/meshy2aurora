@@ -188,7 +188,7 @@ M1A:
   - "cargo fmt --all --check and clippy with warnings denied"
   - "cargo test --workspace"
   - "cargo build -p m2a-wasm --target wasm32-unknown-unknown"
-  - "wasm-pack test crates/m2a-wasm --node executes the public adapter"
+  - "wasm-pack test --node crates/m2a-wasm executes the public adapter"
   - "synthetic MDL report is deterministic through the WASM adapter"
 S1:
   - "selected local file is processed without upload"

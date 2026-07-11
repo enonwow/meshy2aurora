@@ -34,6 +34,8 @@ Aktualny kierunek po audycie 2026-07-09:
 - [orchestrator-state.yaml](orchestrator-state.yaml) - maszynowy aktualny stan etapow, blockerow, problemow, bledow i evidence.
 - [evidence/README.md](evidence/README.md) - append-only szablon dowodow dla jednego etapu.
 - [prompt-dla-claude-prototyp-parsera.md](prompt-dla-claude-prototyp-parsera.md) - gotowy prompt dla Claude: prototype M1a parsera binary MDL.
+- [m1a-kontrakt-suplement-codex.md](m1a-kontrakt-suplement-codex.md) - aktywne rozstrzygniecia schematu JSON, bledow, offsetow i roli orkiestratora dla M1A.
+- [prototyp-parsera-m1a-claude.md](prototyp-parsera-m1a-claude.md) - wynik implementacji M1A, klasyfikacja pol, testy, ograniczenia i changed files.
 - [przyszle-featurey-studio-codex.md](przyszle-featurey-studio-codex.md) - backlog Studio po MVP: diagnostyka, materialy, geometria, rig, animacje i proof packet.
 - [neverblender-audyt-2026-07-09-codex.md](neverblender-audyt-2026-07-09-codex.md) - audyt NeverBlender jako narzedzia pomocniczego/debug dla modeli NWN/Aurora.
 - [repozytoria-pomocnicze-2026-07-09-codex.md](repozytoria-pomocnicze-2026-07-09-codex.md) - mapa repozytoriow drugiej linii po Aurora First.

@@ -225,7 +225,7 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo build -p m2a-wasm --target wasm32-unknown-unknown
-wasm-pack test crates/m2a-wasm --node
+wasm-pack test --node crates/m2a-wasm
 git diff --check
 ```
 
@@ -261,7 +261,7 @@ ci:
     runner: "ubuntu-latest"
     commands:
       - "cargo build -p m2a-wasm --target wasm32-unknown-unknown"
-      - "wasm-pack test crates/m2a-wasm --node"
+      - "wasm-pack test --node crates/m2a-wasm"
   hygiene:
     commands:
       - "git diff --check"

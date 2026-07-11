@@ -1,0 +1,8 @@
+* text=auto eol=lf
+
+*.hak binary
+*.mod binary
+*.mdl binary
+*.mdx binary
+*.png binary
+*.tga binary

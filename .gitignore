@@ -1,0 +1,11 @@
+/target/
+**/pkg/
+node_modules/
+*.tmp
+*.log
+
+# Local proof payloads are generated or selected at runtime and are never fixtures.
+/proof-output/
+/local-reference-assets/
+*.hak
+*.mod

@@ -19,11 +19,11 @@ status_vocabulary:
   - "SUPERSEDED"
 
 orchestration:
-  active_stage: "P0"
-  next_ready_stage: "M1A after explicit P0 scope acceptance"
-  next_action: "Await explicit owner approval: start M1A. Rust 1.96.1, the wasm32 target and wasm-pack 0.15.0 were verified locally on 2026-07-11."
+  active_stage: "NONE"
+  next_ready_stage: "M1B, M1C and M2 are READY; select only one after the M1A checkpoint push"
+  next_action: "Commit and push the completed M1A checkpoint, then activate M1B as the next evidence-critical stage."
   one_active_stage_only: true
-  current_attempt_id: "P0-20260711-01"
+  current_attempt_id: "M1A-20260711-01-COMPLETE"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
   done_rule: "A stage may be DONE only when every definition_of_done item has evidence."
   stop_rule: "Stop and mark BLOCKED when a needed Aurora fact, decision, local tool state, or proof artifact is missing. Do not guess."
@@ -55,7 +55,7 @@ global_blockers:
     affects: ["M1A", "M1B", "M1C", "M2", "M3", "M4", "M5", "M6", "M7"]
     owner: "Mateusz + Codex"
     source: "documentation/decyzje-i-zadania-cloud.md D11/D12; local check 2026-07-11"
-    next_action: "Copy the verified version output into M1A evidence when M1A starts; no toolchain action remains."
+    next_action: "Keep the pinned versions in CI and reopen only if the toolchain changes. M1A evidence already records the verified versions."
   - id: "GB-004"
     severity: "P0"
     status: "DIRECTION_DEFINED_RUNTIME_OPEN"
@@ -77,19 +77,15 @@ global_blockers:
 
 stages:
   P0:
-    status: "IN_PROGRESS"
-    status_reason: "The readiness gate, orchestration contract, full-pipeline knowledge direction and required local toolchain are prepared. Only explicit M1A start approval remains; later runtime proofs stay assigned to their stages."
+    status: "DONE"
+    status_reason: "The owner explicitly approved the implementation goal and start of M1A on 2026-07-11. The readiness gate, orchestration contract, knowledge direction and local toolchain are prepared; later runtime proofs remain assigned to their stages."
     owner: "Codex + Mateusz"
     risk: "MEDIUM"
     dependencies: []
-    current_problems:
-      - "GB-001 direction is defined; its skin-variant/readback/runtime evidence remains staged."
-      - "GB-004 append-only direction is defined; runtime resolution proof remains staged."
-      - "GB-005 self-contained direction is defined; gameplay/event proof remains staged."
+    current_problems: []
     bugs: []
     next_actions:
-      - "Review and accept the readiness audit and this orchestration contract."
-      - "Hand off the Rust M1A prompt after P0 scope acceptance."
+      - "Keep GB-001, GB-004 and GB-005 evidence work in their assigned later stages."
     evidence:
       - "documentation/plan-implementacji-orkiestrator-codex.md"
       - "documentation/orchestrator-state.yaml"
@@ -127,21 +123,23 @@ stages:
       - "documentation/hak-2da-gff-crosswalk-codex.md"
 
   M1A:
-    status: "BLOCKED"
-    status_reason: "Awaiting only explicit P0 scope acceptance. Rust/WASM prerequisites were verified on 2026-07-11; no code has started."
-    owner: "Claude"
+    status: "DONE"
+    status_reason: "The structural parser, synthetic fixtures, public WASM adapter, CI and evidence passed the full M1A Definition of Done on 2026-07-11. Independent re-review after all P1/P2 fixes reported no findings."
+    owner: "Codex orchestrator + M1A implementation subagents"
     risk: "LOW"
     dependencies: ["P0 scope acceptance"]
-    current_problems:
-      - "P0-ACCEPT: owner has not yet issued explicit `start M1A`."
+    current_problems: []
     bugs: []
     next_actions:
-      - "After explicit `start M1A`, implement only the M1A prompt scope: workspace, synthetic tests and the minimum checked parser."
-      - "Write documentation/prototyp-parsera-m1a-claude.md with evidence."
+      - "Preserve M1A as the structural foundation and open deep-section work only under M1B."
     evidence:
       - "documentation/prompt-dla-claude-prototyp-parsera.md"
+      - "documentation/m1a-kontrakt-suplement-codex.md"
+      - "documentation/prototyp-parsera-m1a-claude.md"
+      - "documentation/evidence/M1A-evidence.md"
     documentation:
       - "documentation/standalone-odpowiedz-codex.md"
+      - "documentation/m1a-kontrakt-suplement-codex.md"
       - "documentation/architektura-web-wasm-codex.md"
       - "documentation/evidence/M1A-evidence.md"
     expected_artifacts:
@@ -149,48 +147,75 @@ stages:
       - "cargo test --workspace and WASM target build output"
       - "wasm-pack Node test output proving the public adapter executes"
       - "deterministic inspect-mdl JSON report"
-    changed_files: []
+    changed_files:
+      - ".gitattributes"
+      - ".github/workflows/ci.yml"
+      - ".gitignore"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "rust-toolchain.toml"
+      - "crates/m2a-core/Cargo.toml"
+      - "crates/m2a-core/src/lib.rs"
+      - "crates/m2a-core/src/mdl/mod.rs"
+      - "crates/m2a-core/src/mdl/binary_reader.rs"
+      - "crates/m2a-core/src/mdl/errors.rs"
+      - "crates/m2a-core/src/mdl/types.rs"
+      - "crates/m2a-core/src/mdl/parse_binary_mdl.rs"
+      - "crates/m2a-core/tests/mdl.rs"
+      - "crates/m2a-core/tests/fixtures/build_minimal_binary_mdl.rs"
+      - "crates/m2a-core/tests/mdl/parser.rs"
+      - "crates/m2a-wasm/Cargo.toml"
+      - "crates/m2a-wasm/src/lib.rs"
+      - "documentation/README.md"
+      - "documentation/architektura-web-wasm-codex.md"
+      - "documentation/audyt-gotowosci-startowej-2026-07-10-codex.md"
+      - "documentation/plan-implementacji-orkiestrator-codex.md"
+      - "documentation/orchestrator-state.yaml"
+      - "documentation/evidence/M1A-evidence.md"
+      - "documentation/m1a-kontrakt-suplement-codex.md"
+      - "documentation/prompt-dla-claude-prototyp-parsera.md"
+      - "documentation/prototyp-parsera-m1a-claude.md"
 
   M1B:
-    status: "NOT_STARTED"
-    status_reason: "Requires M1A parser foundation."
+    status: "READY"
+    status_reason: "M1A is DONE. M1B is the next evidence-critical stage and may start after the M1A checkpoint push."
     owner: "implementation agent"
     risk: "HIGH"
     dependencies: ["M1A DONE", "Aurora First layout anchors"]
     current_problems:
       - "Deep binary sections are not implemented."
     bugs: []
-    next_actions: ["Wait for M1A evidence."]
+    next_actions: ["Activate M1B after the M1A checkpoint push; begin with synthetic deep-section fixtures and corpus manifest/provenance."]
     evidence: []
     documentation: ["documentation/evidence/M1B-evidence.md", "documentation/korpus-referencyjny-mdl-codex.md"]
     expected_artifacts: ["Synthetic deep-section fixtures", "Multi-model reference inspection report", "P-REF packets with own-reader invariants", "Reference corpus manifest without payloads"]
     changed_files: []
 
   M1C:
-    status: "NOT_STARTED"
-    status_reason: "Requires M1A parser foundation."
+    status: "READY"
+    status_reason: "M1A is DONE; keep M1C inactive while M1B is the selected next stage."
     owner: "implementation agent"
     risk: "MEDIUM"
     dependencies: ["M1A DONE"]
     current_problems:
       - "No own HAK/ERF reader exists."
     bugs: []
-    next_actions: ["Wait for M1A evidence."]
+    next_actions: ["Remain READY but inactive until the orchestrator completes M1B or explicitly changes stage order."]
     evidence: []
     documentation: ["documentation/evidence/M1C-evidence.md"]
     expected_artifacts: ["Synthetic HAK reader tests", "Env-gated reference lookup"]
     changed_files: []
 
   M2:
-    status: "NOT_STARTED"
-    status_reason: "Requires parser foundation and the selected Rust toolchain."
+    status: "READY"
+    status_reason: "M1A is DONE and the Rust/WASM toolchain is verified; keep M2 inactive while M1B is selected next."
     owner: "implementation agent"
     risk: "MEDIUM"
     dependencies: ["M1A DONE", "GB-003 resolved"]
     current_problems:
       - "No canonical AuroraAssetIR schema or GLB fixture exists."
     bugs: []
-    next_actions: ["Do not start before M1A and Rust toolchain installation."]
+    next_actions: ["Remain READY but inactive until the orchestrator completes M1B and M1C or explicitly changes stage order."]
     evidence: []
     documentation: ["documentation/evidence/M2-evidence.md"]
     expected_artifacts: ["AuroraAssetIR schema", "Axis/UV fixtures", "GLB inspection report"]

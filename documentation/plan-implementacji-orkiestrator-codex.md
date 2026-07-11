@@ -71,6 +71,7 @@ orchestrator_rules:
   scope_rule: "nie promuj future Studio features przed M6 proof"
   documentation_rule: "kazda zmiana statusu ma aktualizowac YAML; kazdy wazny proof dopisuje evidence"
   proof_rule: "NWN EE Toolset/game jest koncowym proofem native output; preview nigdy go nie zastepuje"
+  git_checkpoint_rule: "po kazdej wiekszej funkcjonalnosci, ktora przeszla swoje gate'y, wykonaj osobny spojny commit i push z opisem zakresu, testow i evidence; nie lacz kilku duzych funkcji w jeden commit"
 ```
 
 ## 5. Mapa etapow
@@ -164,7 +165,7 @@ definition_of_done:
   - "cargo clippy --workspace --all-targets -- -D warnings passes"
   - "cargo test --workspace passes"
   - "cargo build -p m2a-wasm --target wasm32-unknown-unknown passes"
-  - "wasm-pack test crates/m2a-wasm --node executes the public adapter and passes"
+  - "wasm-pack test --node crates/m2a-wasm executes the public adapter and passes"
   - "WASM adapter emits deterministic report or stable error code"
   - "invalid header, pointer OOB and node cycle tests pass"
   - "arithmetic overflow, parser limit and truncated-input no-panic tests pass"
@@ -547,11 +548,13 @@ Najwazniejsze dodatki to `attempt_id`, `stop_condition`, `expected_artifacts`, `
 
 ```yaml
 next_stage:
-  id: "M1A"
-  action: "przejrzyj readiness gate, zainstaluj Rust 1.96.1 + wasm32 target + wasm-pack 0.15.0, potem przekaz prompt M1A"
+  id: "M1B"
+  action: "po checkpoint commit/push M1A uruchom deep reference reader: syntetyczne sekcje mesh/skin/controllers/animations, env-gated corpus i pakiety P-REF"
+  status: "READY po M1A DONE 2026-07-11"
   do_not_start_in_parallel:
-    - "M1B implementation"
+    - "M1C implementation"
+    - "M2 implementation"
     - "MDL writer"
     - "Studio UI"
-  success_signal: "scaffold + synthetic parser tests + deterministic inspect-mdl JSON report"
+  success_signal: "deep-section fixtures + wielomodelowy raport readera + P-REF packets bez skopiowanych payloadow"
 ```
