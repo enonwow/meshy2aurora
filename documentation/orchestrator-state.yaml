@@ -20,8 +20,8 @@ status_vocabulary:
 
 orchestration:
   active_stage: "P0"
-  next_ready_stage: null
-  next_action: "Review the readiness gate, install Rust 1.96.1 with the wasm32 target and wasm-pack 0.15.0, then unblock M1A."
+  next_ready_stage: "M1A after explicit P0 scope acceptance"
+  next_action: "Await explicit owner approval: start M1A. Rust 1.96.1, the wasm32 target and wasm-pack 0.15.0 were verified locally on 2026-07-11."
   one_active_stage_only: true
   current_attempt_id: "P0-20260711-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
@@ -49,13 +49,13 @@ global_blockers:
     next_action: "Implement the profile-A layout in M4, verify with own readback, then confirm in NWN EE during M6. Reopen only for a different model family with contrary Aurora First evidence."
   - id: "GB-003"
     severity: "P1"
-    status: "OPEN"
-    title: "Rust 1.96.1 toolchain unavailable"
-    detail: "Rust 1.96.1, cargo, the wasm32-unknown-unknown target and wasm-pack 0.15.0 are required, but are not installed. MSVC 14.50 and Windows SDK 10.0.26100.0 are present."
+    status: "RESOLVED"
+    title: "Rust 1.96.1 WASM toolchain verified"
+    detail: "Verified locally on 2026-07-11 in C:\\Projects\\meshy2aurora: rustc/cargo 1.96.1, rustfmt, clippy, wasm32-unknown-unknown and wasm-pack 0.15.0. Node 24.15.0 and npm 11.12.0 are also available for the M1A Node smoke test."
     affects: ["M1A", "M1B", "M1C", "M2", "M3", "M4", "M5", "M6", "M7"]
     owner: "Mateusz + Codex"
     source: "documentation/decyzje-i-zadania-cloud.md D11/D12; local check 2026-07-11"
-    next_action: "Install Rust 1.96.1 with rustfmt, clippy and wasm32-unknown-unknown plus wasm-pack 0.15.0, then record versions in M1A evidence."
+    next_action: "Copy the verified version output into M1A evidence when M1A starts; no toolchain action remains."
   - id: "GB-004"
     severity: "P0"
     status: "DIRECTION_DEFINED_RUNTIME_OPEN"
@@ -78,19 +78,17 @@ global_blockers:
 stages:
   P0:
     status: "IN_PROGRESS"
-    status_reason: "The readiness gate, orchestration contract and full-pipeline knowledge direction are prepared. Toolchain installation and explicit M1A start approval remain open; later runtime proofs stay assigned to their stages."
+    status_reason: "The readiness gate, orchestration contract, full-pipeline knowledge direction and required local toolchain are prepared. Only explicit M1A start approval remains; later runtime proofs stay assigned to their stages."
     owner: "Codex + Mateusz"
     risk: "MEDIUM"
     dependencies: []
     current_problems:
       - "GB-001 direction is defined; its skin-variant/readback/runtime evidence remains staged."
-      - "GB-003 Rust 1.96.1, its WASM target and wasm-pack 0.15.0 are not installed."
       - "GB-004 append-only direction is defined; runtime resolution proof remains staged."
       - "GB-005 self-contained direction is defined; gameplay/event proof remains staged."
     bugs: []
     next_actions:
       - "Review and accept the readiness audit and this orchestration contract."
-      - "Install Rust 1.96.1 with the WASM target and wasm-pack 0.15.0 before starting M1A."
       - "Hand off the Rust M1A prompt after P0 scope acceptance."
     evidence:
       - "documentation/plan-implementacji-orkiestrator-codex.md"
@@ -130,18 +128,15 @@ stages:
 
   M1A:
     status: "BLOCKED"
-    status_reason: "Rust/WASM was selected, but rustc, cargo, the WASM target and wasm-pack are not installed. No code has started."
+    status_reason: "Awaiting only explicit P0 scope acceptance. Rust/WASM prerequisites were verified on 2026-07-11; no code has started."
     owner: "Claude"
     risk: "LOW"
     dependencies: ["P0 scope acceptance"]
     current_problems:
-      - "GB-003: Rust 1.96.1 WASM toolchain is unavailable on this machine."
-      - "wasm-pack 0.15.0 is unavailable, so the JavaScript/WASM boundary cannot be executed yet."
-      - "Repository has no Cargo workspace, m2a-core/m2a-wasm crates, source files or tests."
-      - "No synthetic binary MDL fixture builder exists."
+      - "P0-ACCEPT: owner has not yet issued explicit `start M1A`."
     bugs: []
     next_actions:
-      - "Install Rust 1.96.1 with the WASM target and wasm-pack 0.15.0, then implement only the M1A prompt scope."
+      - "After explicit `start M1A`, implement only the M1A prompt scope: workspace, synthetic tests and the minimum checked parser."
       - "Write documentation/prototyp-parsera-m1a-claude.md with evidence."
     evidence:
       - "documentation/prompt-dla-claude-prototyp-parsera.md"

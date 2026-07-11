@@ -14,10 +14,10 @@ readiness:
   canonical_repository: "READY"
   documentation_inventory: "READY after fixes recorded in this audit"
   full_pipeline_knowledge_direction: "READY; runtime evidence remains staged"
-  local_toolchain: "BLOCKED: rustup/rustc/cargo/wasm-pack missing"
+  local_toolchain: "READY: Rust/Cargo 1.96.1, wasm32 target, rustfmt, clippy and wasm-pack 0.15.0 verified 2026-07-11"
   repository_scaffold: "NOT_STARTED"
   native_runtime_proof_environment: "READY for later manual proof"
-  M1A_start: "READY_AFTER_P0_GATES"
+  M1A_start: "READY_AFTER_P0_ACCEPTANCE"
   M4_writer: "DIRECTION READY; implementation/readback/runtime evidence pending"
   M4A_animations: "DIRECTION READY; state/event/runtime evidence pending"
   M5_2DA_HAK: "DIRECTION READY; generated module runtime evidence pending"
@@ -25,10 +25,11 @@ readiness:
 
 Initial documentation baseline i kolejne knowledge updates zostaly zapisane oraz wypchniete na `codex/docs-readiness-baseline`. Stan `main` nie zawiera jeszcze tej serii dokumentacji; przed M1A wlasciciel wybiera merge do `main` albo jawnie zatwierdza kontynuacje implementacji na obecnej galezi. Nie zmieniamy `main` bez osobnego polecenia.
 
-M1A moze zaczac po dwoch pozostalych gate'ach:
+M1A moze zaczac po jednym pozostalym gate'ie:
 
 1. jawnej zgodzie wlasciciela `start M1A` po przegladzie aktualnej dokumentacji;
-2. instalacji i weryfikacji Rust 1.96.1 oraz `wasm-pack 0.15.0`.
+
+Lokalna weryfikacja z 2026-07-11 potwierdza: `rustc`/`cargo` 1.96.1, `rustfmt`, `clippy`, target `wasm32-unknown-unknown`, `wasm-pack` 0.15.0, Node 24.15.0 oraz npm 11.12.0. Instalacja Rust/WASM nie jest juz gate'em startowym.
 
 Minimalny Cargo workspace z sekcji 6 jest pierwszym krokiem M1A po zgodzie, a nie czynnoscia wykonywana teraz w ramach dokumentacji.
 
@@ -321,7 +322,7 @@ forbidden:
 | ID | Decyzja/brak | Blokuje teraz | Owner | Warunek zamkniecia |
 |---|---|---|---|---|
 | P0-ACCEPT | Akceptacja aktualnego planu i gate M1A | start M1A | Mateusz | jawne `start M1A` po przegladzie dokumentacji |
-| GB-003 | Instalacja Rust/WASM/wasm-pack | start M1A | Mateusz + Codex | wszystkie komendy z sekcji 5 przechodza |
+| GB-003 | Rust/WASM/wasm-pack | zamkniete 2026-07-11 | Mateusz + Codex | zweryfikowano: Rust/Cargo 1.96.1, rustfmt, clippy, `wasm32-unknown-unknown`, `wasm-pack` 0.15.0; Node 24.15.0 |
 | GB-001 | Runtime evidence binary writera i wariant skin 17/64 | M4+ | Codex | M1B corpus report + semantic write/readback + Toolset/game |
 | GB-004 | Runtime proof append-only `appearance.2da` i generated HAK/module | M5+ | Codex | own readback + `Appearance_Type`/RACE resolution w grze |
 | GB-005 | Runtime proof self-contained animacji wybranego profilu | M4A+ | Codex | motion/state/event proof bez kopiowania external payloads |
@@ -336,14 +337,13 @@ Brak prawdziwego Meshy GLB, prompty 2D i budzet API nie blokuja M1A.
 ```text
 1. Review the committed readiness and knowledge contracts
 2. Receive explicit owner approval: start M1A
-3. Install Rust 1.96.1 + wasm32 target + wasm-pack 0.15.0
-4. Record tool versions in M1A evidence
-5. Scaffold only Cargo workspace, CI and repository hygiene files
-6. Write failing synthetic M1A tests
-7. Implement minimum checked parser
-8. Pass native + WASM/Node gates
-9. Update orchestrator-state.yaml and M1A evidence
-10. Only then open M1B/M1C
+3. Record the already verified tool versions in M1A evidence
+4. Scaffold only Cargo workspace, CI and repository hygiene files
+5. Write failing synthetic M1A tests
+6. Implement minimum checked parser
+7. Pass native + WASM/Node gates
+8. Update orchestrator-state.yaml and M1A evidence
+9. Only then open M1B/M1C
 ```
 
 Nie zaczynac rownolegle writera, HAK writera, React UI ani integracji Meshy API.
