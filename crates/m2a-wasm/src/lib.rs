@@ -21,13 +21,36 @@ pub fn inspect_binary_mdl(bytes: &[u8]) -> String {
     }
 }
 
+/// Inspects a GLB selected by JavaScript with the default project guardrails.
+///
+/// This adapter owns only the JS/WASM boundary and JSON encoding. GLB parsing,
+/// validation, gates and diagnostics remain exclusively in `m2a-core`.
+#[wasm_bindgen(js_name = inspectGlb)]
+pub fn inspect_glb(bytes: &[u8]) -> String {
+    match m2a_core::glb::inspect_glb(bytes, &m2a_core::glb::GlbLimits::default()) {
+        Ok(report) => serialize_json(&report),
+        Err(error) => serialize_json(&error),
+    }
+}
+
+/// Ingests a GLB selected by JavaScript into source-preserving AuroraAssetIR.
+///
+/// The adapter deliberately delegates the complete operation to `m2a-core`.
+#[wasm_bindgen(js_name = ingestGlb)]
+pub fn ingest_glb(bytes: &[u8]) -> String {
+    match m2a_core::glb::ingest_glb(bytes, &m2a_core::glb::GlbLimits::default()) {
+        Ok(result) => serialize_json(&result),
+        Err(error) => serialize_json(&error),
+    }
+}
+
 fn serialize_json<T: serde::Serialize>(value: &T) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| SERIALIZATION_ERROR_JSON.to_owned())
 }
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests {
-    use super::inspect_binary_mdl;
+    use super::{ingest_glb, inspect_binary_mdl, inspect_glb};
     use wasm_bindgen_test::*;
 
     #[allow(dead_code)]
@@ -141,6 +164,67 @@ mod wasm_tests {
         }
     }
 
+    #[wasm_bindgen_test]
+    fn public_glb_adapters_match_core_json_and_are_deterministic() {
+        let glb = minimal_synthetic_glb();
+        let original = glb.clone();
+
+        let inspect_first = inspect_glb(&glb);
+        let inspect_second = inspect_glb(&glb);
+        let expected_report =
+            m2a_core::glb::inspect_glb(&glb, &m2a_core::glb::GlbLimits::default())
+                .expect("synthetic GLB report");
+        assert_eq!(inspect_first, inspect_second);
+        assert_eq!(
+            inspect_first,
+            serde_json::to_string(&expected_report).unwrap()
+        );
+
+        let ingest_first = ingest_glb(&glb);
+        let ingest_second = ingest_glb(&glb);
+        let expected_ingest = m2a_core::glb::ingest_glb(&glb, &m2a_core::glb::GlbLimits::default())
+            .expect("synthetic GLB ingest");
+        assert_eq!(ingest_first, ingest_second);
+        assert_eq!(
+            ingest_first,
+            serde_json::to_string(&expected_ingest).unwrap()
+        );
+        assert_eq!(glb, original, "WASM adapters must not mutate source bytes");
+
+        let report: serde_json::Value = serde_json::from_str(&inspect_first).unwrap();
+        assert_eq!(report["schemaVersion"], 1);
+        assert_eq!(report["format"], "GLB_2_0");
+        assert_eq!(report["inventory"]["sceneCount"], 1);
+        assert_eq!(report["statistics"]["triangleCount"], 1);
+        assert_eq!(report["coordinatePolicy"]["storedSpace"], "GLTF_SOURCE");
+
+        let result: serde_json::Value = serde_json::from_str(&ingest_first).unwrap();
+        assert_eq!(result["schemaVersion"], 1);
+        assert_eq!(result["ir"]["schemaVersion"], 1);
+        assert_eq!(
+            result["ir"]["primitives"][0]["indices"],
+            serde_json::json!([0, 1, 2])
+        );
+        assert_eq!(result["report"], report);
+    }
+
+    #[wasm_bindgen_test]
+    fn public_glb_adapters_return_the_same_stable_empty_error_as_core() {
+        let expected =
+            m2a_core::glb::inspect_glb(&[], &m2a_core::glb::GlbLimits::default()).unwrap_err();
+        let expected_json = serde_json::to_string(&expected).unwrap();
+
+        assert_eq!(inspect_glb(&[]), expected_json);
+        assert_eq!(ingest_glb(&[]), expected_json);
+        assert_eq!(inspect_glb(&[]), inspect_glb(&[]));
+        assert_eq!(ingest_glb(&[]), ingest_glb(&[]));
+
+        let error: serde_json::Value = serde_json::from_str(&expected_json).unwrap();
+        assert_eq!(error["schemaVersion"], 1);
+        assert_eq!(error["code"], "M2A-GLB-INPUT-EMPTY");
+        assert!(error["message"].is_string());
+    }
+
     fn minimal_binary_mdl() -> Vec<u8> {
         const FILE_HEADER_SIZE: usize = 0x0c;
         const MODEL_HEADER_SIZE: usize = 0xe8;
@@ -165,6 +249,87 @@ mod wasm_tests {
         write_u32(&mut bytes, root + 0x6c, 0x001);
 
         bytes
+    }
+
+    fn minimal_synthetic_glb() -> Vec<u8> {
+        let positions = [[0.0_f32, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let normals = [[0.0_f32, 0.0, 1.0]; 3];
+        let uv0 = [[0.0_f32, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        let indices = [0_u16, 1, 2];
+        let mut bin = Vec::new();
+
+        let positions_offset = bin.len();
+        append_f32_rows(&mut bin, &positions);
+        let positions_length = bin.len() - positions_offset;
+        let normals_offset = bin.len();
+        append_f32_rows(&mut bin, &normals);
+        let normals_length = bin.len() - normals_offset;
+        let uv_offset = bin.len();
+        append_f32_rows(&mut bin, &uv0);
+        let uv_length = bin.len() - uv_offset;
+        let indices_offset = bin.len();
+        for index in indices {
+            bin.extend_from_slice(&index.to_le_bytes());
+        }
+        let indices_length = bin.len() - indices_offset;
+        align4(&mut bin, 0);
+
+        let root = serde_json::json!({
+            "asset": {"version": "2.0", "generator": "m2a-wasm-synthetic"},
+            "scene": 0,
+            "scenes": [{"nodes": [0]}],
+            "nodes": [{"name": "root", "mesh": 0}],
+            "meshes": [{"primitives": [{
+                "attributes": {"POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2},
+                "indices": 3,
+                "mode": 4
+            }]}],
+            "buffers": [{"byteLength": bin.len()}],
+            "bufferViews": [
+                {"buffer": 0, "byteOffset": positions_offset, "byteLength": positions_length},
+                {"buffer": 0, "byteOffset": normals_offset, "byteLength": normals_length},
+                {"buffer": 0, "byteOffset": uv_offset, "byteLength": uv_length},
+                {"buffer": 0, "byteOffset": indices_offset, "byteLength": indices_length}
+            ],
+            "accessors": [
+                {
+                    "bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3",
+                    "min": [0.0, 0.0, 0.0], "max": [1.0, 1.0, 0.0]
+                },
+                {"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC3"},
+                {"bufferView": 2, "componentType": 5126, "count": 3, "type": "VEC2"},
+                {"bufferView": 3, "componentType": 5123, "count": 3, "type": "SCALAR"}
+            ]
+        });
+        let mut json = serde_json::to_vec(&root).unwrap();
+        align4(&mut json, b' ');
+
+        let total_length = 12 + 8 + json.len() + 8 + bin.len();
+        let mut glb = Vec::with_capacity(total_length);
+        glb.extend_from_slice(b"glTF");
+        glb.extend_from_slice(&2_u32.to_le_bytes());
+        glb.extend_from_slice(&(total_length as u32).to_le_bytes());
+        glb.extend_from_slice(&(json.len() as u32).to_le_bytes());
+        glb.extend_from_slice(&0x4e4f_534a_u32.to_le_bytes());
+        glb.extend_from_slice(&json);
+        glb.extend_from_slice(&(bin.len() as u32).to_le_bytes());
+        glb.extend_from_slice(&0x004e_4942_u32.to_le_bytes());
+        glb.extend_from_slice(&bin);
+        glb
+    }
+
+    fn append_f32_rows<const N: usize>(bytes: &mut Vec<u8>, rows: &[[f32; N]]) {
+        for row in rows {
+            for value in row {
+                bytes.extend_from_slice(&value.to_le_bytes());
+            }
+        }
+    }
+
+    fn align4(bytes: &mut Vec<u8>, padding: u8) {
+        while !bytes.len().is_multiple_of(4) {
+            bytes.push(padding);
+        }
     }
 
     fn write_u32(bytes: &mut [u8], offset: usize, value: u32) {

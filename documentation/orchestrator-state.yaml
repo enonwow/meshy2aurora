@@ -1,5 +1,5 @@
 schema_version: 1
-last_updated: "2026-07-11"
+last_updated: "2026-07-12"
 project:
   canonical_repo: "C:\\Projects\\meshy2aurora"
   documentation_root: "C:\\Projects\\meshy2aurora\\documentation"
@@ -21,7 +21,7 @@ status_vocabulary:
 orchestration:
   active_stage: "M2"
   next_ready_stage: "M3 remains NOT_STARTED until M2 is DONE"
-  next_action: "Define the canonical AuroraAssetIR schema and add synthetic GLB axis/UV fixtures according to the M2 contract; do not start MDL writer work."
+  next_action: "Complete M2 fixtures and ingest slices D-F (materials/images, skin and animation inventory, gates/limits and full negative matrix), rerun every native/WASM gate, then perform the final M2 review; do not start M3 or MDL writer work."
   one_active_stage_only: true
   current_attempt_id: "M2-20260711-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
@@ -240,19 +240,35 @@ stages:
 
   M2:
     status: "IN_PROGRESS"
-    status_reason: "M1A, M1B and M1C are DONE, GB-003 is RESOLVED, and the orchestrator activated M2 as the only active stage for AuroraAssetIR and synthetic GLB axis/UV work."
-    owner: "implementation agent"
+    status_reason: "The contract-locked source-preserving GLB 2.0 inspect/ingest core, fixtures A-C and public WASM adapters are implemented. Final post-fix gates passed 79 native and 6 Node/WASM tests plus fmt, clippy, WASM build and diff checks, and the A-C independent re-review reported no findings. M2 remains IN_PROGRESS because D-F, the complete negative matrix and final full-scope M2 review are still open."
+    owner: "Codex orchestrator + M2 implementation/review subagents"
     risk: "MEDIUM"
     attempt_id: "M2-20260711-01"
     dependencies: ["M1A DONE", "GB-003 resolved"]
     current_problems:
-      - "No canonical AuroraAssetIR schema or GLB fixture exists."
+      - "Slices D-F remain open: material/image inventory, skin inventory, animation inventory, D-F fixtures/gates/limits and the complete negative matrix."
+      - "Target Aurora transform remains intentionally UNRESOLVED_M3 and is non-blocking for source-preserving M2."
     bugs: []
-    next_actions: ["Define the canonical AuroraAssetIR schema.", "Add synthetic minimal GLB axis and UV fixtures with stable inspection reports and gates."]
-    evidence: []
-    documentation: ["documentation/evidence/M2-evidence.md"]
-    expected_artifacts: ["AuroraAssetIR schema", "Axis/UV fixtures", "GLB inspection report"]
-    changed_files: []
+    next_actions:
+      - "Implement fixture D and material/embedded-image inventory without serializing payload bytes."
+      - "Implement fixture E with skin, inverse-bind and translation/rotation/scale animation inventory in source basis."
+      - "Complete fixture F, the full fatal/gate/limit/truncation/no-panic matrix and the final native plus WASM rerun."
+      - "Run independent final M2 review only after D-F and every gate are green; keep M2 IN_PROGRESS until then."
+    evidence: ["documentation/evidence/M2-evidence.md"]
+    documentation: ["documentation/m2-aurora-asset-ir-glb-kontrakt-suplement-codex.md", "documentation/docker-build-test-suplement-codex.md", "documentation/evidence/M2-evidence.md"]
+    expected_artifacts: ["Versioned AuroraAssetIR and GlbInspectionReport", "Synthetic fixtures A-F", "Native and public WASM GLB APIs", "Stable fatal/gate matrix"]
+    changed_files:
+      - "Cargo.lock"
+      - "crates/m2a-core/Cargo.toml"
+      - "crates/m2a-core/src/lib.rs"
+      - "crates/m2a-core/src/glb/mod.rs"
+      - "crates/m2a-core/tests/fixtures/build_synthetic_glb.rs"
+      - "crates/m2a-core/tests/glb.rs"
+      - "crates/m2a-wasm/src/lib.rs"
+      - "documentation/m2-aurora-asset-ir-glb-kontrakt-suplement-codex.md"
+      - "documentation/docker-build-test-suplement-codex.md"
+      - "documentation/evidence/M2-evidence.md"
+      - "documentation/orchestrator-state.yaml"
 
   M3:
     status: "NOT_STARTED"
