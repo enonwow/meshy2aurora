@@ -19,11 +19,11 @@ status_vocabulary:
   - "SUPERSEDED"
 
 orchestration:
-  active_stage: "M4"
+  active_stage: "M4A"
   next_ready_stage: "NONE"
-  next_action: "Lock the remaining extended64 skin mapping/inverse-bind contract, then implement skin emission and semantic bone readback without changing the verified rigid writer path."
+  next_action: "Run the Aurora First M4A contract lock for animation headers, roots, tracks, transitions and events before any animation implementation; do not guess from the structural M4 writer."
   one_active_stage_only: true
-  current_attempt_id: "M4-20260712-01"
+  current_attempt_id: "M4A-20260712-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
   done_rule: "A stage may be DONE only when every definition_of_done item has evidence."
   stop_rule: "Stop and mark BLOCKED when a needed Aurora fact, decision, local tool state, or proof artifact is missing. Do not guess."
@@ -33,11 +33,11 @@ global_blockers:
     severity: "P0"
     status: "DIRECTION_DEFINED_EVIDENCE_OPEN"
     title: "Binary MDL writer contract"
-    detail: "M1B structural skin evidence is CLOSED: 17/64 is a header boundary, not capacity, and canonical zero-weight 0xffff lanes are preserved. M4 owns Profile-A writer/readback evidence; M6 owns NWN EE runtime and visual proof."
+    detail: "M4 structural Profile-A writer/readback evidence is CLOSED for rigid and extended64 skin output. M6 still owns NWN EE runtime and visual proof, including controller/deformation behavior."
     affects: ["M4", "M5", "M6", "M7"]
     owner: "Codex"
     source: "documentation/mdl-binary-crosswalk-codex.md"
-    next_action: "M4 closes writer emission and semantic readback. M6 closes NWN EE runtime/visual evidence; do not treat M1B or M4 own-readback as runtime acceptance."
+    next_action: "Preserve the closed M4 structural proof. M6 closes NWN EE runtime/visual evidence; do not treat M4 own-readback as runtime acceptance."
   - id: "GB-002"
     severity: "P1"
     status: "RESOLVED_FOR_PROFILE_A"
@@ -46,7 +46,7 @@ global_blockers:
     affects: ["M4", "M5", "M6", "M7"]
     owner: "Codex"
     source: "documentation/engine-mdl-odpowiedz-codex.md Q2"
-    next_action: "Implement the profile-A layout in M4, verify with own readback, then confirm in NWN EE during M6. Reopen only for a different model family with contrary Aurora First evidence."
+    next_action: "The profile-A appended-MDX layout is implemented and verified by M4 own readback. Confirm it in NWN EE during M6; reopen only for a different model family with contrary Aurora First evidence."
   - id: "GB-003"
     severity: "P1"
     status: "RESOLVED"
@@ -295,18 +295,15 @@ stages:
       - "crates/m2a-core/tests/profile_a.rs"
 
   M4:
-    status: "IN_PROGRESS"
-    status_reason: "Rigid structural writer/readback slice is implemented and independently verified: deterministic MDL+appended MDX, exact EOF, semantic readback, canonical P-REF regression and Docker quality pass. M4 remains IN_PROGRESS only for the named extended64 skin mapping/inverse-bind slice."
+    status: "DONE"
+    status_reason: "M4 structural rigid and extended64 skin writer/readback are complete: deterministic layout, exact EOF, semantic slot/bone and inverse-bind readback, canonical P-REF regression, frozen rigid proof, native/WASM gates, Docker no-cache quality and two final independent rereviews all pass. Controller/deformation runtime acceptance remains explicitly OPEN_M6."
     owner: "Codex orchestrator + M4 implementation/review subagents"
     risk: "HIGH"
     attempt_id: "M4-20260712-01"
     dependencies: ["M1B DONE", "M3 DONE", "GB-001 direction defined", "GB-002 profile-A decision recorded"]
-    current_problems:
-      - "Extended64 skin emission still needs the exact forward/inverse bone-slot mapping, inverse-bind quaternion semantics, active-slot validation and raw index path before implementation."
+    current_problems: []
     bugs: []
-    next_actions:
-      - "Audit and lock the exact extended64 forward/inverse bone-slot map, active-slot domain, inverse-bind quaternion/translation and bone-constant semantics."
-      - "Implement extended64 skin emission and semantic bone-name readback without changing the verified rigid path."
+    next_actions: []
     evidence: ["documentation/evidence/M4-evidence.md"]
     documentation: ["documentation/evidence/M4-evidence.md", "documentation/m4-binary-writer-kontrakt-suplement-codex.md"]
     expected_artifacts: ["Writer/readback tests", "Semantic diff report", "Aurora P-REF invariant-conformance report"]
@@ -324,19 +321,23 @@ stages:
       - "documentation/m4-binary-writer-kontrakt-suplement-codex.md"
 
   M4A:
-    status: "NOT_STARTED"
-    status_reason: "Required product scope after the structural writer/readback path exists."
-    owner: "implementation agent"
+    status: "IN_PROGRESS"
+    status_reason: "Attempt M4A-20260712-01 is active at the Aurora First animation contract-lock gate after M4 structural DONE. No animation implementation is authorized until exact binary header/root/track/transition/event ownership and readback gates are locked."
+    owner: "Codex orchestrator + M4A contract/review subagents"
     risk: "HIGH"
+    attempt_id: "M4A-20260712-01"
     dependencies: ["M4 DONE", "GB-005 direction defined"]
     current_problems:
-      - "Required animation inventory and own clip emission are not implemented."
+      - "Exact self-contained animation binary emission and semantic readback contract is not yet locked from Aurora First evidence."
+      - "Pre-controller type-20 normalization before RAW quaternion serialization remains unresolved and runtime-owned by M6; M4A must record the structural policy without inventing engine behavior."
     bugs: []
-    next_actions: ["Implement the self-contained loader-smoke route, then prove selected movement/gameplay/event behavior; defer supermodel compatibility."]
+    next_actions:
+      - "Audit Aurora decompilation and canonical read-only animation witnesses, then lock M4A header/root/track/transition/event layout and stable diagnostics before code."
+      - "Keep supermodel compatibility and runtime controller/deformation claims out of the first self-contained structural animation slice unless new Aurora First evidence closes them."
     evidence: []
     documentation: ["documentation/evidence/M4A-evidence.md"]
     expected_artifacts: ["Animation inventory report", "Animation readback diff", "Toolset/game animation proof"]
-    changed_files: []
+    changed_files: ["documentation/orchestrator-state.yaml"]
 
   M5:
     status: "NOT_STARTED"

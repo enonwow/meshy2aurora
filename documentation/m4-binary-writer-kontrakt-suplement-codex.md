@@ -1,7 +1,8 @@
 # M4 binary MDL/MDX writer - suplement kontraktu
 
 Data: 2026-07-12
-Status: `LOCKED_RIGID_SLICE`; `SKIN_CONTRACT_OPEN`
+Status: `DONE_STRUCTURAL_M4`; rigid and extended64 skin locked and verified;
+runtime/controller deformation remains `OPEN_M6`
 
 ## 1. Cel i pierwszenstwo
 
@@ -126,12 +127,44 @@ Deterministyczna kolejnosc core dla rigid slice:
 7. index-count arrays (`u32[1]`) w kolejnosci segmentu;
 8. raw-index-offset arrays (`i32[1]`) w kolejnosci segmentu.
 
+Extended64 rozszerza te regule bez zmiany rigid bytes:
+
+1. po rig node headers kazdy segment nadal jest planowany w kolejnosci IR;
+2. RIGID rezerwuje `0x270`; SKIN rezerwuje nierozdzielne
+   `0x330 header || forwardMap[mapCount]`, po czym nastepuje 4-byte alignment;
+3. children/controllers/faces/index-count/index-offset zachowuja kolejnosc
+   z rigid slice;
+4. po index-offset arrays sa kolejno wszystkie skin q arrays w kolejnosci
+   segmentow, potem wszystkie skin t arrays, potem wszystkie constants arrays;
+5. header pointers wskazuja te kategorie, a forward pointer zawsze rowna sie
+   dokladnie `skinNodeOffset + 0x330`.
+
+Skin node ma `contentFlags=0x61`. Ponizsza tabela jest zamknietym kontraktem
+pol w extended64 header; nie sa dozwolone alternatywne offsety ani nadmiarowa
+`allocated` capacity przechodzaca tylko przez own reader:
+
+| offset od skin node | pole | wartosc M4 |
+|---:|---|---|
+| `0x270` | weights metadata `ArrayHeader` | `0/0/0` |
+| `0x27c` | raw weights offset | checked `i32` do `f32[vertexCount][4]` |
+| `0x280` | raw bone refs offset | checked `i32` do `u16[vertexCount][4]` |
+| `0x284` | forward node-to-bone pointer | core pointer do `i16[mapCount]` |
+| `0x288` | map count | `reachable_base_binary_node_count` |
+| `0x28c` | q inverse `ArrayHeader` | pointer; `used=allocated=mapCount` |
+| `0x298` | t inverse `ArrayHeader` | pointer; `used=allocated=mapCount` |
+| `0x2a4` | constants `ArrayHeader` | pointer; `used=allocated=mapCount` |
+| `0x2b0` | inline reverse map | `i16[64]` |
+
 Deterministyczna kolejnosc raw dla kazdego segmentu:
 
 1. positions `f32[3]`;
 2. UV0 `f32[2]`;
 3. normals `f32[3]`;
 4. triangle indices `u16` w dokladnej kolejnosci `segment.indices`.
+
+Dla SKIN po indices dochodza `weights f32[4]` i `refs u16[4]`, w tej
+kolejnosci, z 4-byte alignment przed kolejnym segmentem. RIGID layout pozostaje
+bez dodatkowych blokow.
 
 Wszystkie bloki zaczynaja sie na 4-byte alignment. Puste core arrays maja
 `pointer/used/allocated = 0/0/0`. Niepotwierdzone raw pointers maja `-1`.
@@ -225,17 +258,106 @@ Pierwszy jawny profil skin to `M4_DIRECT_CREATURE_EXTENDED64_V1`, zgodny z
 target witness R1 `c_kocrachn`. Header boundary jest `node + 0x330`, a puste
 lanes maja `weight=0/ref=0xffff`.
 
-To nie wystarcza jeszcze do implementacji skin emission. Przed skin code trzeba
-zamknac i przetestowac:
+Aurora First audit lokalnego R1 `c_kocrachn` zamyka structural emission contract:
 
-- forward node-partNumber -> bone-slot map i odwrotny inline mapping;
-- aktywna domene slotow niezalezna od samego `map_count`;
-- inverse-bind quaternion order/translation oraz bone constants;
-- semantic readback `bone ref -> partNumber -> IR node id`;
-- runtime index path wspolny z face triangles.
+```yaml
+extended64_skin_v1:
+  header_size: 0x330
+  node_identity_domain: deterministic_preorder_tree_ordinal
+  map_count: reachable_base_binary_node_count
+  forward_map: "i16[mapCount], indexed by tree ordinal; value=bone slot or -1"
+  inline_reverse: "i16[64], indexed by bone slot; value=tree ordinal; unused=-1 product choice OPEN_M6"
+  active_slots: "distinct influencing rig nodes sorted by tree ordinal, assigned dense 0..B-1"
+  slot_limit: "B <= 64 product guardrail; boundary runtime proof OPEN_M6"
+  vertex_weights: "raw f32[4] per vertex; preserve M3 lane order and values"
+  vertex_refs: "raw u16[4]; active lane=bone slot, zero lane=0xffff"
+  weights_metadata_header: "0/0/0"
+  q_inverse: "mapCount raw f32[4], WXYZ, deterministic product sign"
+  t_inverse: "mapCount raw f32[3], XYZ"
+  constants: "mapCount i16[2], emitted [0,0]"
+```
 
-Rigid slice moze byc wdrozony i zacommitowany wczesniej. M4 nie jest finalnie
-DONE, dopoki extended64 skin slice i jego readback nie przejda.
+Tree ordinal jest osobna tozsamoscia od raw `node.number`/binary partNumber.
+R1 rozroznia te domeny: `Lcalf2` ma tree ordinal `7`, lecz raw node number
+`23`; skin zapisuje `forward[7]=0` i `inline[0]=7`.
+
+Dla kazdego reachable base binary node tree ordinal `i` (rig i synthesized
+mesh nodes):
+
+```text
+relative_i = inverse(bindWorld(node_i)) * bindWorld(skinMeshNode)
+tBoneRefInv[i] = translation(relative_i)
+qBoneRefInv[i] = rotation(relative_i) written as W,X,Y,Z
+boneConstant[i] = [0,0]
+```
+
+Deterministyczny product sign dla q-inverse: wybierz reprezentacje, w ktorej
+`W > 0`; gdy `W == 0`, pierwszy dokladnie niezerowy element z `X,Y,Z` ma byc
+dodatni. To rozszerza regule znaku bind controllers na kolejnosc WXYZ i
+usuwa byte-level dowolnosc `q/-q`. R1 zawiera tez rownowazne rotacyjnie
+wartosci z ujemnym `W`, dlatego canonical-byte parity znaku nie jest tu
+twierdzeniem; to jawna deterministyczna decyzja produktu, a zgodnosc runtime
+pozostaje `OPEN_M6`.
+
+### 7.1 RAW controller composition boundary
+
+Aurora First decompilation potwierdza downstream uzycie surowych komponentow
+quaternionu bez widocznej normalizacji w zakotwiczonej node composition:
+
+- `decompiled_all.c:875324-875339` - konstruktor stanu noda kopiuje cztery
+  komponenty quaternionu bez transformacji;
+- `:875429-875464` - local bez parenta jest kopiowany, a world composition
+  uzywa przechowywanego quaternionu;
+- `:1020337-1020365` i `:1020438-1020485` - odpowiednio surowe quaternion
+  multiply i quaternion-to-rotated-vector, bez dzielenia przez norme;
+- helper normalizacji istnieje w `:1020523-1020546`, ale nie jest wywolywany
+  w powyzszej zakotwiczonej downstream node composition.
+
+Dlatego structural M4 definiuje `bindWorld` jako kompozycje dokladnie tych
+`f32 qx,qy,qz,qw`, ktore zostaly wyemitowane w controller data, bez ponownej
+normalizacji downstream. Own inspection-only test odbudowuje swiaty wylacznie
+z odczytanych controllers i porownuje wszystkie q/t inverse rows. Gdy
+adversarialna gleboka kompozycja RAW przestaje byc proper rigid w tolerancji
+`1e-5`, writer odrzuca wejscie stabilnym
+`M4-SKIN-INVERSE-BIND-UNSUPPORTED`, zamiast wyemitowac niespojny skin.
+
+Czy serialized controller type `20` normalizuje quaternion przed zapisem do
+pola noda pozostaje nierozstrzygniete i `OPEN_M6`. M4 nie
+przedstawia tej kwestii ani finalnej deformacji jako engine-proven.
+
+W obecnym profilu synthesized skin mesh jest identity-local wzgledem
+`segment.parentNodeId`, dlatego `bindWorld(skinMeshNode)` jest numerycznie rowne
+parent world. Kontrakt zachowuje jednak jawna domene skin node. Active slots
+moga wskazywac tylko influencing rig nodes; pozostale binary ordinals maja
+forward `-1`, lecz nadal posiadaja q/t/constants row.
+
+R1 ma trzy extended64 skiny, kazdy z `map/q/t/constants count=38`:
+
+| skin | forward nonnegative | reverse first slots | active refs |
+|---|---|---|---|
+| `Lshinmesh01` | `7->0, 8->1` | `0->7, 1->8` | `{0,1}` |
+| `Rshinmesh01` | `11->0, 12->1` | `0->11, 1->12` | `{0,1}` |
+| `bodymesh01` | `4->0, 13->1` | `0->4, 1->13` | `{0,1}` |
+
+Canonical inverse-bind reconstruction daje maksymalny blad macierzy `0` dla
+WXYZ i do `2` dla XYZW. Lokalny witness ma pierwszenstwo nad konfliktem
+suplementow. Wszystkie `114` canonical constants sa `[0,0]`; ich szersza
+funkcja runtime pozostaje `OPEN_M6`.
+
+Stabilne wymagania semantic readback:
+
+- exact `node + 0x330` forward-map boundary;
+- exact forward/reverse bijection dla active slots;
+- kazdy active raw ref rozwiazuje sie `slot -> tree ordinal -> IR node id`;
+- kazdy zero lane ma `weight=0/ref=0xffff`, a `0xffff` przy wadze dodatniej
+  jest fatalny;
+- q/t reconstruct `relative_i` within absolute tolerance `1e-5`;
+- q/t/constants counts rowne `mapCount`, weights/ref rows rowne vertex count;
+- rigid frozen payload pozostaje byte-identical.
+
+Runtime-only named deviations: unused inline entries `-1`, granica 64 slotow,
+rola constants, WXYZ deformation i finalna skin deformation wymagaja M6
+Toolset/game proof. Nie blokuja structural M4 emission/readback.
 
 ## 8. Stabilne kody M4 rigid slice
 
@@ -255,6 +377,30 @@ M4-SEMANTIC-DIFF
 M4-TANGENTS-NOT-EMITTED        # recorded deviation, not fatal
 ```
 
+Skin-specific stable errors:
+
+| code | canonical path | condition |
+|---|---|---|
+| `M4-SKIN-LANE-INVALID` | `creature.segments[i].weights[v]` | weight/ref lane count, active `Some+positive finite`, inactive `None+0`, sum or influenceCount mismatch |
+| `M4-SKIN-BONE-MISSING` | `creature.segments[i].weights[v].boneNodeIds[lane]` | active bone id is absent from rig hierarchy |
+| `M4-SKIN-SLOT-LIMIT` | `creature.segments[i].weights` | distinct active influencing bones exceed product guardrail `64` |
+| `M4-SKIN-MAPPING-INVALID` | `creature.segments[i]` | forward/reverse mapping is non-bijective, non-dense or resolves outside tree-ordinal domain |
+| `M4-SKIN-INVERSE-BIND-UNSUPPORTED` | `creature.segments[i].parentNodeId` | relative inverse-bind matrix is non-finite or not representable as rigid WXYZ+XYZ |
+| `M4-SKIN-LAYOUT-INVALID` | `layout.skinNodes[i]` | boundary/count/pointer invariant differs from locked extended64 layout |
+
+Reader failure nadal mapuje sie do `M4-READBACK-FAILED`, a jakakolwiek roznica
+skin semantic projection do `M4-SEMANTIC-DIFF` z exact skin path. Writer nie
+renormalizuje, nie sortuje ani nie naprawia M3 lanes.
+
+Negatywna macierz TDD musi rozrozniac co najmniej: SKIN z liczba weight rows
+inna niz vertex count; RIGID z niepustymi weights; `influenceCount` poza `1..4`
+lub niespojny z lanes; aktywne `None`, `NaN/Inf`, waga ujemna albo zerowa;
+nieaktywne `Some` lub niezerowa waga; suma wag poza tolerancja `1e-5`;
+nieistniejacy bone ID; oraz `B=65`. Bledy lanes/sumy/influenceCount mapuja sie
+do `M4-SKIN-LANE-INVALID`, brak bone do `M4-SKIN-BONE-MISSING`, a limit do
+`M4-SKIN-SLOT-LIMIT`; RIGID z weights rowniez jest
+`M4-SKIN-LANE-INVALID` na exact segment path.
+
 ## 9. Rigid slice DoD
 
 - test zostaje napisany przed implementacja;
@@ -268,3 +414,43 @@ M4-TANGENTS-NOT-EMITTED        # recorded deviation, not fatal
 - brak mutacji input IR;
 - workspace fmt/clippy/test, WASM regression i Docker quality gate przechodza;
 - niezalezny review nie ma otwartych P1/P2 dla rigid slice.
+
+## 10. Extended64 skin slice DoD
+
+- TDD obejmuje 1, 2 i 4 active lanes oraz osobne profile z 1, 4 i 64
+  distinct slots; 65 daje `M4-SKIN-SLOT-LIMIT`;
+- fixture celowo rozroznia IR id, dense partNumber i pre-order tree ordinal;
+- forward map zaczyna sie dokladnie `skinNode+0x330`, ma `mapCount` rowne
+  wszystkim reachable base binary nodes i jest bijekcja z active inline slots;
+- raw refs rozwiazuja sie `slot -> tree ordinal -> IR node id`; zero lanes sa
+  dokladnie `0/0xffff`, bez active `0xffff`;
+- nontrivial analytic bind hierarchy potwierdza
+  `inverse(nodeWorld)*skinNodeWorld`, WXYZ sign i XYZ translation w tolerancji
+  `1e-5`;
+- q/t/constants counts rownaja sie mapCount, constants sa `[0,0]`, weights
+  metadata `0/0/0`;
+- mixed rigid+skin, multiple skin segments i arbitrary IR order zachowuja
+  deterministic bytes/report oraz nie mutuja inputu;
+- mutacje boundary/map/q/t/constants/weights/refs sa odrzucane stabilnym kodem;
+- frozen rigid payload pozostaje `len=1188`, core/raw `1072/104`, SHA-256
+  `e100130d1dfbd18657413cdb7a701396d466cee081683591fc9836bf0c11b4b2`;
+- canonical R1 reader P-REF pozostaje PASS bez payloadu w repo;
+- native workspace, WASM, no-cache Docker i niezalezny review przechodza;
+- M4 moze byc `DONE_STRUCTURAL` po tych gate'ach, ale runtime deformation oraz
+  visual acceptance pozostaja `OPEN_M6`.
+
+## 11. Final M4 structural closure - 2026-07-12
+
+Rigid i extended64 skin DoD sa zamkniete. Finalna implementacja zachowuje
+zamrozony rigid payload, emituje deterministic tree-ordinal forward/reverse
+maps, exact zero-lane `+0.0/0xffff`, q/t/constants oraz semantic bone readback.
+Wszystkie signed conversions sa sprawdzane przed alokacja, a runtime-only
+wartosci maja jawne artifact deviations.
+
+Finalne gate'y:
+
+- writer tests `16/16`, core `145`, workspace `147` (`145 + 2 WASM native`);
+- Node/WASM `14/14`, canonical CEP `1/1` z szescioma packetami;
+- Docker no-cache `m2a-quality:m4-skin-final` PASS;
+- dwa finalne niezalezne rereview: `P1=0`, `P2=0`;
+- runtime/controller deformation nadal nalezy do M6.

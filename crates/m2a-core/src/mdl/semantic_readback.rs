@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::types::{InspectionReport, MeshReport, NodeReport, Vec2, Vec3};
+use super::types::{InspectionReport, MeshReport, NodeReport, SkinReport, SkinVariant, Vec2, Vec3};
 
 pub(crate) struct ExpectedReadback {
     pub model_name: String,
@@ -12,12 +12,30 @@ pub(crate) struct ExpectedReadback {
 }
 
 pub(crate) struct ExpectedNode {
+    pub ir_node_id: Option<u32>,
     pub part_number: u32,
     pub name: String,
     pub parent_part_number: Option<u32>,
     pub bind_matrix: Option<[f32; 16]>,
     pub content_flags: u32,
     pub mesh: Option<ExpectedMesh>,
+    pub skin: Option<ExpectedSkin>,
+}
+
+pub(crate) struct ExpectedSkin {
+    pub raw_weights_pointer: i32,
+    pub raw_refs_pointer: i32,
+    pub q_pointer: u32,
+    pub t_pointer: u32,
+    pub constants_pointer: u32,
+    pub forward: Vec<i16>,
+    pub inline_reverse: Vec<i16>,
+    pub inverse_rotations_wxyz: Vec<[f32; 4]>,
+    pub inverse_translations: Vec<[f32; 3]>,
+    pub bone_constants: Vec<[i16; 2]>,
+    pub vertex_weights: Vec<[f32; 4]>,
+    pub vertex_refs: Vec<[u16; 4]>,
+    pub resolved_ir_ids: Vec<[Option<u32>; 4]>,
 }
 
 pub(crate) struct ExpectedMesh {
@@ -100,6 +118,11 @@ pub(crate) fn semantic_diff(expected: &ExpectedReadback, actual: &InspectionRepo
         .iter()
         .map(|node| (node.offset, node.number))
         .collect::<HashMap<_, _>>();
+    let part_to_ir = expected
+        .nodes
+        .iter()
+        .filter_map(|node| node.ir_node_id.map(|id| (node.part_number, id)))
+        .collect::<HashMap<_, _>>();
     if actual.node_tree.roots.len() != 1
         || actual.node_tree.roots[0].number != expected.root_part_number
     {
@@ -127,7 +150,12 @@ pub(crate) fn semantic_diff(expected: &ExpectedReadback, actual: &InspectionRepo
             diff.push(format!("{path}.parent"));
         }
         match (&expected_node.bind_matrix, &expected_node.mesh) {
-            (Some(matrix), None) => compare_bind_matrix(&path, *matrix, actual_node, &mut diff),
+            (Some(matrix), None) => {
+                if expected_node.skin.is_some() {
+                    diff.push(format!("{path}.kind"));
+                }
+                compare_bind_matrix(&path, *matrix, actual_node, &mut diff)
+            }
             (None, Some(mesh)) => {
                 if !actual_node.controllers.is_empty() {
                     diff.push(format!("{path}.controllers"));
@@ -137,11 +165,151 @@ pub(crate) fn semantic_diff(expected: &ExpectedReadback, actual: &InspectionRepo
                     continue;
                 };
                 compare_mesh(&path, mesh, actual_mesh, &mut diff);
+                match (&expected_node.skin, &actual_node.skin) {
+                    (Some(expected_skin), Some(actual_skin)) => compare_skin(
+                        &path,
+                        expected_skin,
+                        actual_skin,
+                        &flat,
+                        &part_to_ir,
+                        &mut diff,
+                    ),
+                    (None, None) => {}
+                    _ => diff.push(format!("{path}.skin")),
+                }
             }
             _ => diff.push(format!("{path}.kind")),
         }
     }
     diff
+}
+
+fn compare_skin(
+    path: &str,
+    expected: &ExpectedSkin,
+    actual: &SkinReport,
+    preorder: &[&NodeReport],
+    part_to_ir: &HashMap<u32, u32>,
+    diff: &mut Vec<String>,
+) {
+    let skin_path = format!("{path}.skin");
+    if actual.variant != SkinVariant::Extended64
+        || actual.header_size != 0x330
+        || actual.node_to_bone_pointer != actual.node_offset + 0x330
+    {
+        diff.push(format!("{skin_path}.layout"));
+    }
+    if actual.raw_weights_pointer != expected.raw_weights_pointer
+        || actual.raw_refs_pointer != expected.raw_refs_pointer
+    {
+        diff.push(format!("{skin_path}.rawPointers"));
+    }
+    if actual.weights_header.pointer != 0
+        || actual.weights_header.used != 0
+        || actual.weights_header.allocated != 0
+    {
+        diff.push(format!("{skin_path}.weightsMetadata"));
+    }
+    if actual.q_header.used != expected.forward.len()
+        || actual.q_header.allocated != expected.forward.len()
+        || actual.t_header.used != expected.forward.len()
+        || actual.t_header.allocated != expected.forward.len()
+        || actual.constants_header.used != expected.forward.len()
+        || actual.constants_header.allocated != expected.forward.len()
+        || actual.q_header.pointer != expected.q_pointer
+        || actual.t_header.pointer != expected.t_pointer
+        || actual.constants_header.pointer != expected.constants_pointer
+    {
+        diff.push(format!("{skin_path}.arrayCounts"));
+    }
+    if actual.node_to_bone_map != expected.forward {
+        diff.push(format!("{skin_path}.forwardMap"));
+    }
+    if actual.inline_mapping != expected.inline_reverse {
+        diff.push(format!("{skin_path}.inlineReverse"));
+    }
+    if actual.bone_constants != expected.bone_constants {
+        diff.push(format!("{skin_path}.constants"));
+    }
+    if actual.inverse_bone_rotations_raw.len() != expected.inverse_rotations_wxyz.len()
+        || actual
+            .inverse_bone_rotations_raw
+            .iter()
+            .zip(&expected.inverse_rotations_wxyz)
+            .any(|(actual, expected)| {
+                actual
+                    .iter()
+                    .zip(expected)
+                    .any(|(a, e)| !finite_approx(*e, *a))
+            })
+    {
+        diff.push(format!("{skin_path}.qInverse"));
+    }
+    if actual.inverse_bone_translations.len() != expected.inverse_translations.len()
+        || actual
+            .inverse_bone_translations
+            .iter()
+            .zip(&expected.inverse_translations)
+            .any(|(actual, expected)| !vec3_approx(*expected, *actual))
+    {
+        diff.push(format!("{skin_path}.tInverse"));
+    }
+    if actual.vertex_weights.len() != expected.vertex_weights.len()
+        || actual
+            .vertex_weights
+            .iter()
+            .zip(&expected.vertex_weights)
+            .any(|(actual, expected)| {
+                actual
+                    .iter()
+                    .zip(expected)
+                    .any(|(actual, expected)| actual.to_bits() != expected.to_bits())
+            })
+    {
+        diff.push(format!("{skin_path}.vertexWeights"));
+    }
+    if actual.bone_references != expected.vertex_refs {
+        diff.push(format!("{skin_path}.vertexRefs"));
+    }
+
+    let mut resolved = Vec::with_capacity(actual.bone_references.len());
+    let mut resolution_valid = true;
+    for (weights, refs) in actual.vertex_weights.iter().zip(&actual.bone_references) {
+        let mut row = [None; 4];
+        for lane in 0..4 {
+            if weights[lane] == 0.0 {
+                if refs[lane] != u16::MAX {
+                    resolution_valid = false;
+                }
+                continue;
+            }
+            let slot = usize::from(refs[lane]);
+            let Some(&ordinal_signed) = actual.inline_mapping.get(slot) else {
+                resolution_valid = false;
+                continue;
+            };
+            let Ok(ordinal) = usize::try_from(ordinal_signed) else {
+                resolution_valid = false;
+                continue;
+            };
+            let Some(node) = preorder.get(ordinal) else {
+                resolution_valid = false;
+                continue;
+            };
+            let Some(&ir_id) = part_to_ir.get(&node.number) else {
+                resolution_valid = false;
+                continue;
+            };
+            if actual.node_to_bone_map.get(ordinal).copied() != Some(refs[lane] as i16) {
+                resolution_valid = false;
+            }
+            row[lane] = Some(ir_id);
+        }
+        resolved.push(row);
+    }
+    if !resolution_valid || resolved != expected.resolved_ir_ids {
+        diff.push(format!("{skin_path}.slotResolution"));
+    }
 }
 
 fn flatten<'a>(node: &'a NodeReport, output: &mut Vec<&'a NodeReport>) {
