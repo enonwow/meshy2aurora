@@ -13,10 +13,6 @@ impl<'a> BinaryReader<'a> {
         Ok(self.read_slice(offset, 1, context)?[0])
     }
 
-    pub(crate) fn read_i8(&self, offset: usize, context: &str) -> Result<i8, ParseError> {
-        Ok(self.read_u8(offset, context)? as i8)
-    }
-
     pub(crate) fn read_u16(&self, offset: usize, context: &str) -> Result<u16, ParseError> {
         let bytes = self.read_slice(offset, 2, context)?;
         Ok(u16::from_le_bytes([bytes[0], bytes[1]]))

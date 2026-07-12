@@ -622,6 +622,13 @@ mod wasm_tests {
             .expect("deep fixture controllers");
         assert_eq!(controllers.len(), 5);
         assert_eq!(controllers[0]["controllerName"], "position");
+        assert_eq!(controllers[0]["packedByte"], 3);
+        assert_eq!(controllers[0]["interpolationFlags"], 0);
+        assert_eq!(controllers[0]["decoded"], true);
+        assert_eq!(controllers[1]["controllerName"], "orientation");
+        assert_eq!(controllers[1]["packedByte"], 4);
+        assert_eq!(controllers[1]["interpolationFlags"], 0);
+        assert_eq!(controllers[1]["decoded"], true);
         assert_eq!(controllers[4]["controllerName"], "alpha");
 
         let mesh = root["mesh"].as_object().expect("deep fixture mesh");
@@ -637,6 +644,18 @@ mod wasm_tests {
         assert_eq!(
             animations[0]["nodeTree"]["roots"][0]["controllers"][0]["controllerName"],
             "position"
+        );
+        assert_eq!(
+            animations[0]["nodeTree"]["roots"][0]["controllers"][0]["packedByte"],
+            3
+        );
+        assert_eq!(
+            animations[0]["nodeTree"]["roots"][0]["controllers"][0]["interpolationFlags"],
+            0
+        );
+        assert_eq!(
+            animations[0]["nodeTree"]["roots"][0]["controllers"][0]["decoded"],
+            true
         );
         assert_eq!(animations[1]["name"], "idle");
     }

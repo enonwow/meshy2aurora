@@ -242,6 +242,12 @@ fn minimal_rigid_writer_roundtrips_every_locked_semantic_and_exact_eof() {
     assert!(artifact.inspection.unsupported.is_empty());
     let position = &artifact.inspection.node_tree.roots[0].controllers[0];
     let orientation = &artifact.inspection.node_tree.roots[0].controllers[1];
+    assert_eq!((position.packed_byte, position.interpolation_flags), (3, 0));
+    assert_eq!(
+        (orientation.packed_byte, orientation.interpolation_flags),
+        (4, 0)
+    );
+    assert!(position.decoded && orientation.decoded);
     assert_eq!(
         (
             position.controller_type,

@@ -116,6 +116,9 @@ pub struct NodeReport {
 pub struct ControllerReport {
     pub controller_type: i32,
     pub controller_name: Option<String>,
+    pub packed_byte: u8,
+    pub interpolation_flags: u8,
+    pub decoded: bool,
     pub row_count: usize,
     pub time_index: usize,
     pub data_index: usize,
@@ -257,6 +260,17 @@ impl Diagnostic {
 
     pub(crate) fn unknown_controller(offset: usize, context: impl Into<String>) -> Self {
         Self::warning("M2A-MDL-CONTROLLER-TYPE-UNKNOWN", offset, context)
+    }
+
+    pub(crate) fn unsupported_controller_interpolation(
+        offset: usize,
+        context: impl Into<String>,
+    ) -> Self {
+        Self::warning(
+            "M2A-MDL-CONTROLLER-INTERPOLATION-UNSUPPORTED",
+            offset,
+            context,
+        )
     }
 
     pub(crate) fn unknown_node_flags(offset: usize, context: impl Into<String>) -> Self {

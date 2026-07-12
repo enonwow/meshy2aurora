@@ -31,7 +31,7 @@ Node fields `geometry_ptr @ 0x40` i `parent_ptr @ 0x44` sa runtime/ignore values
 | AnimationHeader | `0xc4` | length `0x70`, transition `0x74`, animroot `0x78`, events `0xb8` |
 | AnimationEvent | `0x24` | time `0x00`, name `0x04` |
 | NodeHeader | `0x70` | inherit `0x18`, number `0x1c`, name `0x20`, children `0x48`, controller keys `0x54`, controller data `0x60`, flags `0x6c` |
-| ControllerKey | `0x0c` | type `i32`, rows/time/data `i16`, columns `i8` |
+| ControllerKey | `0x0c` | type `i32/u32`; rows/time/data `u16`; byte `+0x0a`: low nibble columns, high nibble flags; byte `+0x0b`: padding/opaque |
 | Face | `0x20` | plane, surface, adjacency, vertex indices |
 | MeshNode | `0x270` | faces `0x78`, textures `0xe8..0x1a8`, raw vertices `0x22c`, counts `0x230/0x232`, UV `0x234`, normals `0x244` |
 
@@ -75,7 +75,7 @@ Negative matrix REQUIRED:
 - raw OOB osobno dla vertices, UV0, normals, weights i bone refs; pozostale raw pointers musza byc `0xffffffff` albo wskazywac do raw range;
 - `used > allocated` dla kazdego obslugiwanego `ArrayHeader`;
 - `declared < reachable` jako invalid oraz `declared > reachable` jako dozwolony budzet, osobno dla base root i animation roots;
-- ujemne signed controller fields, niepoprawny layout, time/data index OOB i nieznany controller type zachowany w inventory;
+- graniczne `u16` rows/time/data, high-bit values bez signed reinterpretation, niepoprawny packed columns/flags layout, time/data index OOB i nieznany controller type zachowany w inventory;
 - addytywne mesh/skin flags, kazda znana deferred family oraz prawdziwie nieznany node bit;
 - skin header boundary `0x2d4/0x330`, classifier niezalezny od `map count` oraz brak pasujacego wariantu; nie wolno tworzyc testu capacity `16/17` lub `63/64` z samej szerokosci inline mappingu;
 - cycle pod base root i pod animation root;
@@ -135,9 +135,9 @@ DEFERRED: semantyka light/emitter/camera/reference/animmesh/dangly/AABB, UV1-3, 
 
 OPEN:
 
-- quaternion component order; M1B raportuje surowe `f32[4]` bez konwersji semantycznej;
+- M4A Aurora First ustalilo orientation on-disk jako `XYZW` oraz high nibble `0x10` jako wybor sciezki Bezier; M1B reader nadal wymaga implementacyjnej korekty z signed `i16`/pelnego byte columns na `u16` i packed low/high nibble przed rozpoczeciem writera M4A;
 - model bytes `0x70..0x75` poza classification/fog;
-- interpolation bits i nieznane controller layouts;
+- emisja i pelny readback danych Bezier oraz pozostale nieznane controller layouts;
 - skin fallback, gdy payload nie zaczyna sie bezposrednio po headerze;
 - czy `0xffff` jest legalnym pustym bone ref przy zerowej wadze; do canonical Aurora/M1C evidence nie wolno wymyslac akceptacji ani odrzucenia tego sentinela;
 - znaczenie opaque mesh tokens.

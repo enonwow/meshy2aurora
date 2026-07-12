@@ -786,38 +786,37 @@ fn read_controllers(
     for index in 0..keys.used {
         let key_absolute = keys_absolute + index * CONTROLLER_KEY_SIZE;
         let controller_type = context.reader.read_i32(key_absolute, "controller type")?;
-        let rows_signed = context
+        let rows = context
             .reader
-            .read_i16(key_absolute + 4, "controller row count")?;
-        let time_signed = context
+            .read_u16(key_absolute + 4, "controller row count")? as usize;
+        let time_index = context
             .reader
-            .read_i16(key_absolute + 6, "controller time index")?;
-        let data_signed = context
+            .read_u16(key_absolute + 6, "controller time index")? as usize;
+        let data_index = context
             .reader
-            .read_i16(key_absolute + 8, "controller data index")?;
-        let columns_signed = context
-            .reader
-            .read_i8(key_absolute + 10, "controller column count")?;
-        if rows_signed < 0 || columns_signed < 0 || (rows_signed > 0 && columns_signed == 0) {
+            .read_u16(key_absolute + 8, "controller data index")? as usize;
+        let packed_byte = context.reader.read_u8(
+            key_absolute + 10,
+            "controller packed columns and interpolation flags",
+        )?;
+        let columns = usize::from(packed_byte & 0x0f);
+        let interpolation_flags = packed_byte & 0xf0;
+        if interpolation_flags & !0x10 != 0 {
             return Err(ParseError::controller(
-                key_absolute + 4,
+                key_absolute + 10,
                 format!(
-                    "controller {controller_type} has invalid rows/columns {rows_signed}/{columns_signed}"
+                    "controller {controller_type} has unsupported interpolation flags 0x{interpolation_flags:02x} in packed byte 0x{packed_byte:02x}"
                 ),
             ));
         }
-        if time_signed < 0 || data_signed < 0 {
-            return Err(ParseError::controller_index(
-                key_absolute + 6,
+        if columns == 0 {
+            return Err(ParseError::controller(
+                key_absolute + 10,
                 format!(
-                    "controller {controller_type} has negative time/data index {time_signed}/{data_signed}"
+                    "controller {controller_type} has invalid rows/columns {rows}/{columns} from packed byte 0x{packed_byte:02x}"
                 ),
             ));
         }
-        let rows = rows_signed as usize;
-        let time_index = time_signed as usize;
-        let data_index = data_signed as usize;
-        let columns = columns_signed as usize;
         let semantics = controller_semantics(controller_type);
         if let Some((name, expected_columns)) = semantics
             && columns != expected_columns
@@ -830,20 +829,32 @@ fn read_controllers(
             ));
         }
         let controller_name = semantics.map(|(name, _)| name.to_owned());
+        let decoded = interpolation_flags == 0;
+        if !decoded {
+            context.push_diagnostic(Diagnostic::unsupported_controller_interpolation(
+                key_absolute + 10,
+                format!(
+                    "controller {controller_type} uses recognized deferred Bezier interpolation flags 0x{interpolation_flags:02x}"
+                ),
+            ))?;
+        }
         let time_end = time_index.checked_add(rows).ok_or_else(|| {
             ParseError::controller_index(key_absolute + 6, "controller time range overflow")
         })?;
-        let value_count = rows.checked_mul(columns).ok_or_else(|| {
-            ParseError::controller(key_absolute + 10, "controller value count overflow")
-        })?;
-        let data_end = data_index.checked_add(value_count).ok_or_else(|| {
-            ParseError::controller_index(key_absolute + 8, "controller data range overflow")
-        })?;
-        if time_end > data_values.len() || data_end > data_values.len() {
+        if time_end > data_values.len() {
             return Err(ParseError::controller_index(
                 key_absolute + 6,
                 format!(
-                    "controller {controller_type} time/data ranges {time_index}..{time_end}/{data_index}..{data_end} exceed controller data length {}",
+                    "controller {controller_type} time range {time_index}..{time_end} exceeds controller data length {}",
+                    data_values.len()
+                ),
+            ));
+        }
+        if !decoded && rows > 0 && data_index >= data_values.len() {
+            return Err(ParseError::controller_index(
+                key_absolute + 8,
+                format!(
+                    "deferred controller {controller_type} data index {data_index} exceeds controller data length {}",
                     data_values.len()
                 ),
             ));
@@ -854,15 +865,38 @@ fn read_controllers(
                 format!("controller type {controller_type} is not semantically known"),
             ))?;
         }
-        let times = data_values[time_index..time_end].to_vec();
-        let mut values = Vec::with_capacity(rows);
-        for row in 0..rows {
-            let start = data_index + row * columns;
-            values.push(data_values[start..start + columns].to_vec());
-        }
+        let (times, values) = if decoded {
+            let value_count = rows.checked_mul(columns).ok_or_else(|| {
+                ParseError::controller(key_absolute + 10, "controller value count overflow")
+            })?;
+            let data_end = data_index.checked_add(value_count).ok_or_else(|| {
+                ParseError::controller_index(key_absolute + 8, "controller data range overflow")
+            })?;
+            if data_end > data_values.len() {
+                return Err(ParseError::controller_index(
+                    key_absolute + 8,
+                    format!(
+                        "controller {controller_type} data range {data_index}..{data_end} exceeds controller data length {}",
+                        data_values.len()
+                    ),
+                ));
+            }
+            let times = data_values[time_index..time_end].to_vec();
+            let mut values = Vec::with_capacity(rows);
+            for row in 0..rows {
+                let start = data_index + row * columns;
+                values.push(data_values[start..start + columns].to_vec());
+            }
+            (times, values)
+        } else {
+            (Vec::new(), Vec::new())
+        };
         reports.push(ControllerReport {
             controller_type,
             controller_name,
+            packed_byte,
+            interpolation_flags,
+            decoded,
             row_count: rows,
             time_index,
             data_index,

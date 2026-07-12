@@ -356,6 +356,56 @@ fn semantic_stats(report: &InspectionReport) -> SemanticStats {
     stats
 }
 
+#[derive(Default)]
+struct AnimationControllerPackedStats {
+    total: usize,
+    type_8: usize,
+    type_20: usize,
+    packed_3: usize,
+    packed_4: usize,
+    nonzero_interpolation_flags: usize,
+    not_decoded: usize,
+}
+
+fn collect_animation_controller_packed_stats(
+    node: &Value,
+    stats: &mut AnimationControllerPackedStats,
+) {
+    for controller in value_array(node, "controllers") {
+        stats.total += 1;
+        match controller["controllerType"].as_i64() {
+            Some(8) => stats.type_8 += 1,
+            Some(20) => stats.type_20 += 1,
+            _ => {}
+        }
+        match controller["packedByte"].as_u64() {
+            Some(3) => stats.packed_3 += 1,
+            Some(4) => stats.packed_4 += 1,
+            _ => {}
+        }
+        if controller["interpolationFlags"].as_u64() != Some(0) {
+            stats.nonzero_interpolation_flags += 1;
+        }
+        if controller["decoded"].as_bool() != Some(true) {
+            stats.not_decoded += 1;
+        }
+    }
+    for child in value_array(node, "children") {
+        collect_animation_controller_packed_stats(child, stats);
+    }
+}
+
+fn animation_controller_packed_stats(report: &InspectionReport) -> AnimationControllerPackedStats {
+    let report = serde_json::to_value(report).expect("reader report must serialize for assertions");
+    let mut stats = AnimationControllerPackedStats::default();
+    for animation in value_array(&report, "animations") {
+        for root in value_array(&animation["nodeTree"], "roots") {
+            collect_animation_controller_packed_stats(root, &mut stats);
+        }
+    }
+    stats
+}
+
 fn expected_capability_status(
     reference_id: &str,
     capability: ReferenceCapability,
@@ -548,9 +598,16 @@ fn role_invariant_results(reference_id: &str, report: &InspectionReport) -> Vec<
             ]
         }
         "R3a" | "R3b" => {
+            let packed = animation_controller_packed_stats(report);
             assert_eq!(report.animations.len(), 42);
             assert_eq!(event_count, 41);
-            assert!(stats.controllers > 0);
+            assert_eq!(packed.total, 966);
+            assert_eq!(packed.type_8, 43);
+            assert_eq!(packed.type_20, 923);
+            assert_eq!(packed.packed_3, 43);
+            assert_eq!(packed.packed_4, 923);
+            assert_eq!(packed.nonzero_interpolation_flags, 0);
+            assert_eq!(packed.not_decoded, 0);
             vec![
                 pass_invariant("own-animation-count-exact", 42, report.animations.len()),
                 pass_invariant("animation-event-count-exact", 41, event_count),

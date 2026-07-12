@@ -39,6 +39,11 @@ fn parses_deep_model_controllers_trimesh_and_all_animation_roots() {
             Some("alpha")
         ]
     );
+    assert!(root.controllers.iter().all(|controller| {
+        controller.decoded
+            && controller.interpolation_flags == 0
+            && usize::from(controller.packed_byte & 0x0f) == controller.column_count
+    }));
     let mesh = root.mesh.as_ref().expect("trimesh report");
     assert_eq!(mesh.vertex_count, 3);
     assert_eq!(mesh.faces.len(), 1);
@@ -211,7 +216,7 @@ fn every_deep_fixture_truncation_returns_without_panicking() {
 }
 
 #[test]
-fn common_controller_layouts_require_exact_signed_columns() {
+fn common_controller_layouts_require_exact_packed_low_nibble_columns() {
     let bytes = build_deep_binary_mdl();
     let keys = read_u32_at(&bytes, ROOT_NODE_ABSOLUTE + 0x54) as usize;
     for (index, invalid_columns) in [(0, 1_i8), (1, 3), (2, 2), (3, 2), (4, 2)] {
@@ -224,12 +229,18 @@ fn common_controller_layouts_require_exact_signed_columns() {
         );
     }
 
-    let mut negative_rows = bytes.clone();
-    write_i16(&mut negative_rows, FILE_HEADER_SIZE + keys + 4, -1);
-    assert_eq!(
-        inspect_binary_mdl(&negative_rows).unwrap_err().code,
-        "M2A-MDL-CONTROLLER-LAYOUT-INVALID"
-    );
+    let mut zero_columns = bytes.clone();
+    zero_columns[FILE_HEADER_SIZE + keys + 10] = 0x10;
+    let error = inspect_binary_mdl(&zero_columns).unwrap_err();
+    assert_eq!(error.code, "M2A-MDL-CONTROLLER-LAYOUT-INVALID");
+    assert_eq!(error.offset, FILE_HEADER_SIZE + keys + 10);
+
+    let mut empty_unknown = bytes.clone();
+    let key = FILE_HEADER_SIZE + keys;
+    set_controller_key(&mut empty_unknown, key, 999, 0, 0, 0, 0x00);
+    let error = inspect_binary_mdl(&empty_unknown).unwrap_err();
+    assert_eq!(error.code, "M2A-MDL-CONTROLLER-LAYOUT-INVALID");
+    assert_eq!(error.offset, key + 10);
 
     let mut negative_columns = bytes;
     negative_columns[FILE_HEADER_SIZE + keys + 10] = (-1_i8) as u8;
@@ -237,6 +248,169 @@ fn common_controller_layouts_require_exact_signed_columns() {
         inspect_binary_mdl(&negative_columns).unwrap_err().code,
         "M2A-MDL-CONTROLLER-LAYOUT-INVALID"
     );
+}
+
+#[test]
+fn controller_u16_boundaries_are_not_reinterpreted_as_negative() {
+    let bytes = build_deep_binary_mdl();
+    let keys = read_u32_at(&bytes, ROOT_NODE_ABSOLUTE + 0x54) as usize;
+    let key = FILE_HEADER_SIZE + keys;
+
+    for (field, value) in [(4, 32_768_u16), (6, 32_768), (8, u16::MAX)] {
+        let mut boundary = bytes.clone();
+        boundary[key + field..key + field + 2].copy_from_slice(&value.to_le_bytes());
+        let error = inspect_binary_mdl(&boundary).unwrap_err();
+        assert_eq!(error.code, "M2A-MDL-CONTROLLER-INDEX-OOB");
+        assert!(error.context.contains(&value.to_string()));
+        assert!(!error.context.contains("negative"));
+    }
+
+    let mut max_rows = bytes;
+    max_rows[key + 4..key + 6].copy_from_slice(&u16::MAX.to_le_bytes());
+    let error = inspect_binary_mdl(&max_rows).unwrap_err();
+    assert_eq!(error.code, "M2A-MDL-CONTROLLER-INDEX-OOB");
+    assert!(error.context.contains("65535"));
+}
+
+#[test]
+fn controller_u16_high_bit_indices_and_rows_can_be_valid() {
+    let mut high_time = with_controller_data_length(build_deep_binary_mdl(), 32_769);
+    let keys = read_u32_at(&high_time, ROOT_NODE_ABSOLUTE + 0x54) as usize;
+    let key = FILE_HEADER_SIZE + keys;
+    set_controller_key(&mut high_time, key, 36, 1, 32_768, 0, 0x01);
+    let report = inspect_binary_mdl(&high_time).expect("u16 high-bit time index is valid");
+    assert_eq!(report.node_tree.roots[0].controllers[0].time_index, 32_768);
+
+    let mut high_data = with_controller_data_length(build_deep_binary_mdl(), 32_769);
+    let keys = read_u32_at(&high_data, ROOT_NODE_ABSOLUTE + 0x54) as usize;
+    let key = FILE_HEADER_SIZE + keys;
+    set_controller_key(&mut high_data, key, 36, 1, 0, 32_768, 0x01);
+    let report = inspect_binary_mdl(&high_data).expect("u16 high-bit data index is valid");
+    assert_eq!(report.node_tree.roots[0].controllers[0].data_index, 32_768);
+
+    let mut high_rows = with_controller_data_length(build_deep_binary_mdl(), 65_536);
+    let keys = read_u32_at(&high_rows, ROOT_NODE_ABSOLUTE + 0x54) as usize;
+    let key = FILE_HEADER_SIZE + keys;
+    set_controller_key(&mut high_rows, key, 36, 32_768, 0, 32_768, 0x01);
+    let report = inspect_binary_mdl(&high_rows).expect("u16 high-bit row count is valid");
+    assert_eq!(report.node_tree.roots[0].controllers[0].row_count, 32_768);
+}
+
+#[test]
+fn controller_u16_max_index_has_exact_valid_and_oob_boundary() {
+    let mut valid = with_controller_data_length(build_deep_binary_mdl(), 65_536);
+    let keys = read_u32_at(&valid, ROOT_NODE_ABSOLUTE + 0x54) as usize;
+    let key = FILE_HEADER_SIZE + keys;
+    set_controller_key(&mut valid, key, 36, 1, u16::MAX, 0, 0x01);
+    let report = inspect_binary_mdl(&valid).expect("u16::MAX index reaches final float");
+    assert_eq!(report.node_tree.roots[0].controllers[0].time_index, 65_535);
+
+    let mut oob = with_controller_data_length(build_deep_binary_mdl(), 65_535);
+    let keys = read_u32_at(&oob, ROOT_NODE_ABSOLUTE + 0x54) as usize;
+    let key = FILE_HEADER_SIZE + keys;
+    set_controller_key(&mut oob, key, 36, 1, u16::MAX, 0, 0x01);
+    let error = inspect_binary_mdl(&oob).unwrap_err();
+    assert_eq!(error.code, "M2A-MDL-CONTROLLER-INDEX-OOB");
+    assert!(error.context.contains("65535..65536"));
+}
+
+#[test]
+fn packed_controller_byte_splits_columns_and_interpolation_flags() {
+    let mut bytes = build_deep_binary_mdl();
+    let keys = read_u32_at(&bytes, ROOT_NODE_ABSOLUTE + 0x54) as usize;
+    bytes[FILE_HEADER_SIZE + keys + 10] = 0x13;
+    bytes[FILE_HEADER_SIZE + keys + 0x0c + 10] = 0x14;
+
+    let report = inspect_binary_mdl(&bytes).expect("recognized Bezier flags remain inventory");
+    let position = &report.node_tree.roots[0].controllers[0];
+    let orientation = &report.node_tree.roots[0].controllers[1];
+    assert_eq!((position.packed_byte, position.column_count), (0x13, 3));
+    assert_eq!(position.interpolation_flags, 0x10);
+    assert!(!position.decoded);
+    assert!(position.times.is_empty());
+    assert!(position.values.is_empty());
+    assert_eq!(
+        (orientation.packed_byte, orientation.column_count),
+        (0x14, 4)
+    );
+    assert_eq!(orientation.interpolation_flags, 0x10);
+    assert!(!orientation.decoded);
+    assert_eq!(
+        report
+            .diagnostics
+            .iter()
+            .filter(|item| item.code == "M2A-MDL-CONTROLLER-INTERPOLATION-UNSUPPORTED")
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn deferred_bezier_still_validates_time_and_minimum_data_indices() {
+    let bytes = build_deep_binary_mdl();
+    let keys = read_u32_at(&bytes, ROOT_NODE_ABSOLUTE + 0x54) as usize;
+    let key = FILE_HEADER_SIZE + keys;
+    let data_length = read_u32_at(&bytes, ROOT_NODE_ABSOLUTE + 0x64) as u16;
+
+    let mut time_oob = bytes.clone();
+    set_controller_key(&mut time_oob, key, 8, 1, data_length, 0, 0x13);
+    let error = inspect_binary_mdl(&time_oob).unwrap_err();
+    assert_eq!(error.code, "M2A-MDL-CONTROLLER-INDEX-OOB");
+    assert_eq!(error.offset, key + 6);
+    assert!(error.context.contains("13..14"));
+
+    let mut data_oob = bytes;
+    set_controller_key(&mut data_oob, key, 8, 1, 0, data_length, 0x13);
+    let error = inspect_binary_mdl(&data_oob).unwrap_err();
+    assert_eq!(error.code, "M2A-MDL-CONTROLLER-INDEX-OOB");
+    assert_eq!(error.offset, key + 8);
+    assert!(error.context.contains("data index 13"));
+}
+
+#[test]
+fn unknown_controller_interpolation_flags_have_stable_layout_error() {
+    let mut bytes = build_deep_binary_mdl();
+    let keys = read_u32_at(&bytes, ROOT_NODE_ABSOLUTE + 0x54) as usize;
+    bytes[FILE_HEADER_SIZE + keys + 10] = 0x23;
+
+    let error = inspect_binary_mdl(&bytes).unwrap_err();
+    assert_eq!(error.code, "M2A-MDL-CONTROLLER-LAYOUT-INVALID");
+    assert_eq!(error.offset, FILE_HEADER_SIZE + keys + 10);
+    assert!(error.context.contains("0x20"));
+}
+
+fn with_controller_data_length(mut bytes: Vec<u8>, float_count: usize) -> Vec<u8> {
+    let old_core_length = read_u32_at(&bytes, 4) as usize;
+    let insertion = FILE_HEADER_SIZE + old_core_length;
+    bytes.splice(
+        insertion..insertion,
+        std::iter::repeat_n(0, float_count * 4),
+    );
+    write_u32(&mut bytes, 4, (old_core_length + float_count * 4) as u32);
+    write_u32(
+        &mut bytes,
+        ROOT_NODE_ABSOLUTE + 0x60,
+        old_core_length as u32,
+    );
+    write_u32(&mut bytes, ROOT_NODE_ABSOLUTE + 0x64, float_count as u32);
+    write_u32(&mut bytes, ROOT_NODE_ABSOLUTE + 0x68, float_count as u32);
+    bytes
+}
+
+fn set_controller_key(
+    bytes: &mut [u8],
+    key: usize,
+    controller_type: i32,
+    rows: u16,
+    time_index: u16,
+    data_index: u16,
+    packed_byte: u8,
+) {
+    write_i32(bytes, key, controller_type);
+    bytes[key + 4..key + 6].copy_from_slice(&rows.to_le_bytes());
+    bytes[key + 6..key + 8].copy_from_slice(&time_index.to_le_bytes());
+    bytes[key + 8..key + 10].copy_from_slice(&data_index.to_le_bytes());
+    bytes[key + 10] = packed_byte;
 }
 
 #[test]

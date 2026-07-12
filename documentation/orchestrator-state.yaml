@@ -1,5 +1,5 @@
 schema_version: 1
-last_updated: "2026-07-12"
+last_updated: "2026-07-13"
 project:
   canonical_repo: "C:\\Projects\\meshy2aurora"
   documentation_root: "C:\\Projects\\meshy2aurora\\documentation"
@@ -21,7 +21,7 @@ status_vocabulary:
 orchestration:
   active_stage: "M4A"
   next_ready_stage: "NONE"
-  next_action: "Run the Aurora First M4A contract lock for animation headers, roots, tracks, transitions and events before any animation implementation; do not guess from the structural M4 writer."
+  next_action: "Implement M4A1.2 from the locked Aurora First contract: add separate MdlAnimationSetV1 writer/readback while preserving the frozen zero-animation M4 hash. Reader M4A1.1 is fixed and verified; M4A2 GLB-to-output-rig animation mapping remains required before M4A DONE."
   one_active_stage_only: true
   current_attempt_id: "M4A-20260712-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
@@ -69,11 +69,11 @@ global_blockers:
     severity: "P0"
     status: "DIRECTION_DEFINED_RUNTIME_OPEN"
     title: "Full animation contract"
-    detail: "Profile A uses self-contained generated clips; supermodel inheritance is a later compatibility route. Loader/movement/gameplay levels and event proof gates are recorded."
+    detail: "Profile A uses self-contained generated clips; supermodel inheritance is a later compatibility route. The M4A structural writer contract is locked from decompilation and canonical R3, while animroot/event callback/state-routing/runtime tree acceptance remain OPEN_M6."
     affects: ["M4A", "M5", "M6", "M7"]
     owner: "Codex"
     source: "documentation/animacje-kontrakt-profil-a-codex.md"
-    next_action: "M4A implements loader smoke first, then proves selected movement/gameplay states and event behavior in NWN EE."
+    next_action: "Implement M4A1 writer/readback and required M4A2 GLB mapper, then prove loader/movement/gameplay states and event behavior in NWN EE during M6."
 
 stages:
   P0:
@@ -322,22 +322,36 @@ stages:
 
   M4A:
     status: "IN_PROGRESS"
-    status_reason: "Attempt M4A-20260712-01 is active at the Aurora First animation contract-lock gate after M4 structural DONE. No animation implementation is authorized until exact binary header/root/track/transition/event ownership and readback gates are locked."
+    status_reason: "M4A1.1 reader correction is complete with status READER_FIXED_M4A1_WRITER_NEXT: u16/packed-key semantics, native/WASM, canonical R3/P-REF, Docker no-cache and final P1=0/P2=0 review pass. M4A remains IN_PROGRESS, not DONE: M4A1.2 MdlAnimationSetV1 writer/readback and M4A2 GLB-to-output-rig mapper are still required; runtime acceptance is OPEN_M6."
     owner: "Codex orchestrator + M4A contract/review subagents"
     risk: "HIGH"
     attempt_id: "M4A-20260712-01"
     dependencies: ["M4 DONE", "GB-005 direction defined"]
     current_problems:
-      - "Exact self-contained animation binary emission and semantic readback contract is not yet locked from Aurora First evidence."
-      - "Pre-controller type-20 normalization before RAW quaternion serialization remains unresolved and runtime-owned by M6; M4A must record the structural policy without inventing engine behavior."
+      - "M4A1 separate MdlAnimationSetV1 writer/readback and its full happy/negative/mutation matrix are not implemented."
+      - "M4A2 source GLB animation to output-rig/Aurora-local-space mapping is not implemented and remains required before M4A DONE."
+      - "Animroot consumer, event-name callbacks, state routing/loop behavior, zero opaque runtime fields and rig-only animation-tree acceptance remain named OPEN_M6 facts, not structural blockers."
     bugs: []
     next_actions:
-      - "Audit Aurora decompilation and canonical read-only animation witnesses, then lock M4A header/root/track/transition/event layout and stable diagnostics before code."
-      - "Keep supermodel compatibility and runtime controller/deformation claims out of the first self-contained structural animation slice unless new Aurora First evidence closes them."
-    evidence: []
-    documentation: ["documentation/evidence/M4A-evidence.md"]
-    expected_artifacts: ["Animation inventory report", "Animation readback diff", "Toolset/game animation proof"]
-    changed_files: ["documentation/orchestrator-state.yaml"]
+      - "M4A1.2: add separate versioned MdlAnimationSetV1, LINEAR translation/rotation writer, rig-only dummy animation tree, events, own readback and semantic diff."
+      - "M4A1.3: prove zero/one/multiple clips, stable errors, exact EOF/core/raw layout, native/WASM identity and frozen M4 zero-animation SHA."
+      - "M4A2: implement convert_profile_a_with_animations_v1 with a stage-private AllowMappedForM4A2 policy after full mapping validation; keep default M3 RejectPresent behavior unchanged and reject STEP/CUBICSPLINE/scale/weights."
+      - "After implementation gates, run independent P1/P2 review; defer Toolset/game runtime claims to M6."
+    evidence: ["documentation/evidence/M4A-evidence.md: READER_FIXED_M4A1_WRITER_NEXT; core 151, workspace 153, MDL 40, WASM 14, canonical R3/P-REF 1/1 exact packed counters, Docker no-cache and final P1=0/P2=0; M4A1.2/M4A2 pending"]
+    documentation: ["documentation/m4a-animation-writer-kontrakt-suplement-codex.md", "documentation/evidence/M4A-evidence.md", "documentation/animacje-kontrakt-profil-a-codex.md", "documentation/m1b-kontrakt-suplement-codex.md"]
+    expected_artifacts: ["MdlAnimationSetV1 and controller reader correction", "Animation writer/readback semantic diff and mutation matrix", "M4A2 GLB animation mapper", "Frozen zero-animation M4 regression", "M6 Toolset/game animation proof"]
+    changed_files:
+      - "crates/m2a-core/src/mdl/binary_reader.rs"
+      - "crates/m2a-core/src/mdl/parse_binary_mdl.rs"
+      - "crates/m2a-core/src/mdl/types.rs"
+      - "crates/m2a-core/tests/mdl/parser.rs"
+      - "crates/m2a-core/tests/mdl_writer.rs"
+      - "crates/m2a-core/tests/erf_reference_integration.rs"
+      - "crates/m2a-wasm/src/lib.rs"
+      - "documentation/m4a-animation-writer-kontrakt-suplement-codex.md"
+      - "documentation/evidence/M4A-evidence.md"
+      - "documentation/m1b-kontrakt-suplement-codex.md"
+      - "documentation/orchestrator-state.yaml"
 
   M5:
     status: "NOT_STARTED"
