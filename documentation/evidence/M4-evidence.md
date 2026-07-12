@@ -4,6 +4,10 @@ Data startu: 2026-07-12
 Attempt: `M4-20260712-01`
 Status: `RIGID_SLICE_DONE_M4_IN_PROGRESS_SKIN`
 
+Branch: `codex/m4-mdl-writer-readback`
+
+Feature commit: `0f7b2f2 feat: add deterministic rigid MDL writer readback`
+
 ## Activation checkpoint
 
 M4 jest aktywne w bramce `AURORA_FIRST_CONTRACT_LOCK`. Implementacja writera
