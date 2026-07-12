@@ -1,6 +1,6 @@
 # Docker build/test supplement
 
-Data: 2026-07-12 | Autor: Codex | Status: AKTYWNY SUPLEMENT IMPLEMENTACYJNY (DOCS-ONLY)
+Data: 2026-07-12 | Autor: Codex | Status: D1 IMPLEMENTED / VERIFYING
 
 ## 1. Decyzja
 
@@ -15,6 +15,10 @@ docker_not_now:
 static_web_image: "deferred to S1, after M6 DONE"
 initial_web_delivery: "static files/GitHub Pages remains the active architecture"
 ```
+
+Implementacja checkpointu D1 znajduje sie w repozytoryjnym `Dockerfile` oraz
+`.dockerignore`. Domyslny finalny target to `quality`; nie zawiera serwera ani
+runtime'u produktu.
 
 Docker nie zmienia architektury produktu. Konwersja nadal wykonuje sie lokalnie w
 przegladarce na plikach jawnie wybranych przez uzytkownika, a `m2a-core` pozostaje

@@ -119,3 +119,129 @@ bugs: []
 3. Domknac fixture F, limity i pelna fatal/gate/truncation/no-panic negative matrix.
 4. Uruchomic finalne native i WASM gates po wszystkich poprawkach.
 5. Wykonac niezalezny final M2 review; dopiero green D-F + gates + review pozwalaja rozwazyc `DONE`.
+
+## M2-20260712-02 - contract correction for slice E
+
+Status: IN_PROGRESS
+Owner: Codex orchestrator + M2 contract/review subagents
+Stage: M2 E (PENDING)
+
+### Wynik korekty kontraktu
+
+- Ustalono, ze brak `skin.inverseBindMatrices` jest poprawny i daje puste `inverseBindMatrices` w IR.
+- Obecny inverse-bind accessor musi byc non-normalized `FLOAT/MAT4`, miec `count >= joints.len()` i zachowuje plaskie `[f32;16]` w glTF column-major.
+- `IrAnimationSampler` zachowuje `outputAccessorType`; `targetPath` nalezy do `IrAnimationChannel`, bez dublowania znaczenia w samplerze.
+- M2 E wymaga `LINEAR`, `STEP` i `CUBICSPLINE`; brak source interpolation canonicalizuje sie do glTF default `LINEAR`.
+- `keyframeCount` jest suma input count samplerow, a duration animacji maksimum ich ostatnich czasow.
+- Kanal `WEIGHTS` pozostaje deferred i daje exact `M2A-GLB-ANIMATION-WEIGHTS-DEFERRED` `BLOCKING`.
+- Dodano project/WASM guardraile: `maxAnimationSamplers=100000`, `maxAnimationChannels=100000`, `maxDecodedSkinAnimationBytes=67108864`.
+- Rozszerzono exact validation/negative matrix o IBM, TRS output layout/count, interpolation, refs, aggregate limits, decoded budget i checked overflow.
+
+### Stan
+
+Korekta jest docs-only. Nie zmienia kodu ani statusu etapu: M2 pozostaje `IN_PROGRESS`, a slice E pozostaje `PENDING` do czasu implementacji, testow i niezaleznego review.
+
+## M2-20260712-03 - implementation A-F closed, final verification open
+
+Status: VERIFYING
+Owner: Codex orchestrator + M2 implementation/review subagents
+Stage: M2
+
+### Wynik implementacji
+
+- Zamknieto pelny source-preserving ingest A-F: geometry, osie/winding/UV, materialy i embedded image identity, samplery, skin/IBM oraz animacje `LINEAR`, `STEP` i `CUBICSPLINE` pozostaja w glTF source basis.
+- Slice D i E przeszly niezalezne review bez findings; historyczny wpis `E PENDING` powyzej opisuje stan korekty kontraktu, nie stan biezacy.
+- Slice F obejmuje pelna macierz fatal/gate/limit/truncation/no-panic i ma `28/28 PASS` w `crates/m2a-core/tests/glb.rs`.
+- Dodano i zweryfikowano blocking gates `M2A-GLB-INCOMPLETE-TRIANGLES` oraz `M2A-GLB-DEGENERATE-TRIANGLES`; osobno przechodza warning gates dla geometrii, brakujacych normals/base-color texture, optional extension, skin influence count i nierozstrzygnietego target transform.
+- Finalna poprawka testowego helpera `POSITION` prawidlowo materializuje wariant missing-position; nie zmienia produkcyjnego kontraktu ani nie oslabia gate'a.
+- Publiczne native/WASM API pozostaja deterministyczne, nie modyfikuja source bytes i nie serializuja BIN/image payloadu, sciezek hosta ani zewnetrznych assetow.
+
+### Bramy jakosci
+
+```yaml
+glb_fixture_and_negative_tests:
+  result: PASS
+  count: 28
+  expected: 28
+native_workspace_tests:
+  result: PASS
+  count: 96
+wasm_node_tests:
+  result: PASS
+  count: 12
+quality_gates:
+  cargo_fmt_all_check: PASS
+  cargo_clippy_workspace_all_targets_D_warnings: PASS
+  cargo_test_workspace: PASS
+  wasm32_unknown_unknown_build: PASS
+  wasm_pack_test_node: PASS
+  git_diff_check: PASS
+independent_reviews:
+  slice_D: "NO FINDINGS"
+  slice_E: "NO FINDINGS"
+  final_full_scope: "NO FINDINGS"
+stage_status: VERIFYING
+```
+
+### Docker build/test checkpoint
+
+- `docker build --pull --target quality -t m2a-quality:local .` - PASS.
+- `docker build --pull --no-cache --target quality -t m2a-quality:clean .` - PASS.
+- Finalny zweryfikowany obraz ma tag `m2a-quality:final` i digest `sha256:9f84561c7271968bfb8de9997d97e33360e1765e217620897c404af236f6b620`.
+- `docker image inspect` size: `1067266351` bytes; Docker CLI virtual size: `4.43GB`; build context: `212.69kB`; czas finalnego buildu: `137.5s`.
+- SHA256 `crates/m2a-core/src/glb/mod.rs` jest identyczny na hoscie i w obrazie: `029f9c41319dda5b32a6bd33ae19cba9dedda8b1e2d5e7a50540190a4a11e2fa` - PASS.
+- Przejrzane context, history i image content nie zawieraja retail/CEP HAK/MDL/MDX/KEY/BIF, sekretow ani absolutnych sciezek hosta.
+- Obraz jest wylacznie build/test targetem `quality`: bez serwera, runtime'u produktu i bez substytutu proofu NWN EE na hoscie Windows.
+
+### Current problems i nastepna akcja
+
+```yaml
+current_problems:
+  - "Final documentation consistency scan is still pending before M2 can be marked DONE."
+bugs: []
+next_action: "Run the final documentation consistency scan; all implementation, quality, Docker and independent review gates already PASS."
+```
+
+## M2-20260712-04 - final review and stage closure
+
+Status: DONE
+Owner: Codex orchestrator + M2 implementation/review subagents
+Stage: M2
+
+### Finalny wynik
+
+- Niezalezny finalny review calego post-fix zakresu A-F: `NO FINDINGS`.
+- Finalny skan spojnosci kontraktu, evidence, Docker supplement, orchestrator state i aktywnego planu: `NO FINDINGS`.
+- Source-preserving GLB ingest, publiczne native/WASM API, fatal/gate/limit/truncation/no-panic matrix i wszystkie synthetic fixtures A-F sa zamkniete.
+- M2 celowo nie rozstrzyga Aurora target axis/scale/UV/winding. `UNRESOLVED_M3` jest teraz jawnym work itemem M3 i nie moze zostac zastapiony zgadywaniem.
+
+```yaml
+final_gates:
+  glb_fixture_and_negative_tests: "28/28 PASS"
+  native_workspace_tests: "96 PASS"
+  wasm_node_tests: "12 PASS"
+  cargo_fmt_all_check: PASS
+  cargo_clippy_workspace_all_targets_D_warnings: PASS
+  cargo_test_workspace: PASS
+  wasm32_unknown_unknown_build: PASS
+  wasm_pack_test_node: PASS
+  git_diff_check: PASS
+  independent_review_D: "NO FINDINGS"
+  independent_review_E: "NO FINDINGS"
+  independent_review_final_full_scope: "NO FINDINGS"
+  final_documentation_consistency_scan: "NO FINDINGS"
+docker_final:
+  standard_quality_build: PASS
+  no_cache_quality_build: PASS
+  tag: "m2a-quality:final"
+  digest: "sha256:9f84561c7271968bfb8de9997d97e33360e1765e217620897c404af236f6b620"
+  inspect_size_bytes: 1067266351
+  build_context: "212.69kB"
+  build_elapsed: "137.5s"
+  host_image_glb_rs_sha256: "029f9c41319dda5b32a6bd33ae19cba9dedda8b1e2d5e7a50540190a4a11e2fa"
+  content_assets_secrets_paths_audit: PASS
+current_problems: []
+bugs: []
+stage_status: DONE
+handoff: "M3-20260712-01"
+```

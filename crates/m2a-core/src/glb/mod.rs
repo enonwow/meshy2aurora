@@ -1,6 +1,9 @@
-use std::fmt;
+use std::{collections::HashSet, fmt};
 
-use gltf::mesh::{Mode, Semantic};
+use gltf::{
+    mesh::{Mode, Semantic},
+    texture::{MagFilter, MinFilter, WrappingMode},
+};
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -17,6 +20,9 @@ pub struct GlbLimits {
     pub max_primitives: usize,
     pub max_accessors: usize,
     pub max_buffer_views: usize,
+    pub max_materials: usize,
+    pub max_textures: usize,
+    pub max_samplers: usize,
     pub max_vertices: usize,
     pub max_indices: usize,
     pub max_decoded_geometry_bytes: usize,
@@ -26,7 +32,10 @@ pub struct GlbLimits {
     pub max_skins: usize,
     pub max_joints: usize,
     pub max_animations: usize,
+    pub max_animation_samplers: usize,
+    pub max_animation_channels: usize,
     pub max_keyframes: usize,
+    pub max_decoded_skin_animation_bytes: usize,
     pub max_diagnostics: usize,
     pub triangle_warning_above: usize,
     pub triangle_blocking_above: usize,
@@ -43,6 +52,9 @@ impl Default for GlbLimits {
             max_primitives: 100_000,
             max_accessors: 100_000,
             max_buffer_views: 100_000,
+            max_materials: 10_000,
+            max_textures: 10_000,
+            max_samplers: 10_000,
             max_vertices: 1_000_000,
             max_indices: 3_000_000,
             max_decoded_geometry_bytes: 256 * 1024 * 1024,
@@ -52,7 +64,10 @@ impl Default for GlbLimits {
             max_skins: 10_000,
             max_joints: 100_000,
             max_animations: 10_000,
+            max_animation_samplers: 100_000,
+            max_animation_channels: 100_000,
             max_keyframes: 1_000_000,
+            max_decoded_skin_animation_bytes: 64 * 1024 * 1024,
             max_diagnostics: 2_048,
             triangle_warning_above: 5_000,
             triangle_blocking_above: 10_000,
@@ -123,6 +138,7 @@ pub struct AuroraAssetIr {
     pub primitives: Vec<IrPrimitive>,
     pub materials: Vec<IrMaterial>,
     pub textures: Vec<IrTexture>,
+    pub samplers: Vec<IrSampler>,
     pub images: Vec<IrImageRef>,
     pub skins: Vec<IrSkin>,
     pub animations: Vec<IrAnimation>,
@@ -261,6 +277,17 @@ pub struct IrTexture {
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct IrSampler {
+    pub id: u32,
+    pub name: Option<String>,
+    pub mag_filter: Option<String>,
+    pub min_filter: Option<String>,
+    pub wrap_s: String,
+    pub wrap_t: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct IrImageRef {
     pub id: u32,
     pub name: Option<String>,
@@ -278,7 +305,7 @@ pub struct IrSkin {
     pub name: Option<String>,
     pub skeleton_root_node_id: Option<u32>,
     pub joint_node_ids: Vec<u32>,
-    pub inverse_bind_matrices: Vec<[[f32; 4]; 4]>,
+    pub inverse_bind_matrices: Vec<[f32; 16]>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -287,6 +314,26 @@ pub struct IrAnimation {
     pub id: u32,
     pub name: Option<String>,
     pub duration_seconds: f32,
+    pub samplers: Vec<IrAnimationSampler>,
+    pub channels: Vec<IrAnimationChannel>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IrAnimationSampler {
+    pub id: u32,
+    pub interpolation: String,
+    pub input_times_seconds: Vec<f32>,
+    pub output_accessor_type: String,
+    pub output_values: Vec<f32>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IrAnimationChannel {
+    pub sampler_id: u32,
+    pub target_node_id: u32,
+    pub target_path: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -319,6 +366,7 @@ pub struct GlbInventory {
     pub primitive_count: usize,
     pub material_count: usize,
     pub texture_count: usize,
+    pub sampler_count: usize,
     pub image_count: usize,
     pub skin_count: usize,
     pub joint_reference_count: usize,
@@ -369,7 +417,17 @@ pub fn ingest_glb(input: &[u8], limits: &GlbLimits) -> Result<GlbIngestResult, G
     validate_header(input, limits)?;
     let (json_bytes, blob) = glb_payloads(input)?;
     let raw = preflight_json(json_bytes, blob, limits)?;
-    let gltf = gltf::Gltf::from_slice(input).map_err(map_gltf_error)?;
+    let patched_input = if raw.missing_position_primitives.is_empty() {
+        None
+    } else {
+        Some(patch_missing_positions_for_validation(
+            json_bytes,
+            blob,
+            &raw.missing_position_primitives,
+        )?)
+    };
+    let document_input = patched_input.as_deref().unwrap_or(input);
+    let gltf = gltf::Gltf::from_slice(document_input).map_err(map_gltf_error)?;
     let gltf_blob = gltf.blob.as_deref().ok_or_else(|| {
         GlbFatalError::new("M2A-GLB-BIN-MISSING", "embedded GLB BIN chunk is required")
     })?;
@@ -469,18 +527,29 @@ pub fn ingest_glb(input: &[u8], limits: &GlbLimits) -> Result<GlbIngestResult, G
                 mesh.index()
             );
             let reader = primitive.reader(|_| Some(gltf_blob));
+            let source_missing_position = raw
+                .missing_position_primitives
+                .contains(&(mesh.index(), source_primitive_index));
             reserve_decoded_items(
                 &mut decoded_bytes,
-                primitive
-                    .get(&Semantic::Positions)
-                    .map_or(0, |accessor| accessor.count()),
+                if source_missing_position {
+                    0
+                } else {
+                    primitive
+                        .get(&Semantic::Positions)
+                        .map_or(0, |accessor| accessor.count())
+                },
                 12,
                 limits,
             )?;
-            let positions = reader
-                .read_positions()
-                .map(|values| values.collect::<Vec<_>>())
-                .unwrap_or_default();
+            let positions = if source_missing_position {
+                Vec::new()
+            } else {
+                reader
+                    .read_positions()
+                    .map(|values| values.collect::<Vec<_>>())
+                    .unwrap_or_default()
+            };
             if positions.is_empty() {
                 gates.push(blocking_gate(
                     "M2A-GLB-POSITION-MISSING",
@@ -573,7 +642,7 @@ pub fn ingest_glb(input: &[u8], limits: &GlbLimits) -> Result<GlbIngestResult, G
             };
 
             reject_nonfinite(&positions, &normals, &tangents, &uv0, &weights0)?;
-            if !normals.is_empty() && normals.len() != positions.len() {
+            if !source_missing_position && !normals.is_empty() && normals.len() != positions.len() {
                 gates.push(blocking_gate(
                     "M2A-GLB-ATTRIBUTE-COUNT-MISMATCH",
                     &path,
@@ -582,7 +651,7 @@ pub fn ingest_glb(input: &[u8], limits: &GlbLimits) -> Result<GlbIngestResult, G
                     "NORMAL count differs from POSITION count",
                 ));
             }
-            if !uv0.is_empty() && uv0.len() != positions.len() {
+            if !source_missing_position && !uv0.is_empty() && uv0.len() != positions.len() {
                 gates.push(blocking_gate(
                     "M2A-GLB-ATTRIBUTE-COUNT-MISMATCH",
                     &path,
@@ -590,6 +659,21 @@ pub fn ingest_glb(input: &[u8], limits: &GlbLimits) -> Result<GlbIngestResult, G
                     &uv0.len().to_string(),
                     "TEXCOORD_0 count differs from POSITION count",
                 ));
+            }
+            for (semantic, count) in [
+                ("TANGENT", tangents.len()),
+                ("JOINTS_0", joints0.len()),
+                ("WEIGHTS_0", weights0.len()),
+            ] {
+                if !source_missing_position && count != 0 && count != positions.len() {
+                    gates.push(blocking_gate(
+                        "M2A-GLB-ATTRIBUTE-COUNT-MISMATCH",
+                        &path,
+                        &positions.len().to_string(),
+                        &count.to_string(),
+                        &format!("{semantic} count differs from POSITION count"),
+                    ));
+                }
             }
             if normals.is_empty() {
                 statistics.primitives_missing_normals += 1;
@@ -622,10 +706,34 @@ pub fn ingest_glb(input: &[u8], limits: &GlbLimits) -> Result<GlbIngestResult, G
                     "only triangle primitives are conversion-eligible",
                 ));
             }
-            if let Some(index) = indices
-                .iter()
-                .copied()
-                .find(|index| *index as usize >= positions.len())
+            if primitive.morph_targets().len() != 0 {
+                gates.push(blocking_gate(
+                    "M2A-GLB-MORPH-TARGETS-DEFERRED",
+                    &path,
+                    "no morph targets in M2 conversion subset",
+                    &primitive.morph_targets().len().to_string(),
+                    "morph-target conversion semantics are deferred",
+                ));
+            }
+            if primitive.get(&Semantic::Joints(1)).is_some()
+                || primitive.get(&Semantic::Weights(1)).is_some()
+            {
+                gates.push(warning_gate(
+                    "M2A-GLB-SKIN-INFLUENCE-COUNT",
+                    &path,
+                    "at most JOINTS_0/WEIGHTS_0 (four lanes)",
+                    "secondary skin influence set present",
+                    "source skinning exposes more than four influence lanes",
+                ));
+            }
+            if let Some(index) = (!source_missing_position)
+                .then(|| {
+                    indices
+                        .iter()
+                        .copied()
+                        .find(|index| *index as usize >= positions.len())
+                })
+                .flatten()
             {
                 gates.push(blocking_gate(
                     "M2A-GLB-INDEX-OOB",
@@ -633,6 +741,27 @@ pub fn ingest_glb(input: &[u8], limits: &GlbLimits) -> Result<GlbIngestResult, G
                     &format!("index < {}", positions.len()),
                     &index.to_string(),
                     "index is outside the POSITION domain",
+                ));
+            }
+            if is_triangles && !indices.len().is_multiple_of(3) {
+                gates.push(blocking_gate(
+                    "M2A-GLB-INCOMPLETE-TRIANGLES",
+                    &path,
+                    "index count divisible by 3",
+                    &indices.len().to_string(),
+                    "triangle primitive contains an incomplete final triangle",
+                ));
+            }
+            if is_triangles
+                && !source_missing_position
+                && has_degenerate_triangle(&positions, &indices)
+            {
+                gates.push(blocking_gate(
+                    "M2A-GLB-DEGENERATE-TRIANGLES",
+                    &path,
+                    "non-degenerate triangles",
+                    "one or more repeated-index or exact zero-area triangles",
+                    "degenerate triangle repair is deferred to an explicit conversion policy",
                 ));
             }
             let triangle_count = if is_triangles { indices.len() / 3 } else { 0 };
@@ -700,11 +829,29 @@ pub fn ingest_glb(input: &[u8], limits: &GlbLimits) -> Result<GlbIngestResult, G
         "UNRESOLVED_M3",
         "M2 preserves glTF source coordinates, UV values and winding",
     ));
+    let skins = decode_skins(&gltf.document, gltf_blob)?;
+    validate_skin_joint_lanes(&nodes, &primitives, &skins)?;
+    let animations = decode_animations(&gltf.document, gltf_blob, &mut gates)?;
     let materials = gltf
         .document
         .materials()
         .map(material_from_gltf)
         .collect::<Vec<_>>();
+    reject_nonfinite_materials(&materials)?;
+    for material in &materials {
+        if material.base_color_texture.is_none() {
+            gates.push(warning_gate(
+                "M2A-GLB-BASECOLOR-TEXTURE-MISSING",
+                &format!(
+                    "materials[{}].pbrMetallicRoughness.baseColorTexture",
+                    material.id
+                ),
+                "embedded baseColorTexture",
+                "missing",
+                "material has no base-color texture and requires downstream policy",
+            ));
+        }
+    }
     let textures = gltf
         .document
         .textures()
@@ -714,6 +861,57 @@ pub fn ingest_glb(input: &[u8], limits: &GlbLimits) -> Result<GlbIngestResult, G
             sampler_index: texture.sampler().index().map(|index| index as u32),
         })
         .collect::<Vec<_>>();
+    let samplers = gltf
+        .document
+        .samplers()
+        .enumerate()
+        .map(|(index, sampler)| IrSampler {
+            id: index as u32,
+            name: sampler.name().map(str::to_owned),
+            mag_filter: sampler.mag_filter().map(mag_filter_name).map(str::to_owned),
+            min_filter: sampler.min_filter().map(min_filter_name).map(str::to_owned),
+            wrap_s: wrapping_mode_name(sampler.wrap_s()).to_owned(),
+            wrap_t: wrapping_mode_name(sampler.wrap_t()).to_owned(),
+        })
+        .collect::<Vec<_>>();
+    let images = gltf
+        .document
+        .images()
+        .map(|image| match image.source() {
+            gltf::image::Source::View { view, mime_type } => {
+                let byte_offset = view.offset();
+                let byte_length = view.length();
+                let byte_end = byte_offset.checked_add(byte_length).ok_or_else(|| {
+                    GlbFatalError::new(
+                        "M2A-GLB-INTEGER-OVERFLOW",
+                        "embedded image byte range overflow",
+                    )
+                    .in_json(format!("images[{}].bufferView", image.index()))
+                })?;
+                let bytes = gltf_blob.get(byte_offset..byte_end).ok_or_else(|| {
+                    GlbFatalError::new(
+                        "M2A-GLB-BUFFER-VIEW-OOB",
+                        "embedded image byte range exceeds the BIN chunk",
+                    )
+                    .in_json(format!("images[{}].bufferView", image.index()))
+                })?;
+                Ok(IrImageRef {
+                    id: image.index() as u32,
+                    name: image.name().map(str::to_owned),
+                    mime_type: mime_type.to_owned(),
+                    byte_offset,
+                    byte_length,
+                    sha256: sha256_hex(bytes),
+                    payload_embedded_in_json: false,
+                })
+            }
+            gltf::image::Source::Uri { .. } => Err(GlbFatalError::new(
+                "M2A-GLB-EXTERNAL-URI-UNSUPPORTED",
+                "external image URI is unsupported",
+            )
+            .in_json(format!("images[{}].uri", image.index()))),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let coordinate_policy = CoordinatePolicy::default();
     let inventory = GlbInventory {
         scene_count: scenes.len(),
@@ -722,15 +920,16 @@ pub fn ingest_glb(input: &[u8], limits: &GlbLimits) -> Result<GlbIngestResult, G
         primitive_count: primitives.len(),
         material_count: materials.len(),
         texture_count: textures.len(),
-        image_count: gltf.document.images().count(),
-        skin_count: gltf.document.skins().count(),
-        joint_reference_count: gltf
-            .document
-            .skins()
-            .map(|skin| skin.joints().count())
+        sampler_count: samplers.len(),
+        image_count: images.len(),
+        skin_count: skins.len(),
+        joint_reference_count: skins.iter().map(|skin| skin.joint_node_ids.len()).sum(),
+        animation_count: animations.len(),
+        keyframe_count: animations
+            .iter()
+            .flat_map(|animation| animation.samplers.iter())
+            .map(|sampler| sampler.input_times_seconds.len())
             .sum(),
-        animation_count: gltf.document.animations().count(),
-        keyframe_count: 0,
     };
     let conversion_eligible = !gates.iter().any(|gate| gate.severity == "BLOCKING");
     let report = GlbInspectionReport {
@@ -744,7 +943,7 @@ pub fn ingest_glb(input: &[u8], limits: &GlbLimits) -> Result<GlbIngestResult, G
         inventory,
         statistics,
         gates,
-        diagnostics: Vec::new(),
+        diagnostics: raw.diagnostics,
         conversion_eligible,
     };
     let ir = AuroraAssetIr {
@@ -767,14 +966,40 @@ pub fn ingest_glb(input: &[u8], limits: &GlbLimits) -> Result<GlbIngestResult, G
         primitives,
         materials,
         textures,
-        images: Vec::new(),
-        skins: Vec::new(),
-        animations: Vec::new(),
+        samplers,
+        images,
+        skins,
+        animations,
     };
     Ok(GlbIngestResult {
         schema_version: GLB_SCHEMA_VERSION,
         ir,
         report,
+    })
+}
+
+fn has_degenerate_triangle(positions: &[[f32; 3]], indices: &[u32]) -> bool {
+    indices.chunks_exact(3).any(|triangle| {
+        if triangle[0] == triangle[1] || triangle[0] == triangle[2] || triangle[1] == triangle[2] {
+            return true;
+        }
+        let Some(a) = positions.get(triangle[0] as usize) else {
+            return false;
+        };
+        let Some(b) = positions.get(triangle[1] as usize) else {
+            return false;
+        };
+        let Some(c) = positions.get(triangle[2] as usize) else {
+            return false;
+        };
+        let ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        let ac = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        let cross = [
+            ab[1] * ac[2] - ab[2] * ac[1],
+            ab[2] * ac[0] - ab[0] * ac[2],
+            ab[0] * ac[1] - ab[1] * ac[0],
+        ];
+        cross == [0.0; 3]
     })
 }
 
@@ -852,6 +1077,8 @@ struct RawPreflight {
     index_count: usize,
     triangle_count: usize,
     decoded_geometry_bytes: usize,
+    diagnostics: Vec<GlbDiagnostic>,
+    missing_position_primitives: HashSet<(usize, usize)>,
 }
 
 #[derive(Clone, Debug)]
@@ -866,6 +1093,8 @@ struct RawAccessor {
     count: usize,
     component_type: u64,
     element_type: String,
+    normalized: bool,
+    component_count: usize,
 }
 
 fn glb_payloads(input: &[u8]) -> Result<(&[u8], &[u8]), GlbFatalError> {
@@ -919,6 +1148,136 @@ fn glb_payloads(input: &[u8]) -> Result<(&[u8], &[u8]), GlbFatalError> {
     Ok((&input[20..json_end], &input[bin_header_end..bin_end]))
 }
 
+fn patch_missing_positions_for_validation(
+    json_bytes: &[u8],
+    blob: &[u8],
+    missing: &HashSet<(usize, usize)>,
+) -> Result<Vec<u8>, GlbFatalError> {
+    let mut root: Value = serde_json::from_slice(json_bytes)
+        .map_err(|error| GlbFatalError::new("M2A-GLB-JSON-INVALID", error.to_string()))?;
+    let mut validation_blob = blob.to_vec();
+    let candidate = array_or_empty(root.get("accessors"))
+        .iter()
+        .position(|accessor| {
+            accessor.get("componentType").and_then(Value::as_u64) == Some(5126)
+                && accessor.get("type").and_then(Value::as_str) == Some("VEC3")
+                && !accessor
+                    .get("normalized")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+        });
+    let candidate = match candidate {
+        Some(index) => index,
+        None => {
+            while !validation_blob.len().is_multiple_of(4) {
+                validation_blob.push(0);
+            }
+            let position_offset = validation_blob.len();
+            for value in [0.0_f32, 0.0, 0.0] {
+                validation_blob.extend_from_slice(&value.to_le_bytes());
+            }
+            if root.get("bufferViews").is_none() {
+                root["bufferViews"] = Value::Array(Vec::new());
+            }
+            let views = root["bufferViews"].as_array_mut().ok_or_else(|| {
+                GlbFatalError::new("M2A-GLB-JSON-INVALID", "bufferViews must be an array")
+                    .in_json("bufferViews")
+            })?;
+            let view_index = views.len();
+            views.push(serde_json::json!({
+                "buffer": 0,
+                "byteOffset": position_offset,
+                "byteLength": 12
+            }));
+            if root.get("accessors").is_none() {
+                root["accessors"] = Value::Array(Vec::new());
+            }
+            let accessors = root["accessors"].as_array_mut().ok_or_else(|| {
+                GlbFatalError::new("M2A-GLB-JSON-INVALID", "accessors must be an array")
+                    .in_json("accessors")
+            })?;
+            let index = accessors.len();
+            accessors.push(serde_json::json!({
+                "bufferView": view_index,
+                "componentType": 5126,
+                "count": 1,
+                "type": "VEC3",
+                "min": [0.0, 0.0, 0.0],
+                "max": [0.0, 0.0, 0.0]
+            }));
+            root["buffers"][0]["byteLength"] = Value::from(validation_blob.len() as u64);
+            index
+        }
+    };
+    for &(mesh_index, primitive_index) in missing {
+        let attributes = root
+            .get_mut("meshes")
+            .and_then(Value::as_array_mut)
+            .and_then(|meshes| meshes.get_mut(mesh_index))
+            .and_then(|mesh| mesh.get_mut("primitives"))
+            .and_then(Value::as_array_mut)
+            .and_then(|primitives| primitives.get_mut(primitive_index))
+            .and_then(|primitive| primitive.get_mut("attributes"))
+            .and_then(Value::as_object_mut)
+            .ok_or_else(|| {
+                GlbFatalError::new(
+                    "M2A-GLB-JSON-INVALID",
+                    "primitive attributes must be an object",
+                )
+                .in_json(format!(
+                    "meshes[{mesh_index}].primitives[{primitive_index}].attributes"
+                ))
+            })?;
+        attributes.insert("POSITION".to_owned(), Value::from(candidate as u64));
+    }
+
+    let mut json = serde_json::to_vec(&root)
+        .map_err(|error| GlbFatalError::new("M2A-GLB-JSON-INVALID", error.to_string()))?;
+    while !json.len().is_multiple_of(4) {
+        json.push(b' ');
+    }
+    let total = 12_usize
+        .checked_add(8)
+        .and_then(|value| value.checked_add(json.len()))
+        .and_then(|value| value.checked_add(8))
+        .and_then(|value| value.checked_add(validation_blob.len()))
+        .ok_or_else(|| {
+            GlbFatalError::new(
+                "M2A-GLB-INTEGER-OVERFLOW",
+                "patched validation GLB length overflow",
+            )
+        })?;
+    let total_u32 = u32::try_from(total).map_err(|_| {
+        GlbFatalError::new(
+            "M2A-GLB-INTEGER-OVERFLOW",
+            "patched validation GLB length exceeds u32",
+        )
+    })?;
+    let json_u32 = u32::try_from(json.len()).map_err(|_| {
+        GlbFatalError::new(
+            "M2A-GLB-INTEGER-OVERFLOW",
+            "patched validation JSON length exceeds u32",
+        )
+    })?;
+    let blob_u32 = u32::try_from(validation_blob.len()).map_err(|_| {
+        GlbFatalError::new(
+            "M2A-GLB-INTEGER-OVERFLOW",
+            "patched validation BIN length exceeds u32",
+        )
+    })?;
+    let mut output = Vec::with_capacity(total);
+    output.extend_from_slice(b"glTF");
+    output.extend_from_slice(&2_u32.to_le_bytes());
+    output.extend_from_slice(&total_u32.to_le_bytes());
+    output.extend_from_slice(&json_u32.to_le_bytes());
+    output.extend_from_slice(&0x4e4f_534a_u32.to_le_bytes());
+    output.extend_from_slice(&json);
+    output.extend_from_slice(&blob_u32.to_le_bytes());
+    output.extend_from_slice(&0x004e_4942_u32.to_le_bytes());
+    output.extend_from_slice(&validation_blob);
+    Ok(output)
+}
+
 fn preflight_json(
     json_bytes: &[u8],
     blob: &[u8],
@@ -932,6 +1291,7 @@ fn preflight_json(
 
     reject_unsupported_encodings(&root)?;
     reject_nonfinite_node_transforms(&root)?;
+    let diagnostics = optional_extension_diagnostics(&root, limits.max_diagnostics)?;
 
     let asset = object
         .get("asset")
@@ -947,6 +1307,13 @@ fn preflight_json(
                 .in_json("asset.version")
         })?
         .to_owned();
+    if asset_version != "2.0" {
+        return Err(GlbFatalError::new(
+            "M2A-GLB-JSON-INVALID",
+            "asset.version must be exactly 2.0 for GLB 2.0",
+        )
+        .in_json("asset.version"));
+    }
     let generator = match asset.get("generator") {
         Some(Value::String(value)) => Some(value.clone()),
         Some(_) => {
@@ -959,10 +1326,38 @@ fn preflight_json(
         None => None,
     };
 
+    for field in [
+        "scenes",
+        "nodes",
+        "meshes",
+        "accessors",
+        "bufferViews",
+        "materials",
+        "textures",
+        "samplers",
+        "images",
+        "skins",
+        "animations",
+        "buffers",
+        "extensionsUsed",
+        "extensionsRequired",
+    ] {
+        if object.get(field).is_some_and(|value| !value.is_array()) {
+            return Err(GlbFatalError::new(
+                "M2A-GLB-JSON-INVALID",
+                format!("{field} must be an array"),
+            )
+            .in_json(field));
+        }
+    }
+    let scenes = array_or_empty(object.get("scenes"));
     let nodes = array_or_empty(object.get("nodes"));
     let meshes = array_or_empty(object.get("meshes"));
     let accessors_json = array_or_empty(object.get("accessors"));
     let views_json = array_or_empty(object.get("bufferViews"));
+    let materials = array_or_empty(object.get("materials"));
+    let textures = array_or_empty(object.get("textures"));
+    let samplers = array_or_empty(object.get("samplers"));
     let images = array_or_empty(object.get("images"));
     let skins = array_or_empty(object.get("skins"));
     let animations = array_or_empty(object.get("animations"));
@@ -970,9 +1365,15 @@ fn preflight_json(
     check_count(meshes.len(), limits.max_meshes, "meshes")?;
     check_count(accessors_json.len(), limits.max_accessors, "accessors")?;
     check_count(views_json.len(), limits.max_buffer_views, "buffer views")?;
+    check_count(materials.len(), limits.max_materials, "materials")?;
+    check_count(textures.len(), limits.max_textures, "textures")?;
+    check_count(samplers.len(), limits.max_samplers, "samplers")?;
     check_count(images.len(), limits.max_images, "images")?;
     check_count(skins.len(), limits.max_skins, "skins")?;
     check_count(animations.len(), limits.max_animations, "animations")?;
+
+    validate_scene_and_node_references(object, scenes, nodes, meshes, skins)?;
+    validate_material_texture_sampler_references(materials, textures, samplers, images)?;
 
     let buffers = array_or_empty(object.get("buffers"));
     if buffers.len() != 1 {
@@ -994,16 +1395,25 @@ fn preflight_json(
         )
         .in_json("buffers[0].byteLength"));
     }
+    if blob.len().saturating_sub(declared_buffer_length) > 3 {
+        return Err(GlbFatalError::new(
+            "M2A-GLB-BUFFER-VIEW-OOB",
+            "embedded BIN length differs from buffers[0].byteLength by more than GLB padding",
+        )
+        .in_json("buffers[0].byteLength"));
+    }
 
     let views = parse_buffer_views(views_json, declared_buffer_length)?;
     let accessors = parse_accessors(accessors_json, &views)?;
     validate_image_limits(images, &views, limits)?;
+    validate_skin_animation_preflight(nodes, meshes, skins, animations, &accessors, limits)?;
 
     let mut primitive_count = 0_usize;
     let mut vertex_count = 0_usize;
     let mut index_count = 0_usize;
     let mut triangle_count = 0_usize;
     let mut decoded_geometry_bytes = 0_usize;
+    let mut missing_position_primitives = HashSet::new();
     for (mesh_index, mesh) in meshes.iter().enumerate() {
         let primitives = array_or_empty(mesh.get("primitives"));
         primitive_count = checked_add(primitive_count, primitives.len())?;
@@ -1037,11 +1447,17 @@ fn preflight_json(
                     })
                 })
                 .transpose()?;
+            if positions.is_none() {
+                missing_position_primitives.insert((mesh_index, primitive_index));
+            }
             if let Some(accessor) = positions {
-                if accessor.component_type != 5126 || accessor.element_type != "VEC3" {
+                if accessor.component_type != 5126
+                    || accessor.element_type != "VEC3"
+                    || accessor.normalized
+                {
                     return Err(GlbFatalError::new(
                         "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
-                        "POSITION must use FLOAT VEC3",
+                        "POSITION must use non-normalized FLOAT VEC3",
                     )
                     .in_json(format!("{path}.attributes.POSITION")));
                 }
@@ -1071,6 +1487,7 @@ fn preflight_json(
                     )
                     .in_json(format!("{path}.attributes.{semantic}"))
                 })?;
+                validate_geometry_accessor_layout(semantic, accessor, &path)?;
                 reserve_decoded_items(
                     &mut decoded_geometry_bytes,
                     accessor.count,
@@ -1105,9 +1522,30 @@ fn preflight_json(
                 }
                 None => positions.map_or(0, |accessor| accessor.count),
             };
+            if let Some(material) = optional_json_usize(
+                primitive.get("material"),
+                &format!("{path}.material"),
+                "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
+            )? && material >= materials.len()
+            {
+                return Err(layout_error("primitive material reference is out of range")
+                    .in_json(format!("{path}.material")));
+            }
             index_count = checked_add(index_count, primitive_indices)?;
             reserve_decoded_items(&mut decoded_geometry_bytes, primitive_indices, 4, limits)?;
-            let mode = primitive.get("mode").and_then(Value::as_u64).unwrap_or(4);
+            let mode = optional_json_usize(
+                primitive.get("mode"),
+                &format!("{path}.mode"),
+                "M2A-GLB-JSON-INVALID",
+            )?
+            .unwrap_or(4);
+            if mode > 6 {
+                return Err(GlbFatalError::new(
+                    "M2A-GLB-JSON-INVALID",
+                    "primitive mode must be a glTF topology value in 0..=6",
+                )
+                .in_json(format!("{path}.mode")));
+            }
             if mode == 4 {
                 triangle_count = checked_add(triangle_count, primitive_indices / 3)?;
             }
@@ -1132,7 +1570,258 @@ fn preflight_json(
         index_count,
         triangle_count,
         decoded_geometry_bytes,
+        diagnostics,
+        missing_position_primitives,
     })
+}
+
+fn validate_geometry_accessor_layout(
+    semantic: &str,
+    accessor: &RawAccessor,
+    primitive_path: &str,
+) -> Result<(), GlbFatalError> {
+    let valid = match semantic {
+        "NORMAL" => {
+            accessor.component_type == 5126
+                && accessor.element_type == "VEC3"
+                && !accessor.normalized
+        }
+        "TANGENT" => {
+            accessor.component_type == 5126
+                && accessor.element_type == "VEC4"
+                && !accessor.normalized
+        }
+        "TEXCOORD_0" => {
+            accessor.element_type == "VEC2"
+                && ((accessor.component_type == 5126 && !accessor.normalized)
+                    || (matches!(accessor.component_type, 5121 | 5123) && accessor.normalized))
+        }
+        "JOINTS_0" => {
+            accessor.element_type == "VEC4"
+                && matches!(accessor.component_type, 5121 | 5123)
+                && !accessor.normalized
+        }
+        "WEIGHTS_0" => {
+            accessor.element_type == "VEC4"
+                && ((accessor.component_type == 5126 && !accessor.normalized)
+                    || (matches!(accessor.component_type, 5121 | 5123) && accessor.normalized))
+        }
+        _ => true,
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(GlbFatalError::new(
+            "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
+            format!("{semantic} accessor has an invalid component/type/normalized layout"),
+        )
+        .in_json(format!("{primitive_path}.attributes.{semantic}")))
+    }
+}
+
+fn optional_extension_diagnostics(
+    root: &Value,
+    max_diagnostics: usize,
+) -> Result<Vec<GlbDiagnostic>, GlbFatalError> {
+    let used = array_or_empty(root.get("extensionsUsed"));
+    let required = array_or_empty(root.get("extensionsRequired"));
+    let required = required
+        .iter()
+        .filter_map(Value::as_str)
+        .collect::<HashSet<_>>();
+    let mut diagnostics = Vec::with_capacity(used.len().min(max_diagnostics));
+    for (index, value) in used.iter().enumerate() {
+        let name = value.as_str().ok_or_else(|| {
+            GlbFatalError::new(
+                "M2A-GLB-JSON-INVALID",
+                "extensionsUsed entries must be strings",
+            )
+            .in_json(format!("extensionsUsed[{index}]"))
+        })?;
+        if required.contains(name) || is_compression_extension(name) {
+            continue;
+        }
+        if diagnostics.len() < max_diagnostics {
+            diagnostics.push(GlbDiagnostic {
+                schema_version: GLB_SCHEMA_VERSION,
+                code: "M2A-GLB-OPTIONAL-EXTENSION-IGNORED".to_owned(),
+                severity: "WARNING".to_owned(),
+                byte_offset: None,
+                json_path: Some(format!("extensionsUsed[{index}]")),
+                message: format!("optional extension {name} is preserved as inventory only"),
+            });
+        }
+    }
+    Ok(diagnostics)
+}
+
+fn validate_scene_and_node_references(
+    root: &serde_json::Map<String, Value>,
+    scenes: &[Value],
+    nodes: &[Value],
+    meshes: &[Value],
+    skins: &[Value],
+) -> Result<(), GlbFatalError> {
+    if let Some(scene) = optional_json_usize(
+        root.get("scene"),
+        "scene",
+        "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
+    )? && scene >= scenes.len()
+    {
+        return Err(layout_error("default scene reference is out of range").in_json("scene"));
+    }
+    for (scene_index, scene) in scenes.iter().enumerate() {
+        let roots = match scene.get("nodes") {
+            Some(Value::Array(values)) => values.as_slice(),
+            Some(_) => {
+                return Err(layout_error("scene nodes must be an array")
+                    .in_json(format!("scenes[{scene_index}].nodes")));
+            }
+            None => &[],
+        };
+        for (root_index, root_node) in roots.iter().enumerate() {
+            let node = json_usize(
+                Some(root_node),
+                &format!("scenes[{scene_index}].nodes[{root_index}]"),
+                "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
+            )?;
+            if node >= nodes.len() {
+                return Err(layout_error("scene root node reference is out of range")
+                    .in_json(format!("scenes[{scene_index}].nodes[{root_index}]")));
+            }
+        }
+    }
+    for (node_index, node) in nodes.iter().enumerate() {
+        if !node.is_object() {
+            return Err(
+                layout_error("node must be an object").in_json(format!("nodes[{node_index}]"))
+            );
+        }
+        if let Some(children) = node.get("children") {
+            let children = children.as_array().ok_or_else(|| {
+                layout_error("node children must be an array")
+                    .in_json(format!("nodes[{node_index}].children"))
+            })?;
+            for (child_index, child) in children.iter().enumerate() {
+                let referenced = json_usize(
+                    Some(child),
+                    &format!("nodes[{node_index}].children[{child_index}]"),
+                    "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
+                )?;
+                if referenced >= nodes.len() {
+                    return Err(layout_error("node child reference is out of range")
+                        .in_json(format!("nodes[{node_index}].children[{child_index}]")));
+                }
+            }
+        }
+        if let Some(mesh) = optional_json_usize(
+            node.get("mesh"),
+            &format!("nodes[{node_index}].mesh"),
+            "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
+        )? && mesh >= meshes.len()
+        {
+            return Err(layout_error("node mesh reference is out of range")
+                .in_json(format!("nodes[{node_index}].mesh")));
+        }
+        if let Some(skin) = optional_json_usize(
+            node.get("skin"),
+            &format!("nodes[{node_index}].skin"),
+            "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
+        )? && skin >= skins.len()
+        {
+            return Err(layout_error("node skin reference is out of range")
+                .in_json(format!("nodes[{node_index}].skin")));
+        }
+    }
+    Ok(())
+}
+
+fn validate_material_texture_sampler_references(
+    materials: &[Value],
+    textures: &[Value],
+    samplers: &[Value],
+    images: &[Value],
+) -> Result<(), GlbFatalError> {
+    for (index, sampler) in samplers.iter().enumerate() {
+        for (field, allowed) in [
+            ("magFilter", &[9728_usize, 9729][..]),
+            ("minFilter", &[9728_usize, 9729, 9984, 9985, 9986, 9987][..]),
+            ("wrapS", &[33071_usize, 33648, 10497][..]),
+            ("wrapT", &[33071_usize, 33648, 10497][..]),
+        ] {
+            let Some(value) = optional_json_usize(
+                sampler.get(field),
+                &format!("samplers[{index}].{field}"),
+                "M2A-GLB-JSON-INVALID",
+            )?
+            else {
+                continue;
+            };
+            if !allowed.contains(&value) {
+                return Err(GlbFatalError::new(
+                    "M2A-GLB-JSON-INVALID",
+                    format!("sampler {field} value {value} is invalid"),
+                )
+                .in_json(format!("samplers[{index}].{field}")));
+            }
+        }
+    }
+    for (index, texture) in textures.iter().enumerate() {
+        let source = json_usize(
+            texture.get("source"),
+            &format!("textures[{index}].source"),
+            "M2A-GLB-JSON-INVALID",
+        )?;
+        if source >= images.len() {
+            return Err(GlbFatalError::new(
+                "M2A-GLB-JSON-INVALID",
+                "texture image source reference is out of range",
+            )
+            .in_json(format!("textures[{index}].source")));
+        }
+        if let Some(sampler) = optional_json_usize(
+            texture.get("sampler"),
+            &format!("textures[{index}].sampler"),
+            "M2A-GLB-JSON-INVALID",
+        )? && sampler >= samplers.len()
+        {
+            return Err(GlbFatalError::new(
+                "M2A-GLB-JSON-INVALID",
+                "texture sampler reference is out of range",
+            )
+            .in_json(format!("textures[{index}].sampler")));
+        }
+    }
+    for (material_index, material) in materials.iter().enumerate() {
+        let pbr = material.get("pbrMetallicRoughness");
+        for (prefix, binding) in [
+            (
+                "pbrMetallicRoughness.baseColorTexture",
+                pbr.and_then(|value| value.get("baseColorTexture")),
+            ),
+            (
+                "pbrMetallicRoughness.metallicRoughnessTexture",
+                pbr.and_then(|value| value.get("metallicRoughnessTexture")),
+            ),
+            ("normalTexture", material.get("normalTexture")),
+            ("occlusionTexture", material.get("occlusionTexture")),
+            ("emissiveTexture", material.get("emissiveTexture")),
+        ] {
+            let Some(binding) = binding else {
+                continue;
+            };
+            let path = format!("materials[{material_index}].{prefix}.index");
+            let texture = json_usize(binding.get("index"), &path, "M2A-GLB-JSON-INVALID")?;
+            if texture >= textures.len() {
+                return Err(GlbFatalError::new(
+                    "M2A-GLB-JSON-INVALID",
+                    "material texture reference is out of range",
+                )
+                .in_json(path));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn reject_unsupported_encodings(root: &Value) -> Result<(), GlbFatalError> {
@@ -1215,6 +1904,19 @@ fn reject_unsupported_encodings(root: &Value) -> Result<(), GlbFatalError> {
             }
         }
     }
+    for (view_index, view) in array_or_empty(root.get("bufferViews")).iter().enumerate() {
+        if let Some(extensions) = view.get("extensions").and_then(Value::as_object)
+            && let Some(name) = extensions
+                .keys()
+                .find(|name| is_compression_extension(name))
+        {
+            return Err(GlbFatalError::new(
+                "M2A-GLB-COMPRESSION-UNSUPPORTED",
+                format!("geometry compression extension {name} is unsupported"),
+            )
+            .in_json(format!("bufferViews[{view_index}].extensions.{name}")));
+        }
+    }
     Ok(())
 }
 
@@ -1255,7 +1957,11 @@ fn parse_buffer_views(
     let mut output = Vec::with_capacity(values.len());
     for (index, value) in values.iter().enumerate() {
         let prefix = format!("bufferViews[{index}]");
-        let buffer = value.get("buffer").and_then(Value::as_u64).unwrap_or(0);
+        let buffer = json_usize(
+            value.get("buffer"),
+            &format!("{prefix}.buffer"),
+            "M2A-GLB-BUFFER-VIEW-OOB",
+        )?;
         if buffer != 0 {
             return Err(GlbFatalError::new(
                 "M2A-GLB-BUFFER-VIEW-OOB",
@@ -1275,7 +1981,7 @@ fn parse_buffer_views(
             "M2A-GLB-BUFFER-VIEW-OOB",
         )?;
         let end = byte_offset.checked_add(byte_length).ok_or_else(|| {
-            GlbFatalError::new("M2A-GLB-BUFFER-VIEW-OOB", "buffer view range overflows")
+            GlbFatalError::new("M2A-GLB-INTEGER-OVERFLOW", "buffer view range overflows")
                 .in_json(prefix.clone())
         })?;
         if end > buffer_length {
@@ -1315,16 +2021,11 @@ fn parse_accessors(
     let mut output = Vec::with_capacity(values.len());
     for (index, value) in values.iter().enumerate() {
         let prefix = format!("accessors[{index}]");
-        let component_type = value
-            .get("componentType")
-            .and_then(Value::as_u64)
-            .ok_or_else(|| {
-                GlbFatalError::new(
-                    "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
-                    "accessor componentType must be an unsigned integer",
-                )
-                .in_json(format!("{prefix}.componentType"))
-            })?;
+        let component_type = json_usize(
+            value.get("componentType"),
+            &format!("{prefix}.componentType"),
+            "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
+        )? as u64;
         let component_size: usize = match component_type {
             5120 | 5121 => 1,
             5122 | 5123 => 2,
@@ -1392,7 +2093,7 @@ fn parse_accessors(
             })?;
             let absolute_offset = view.byte_offset.checked_add(byte_offset).ok_or_else(|| {
                 GlbFatalError::new(
-                    "M2A-GLB-ACCESSOR-OOB",
+                    "M2A-GLB-INTEGER-OVERFLOW",
                     "accessor absolute byte offset overflows",
                 )
                 .in_json(prefix.clone())
@@ -1413,12 +2114,15 @@ fn parse_accessors(
                     .and_then(|value| value.checked_mul(stride))
                     .and_then(|value| value.checked_add(element_size))
                     .ok_or_else(|| {
-                        GlbFatalError::new("M2A-GLB-ACCESSOR-OOB", "accessor byte range overflows")
-                            .in_json(prefix.clone())
+                        GlbFatalError::new(
+                            "M2A-GLB-INTEGER-OVERFLOW",
+                            "accessor byte range overflows",
+                        )
+                        .in_json(prefix.clone())
                     })?
             };
             let end = byte_offset.checked_add(occupied).ok_or_else(|| {
-                GlbFatalError::new("M2A-GLB-ACCESSOR-OOB", "accessor byte range overflows")
+                GlbFatalError::new("M2A-GLB-INTEGER-OVERFLOW", "accessor byte range overflows")
                     .in_json(prefix.clone())
             })?;
             if end > view.byte_length {
@@ -1448,6 +2152,11 @@ fn parse_accessors(
             count,
             component_type,
             element_type,
+            normalized: value
+                .get("normalized")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            component_count,
         });
     }
     Ok(output)
@@ -1460,6 +2169,24 @@ fn validate_image_limits(
 ) -> Result<(), GlbFatalError> {
     let mut total = 0_usize;
     for (index, image) in images.iter().enumerate() {
+        let mime_path = format!("images[{index}].mimeType");
+        let mime_type = image
+            .get("mimeType")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                GlbFatalError::new(
+                    "M2A-GLB-IMAGE-MIME-UNSUPPORTED",
+                    "embedded image mimeType must be image/png or image/jpeg",
+                )
+                .in_json(mime_path.clone())
+            })?;
+        if !matches!(mime_type, "image/png" | "image/jpeg") {
+            return Err(GlbFatalError::new(
+                "M2A-GLB-IMAGE-MIME-UNSUPPORTED",
+                format!("embedded image mimeType {mime_type:?} is unsupported"),
+            )
+            .in_json(mime_path));
+        }
         let view_index = json_usize(
             image.get("bufferView"),
             &format!("images[{index}].bufferView"),
@@ -1489,6 +2216,425 @@ fn validate_image_limits(
     Ok(())
 }
 
+fn validate_skin_animation_preflight(
+    nodes: &[Value],
+    meshes: &[Value],
+    skins: &[Value],
+    animations: &[Value],
+    accessors: &[RawAccessor],
+    limits: &GlbLimits,
+) -> Result<(), GlbFatalError> {
+    let mut decoded_bytes = 0_usize;
+    let mut total_joints = 0_usize;
+
+    for (node_index, node) in nodes.iter().enumerate() {
+        if let Some(mesh) = optional_json_usize(
+            node.get("mesh"),
+            &format!("nodes[{node_index}].mesh"),
+            "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
+        )? && mesh >= meshes.len()
+        {
+            return Err(layout_error("node mesh reference is out of range")
+                .in_json(format!("nodes[{node_index}].mesh")));
+        }
+        if let Some(skin) = optional_json_usize(
+            node.get("skin"),
+            &format!("nodes[{node_index}].skin"),
+            "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
+        )? && skin >= skins.len()
+        {
+            return Err(layout_error("node skin reference is out of range")
+                .in_json(format!("nodes[{node_index}].skin")));
+        }
+    }
+
+    for (skin_index, skin) in skins.iter().enumerate() {
+        let path = format!("skins[{skin_index}]");
+        let joints = skin
+            .get("joints")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                layout_error("skin joints must be a non-empty array")
+                    .in_json(format!("{path}.joints"))
+            })?;
+        if joints.is_empty() {
+            return Err(layout_error("skin joints must be a non-empty array")
+                .in_json(format!("{path}.joints")));
+        }
+        total_joints = checked_add(total_joints, joints.len())?;
+        check_count(total_joints, limits.max_joints, "joints")?;
+        reserve_skin_animation_items(
+            &mut decoded_bytes,
+            joints.len(),
+            4,
+            limits,
+            "skin joint IDs",
+        )?;
+        for (joint_index, joint) in joints.iter().enumerate() {
+            let node = json_usize(
+                Some(joint),
+                &format!("{path}.joints[{joint_index}]"),
+                "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
+            )?;
+            if node >= nodes.len() {
+                return Err(layout_error("skin joint node reference is out of range")
+                    .in_json(format!("{path}.joints[{joint_index}]")));
+            }
+        }
+        if let Some(skeleton) = optional_json_usize(
+            skin.get("skeleton"),
+            &format!("{path}.skeleton"),
+            "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
+        )? && skeleton >= nodes.len()
+        {
+            return Err(layout_error("skin skeleton node reference is out of range")
+                .in_json(format!("{path}.skeleton")));
+        }
+        if let Some(accessor_index) = optional_json_usize(
+            skin.get("inverseBindMatrices"),
+            &format!("{path}.inverseBindMatrices"),
+            "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
+        )? {
+            let accessor = accessors.get(accessor_index).ok_or_else(|| {
+                layout_error("inverse bind matrix accessor is out of range")
+                    .in_json(format!("{path}.inverseBindMatrices"))
+            })?;
+            if accessor.component_type != 5126
+                || accessor.element_type != "MAT4"
+                || accessor.normalized
+            {
+                return Err(layout_error(
+                    "inverse bind matrices must use non-normalized FLOAT MAT4",
+                )
+                .in_json(format!("{path}.inverseBindMatrices")));
+            }
+            if accessor.count < joints.len() {
+                return Err(
+                    layout_error("inverse bind matrix count must cover every skin joint")
+                        .in_json(format!("{path}.inverseBindMatrices")),
+                );
+            }
+            reserve_skin_animation_items(
+                &mut decoded_bytes,
+                accessor.count,
+                64,
+                limits,
+                "inverse bind matrices",
+            )?;
+        }
+    }
+
+    for (mesh_index, mesh) in meshes.iter().enumerate() {
+        for (primitive_index, primitive) in
+            array_or_empty(mesh.get("primitives")).iter().enumerate()
+        {
+            let path = format!("meshes[{mesh_index}].primitives[{primitive_index}].attributes");
+            let attributes = primitive.get("attributes").and_then(Value::as_object);
+            let joints = attributes.and_then(|value| value.get("JOINTS_0"));
+            let weights = attributes.and_then(|value| value.get("WEIGHTS_0"));
+            if joints.is_some() != weights.is_some() {
+                return Err(
+                    layout_error("JOINTS_0 and WEIGHTS_0 must be provided as a pair").in_json(path),
+                );
+            }
+            let (Some(joints), Some(weights)) = (joints, weights) else {
+                continue;
+            };
+            let joints_index = json_usize(
+                Some(joints),
+                &format!("{path}.JOINTS_0"),
+                "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
+            )?;
+            let weights_index = json_usize(
+                Some(weights),
+                &format!("{path}.WEIGHTS_0"),
+                "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
+            )?;
+            let joints_accessor = accessors.get(joints_index).ok_or_else(|| {
+                layout_error("JOINTS_0 accessor is out of range")
+                    .in_json(format!("{path}.JOINTS_0"))
+            })?;
+            let weights_accessor = accessors.get(weights_index).ok_or_else(|| {
+                layout_error("WEIGHTS_0 accessor is out of range")
+                    .in_json(format!("{path}.WEIGHTS_0"))
+            })?;
+            if !matches!(joints_accessor.component_type, 5121 | 5123)
+                || joints_accessor.element_type != "VEC4"
+                || joints_accessor.normalized
+            {
+                return Err(layout_error(
+                    "JOINTS_0 must use non-normalized UNSIGNED_BYTE/UNSIGNED_SHORT VEC4",
+                )
+                .in_json(format!("{path}.JOINTS_0")));
+            }
+            let valid_weights = (weights_accessor.component_type == 5126
+                && !weights_accessor.normalized)
+                || (matches!(weights_accessor.component_type, 5121 | 5123)
+                    && weights_accessor.normalized);
+            if !valid_weights || weights_accessor.element_type != "VEC4" {
+                return Err(layout_error(
+                    "WEIGHTS_0 must use FLOAT VEC4 or normalized unsigned integer VEC4",
+                )
+                .in_json(format!("{path}.WEIGHTS_0")));
+            }
+            if joints_accessor.count != weights_accessor.count {
+                return Err(
+                    layout_error("JOINTS_0 and WEIGHTS_0 counts must match").in_json(path.clone())
+                );
+            }
+            if let Some(position) = attributes.and_then(|value| value.get("POSITION")) {
+                let position_index = json_usize(
+                    Some(position),
+                    &format!("{path}.POSITION"),
+                    "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
+                )?;
+                let position_accessor = accessors.get(position_index).ok_or_else(|| {
+                    layout_error("POSITION accessor is out of range")
+                        .in_json(format!("{path}.POSITION"))
+                })?;
+                if joints_accessor.count != position_accessor.count {
+                    return Err(
+                        layout_error("skinning attribute count must match POSITION count")
+                            .in_json(path.clone()),
+                    );
+                }
+            }
+            reserve_skin_animation_items(
+                &mut decoded_bytes,
+                joints_accessor.count,
+                8,
+                limits,
+                "decoded JOINTS_0",
+            )?;
+            reserve_skin_animation_items(
+                &mut decoded_bytes,
+                weights_accessor.count,
+                16,
+                limits,
+                "decoded WEIGHTS_0",
+            )?;
+        }
+    }
+
+    let mut total_samplers = 0_usize;
+    let mut total_channels = 0_usize;
+    let mut total_keyframes = 0_usize;
+    for (animation_index, animation) in animations.iter().enumerate() {
+        let path = format!("animations[{animation_index}]");
+        let samplers = animation
+            .get("samplers")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                layout_error("animation samplers must be an array")
+                    .in_json(format!("{path}.samplers"))
+            })?;
+        let channels = animation
+            .get("channels")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                layout_error("animation channels must be an array")
+                    .in_json(format!("{path}.channels"))
+            })?;
+        total_samplers = checked_add(total_samplers, samplers.len())?;
+        total_channels = checked_add(total_channels, channels.len())?;
+        check_count(
+            total_samplers,
+            limits.max_animation_samplers,
+            "animation samplers",
+        )?;
+        check_count(
+            total_channels,
+            limits.max_animation_channels,
+            "animation channels",
+        )?;
+
+        let mut sampler_accessors = Vec::with_capacity(samplers.len());
+        for (sampler_index, sampler) in samplers.iter().enumerate() {
+            let sampler_path = format!("{path}.samplers[{sampler_index}]");
+            let input_index = json_usize(
+                sampler.get("input"),
+                &format!("{sampler_path}.input"),
+                "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
+            )?;
+            let output_index = json_usize(
+                sampler.get("output"),
+                &format!("{sampler_path}.output"),
+                "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
+            )?;
+            let input = accessors.get(input_index).ok_or_else(|| {
+                layout_error("animation input accessor is out of range")
+                    .in_json(format!("{sampler_path}.input"))
+            })?;
+            let output = accessors.get(output_index).ok_or_else(|| {
+                layout_error("animation output accessor is out of range")
+                    .in_json(format!("{sampler_path}.output"))
+            })?;
+            if input.component_type != 5126
+                || input.element_type != "SCALAR"
+                || input.normalized
+                || input.count == 0
+            {
+                return Err(layout_error(
+                    "animation input must use non-empty non-normalized FLOAT SCALAR",
+                )
+                .in_json(format!("{sampler_path}.input")));
+            }
+            if output.component_type != 5126 || output.normalized {
+                return Err(
+                    layout_error("animation output must use non-normalized FLOAT values")
+                        .in_json(format!("{sampler_path}.output")),
+                );
+            }
+            let interpolation = sampler
+                .get("interpolation")
+                .map(|value| value.as_str())
+                .unwrap_or(Some("LINEAR"));
+            if !matches!(interpolation, Some("LINEAR" | "STEP" | "CUBICSPLINE")) {
+                return Err(layout_error("animation interpolation is unsupported")
+                    .in_json(format!("{sampler_path}.interpolation")));
+            }
+            total_keyframes = checked_add(total_keyframes, input.count)?;
+            check_count(total_keyframes, limits.max_keyframes, "animation keyframes")?;
+            reserve_skin_animation_items(
+                &mut decoded_bytes,
+                input.count,
+                4,
+                limits,
+                "animation input times",
+            )?;
+            let output_item_bytes = output.component_count.checked_mul(4).ok_or_else(|| {
+                GlbFatalError::new(
+                    "M2A-GLB-INTEGER-OVERFLOW",
+                    "animation output element size overflow",
+                )
+            })?;
+            reserve_skin_animation_items(
+                &mut decoded_bytes,
+                output.count,
+                output_item_bytes,
+                limits,
+                "animation output values",
+            )?;
+            sampler_accessors.push((input, output, interpolation.unwrap_or("LINEAR")));
+        }
+
+        let mut targeted_paths = HashSet::new();
+        for (channel_index, channel) in channels.iter().enumerate() {
+            let channel_path = format!("{path}.channels[{channel_index}]");
+            let sampler_index = json_usize(
+                channel.get("sampler"),
+                &format!("{channel_path}.sampler"),
+                "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
+            )?;
+            let (input, output, interpolation) = sampler_accessors
+                .get(sampler_index)
+                .copied()
+                .ok_or_else(|| {
+                    layout_error("animation channel sampler reference is out of range")
+                        .in_json(format!("{channel_path}.sampler"))
+                })?;
+            let target = channel
+                .get("target")
+                .and_then(Value::as_object)
+                .ok_or_else(|| {
+                    layout_error("animation channel target must be an object")
+                        .in_json(format!("{channel_path}.target"))
+                })?;
+            let node_index = json_usize(
+                target.get("node"),
+                &format!("{channel_path}.target.node"),
+                "M2A-GLB-ACCESSOR-LAYOUT-INVALID",
+            )?;
+            if node_index >= nodes.len() {
+                return Err(
+                    layout_error("animation target node reference is out of range")
+                        .in_json(format!("{channel_path}.target.node")),
+                );
+            }
+            let target_path = target.get("path").and_then(Value::as_str).ok_or_else(|| {
+                layout_error("animation target path is missing")
+                    .in_json(format!("{channel_path}.target.path"))
+            })?;
+            if !matches!(
+                target_path,
+                "translation" | "rotation" | "scale" | "weights"
+            ) {
+                return Err(layout_error("animation target path is unsupported")
+                    .in_json(format!("{channel_path}.target.path")));
+            }
+            if !targeted_paths.insert((node_index, target_path.to_owned())) {
+                return Err(
+                    layout_error("animation has duplicate target node/path channels")
+                        .in_json(format!("{channel_path}.target")),
+                );
+            }
+            if target_path != "weights" {
+                let expected_type = if target_path == "rotation" {
+                    "VEC4"
+                } else {
+                    "VEC3"
+                };
+                if output.element_type != expected_type {
+                    return Err(layout_error(format!(
+                        "{target_path} animation output must use FLOAT {expected_type}"
+                    ))
+                    .in_json(format!("{channel_path}.sampler")));
+                }
+                let expected_count = if interpolation == "CUBICSPLINE" {
+                    input.count.checked_mul(3).ok_or_else(|| {
+                        GlbFatalError::new(
+                            "M2A-GLB-INTEGER-OVERFLOW",
+                            "CUBICSPLINE output count overflow",
+                        )
+                        .in_json(format!("{channel_path}.sampler"))
+                    })?
+                } else {
+                    input.count
+                };
+                if output.count != expected_count {
+                    return Err(layout_error(
+                        "animation output count does not match input/interpolation",
+                    )
+                    .in_json(format!("{channel_path}.sampler")));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn reserve_skin_animation_items(
+    decoded_bytes: &mut usize,
+    item_count: usize,
+    item_bytes: usize,
+    limits: &GlbLimits,
+    label: &str,
+) -> Result<(), GlbFatalError> {
+    let bytes = item_count.checked_mul(item_bytes).ok_or_else(|| {
+        GlbFatalError::new(
+            "M2A-GLB-INTEGER-OVERFLOW",
+            format!("{label} decoded size overflow"),
+        )
+    })?;
+    *decoded_bytes = decoded_bytes.checked_add(bytes).ok_or_else(|| {
+        GlbFatalError::new(
+            "M2A-GLB-INTEGER-OVERFLOW",
+            "cumulative decoded skin/animation size overflow",
+        )
+    })?;
+    if *decoded_bytes > limits.max_decoded_skin_animation_bytes {
+        return Err(limit_error(format!(
+            "decoded skin/animation materialization {} exceeds {}",
+            *decoded_bytes, limits.max_decoded_skin_animation_bytes
+        )));
+    }
+    Ok(())
+}
+
+fn layout_error(message: impl Into<String>) -> GlbFatalError {
+    GlbFatalError::new("M2A-GLB-ACCESSOR-LAYOUT-INVALID", message)
+}
+
 fn array_or_empty(value: Option<&Value>) -> &[Value] {
     value.and_then(Value::as_array).map_or(&[], Vec::as_slice)
 }
@@ -1506,12 +2652,23 @@ fn optional_json_usize(
 ) -> Result<Option<usize>, GlbFatalError> {
     value
         .map(|value| {
-            value
-                .as_u64()
-                .and_then(|value| usize::try_from(value).ok())
-                .ok_or_else(|| {
-                    GlbFatalError::new(code, "value must fit an unsigned host index").in_json(path)
-                })
+            let value = value.as_u64().ok_or_else(|| {
+                GlbFatalError::new(code, "value must be an unsigned integer").in_json(path)
+            })?;
+            let canonical = u32::try_from(value).map_err(|_| {
+                GlbFatalError::new(
+                    "M2A-GLB-INTEGER-OVERFLOW",
+                    "unsigned GLB integer exceeds the canonical u32 domain",
+                )
+                .in_json(path)
+            })?;
+            usize::try_from(canonical).map_err(|_| {
+                GlbFatalError::new(
+                    "M2A-GLB-INTEGER-OVERFLOW",
+                    "canonical u32 GLB integer does not fit the host index domain",
+                )
+                .in_json(path)
+            })
         })
         .transpose()
 }
@@ -1575,6 +2732,13 @@ fn validate_document_limits(
             limits.max_buffer_views,
             "buffer views",
         ),
+        (
+            document.materials().count(),
+            limits.max_materials,
+            "materials",
+        ),
+        (document.textures().count(), limits.max_textures, "textures"),
+        (document.samplers().count(), limits.max_samplers, "samplers"),
         (document.images().count(), limits.max_images, "images"),
         (document.skins().count(), limits.max_skins, "skins"),
         (
@@ -1635,6 +2799,285 @@ fn validate_node_graph(document: &gltf::Document, limits: &GlbLimits) -> Result<
     Ok(())
 }
 
+fn decode_skins(document: &gltf::Document, blob: &[u8]) -> Result<Vec<IrSkin>, GlbFatalError> {
+    document
+        .skins()
+        .map(|skin| {
+            let inverse_bind_matrices = skin
+                .reader(|_| Some(blob))
+                .read_inverse_bind_matrices()
+                .map(|matrices| {
+                    matrices
+                        .map(|matrix| {
+                            let flat = flatten_matrix(matrix);
+                            if flat.iter().any(|value| !value.is_finite()) {
+                                return Err(GlbFatalError::new(
+                                    "M2A-GLB-NONFINITE-FLOAT",
+                                    "inverse bind matrix contains a non-finite value",
+                                )
+                                .in_json(format!("skins[{}].inverseBindMatrices", skin.index())));
+                            }
+                            Ok(flat)
+                        })
+                        .collect::<Result<Vec<_>, _>>()
+                })
+                .transpose()?
+                .unwrap_or_default();
+            Ok(IrSkin {
+                id: skin.index() as u32,
+                name: skin.name().map(str::to_owned),
+                skeleton_root_node_id: skin.skeleton().map(|node| node.index() as u32),
+                joint_node_ids: skin.joints().map(|node| node.index() as u32).collect(),
+                inverse_bind_matrices,
+            })
+        })
+        .collect()
+}
+
+fn validate_skin_joint_lanes(
+    nodes: &[IrNode],
+    primitives: &[IrPrimitive],
+    skins: &[IrSkin],
+) -> Result<(), GlbFatalError> {
+    for node in nodes {
+        let (Some(mesh_id), Some(skin_id)) = (node.mesh_id, node.skin_id) else {
+            continue;
+        };
+        let skin = skins.get(skin_id as usize).ok_or_else(|| {
+            layout_error("node skin reference is out of range")
+                .in_json(format!("nodes[{}].skin", node.id))
+        })?;
+        for primitive in primitives
+            .iter()
+            .filter(|primitive| primitive.source_mesh_id == mesh_id)
+        {
+            for (vertex_index, lanes) in primitive.joints0.iter().enumerate() {
+                if let Some(lane) = lanes
+                    .iter()
+                    .copied()
+                    .find(|lane| *lane as usize >= skin.joint_node_ids.len())
+                {
+                    return Err(layout_error(format!(
+                        "JOINTS_0 lane {lane} is outside skin {} joint domain",
+                        skin.id
+                    ))
+                    .in_json(format!(
+                        "meshes[{mesh_id}].primitives[{}].attributes.JOINTS_0[{vertex_index}]",
+                        primitive.source_primitive_index
+                    )));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn decode_animations(
+    document: &gltf::Document,
+    blob: &[u8],
+    gates: &mut Vec<GlbGate>,
+) -> Result<Vec<IrAnimation>, GlbFatalError> {
+    document
+        .animations()
+        .map(|animation| {
+            let samplers = animation
+                .samplers()
+                .map(|sampler| {
+                    let input_accessor = sampler.input();
+                    let input_times_seconds = decode_scalar_f32(input_accessor.clone(), blob)
+                        .ok_or_else(|| {
+                            layout_error("animation input accessor could not be decoded").in_json(
+                                format!(
+                                    "animations[{}].samplers[{}].input",
+                                    animation.index(),
+                                    sampler.index()
+                                ),
+                            )
+                        })?;
+                    validate_animation_times(
+                        &input_times_seconds,
+                        input_accessor.min(),
+                        input_accessor.max(),
+                        animation.index(),
+                        sampler.index(),
+                    )?;
+                    let output = sampler.output();
+                    let output_accessor_type = accessor_type_name(output.dimensions()).to_owned();
+                    let output_values = decode_float_accessor(output, blob).ok_or_else(|| {
+                        layout_error("animation output accessor could not be decoded").in_json(
+                            format!(
+                                "animations[{}].samplers[{}].output",
+                                animation.index(),
+                                sampler.index()
+                            ),
+                        )
+                    })?;
+                    if output_values.iter().any(|value| !value.is_finite()) {
+                        return Err(GlbFatalError::new(
+                            "M2A-GLB-NONFINITE-FLOAT",
+                            "animation output contains a non-finite value",
+                        )
+                        .in_json(format!(
+                            "animations[{}].samplers[{}].output",
+                            animation.index(),
+                            sampler.index()
+                        )));
+                    }
+                    Ok(IrAnimationSampler {
+                        id: sampler.index() as u32,
+                        interpolation: interpolation_name(sampler.interpolation()).to_owned(),
+                        input_times_seconds,
+                        output_accessor_type,
+                        output_values,
+                    })
+                })
+                .collect::<Result<Vec<_>, GlbFatalError>>()?;
+
+            let channels = animation
+                .channels()
+                .map(|channel| {
+                    let target_path = animation_property_name(channel.target().property());
+                    if target_path == "WEIGHTS" {
+                        gates.push(blocking_gate(
+                            "M2A-GLB-ANIMATION-WEIGHTS-DEFERRED",
+                            &format!(
+                                "animations[{}].channels[{}]",
+                                animation.index(),
+                                channel.index()
+                            ),
+                            "translation, rotation or scale target",
+                            "WEIGHTS",
+                            "morph-target weight conversion semantics are deferred",
+                        ));
+                    }
+                    IrAnimationChannel {
+                        sampler_id: channel.sampler().index() as u32,
+                        target_node_id: channel.target().node().index() as u32,
+                        target_path: target_path.to_owned(),
+                    }
+                })
+                .collect::<Vec<_>>();
+            let duration_seconds = samplers
+                .iter()
+                .filter_map(|sampler| sampler.input_times_seconds.last().copied())
+                .fold(0.0_f32, f32::max);
+            Ok(IrAnimation {
+                id: animation.index() as u32,
+                name: animation.name().map(str::to_owned),
+                duration_seconds,
+                samplers,
+                channels,
+            })
+        })
+        .collect()
+}
+
+fn decode_scalar_f32(accessor: gltf::Accessor<'_>, blob: &[u8]) -> Option<Vec<f32>> {
+    gltf::accessor::Iter::<f32>::new(accessor, |_| Some(blob)).map(Iterator::collect)
+}
+
+fn decode_float_accessor(accessor: gltf::Accessor<'_>, blob: &[u8]) -> Option<Vec<f32>> {
+    use gltf::accessor::{Dimensions, Iter};
+
+    match accessor.dimensions() {
+        Dimensions::Scalar => Iter::<f32>::new(accessor, |_| Some(blob)).map(Iterator::collect),
+        Dimensions::Vec2 => {
+            Iter::<[f32; 2]>::new(accessor, |_| Some(blob)).map(|values| values.flatten().collect())
+        }
+        Dimensions::Vec3 => {
+            Iter::<[f32; 3]>::new(accessor, |_| Some(blob)).map(|values| values.flatten().collect())
+        }
+        Dimensions::Vec4 => {
+            Iter::<[f32; 4]>::new(accessor, |_| Some(blob)).map(|values| values.flatten().collect())
+        }
+        Dimensions::Mat2 => Iter::<[[f32; 2]; 2]>::new(accessor, |_| Some(blob))
+            .map(|values| values.flatten().flatten().collect()),
+        Dimensions::Mat3 => Iter::<[[f32; 3]; 3]>::new(accessor, |_| Some(blob))
+            .map(|values| values.flatten().flatten().collect()),
+        Dimensions::Mat4 => Iter::<[[f32; 4]; 4]>::new(accessor, |_| Some(blob))
+            .map(|values| values.flatten().flatten().collect()),
+    }
+}
+
+fn validate_animation_times(
+    times: &[f32],
+    declared_min: Option<Value>,
+    declared_max: Option<Value>,
+    animation_index: usize,
+    sampler_index: usize,
+) -> Result<(), GlbFatalError> {
+    let path = format!("animations[{animation_index}].samplers[{sampler_index}].input");
+    if times.iter().any(|time| !time.is_finite()) {
+        return Err(GlbFatalError::new(
+            "M2A-GLB-NONFINITE-FLOAT",
+            "animation input time contains a non-finite value",
+        )
+        .in_json(path));
+    }
+    if times.first().is_some_and(|time| *time < 0.0)
+        || times.windows(2).any(|pair| pair[0] >= pair[1])
+    {
+        return Err(layout_error(
+            "animation input times must be non-negative and strictly increasing",
+        )
+        .in_json(path));
+    }
+    let min = scalar_bound(declared_min.as_ref()).ok_or_else(|| {
+        layout_error("animation input accessor requires finite scalar min").in_json(path.clone())
+    })?;
+    let max = scalar_bound(declared_max.as_ref()).ok_or_else(|| {
+        layout_error("animation input accessor requires finite scalar max").in_json(path.clone())
+    })?;
+    if times.first().copied() != Some(min) || times.last().copied() != Some(max) {
+        return Err(
+            layout_error("animation input min/max must match first/last keyframe time")
+                .in_json(path),
+        );
+    }
+    Ok(())
+}
+
+fn scalar_bound(value: Option<&Value>) -> Option<f32> {
+    let values = value?.as_array()?;
+    if values.len() != 1 {
+        return None;
+    }
+    let value = values[0].as_f64()? as f32;
+    value.is_finite().then_some(value)
+}
+
+fn accessor_type_name(dimensions: gltf::accessor::Dimensions) -> &'static str {
+    use gltf::accessor::Dimensions;
+    match dimensions {
+        Dimensions::Scalar => "SCALAR",
+        Dimensions::Vec2 => "VEC2",
+        Dimensions::Vec3 => "VEC3",
+        Dimensions::Vec4 => "VEC4",
+        Dimensions::Mat2 => "MAT2",
+        Dimensions::Mat3 => "MAT3",
+        Dimensions::Mat4 => "MAT4",
+    }
+}
+
+fn interpolation_name(interpolation: gltf::animation::Interpolation) -> &'static str {
+    use gltf::animation::Interpolation;
+    match interpolation {
+        Interpolation::Linear => "LINEAR",
+        Interpolation::Step => "STEP",
+        Interpolation::CubicSpline => "CUBICSPLINE",
+    }
+}
+
+fn animation_property_name(property: gltf::animation::Property) -> &'static str {
+    use gltf::animation::Property;
+    match property {
+        Property::Translation => "TRANSLATION",
+        Property::Rotation => "ROTATION",
+        Property::Scale => "SCALE",
+        Property::MorphTargetWeights => "WEIGHTS",
+    }
+}
+
 fn material_from_gltf(material: gltf::Material<'_>) -> IrMaterial {
     let pbr = material.pbr_metallic_roughness();
     IrMaterial {
@@ -1665,6 +3108,52 @@ fn material_from_gltf(material: gltf::Material<'_>) -> IrMaterial {
         alpha_mode: format!("{:?}", material.alpha_mode()).to_ascii_uppercase(),
         alpha_cutoff: material.alpha_cutoff(),
         double_sided: material.double_sided(),
+    }
+}
+
+fn reject_nonfinite_materials(materials: &[IrMaterial]) -> Result<(), GlbFatalError> {
+    for (index, material) in materials.iter().enumerate() {
+        let finite = material
+            .base_color_factor
+            .iter()
+            .chain([material.metallic_factor, material.roughness_factor].iter())
+            .chain(material.emissive_factor.iter())
+            .chain(material.alpha_cutoff.iter())
+            .all(|value| value.is_finite());
+        if !finite {
+            return Err(GlbFatalError::new(
+                "M2A-GLB-NONFINITE-FLOAT",
+                "material contains a non-finite float",
+            )
+            .in_json(format!("materials[{index}]")));
+        }
+    }
+    Ok(())
+}
+
+fn mag_filter_name(filter: MagFilter) -> &'static str {
+    match filter {
+        MagFilter::Nearest => "NEAREST",
+        MagFilter::Linear => "LINEAR",
+    }
+}
+
+fn min_filter_name(filter: MinFilter) -> &'static str {
+    match filter {
+        MinFilter::Nearest => "NEAREST",
+        MinFilter::Linear => "LINEAR",
+        MinFilter::NearestMipmapNearest => "NEAREST_MIPMAP_NEAREST",
+        MinFilter::LinearMipmapNearest => "LINEAR_MIPMAP_NEAREST",
+        MinFilter::NearestMipmapLinear => "NEAREST_MIPMAP_LINEAR",
+        MinFilter::LinearMipmapLinear => "LINEAR_MIPMAP_LINEAR",
+    }
+}
+
+fn wrapping_mode_name(mode: WrappingMode) -> &'static str {
+    match mode {
+        WrappingMode::ClampToEdge => "CLAMP_TO_EDGE",
+        WrappingMode::MirroredRepeat => "MIRRORED_REPEAT",
+        WrappingMode::Repeat => "REPEAT",
     }
 }
 
@@ -1717,6 +3206,9 @@ fn reject_nonfinite(
             "M2A-GLB-NONFINITE-FLOAT",
             "decoded attribute contains a non-finite float",
         ));
+    }
+    if weights.iter().flatten().any(|value| *value < 0.0) {
+        return Err(layout_error("decoded WEIGHTS_0 contains a negative value"));
     }
     Ok(())
 }
@@ -1807,11 +3299,5 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 fn map_gltf_error(error: gltf::Error) -> GlbFatalError {
-    let text = error.to_string();
-    let code = if text.to_ascii_lowercase().contains("json") {
-        "M2A-GLB-JSON-INVALID"
-    } else {
-        "M2A-GLB-CHUNK-INVALID"
-    };
-    GlbFatalError::new(code, text)
+    GlbFatalError::new("M2A-GLB-JSON-INVALID", error.to_string())
 }

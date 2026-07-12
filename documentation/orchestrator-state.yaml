@@ -19,11 +19,11 @@ status_vocabulary:
   - "SUPERSEDED"
 
 orchestration:
-  active_stage: "M2"
-  next_ready_stage: "M3 remains NOT_STARTED until M2 is DONE"
-  next_action: "Complete M2 fixtures and ingest slices D-F (materials/images, skin and animation inventory, gates/limits and full negative matrix), rerun every native/WASM gate, then perform the final M2 review; do not start M3 or MDL writer work."
+  active_stage: "M3"
+  next_ready_stage: "M4 remains NOT_STARTED until M3 is DONE"
+  next_action: "Implement the profile-A source-preserving-to-Aurora conversion policy. Resolve axis, scale, UV V-flip and winding only from Aurora First anchors plus synthetic proof; keep UNRESOLVED_M3 explicit until proved and do not start M4."
   one_active_stage_only: true
-  current_attempt_id: "M2-20260711-01"
+  current_attempt_id: "M3-20260712-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
   done_rule: "A stage may be DONE only when every definition_of_done item has evidence."
   stop_rule: "Stop and mark BLOCKED when a needed Aurora fact, decision, local tool state, or proof artifact is missing. Do not guess."
@@ -239,21 +239,15 @@ stages:
       - "documentation/orchestrator-state.yaml"
 
   M2:
-    status: "IN_PROGRESS"
-    status_reason: "The contract-locked source-preserving GLB 2.0 inspect/ingest core, fixtures A-C and public WASM adapters are implemented. Final post-fix gates passed 79 native and 6 Node/WASM tests plus fmt, clippy, WASM build and diff checks, and the A-C independent re-review reported no findings. M2 remains IN_PROGRESS because D-F, the complete negative matrix and final full-scope M2 review are still open."
+    status: "DONE"
+    status_reason: "The source-preserving GLB 2.0 inspect/ingest implementation and synthetic fixtures A-F satisfy the complete M2 Definition of Done. The fatal/gate/limit/truncation/no-panic matrix passed 28/28 GLB tests, 96 workspace tests and 12 Node/WASM tests plus fmt, clippy, WASM build and diff checks. Docker standard/no-cache quality and content audits passed for m2a-quality:final sha256:9f84561c7271968bfb8de9997d97e33360e1765e217620897c404af236f6b620, size 1067266351 bytes, with host/image glb.rs SHA identity. Slice D, E, final full-scope and documentation consistency reviews all reported NO FINDINGS."
     owner: "Codex orchestrator + M2 implementation/review subagents"
     risk: "MEDIUM"
-    attempt_id: "M2-20260711-01"
+    attempt_id: "M2-20260712-03"
     dependencies: ["M1A DONE", "GB-003 resolved"]
-    current_problems:
-      - "Slices D-F remain open: material/image inventory, skin inventory, animation inventory, D-F fixtures/gates/limits and the complete negative matrix."
-      - "Target Aurora transform remains intentionally UNRESOLVED_M3 and is non-blocking for source-preserving M2."
+    current_problems: []
     bugs: []
-    next_actions:
-      - "Implement fixture D and material/embedded-image inventory without serializing payload bytes."
-      - "Implement fixture E with skin, inverse-bind and translation/rotation/scale animation inventory in source basis."
-      - "Complete fixture F, the full fatal/gate/limit/truncation/no-panic matrix and the final native plus WASM rerun."
-      - "Run independent final M2 review only after D-F and every gate are green; keep M2 IN_PROGRESS until then."
+    next_actions: []
     evidence: ["documentation/evidence/M2-evidence.md"]
     documentation: ["documentation/m2-aurora-asset-ir-glb-kontrakt-suplement-codex.md", "documentation/docker-build-test-suplement-codex.md", "documentation/evidence/M2-evidence.md"]
     expected_artifacts: ["Versioned AuroraAssetIR and GlbInspectionReport", "Synthetic fixtures A-F", "Native and public WASM GLB APIs", "Stable fatal/gate matrix"]
@@ -271,15 +265,21 @@ stages:
       - "documentation/orchestrator-state.yaml"
 
   M3:
-    status: "NOT_STARTED"
-    status_reason: "Depends on reference reader, HAK locator and GLB IR."
-    owner: "implementation agent"
+    status: "IN_PROGRESS"
+    status_reason: "Dependencies M1B DONE, M1C DONE and M2 DONE are satisfied. M3 starts profile-A conversion from the source-preserving AuroraAssetIR; target axis, scale, UV V-flip and winding remain explicitly UNRESOLVED_M3 until Aurora First anchors and synthetic probes prove the policy."
+    owner: "Codex orchestrator + M3 implementation/review subagents"
     risk: "HIGH"
     dependencies: ["M1B DONE", "M1C DONE", "M2 DONE"]
+    attempt_id: "M3-20260712-01"
     current_problems:
-      - "No skeleton transfer, scale policy implementation or real GLB sample."
+      - "Aurora target axis, scale, UV V-flip and winding policy is UNRESOLVED_M3 and must be derived from Aurora First anchors plus synthetic proof; do not guess."
+      - "Profile-A conversion, reference skeleton segmentation and max-four normalized weight policy are not implemented."
+      - "No original Meshy GLB sample has been supplied; synthetic fixtures remain the current proof base."
     bugs: []
-    next_actions: ["Wait for M1B, M1C and M2."]
+    next_actions:
+      - "Lock the M3 profile-A transform/scale/UV/winding contract from Aurora First evidence before implementation."
+      - "Implement deterministic source-IR to target-profile conversion with a report naming every transformation and blocking invalid geometry/skin input."
+      - "Add synthetic axis, UV, winding, scale and weight probes plus independent review; do not start M4."
     evidence: []
     documentation: ["documentation/evidence/M3-evidence.md"]
     expected_artifacts: ["Conversion report", "Axis/UV/weight gates"]

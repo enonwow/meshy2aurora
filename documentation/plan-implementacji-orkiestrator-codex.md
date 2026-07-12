@@ -549,12 +549,12 @@ Najwazniejsze dodatki to `attempt_id`, `stop_condition`, `expected_artifacts`, `
 
 ```yaml
 next_stage:
-  id: "M2"
-  action: "zdefiniowac canonical AuroraAssetIR schema i dodac synthetic minimal GLB axis/UV fixtures ze stabilnym inspection reportem i gates"
-  status: "IN_PROGRESS attempt M2-20260711-01 po M1B/M1C DONE"
+  id: "M3"
+  action: "zaimplementowac profil-A source-preserving-to-Aurora conversion policy; axis, scale, UV V-flip i winding rozstrzygnac wylacznie przez Aurora First anchors oraz synthetic proof"
+  status: "IN_PROGRESS attempt M3-20260712-01 po M1B/M1C/M2 DONE"
   do_not_start_in_parallel:
-    - "M3 creature conversion"
-    - "MDL writer"
+    - "M4 binary MDL/MDX writer"
+    - "M4A animation emission"
     - "Studio UI"
-  success_signal: "valid minimal synthetic GLB produces stable AuroraAssetIR/report; axis and UV probes pass; invalid/missing UV and non-triangle inputs produce stable gates without mutating source data"
+  success_signal: "axis/UV/winding/scale probes pass; conversion report names every transformation; invalid geometry or skin is blocked; no reference payload is packaged; independent M3 review has no findings"
 ```

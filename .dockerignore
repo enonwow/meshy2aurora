@@ -1,0 +1,33 @@
+.git/
+.github/
+.codex-tmp/
+target/
+**/target/
+**/pkg/
+node_modules/
+proof-output/
+**/proof-output/
+local-reference-assets/
+**/local-reference-assets/
+sample-2d/
+sample-3d/
+
+# Host configuration, credentials and transient output.
+.env
+.env.*
+*.pem
+*.keytab
+*.pfx
+*.tmp
+*.log
+
+# Never place Aurora/NWN/CEP containers, models or textures in build context.
+*.hak
+*.mod
+*.key
+*.bif
+*.mdl
+*.mdx
+*.tga
+*.dds
+*.plt
