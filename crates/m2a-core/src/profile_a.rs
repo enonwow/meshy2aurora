@@ -1,8 +1,7 @@
 //! Deterministic Profile A geometry conversion into Aurora target space.
 //!
-//! This first M3 slice deliberately supports the single-segment `RIGID`
-//! profile. Surface-based segment assignment and skin-weight transfer remain a
-//! blocking, explicitly reported next slice instead of being approximated.
+//! M3A/M3B cover exhaustive surface-based multi-segment assignment plus
+//! deterministic `RIGID` attachment and `SKIN` reference-weight transfer.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -11,6 +10,30 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+
+// Profile A work accounting is a serialized contract and therefore cannot use
+// host `usize`/pointer layout. These fixed 64-bit-layout charges are also
+// conservative on wasm32 and keep native/WASM reports byte-identical.
+const WORK_BOOL: u64 = 1;
+const WORK_U32: u64 = 4;
+const WORK_USIZE: u64 = 8;
+const WORK_OPTION_U32: u64 = 8;
+const WORK_REFERENCE: u64 = 8;
+const WORK_VEC_HEADER: u64 = 24;
+const WORK_PROFILE: u64 = 144;
+const WORK_RIG_NODE: u64 = 104;
+const WORK_RIG_INFLUENCE: u64 = 8;
+const WORK_RIG_SEGMENT: u64 = 136;
+const WORK_GATE: u64 = 152;
+const WORK_GEOMETRY_INSTANCE: u64 = 72;
+const WORK_MATERIAL_BINDING: u64 = 40;
+const WORK_DIAGNOSTIC: u64 = 104;
+const WORK_OPTION_MAT4: u64 = 68;
+const WORK_SCENE_STACK_ENTRY: u64 = 76;
+const WORK_BUCKET_PLAN_ENTRY: u64 = 40;
+const WORK_CREATURE_SEGMENT: u64 = 160;
+const WORK_VERTEX_WEIGHTS: u64 = 52;
+const WORK_U32_F64_PAIR: u64 = 16;
 
 use crate::glb::{GlbIngestResult, IrNode, IrPrimitive, IrTransform};
 
@@ -451,6 +474,16 @@ struct Counters {
     source_triangles: u64,
     output_triangles: u64,
     duplicated_vertices: u64,
+    distance_evaluations: u64,
+    skinned_vertices: u64,
+    rigid_vertices: u64,
+    merged_duplicate_influences: u64,
+    dropped_zero_influences: u64,
+    dropped_top_four_influences: u64,
+    normalized_vertices: u64,
+    max_influences_before: u64,
+    max_influences_after: u64,
+    segment_reports: Vec<ProfileASegmentReportV1>,
     work_bytes_peak: u64,
 }
 
@@ -622,19 +655,6 @@ pub fn convert_profile_a(
     };
     let mut selection_report = ProfileASourceSelectionReportV1::default();
 
-    let single_rigid =
-        rig.segments.len() == 1 && rig.segments[0].deformation == RigSegmentDeformationV1::Rigid;
-    if !single_rigid {
-        push_gate_checked(
-            &mut gates,
-            gate(
-                "M3A-SEGMENT-ASSIGNMENT-FAILED",
-                "rig.segments",
-                "surface assignment and SKIN transfer are pending the next M3 slice",
-            ),
-            &options.limits,
-        )?;
-    }
     if gates.iter().any(|item| item.code == "M3A-SOURCE-BLOCKED") {
         finalize_gates(&mut gates);
         ensure_diagnostic_limit(gates.len(), 0, &options.limits)?;
@@ -681,7 +701,7 @@ pub fn convert_profile_a(
     drop(selection);
     counters.work_bytes_peak = selection_peak.max(construction_peak);
     let primitive_seen_bytes = usize_u64(source.ir.primitives.len())
-        .checked_mul(usize_u64(std::mem::size_of::<bool>()))
+        .checked_mul(WORK_BOOL)
         .ok_or_else(|| {
             fatal(
                 "M3A-INTEGER-OVERFLOW",
@@ -759,8 +779,6 @@ pub fn convert_profile_a(
     }
     let mut first_material_key = None::<Option<u32>>;
     let mut multiple_material_keys = false;
-    let mut tangent_present = false;
-    let mut tangent_absent = false;
     for instance in &instances {
         let key = instance.primitive.material_id;
         if let Some(first) = first_material_key {
@@ -770,22 +788,6 @@ pub fn convert_profile_a(
         } else {
             first_material_key = Some(key);
         }
-        if instance.primitive.tangents.is_empty() {
-            tangent_absent = true;
-        } else {
-            tangent_present = true;
-        }
-    }
-    if !multiple_material_keys && tangent_present && tangent_absent {
-        push_gate_checked(
-            &mut gates,
-            gate(
-                "M3A-TANGENT-COVERAGE-MIXED",
-                "sourceSelection.meshInstances",
-                "one output segment/material bucket cannot mix tangent presence",
-            ),
-            &options.limits,
-        )?;
     }
     if multiple_material_keys {
         push_gate_checked(
@@ -909,39 +911,87 @@ pub fn convert_profile_a(
     transform_report.source_bottom_center = Some(bottom_center);
     transform_report.translation = Some(translation);
 
-    let segment = &rig.segments[0];
     let rig_worlds = rig_bind_worlds(rig)?;
-    let parent_world = *rig_worlds.get(&segment.parent_node_id).ok_or_else(|| {
-        fatal(
-            "M3A-INTERNAL-CONTRACT",
-            "rig.segments.parentNodeId",
-            "validated rig parent is missing",
-        )
-    })?;
-    let parent_inverse = parent_world.inverse_affine().ok_or_else(|| {
-        fatal(
-            "M3A-PROFILE-HIERARCHY-INVALID",
-            "rig.nodes.bindLocalMatrix",
-            "rig parent bind world is singular",
-        )
-    })?;
-    let mut buckets: BTreeMap<u32, AuroraCreatureSegmentV1> = BTreeMap::new();
-    let mut work_bytes = material_work_bytes;
-    counters.work_bytes_peak = counters.work_bytes_peak.max(material_work_bytes);
-    for instance in &instances {
-        append_instance(
-            instance,
-            conversion,
-            parent_inverse,
-            segment,
-            &mut buckets,
-            &mut counters,
-            &mut work_bytes,
+    let assignment_plan = plan_triangle_assignments(
+        &instances,
+        conversion,
+        rig,
+        &rig_worlds,
+        &material_bindings,
+        material_work_bytes,
+        &mut counters,
+        &options.limits,
+    )?;
+    counters.work_bytes_peak = counters
+        .work_bytes_peak
+        .max(assignment_plan.work_bytes_peak);
+    for key in &assignment_plan.mixed_tangent_buckets {
+        push_gate_checked(
+            &mut gates,
+            gate(
+                "M3A-TANGENT-COVERAGE-MIXED",
+                &format!("creature.segments[{},{}].tangents", key.0, key.1),
+                "one output segment/material bucket cannot mix tangent presence",
+            ),
             &options.limits,
         )?;
     }
-    let segments = buckets.into_values().collect::<Vec<_>>();
+    if assignment_plan.has_unreferenced_vertices {
+        push_gate_checked(
+            &mut gates,
+            gate(
+                "M3A-SEGMENT-ASSIGNMENT-FAILED",
+                "sourceSelection.meshInstances",
+                "source contains vertices not referenced by any assigned triangle",
+            ),
+            &options.limits,
+        )?;
+    }
+    finalize_gates(&mut gates);
+    ensure_diagnostic_limit(gates.len(), diagnostics.len(), &options.limits)?;
+    if gates.iter().any(|item| item.severity == "BLOCKING") {
+        return Ok(blocked_outcome(
+            source,
+            rig,
+            options,
+            gates,
+            transform_report,
+            counters,
+            selection_report,
+            material_bindings,
+            diagnostics,
+        ));
+    }
+    let buckets = emit_assigned_geometry(
+        &instances,
+        &assignment_plan,
+        conversion,
+        rig,
+        &rig_worlds,
+        &mut gates,
+        &mut counters,
+        &options.limits,
+    )?;
+    let mut segments = Vec::new();
+    segments.try_reserve(buckets.len()).map_err(|_| {
+        fatal(
+            "M3A-LIMIT-EXCEEDED",
+            "creature.segments",
+            "output segment allocation failed",
+        )
+    })?;
+    segments.extend(buckets.into_values());
     let target_bounds = bounds_from_segments_world(&segments, &rig_worlds)?;
+    counters.segment_reports = segments
+        .iter()
+        .map(|segment| ProfileASegmentReportV1 {
+            segment_id: segment.segment_id,
+            material_slot: segment.material_slot,
+            deformation: segment.deformation.clone(),
+            triangle_count: usize_u64(segment.indices.len() / 3),
+            vertex_count: usize_u64(segment.positions.len()),
+        })
+        .collect();
     transform_report.target_bounds = Some(target_bounds);
 
     let tolerance = 1.0e-5_f32 * target_height.max(1.0);
@@ -1082,7 +1132,7 @@ fn estimate_auxiliary_work_bytes(
     source: &GlbIngestResult,
     rig: &CreatureRigProfileV1,
 ) -> Result<u64, ProfileAConversionFatalError> {
-    let mut profile_bytes = usize_u64(std::mem::size_of::<CreatureRigProfileV1>());
+    let mut profile_bytes = WORK_PROFILE;
     profile_bytes = profile_bytes
         .checked_add(usize_u64(rig.profile_id.len()))
         .ok_or_else(|| {
@@ -1094,7 +1144,7 @@ fn estimate_auxiliary_work_bytes(
         })?;
     for node in &rig.nodes {
         profile_bytes = profile_bytes
-            .checked_add(usize_u64(std::mem::size_of::<CreatureRigNodeV1>()))
+            .checked_add(WORK_RIG_NODE)
             .and_then(|value| value.checked_add(usize_u64(node.name.len())))
             .ok_or_else(|| {
                 fatal(
@@ -1121,10 +1171,7 @@ fn estimate_auxiliary_work_bytes(
             .reference_weights
             .iter()
             .try_fold(0u64, |sum, row| {
-                sum.checked_add(
-                    usize_u64(row.len())
-                        .checked_mul(usize_u64(std::mem::size_of::<RigWeightInfluenceV1>()))?,
-                )
+                sum.checked_add(usize_u64(row.len()).checked_mul(WORK_RIG_INFLUENCE)?)
             })
             .ok_or_else(|| {
                 fatal(
@@ -1134,7 +1181,7 @@ fn estimate_auxiliary_work_bytes(
                 )
             })?;
         profile_bytes = profile_bytes
-            .checked_add(usize_u64(std::mem::size_of::<CreatureRigSegmentV1>()))
+            .checked_add(WORK_RIG_SEGMENT)
             .and_then(|value| value.checked_add(usize_u64(segment.name.len())))
             .and_then(|value| value.checked_add(surface))
             .and_then(|value| value.checked_add(weights))
@@ -1192,9 +1239,7 @@ fn estimate_auxiliary_work_bytes(
                 .checked_add(item.expected.len())?
                 .checked_add(item.actual.len())?
                 .checked_add(item.message.len())?;
-            sum.checked_add(
-                usize_u64(std::mem::size_of::<ProfileAGateV1>()).checked_add(usize_u64(strings))?,
-            )
+            sum.checked_add(WORK_GATE.checked_add(usize_u64(strings))?)
         })
         .ok_or_else(|| {
             fatal(
@@ -1821,6 +1866,13 @@ fn validate_rig(
     limits: &ProfileALimitsV1,
     tolerance_factor: f32,
 ) -> Result<(), ProfileAConversionFatalError> {
+    if rig.segments.is_empty() {
+        return Err(fatal(
+            "M3A-PROFILE-SEGMENT-INVALID",
+            "rig.segments",
+            "rig must contain at least one segment",
+        ));
+    }
     if usize_u64(rig.nodes.len()) > limits.max_rig_nodes
         || usize_u64(rig.segments.len()) > limits.max_segments
     {
@@ -2228,15 +2280,7 @@ fn geometry_instances<'a>(
         }
     }
     let instance_bytes = entry_count
-        .checked_mul(
-            u64::try_from(std::mem::size_of::<GeometryInstance<'_>>()).map_err(|_| {
-                fatal(
-                    "M3A-INTEGER-OVERFLOW",
-                    "workBytes",
-                    "instance stride does not fit u64",
-                )
-            })?,
-        )
+        .checked_mul(WORK_GEOMETRY_INSTANCE)
         .ok_or_else(|| {
             fatal(
                 "M3A-INTEGER-OVERFLOW",
@@ -2392,7 +2436,7 @@ fn material_summary(
     }
 
     let used_bytes = usize_u64(source.ir.materials.len())
-        .checked_mul(usize_u64(std::mem::size_of::<bool>()))
+        .checked_mul(WORK_BOOL)
         .ok_or_else(|| {
             fatal(
                 "M3A-INTEGER-OVERFLOW",
@@ -2464,7 +2508,7 @@ fn material_summary(
     const DIAGNOSTIC_PATH_PREFIX: &str = "source.ir.materials[";
     const DIAGNOSTIC_MESSAGE: &str = "non-logical source material name was omitted";
     let binding_struct_bytes = usize_u64(binding_count)
-        .checked_mul(usize_u64(std::mem::size_of::<MaterialSourceBindingV1>()))
+        .checked_mul(WORK_MATERIAL_BINDING)
         .ok_or_else(|| {
             fatal(
                 "M3A-INTEGER-OVERFLOW",
@@ -2489,7 +2533,7 @@ fn material_summary(
             )
         })?;
     let diagnostic_struct_bytes = usize_u64(diagnostic_count)
-        .checked_mul(usize_u64(std::mem::size_of::<ProfileADiagnosticV1>()))
+        .checked_mul(WORK_DIAGNOSTIC)
         .ok_or_else(|| {
             fatal(
                 "M3A-INTEGER-OVERFLOW",
@@ -2694,35 +2738,29 @@ fn select_default_scene<'a>(
                 "scene traversal edge count overflow",
             ))
         })?;
-    let worlds_bytes = node_count
-        .checked_mul(usize_u64(std::mem::size_of::<Option<Mat4>>()))
-        .ok_or_else(|| {
-            SourceSelectionError::Fatal(fatal(
-                "M3A-INTEGER-OVERFLOW",
-                "workBytes",
-                "world transform buffer overflow",
-            ))
-        })?;
-    let ordered_bytes = node_count
-        .checked_mul(usize_u64(std::mem::size_of::<&IrNode>()))
-        .ok_or_else(|| {
-            SourceSelectionError::Fatal(fatal(
-                "M3A-INTEGER-OVERFLOW",
-                "workBytes",
-                "ordered node buffer overflow",
-            ))
-        })?;
-    let seen_bytes = node_count
-        .checked_mul(usize_u64(std::mem::size_of::<bool>()))
-        .ok_or_else(|| {
-            SourceSelectionError::Fatal(fatal(
-                "M3A-INTEGER-OVERFLOW",
-                "workBytes",
-                "visited buffer overflow",
-            ))
-        })?;
+    let worlds_bytes = node_count.checked_mul(WORK_OPTION_MAT4).ok_or_else(|| {
+        SourceSelectionError::Fatal(fatal(
+            "M3A-INTEGER-OVERFLOW",
+            "workBytes",
+            "world transform buffer overflow",
+        ))
+    })?;
+    let ordered_bytes = node_count.checked_mul(WORK_REFERENCE).ok_or_else(|| {
+        SourceSelectionError::Fatal(fatal(
+            "M3A-INTEGER-OVERFLOW",
+            "workBytes",
+            "ordered node buffer overflow",
+        ))
+    })?;
+    let seen_bytes = node_count.checked_mul(WORK_BOOL).ok_or_else(|| {
+        SourceSelectionError::Fatal(fatal(
+            "M3A-INTEGER-OVERFLOW",
+            "workBytes",
+            "visited buffer overflow",
+        ))
+    })?;
     let mesh_seen_bytes = usize_u64(source.ir.meshes.len())
-        .checked_mul(usize_u64(std::mem::size_of::<bool>()))
+        .checked_mul(WORK_BOOL)
         .ok_or_else(|| {
             SourceSelectionError::Fatal(fatal(
                 "M3A-INTEGER-OVERFLOW",
@@ -2730,9 +2768,8 @@ fn select_default_scene<'a>(
                 "reachable mesh buffer overflow",
             ))
         })?;
-    type StackEntry = (u32, Option<u32>, Mat4);
     let stack_bytes = edge_count
-        .checked_mul(usize_u64(std::mem::size_of::<StackEntry>()))
+        .checked_mul(WORK_SCENE_STACK_ENTRY)
         .ok_or_else(|| {
             SourceSelectionError::Fatal(fatal(
                 "M3A-INTEGER-OVERFLOW",
@@ -2955,60 +2992,379 @@ fn world_bounds(
     bounds.ensure_nonempty("source.ir.primitives")
 }
 
+#[derive(Clone)]
+struct BucketPlan {
+    segment_index: usize,
+    vertex_count: usize,
+    index_count: usize,
+    tangent_present: bool,
+    tangent_absent: bool,
+}
+
+struct AssignmentPlan {
+    triangle_segments: Vec<Vec<usize>>,
+    buckets: BTreeMap<(u32, u32), BucketPlan>,
+    segment_order: Vec<usize>,
+    mixed_tangent_buckets: Vec<(u32, u32)>,
+    has_unreferenced_vertices: bool,
+    expected_distance_evaluations: u64,
+    work_bytes_peak: u64,
+}
+
 #[allow(clippy::too_many_arguments)]
-fn append_instance(
-    instance: &GeometryInstance<'_>,
+fn plan_triangle_assignments(
+    instances: &[GeometryInstance<'_>],
     conversion: Mat4,
-    parent_inverse: Mat4,
-    rig_segment: &CreatureRigSegmentV1,
-    buckets: &mut BTreeMap<u32, AuroraCreatureSegmentV1>,
+    rig: &CreatureRigProfileV1,
+    rig_worlds: &BTreeMap<u32, Mat4>,
+    bindings: &[MaterialSourceBindingV1],
+    base_work_bytes: u64,
     counters: &mut Counters,
-    work_bytes: &mut u64,
     limits: &ProfileALimitsV1,
-) -> Result<(), ProfileAConversionFatalError> {
-    let primitive = instance.primitive;
-    if primitive.positions.len() != primitive.normals.len()
-        || primitive.positions.len() != primitive.uv0.len()
-        || (!primitive.tangents.is_empty() && primitive.positions.len() != primitive.tangents.len())
-        || !primitive.indices.len().is_multiple_of(3)
-    {
+) -> Result<AssignmentPlan, ProfileAConversionFatalError> {
+    let triangle_count = instances
+        .iter()
+        .try_fold(0usize, |sum, instance| {
+            sum.checked_add(instance.primitive.indices.len() / 3)
+        })
+        .ok_or_else(|| {
+            fatal(
+                "M3A-INTEGER-OVERFLOW",
+                "source.ir.primitives.indices",
+                "triangle count overflow",
+            )
+        })?;
+    let assignment_bytes = usize_u64(triangle_count)
+        .checked_mul(WORK_USIZE)
+        .ok_or_else(|| {
+            fatal(
+                "M3A-INTEGER-OVERFLOW",
+                "workBytes",
+                "assignment byte product overflow",
+            )
+        })?;
+    let assignment_outer_bytes = usize_u64(instances.len())
+        .checked_mul(WORK_VEC_HEADER)
+        .ok_or_else(|| {
+            fatal(
+                "M3A-INTEGER-OVERFLOW",
+                "workBytes",
+                "assignment outer byte product overflow",
+            )
+        })?;
+    let segment_order_bytes = usize_u64(rig.segments.len())
+        .checked_mul(WORK_USIZE)
+        .ok_or_else(|| {
+            fatal(
+                "M3A-INTEGER-OVERFLOW",
+                "workBytes",
+                "segment order byte product overflow",
+            )
+        })?;
+    let bucket_budget_bytes = usize_u64(rig.segments.len())
+        .checked_mul(WORK_BUCKET_PLAN_ENTRY)
+        .and_then(|value| value.checked_mul(3))
+        .ok_or_else(|| {
+            fatal(
+                "M3A-INTEGER-OVERFLOW",
+                "workBytes",
+                "bucket plan byte product overflow",
+            )
+        })?;
+    let mut retained_work_bytes = base_work_bytes;
+    reserve_work_bytes(&mut retained_work_bytes, assignment_bytes, limits)?;
+    reserve_work_bytes(&mut retained_work_bytes, assignment_outer_bytes, limits)?;
+    reserve_work_bytes(&mut retained_work_bytes, segment_order_bytes, limits)?;
+    reserve_work_bytes(&mut retained_work_bytes, bucket_budget_bytes, limits)?;
+    let surface_triangles = rig
+        .segments
+        .iter()
+        .try_fold(0_u64, |sum, segment| {
+            sum.checked_add(usize_u64(segment.surface_indices.len() / 3))
+        })
+        .ok_or_else(|| {
+            fatal(
+                "M3A-INTEGER-OVERFLOW",
+                "distanceEvaluations",
+                "surface triangle count overflow",
+            )
+        })?;
+    let assignment_evaluations = usize_u64(triangle_count)
+        .checked_mul(3)
+        .and_then(|value| value.checked_mul(surface_triangles))
+        .ok_or_else(|| {
+            fatal(
+                "M3A-INTEGER-OVERFLOW",
+                "distanceEvaluations",
+                "assignment evaluation product overflow",
+            )
+        })?;
+    if assignment_evaluations > limits.max_distance_evaluations {
         return Err(fatal(
-            "M3A-INTERNAL-CONTRACT",
-            "source.ir.primitives",
-            "source attribute counts are inconsistent after M2 gates",
+            "M3A-LIMIT-EXCEEDED",
+            "distanceEvaluations",
+            "assignment evaluation limit exceeded before allocation",
         ));
     }
-    let prospective_vertices = counters
-        .output_vertices
-        .checked_add(usize_u64(primitive.positions.len()))
-        .ok_or_else(|| {
+    let mut work_bytes_peak = retained_work_bytes;
+    let mut triangle_segments = Vec::new();
+    triangle_segments
+        .try_reserve(instances.len())
+        .map_err(|_| {
             fatal(
-                "M3A-INTEGER-OVERFLOW",
-                "creature.segments.positions",
-                "output vertex count overflow",
+                "M3A-LIMIT-EXCEEDED",
+                "segmentAssignment",
+                "assignment outer allocation failed",
             )
         })?;
-    let current_indices = buckets
-        .values()
-        .try_fold(0usize, |sum, item| sum.checked_add(item.indices.len()))
-        .ok_or_else(|| {
+    let mut segment_order = Vec::new();
+    segment_order.try_reserve(rig.segments.len()).map_err(|_| {
+        fatal(
+            "M3A-LIMIT-EXCEEDED",
+            "segmentAssignment",
+            "segment order allocation failed",
+        )
+    })?;
+    segment_order.extend(0..rig.segments.len());
+    segment_order.sort_by_key(|index| rig.segments[*index].id);
+    let mut buckets = BTreeMap::<(u32, u32), BucketPlan>::new();
+    let mut has_unreferenced_vertices = false;
+
+    for instance in instances {
+        let primitive = instance.primitive;
+        let material_slot = material_slot_for(primitive.material_id, bindings)?;
+        let target_matrix = conversion.mul(instance.source_world);
+        let mut assignments = Vec::new();
+        assignments
+            .try_reserve(primitive.indices.len() / 3)
+            .map_err(|_| {
+                fatal(
+                    "M3A-LIMIT-EXCEEDED",
+                    "segmentAssignment",
+                    "assignment allocation failed",
+                )
+            })?;
+        for triangle in primitive.indices.chunks_exact(3) {
+            let target = [
+                target_matrix.transform_point(primitive.positions[triangle[0] as usize])?,
+                target_matrix.transform_point(primitive.positions[triangle[1] as usize])?,
+                target_matrix.transform_point(primitive.positions[triangle[2] as usize])?,
+            ];
+            let mut best: Option<(f64, u32, usize)> = None;
+            for (segment_index, segment) in rig.segments.iter().enumerate() {
+                let surface_world = *rig_worlds.get(&segment.parent_node_id).ok_or_else(|| {
+                    fatal(
+                        "M3A-INTERNAL-CONTRACT",
+                        "rig.segments.parentNodeId",
+                        "validated rig parent is missing",
+                    )
+                })?;
+                let mut score = 0.0_f64;
+                for point in target {
+                    let mut nearest = f64::INFINITY;
+                    for surface_triangle in segment.surface_indices.chunks_exact(3) {
+                        let a = surface_world.transform_point(
+                            segment.surface_positions[surface_triangle[0] as usize],
+                        )?;
+                        let b = surface_world.transform_point(
+                            segment.surface_positions[surface_triangle[1] as usize],
+                        )?;
+                        let c = surface_world.transform_point(
+                            segment.surface_positions[surface_triangle[2] as usize],
+                        )?;
+                        let (distance, _) = evaluated_point_triangle(
+                            point,
+                            a,
+                            b,
+                            c,
+                            &mut counters.distance_evaluations,
+                            limits,
+                        )?;
+                        if distance < nearest {
+                            nearest = distance;
+                        }
+                    }
+                    score += nearest;
+                }
+                let candidate = (score, segment.id, segment_index);
+                if best.is_none_or(|current| {
+                    candidate.0 < current.0 || (candidate.0 == current.0 && candidate.1 < current.1)
+                }) {
+                    best = Some(candidate);
+                }
+            }
+            let (_, _, segment_index) = best.ok_or_else(|| {
+                fatal(
+                    "M3A-INTERNAL-CONTRACT",
+                    "rig.segments",
+                    "validated rig has no assignment candidate",
+                )
+            })?;
+            assignments.push(segment_index);
+            let segment = &rig.segments[segment_index];
+            let plan = buckets
+                .entry((segment.id, material_slot))
+                .or_insert(BucketPlan {
+                    segment_index,
+                    vertex_count: 0,
+                    index_count: 0,
+                    tangent_present: false,
+                    tangent_absent: false,
+                });
+            plan.index_count = plan.index_count.checked_add(3).ok_or_else(|| {
+                fatal(
+                    "M3A-INTEGER-OVERFLOW",
+                    "creature.segments.indices",
+                    "bucket index count overflow",
+                )
+            })?;
+            if primitive.tangents.is_empty() {
+                plan.tangent_absent = true;
+            } else {
+                plan.tangent_present = true;
+            }
+        }
+
+        let marks_bytes = usize_u64(primitive.positions.len())
+            .checked_mul(WORK_U32)
+            .ok_or_else(|| {
+                fatal(
+                    "M3A-INTEGER-OVERFLOW",
+                    "workBytes",
+                    "assignment mark byte product overflow",
+                )
+            })?;
+        let active_bytes = usize_u64(rig.segments.len())
+            .checked_mul(WORK_BOOL)
+            .ok_or_else(|| {
+                fatal(
+                    "M3A-INTEGER-OVERFLOW",
+                    "workBytes",
+                    "active segment byte product overflow",
+                )
+            })?;
+        let scratch = marks_bytes.checked_add(active_bytes).ok_or_else(|| {
+            fatal(
+                "M3A-INTEGER-OVERFLOW",
+                "workBytes",
+                "assignment scratch byte sum overflow",
+            )
+        })?;
+        let mut scratch_peak = retained_work_bytes;
+        reserve_work_bytes(&mut scratch_peak, scratch, limits)?;
+        work_bytes_peak = work_bytes_peak.max(scratch_peak);
+        let mut marks = Vec::new();
+        marks.try_reserve(primitive.positions.len()).map_err(|_| {
+            fatal(
+                "M3A-LIMIT-EXCEEDED",
+                "segmentAssignment",
+                "assignment mark allocation failed",
+            )
+        })?;
+        marks.resize(primitive.positions.len(), 0_u32);
+        let mut active = Vec::new();
+        active.try_reserve(rig.segments.len()).map_err(|_| {
+            fatal(
+                "M3A-LIMIT-EXCEEDED",
+                "segmentAssignment",
+                "active segment allocation failed",
+            )
+        })?;
+        active.resize(rig.segments.len(), false);
+        let mut source_used = 0usize;
+        for (triangle_index, triangle) in primitive.indices.chunks_exact(3).enumerate() {
+            active[assignments[triangle_index]] = true;
+            for &source_index in triangle {
+                let mark = &mut marks[source_index as usize];
+                if *mark == 0 {
+                    *mark = 1;
+                    source_used += 1;
+                }
+            }
+        }
+        let mut stamp = 1_u32;
+        has_unreferenced_vertices |= source_used != primitive.positions.len();
+        let mut emitted_for_instance = 0usize;
+        for &segment_index in segment_order.iter().filter(|index| active[**index]) {
+            stamp = stamp.checked_add(1).ok_or_else(|| {
+                fatal(
+                    "M3A-INTEGER-OVERFLOW",
+                    "segmentAssignment",
+                    "assignment stamp overflow",
+                )
+            })?;
+            let mut count = 0usize;
+            for (triangle_index, triangle) in primitive.indices.chunks_exact(3).enumerate() {
+                if assignments[triangle_index] != segment_index {
+                    continue;
+                }
+                for &source_index in triangle {
+                    let mark = &mut marks[source_index as usize];
+                    if *mark != stamp {
+                        *mark = stamp;
+                        count += 1;
+                    }
+                }
+            }
+            let key = (rig.segments[segment_index].id, material_slot);
+            let plan = buckets.get_mut(&key).ok_or_else(|| {
+                fatal(
+                    "M3A-INTERNAL-CONTRACT",
+                    "segmentAssignment",
+                    "bucket plan is missing",
+                )
+            })?;
+            plan.vertex_count = plan.vertex_count.checked_add(count).ok_or_else(|| {
+                fatal(
+                    "M3A-INTEGER-OVERFLOW",
+                    "creature.segments.positions",
+                    "bucket vertex count overflow",
+                )
+            })?;
+            emitted_for_instance = emitted_for_instance.checked_add(count).ok_or_else(|| {
+                fatal(
+                    "M3A-INTEGER-OVERFLOW",
+                    "report.geometry",
+                    "emitted vertex count overflow",
+                )
+            })?;
+        }
+        counters.source_vertices = checked_add(
+            counters.source_vertices,
+            primitive.positions.len(),
+            "source vertices",
+        )?;
+        counters.source_triangles = checked_add(
+            counters.source_triangles,
+            assignments.len(),
+            "source triangles",
+        )?;
+        counters.output_vertices = checked_add(
+            counters.output_vertices,
+            emitted_for_instance,
+            "output vertices",
+        )?;
+        counters.output_triangles = checked_add(
+            counters.output_triangles,
+            assignments.len(),
+            "output triangles",
+        )?;
+        counters.duplicated_vertices = checked_add(
+            counters.duplicated_vertices,
+            emitted_for_instance.saturating_sub(source_used),
+            "duplicated vertices",
+        )?;
+        triangle_segments.push(assignments);
+    }
+
+    if counters.output_vertices > limits.max_output_vertices
+        || counters.output_triangles.checked_mul(3).ok_or_else(|| {
             fatal(
                 "M3A-INTEGER-OVERFLOW",
                 "creature.segments.indices",
                 "output index count overflow",
             )
-        })?;
-    let prospective_indices = current_indices
-        .checked_add(primitive.indices.len())
-        .ok_or_else(|| {
-            fatal(
-                "M3A-INTEGER-OVERFLOW",
-                "creature.segments.indices",
-                "output index count overflow",
-            )
-        })?;
-    if prospective_vertices > limits.max_output_vertices
-        || usize_u64(prospective_indices) > limits.max_output_indices
+        })? > limits.max_output_indices
     {
         return Err(fatal(
             "M3A-LIMIT-EXCEEDED",
@@ -3016,172 +3372,719 @@ fn append_instance(
             "cumulative output geometry limit exceeded",
         ));
     }
-    let geometry_bytes = geometry_buffer_bytes(primitive)?;
-    reserve_work_bytes(work_bytes, geometry_bytes, limits)?;
-    counters.work_bytes_peak = counters.work_bytes_peak.max(*work_bytes);
-    let material_slot = 0;
-    let bucket = buckets
-        .entry(material_slot)
-        .or_insert_with(|| AuroraCreatureSegmentV1 {
-            segment_id: rig_segment.id,
-            material_slot,
-            deformation: RigSegmentDeformationV1::Rigid,
-            parent_node_id: rig_segment.parent_node_id,
+    let mut output_bytes = usize_u64(buckets.len())
+        .checked_mul(WORK_CREATURE_SEGMENT)
+        .and_then(|value| value.checked_mul(2))
+        .ok_or_else(|| {
+            fatal(
+                "M3A-INTEGER-OVERFLOW",
+                "workBytes",
+                "output segment container byte product overflow",
+            )
+        })?;
+    let mut max_weight_temp_bytes = 0_u64;
+    let mut weight_evaluations = 0_u64;
+    for plan in buckets.values() {
+        let segment = &rig.segments[plan.segment_index];
+        let per_vertex = 12_u64
+            .checked_add(12)
+            .and_then(|value| value.checked_add(8))
+            .and_then(|value| value.checked_add(if plan.tangent_present { 16 } else { 0 }))
+            .and_then(|value| {
+                value.checked_add(if segment.deformation == RigSegmentDeformationV1::Skin {
+                    WORK_VERTEX_WEIGHTS
+                } else {
+                    0
+                })
+            })
+            .ok_or_else(|| {
+                fatal(
+                    "M3A-INTEGER-OVERFLOW",
+                    "workBytes",
+                    "output vertex stride overflow",
+                )
+            })?;
+        let bytes = usize_u64(plan.vertex_count)
+            .checked_mul(per_vertex)
+            .and_then(|value| value.checked_add(usize_u64(plan.index_count).checked_mul(4)?))
+            .ok_or_else(|| {
+                fatal(
+                    "M3A-INTEGER-OVERFLOW",
+                    "workBytes",
+                    "output geometry byte product overflow",
+                )
+            })?;
+        output_bytes = output_bytes.checked_add(bytes).ok_or_else(|| {
+            fatal(
+                "M3A-INTEGER-OVERFLOW",
+                "workBytes",
+                "output geometry byte sum overflow",
+            )
+        })?;
+        if segment.deformation == RigSegmentDeformationV1::Skin {
+            weight_evaluations = weight_evaluations
+                .checked_add(
+                    usize_u64(plan.vertex_count)
+                        .checked_mul(usize_u64(segment.surface_indices.len() / 3))
+                        .ok_or_else(|| {
+                            fatal(
+                                "M3A-INTEGER-OVERFLOW",
+                                "distanceEvaluations",
+                                "weight evaluation product overflow",
+                            )
+                        })?,
+                )
+                .ok_or_else(|| {
+                    fatal(
+                        "M3A-INTEGER-OVERFLOW",
+                        "distanceEvaluations",
+                        "weight evaluation sum overflow",
+                    )
+                })?;
+            for triangle in segment.surface_indices.chunks_exact(3) {
+                let influences = triangle
+                    .iter()
+                    .try_fold(0usize, |sum, index| {
+                        sum.checked_add(segment.reference_weights[*index as usize].len())
+                    })
+                    .ok_or_else(|| {
+                        fatal(
+                            "M3A-INTEGER-OVERFLOW",
+                            "workBytes",
+                            "weight influence count overflow",
+                        )
+                    })?;
+                max_weight_temp_bytes = max_weight_temp_bytes.max(
+                    usize_u64(influences)
+                        .checked_mul(WORK_U32_F64_PAIR)
+                        .ok_or_else(|| {
+                            fatal(
+                                "M3A-INTEGER-OVERFLOW",
+                                "workBytes",
+                                "weight temporary byte product overflow",
+                            )
+                        })?,
+                );
+            }
+        }
+    }
+    let expected_distance_evaluations = assignment_evaluations
+        .checked_add(weight_evaluations)
+        .ok_or_else(|| {
+            fatal(
+                "M3A-INTEGER-OVERFLOW",
+                "distanceEvaluations",
+                "total evaluation sum overflow",
+            )
+        })?;
+    if expected_distance_evaluations > limits.max_distance_evaluations {
+        return Err(fatal(
+            "M3A-LIMIT-EXCEEDED",
+            "distanceEvaluations",
+            "total evaluation limit exceeded before output allocation",
+        ));
+    }
+    let mapping_scratch = instances
+        .iter()
+        .map(|instance| instance.primitive.positions.len())
+        .max()
+        .unwrap_or(0);
+    let mapping_scratch = usize_u64(mapping_scratch)
+        .checked_mul(WORK_OPTION_U32)
+        .ok_or_else(|| {
+            fatal(
+                "M3A-INTEGER-OVERFLOW",
+                "workBytes",
+                "mapping scratch byte product overflow",
+            )
+        })?;
+    let mut output_peak = retained_work_bytes;
+    reserve_work_bytes(&mut output_peak, output_bytes, limits)?;
+    reserve_work_bytes(&mut output_peak, mapping_scratch, limits)?;
+    reserve_work_bytes(
+        &mut output_peak,
+        max_weight_temp_bytes.checked_mul(2).ok_or_else(|| {
+            fatal(
+                "M3A-INTEGER-OVERFLOW",
+                "workBytes",
+                "weight scratch byte product overflow",
+            )
+        })?,
+        limits,
+    )?;
+    work_bytes_peak = work_bytes_peak.max(output_peak);
+    let mut mixed_tangent_buckets = Vec::new();
+    mixed_tangent_buckets
+        .try_reserve(buckets.len())
+        .map_err(|_| {
+            fatal(
+                "M3A-LIMIT-EXCEEDED",
+                "creature.segments.tangents",
+                "mixed tangent bucket allocation failed",
+            )
+        })?;
+    mixed_tangent_buckets.extend(
+        buckets
+            .iter()
+            .filter(|(_, plan)| plan.tangent_present && plan.tangent_absent)
+            .map(|(key, _)| *key),
+    );
+    Ok(AssignmentPlan {
+        triangle_segments,
+        buckets,
+        segment_order,
+        mixed_tangent_buckets,
+        has_unreferenced_vertices,
+        expected_distance_evaluations,
+        work_bytes_peak,
+    })
+}
+
+fn material_slot_for(
+    material_id: Option<u32>,
+    bindings: &[MaterialSourceBindingV1],
+) -> Result<u32, ProfileAConversionFatalError> {
+    bindings
+        .iter()
+        .find(|binding| binding.source_material_id == material_id)
+        .map(|binding| binding.slot)
+        .ok_or_else(|| {
+            fatal(
+                "M3A-INTERNAL-CONTRACT",
+                "materials.bindings",
+                "material binding is missing",
+            )
+        })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_assigned_geometry(
+    instances: &[GeometryInstance<'_>],
+    plan: &AssignmentPlan,
+    conversion: Mat4,
+    rig: &CreatureRigProfileV1,
+    rig_worlds: &BTreeMap<u32, Mat4>,
+    gates: &mut Vec<ProfileAGateV1>,
+    counters: &mut Counters,
+    limits: &ProfileALimitsV1,
+) -> Result<BTreeMap<(u32, u32), AuroraCreatureSegmentV1>, ProfileAConversionFatalError> {
+    counters.work_bytes_peak = counters.work_bytes_peak.max(plan.work_bytes_peak);
+    let mut buckets = BTreeMap::new();
+    for (&key, bucket_plan) in &plan.buckets {
+        let segment = &rig.segments[bucket_plan.segment_index];
+        let mut bucket = AuroraCreatureSegmentV1 {
+            segment_id: segment.id,
+            material_slot: key.1,
+            deformation: segment.deformation.clone(),
+            parent_node_id: segment.parent_node_id,
             positions: Vec::new(),
             normals: Vec::new(),
-            tangents: (!primitive.tangents.is_empty()).then(Vec::new),
+            tangents: bucket_plan.tangent_present.then(Vec::new),
             uv0: Vec::new(),
             indices: Vec::new(),
             weights: Vec::new(),
-        });
-    bucket
-        .positions
-        .try_reserve(primitive.positions.len())
-        .map_err(|_| {
-            fatal(
-                "M3A-LIMIT-EXCEEDED",
-                "creature.segments.positions",
-                "output position allocation failed",
-            )
-        })?;
-    bucket
-        .normals
-        .try_reserve(primitive.normals.len())
-        .map_err(|_| {
-            fatal(
-                "M3A-LIMIT-EXCEEDED",
-                "creature.segments.normals",
-                "output normal allocation failed",
-            )
-        })?;
-    bucket.uv0.try_reserve(primitive.uv0.len()).map_err(|_| {
-        fatal(
-            "M3A-LIMIT-EXCEEDED",
-            "creature.segments.uv0",
-            "output UV allocation failed",
-        )
-    })?;
-    bucket
-        .indices
-        .try_reserve(primitive.indices.len())
-        .map_err(|_| {
-            fatal(
-                "M3A-LIMIT-EXCEEDED",
-                "creature.segments.indices",
-                "output index allocation failed",
-            )
-        })?;
-    if let Some(tangents) = bucket.tangents.as_mut() {
-        tangents
-            .try_reserve(primitive.tangents.len())
+        };
+        bucket
+            .positions
+            .try_reserve(bucket_plan.vertex_count)
             .map_err(|_| {
                 fatal(
                     "M3A-LIMIT-EXCEEDED",
-                    "creature.segments.tangents",
-                    "output tangent allocation failed",
+                    "creature.segments.positions",
+                    "output position allocation failed",
                 )
             })?;
-    }
-    let vertex_base = u32::try_from(bucket.positions.len()).map_err(|_| {
-        fatal(
-            "M3A-INTEGER-OVERFLOW",
-            "creature.segments.positions",
-            "vertex base does not fit u32",
-        )
-    })?;
-    let total_matrix = parent_inverse.mul(conversion).mul(instance.source_world);
-    let normal_matrix = total_matrix.inverse_transpose_linear().ok_or_else(|| {
-        fatal(
-            "M3A-NONFINITE-FLOAT",
-            "source.ir.nodes.transform",
-            "geometry transform is singular",
-        )
-    })?;
-    let linear = total_matrix.linear();
-    let parity = determinant3(linear);
-    if !parity.is_finite() || parity.abs() <= 1.0e-12 {
-        return Err(fatal(
-            "M3A-NONFINITE-FLOAT",
-            "source.ir.nodes.transform",
-            "composite geometry transform is singular",
-        ));
-    }
-    for index in 0..primitive.positions.len() {
         bucket
-            .positions
-            .push(total_matrix.transform_point(primitive.positions[index])?);
-        bucket.normals.push(normalize(
-            mul3(normal_matrix, primitive.normals[index]),
-            "source.ir.primitives.normals",
-        )?);
-        if let Some(tangents) = bucket.tangents.as_mut() {
-            let source = primitive.tangents[index];
-            let xyz = normalize(
-                mul3(linear, [source[0], source[1], source[2]]),
-                "source.ir.primitives.tangents",
-            )?;
-            tangents.push([xyz[0], xyz[1], xyz[2], source[3] * parity.signum()]);
-        }
+            .normals
+            .try_reserve(bucket_plan.vertex_count)
+            .map_err(|_| {
+                fatal(
+                    "M3A-LIMIT-EXCEEDED",
+                    "creature.segments.normals",
+                    "output normal allocation failed",
+                )
+            })?;
         bucket
             .uv0
-            .push([primitive.uv0[index][0], 1.0 - primitive.uv0[index][1]]);
-    }
-    for triangle in primitive.indices.chunks_exact(3) {
-        let emitted = if parity < 0.0 {
-            [triangle[0], triangle[2], triangle[1]]
-        } else {
-            [triangle[0], triangle[1], triangle[2]]
-        };
-        for &source_index in &emitted {
-            let shifted = vertex_base.checked_add(source_index).ok_or_else(|| {
+            .try_reserve(bucket_plan.vertex_count)
+            .map_err(|_| {
                 fatal(
-                    "M3A-INTEGER-OVERFLOW",
-                    "creature.segments.indices",
-                    "output index overflow",
+                    "M3A-LIMIT-EXCEEDED",
+                    "creature.segments.uv0",
+                    "output UV allocation failed",
                 )
             })?;
-            bucket.indices.push(shifted);
+        bucket
+            .indices
+            .try_reserve(bucket_plan.index_count)
+            .map_err(|_| {
+                fatal(
+                    "M3A-LIMIT-EXCEEDED",
+                    "creature.segments.indices",
+                    "output index allocation failed",
+                )
+            })?;
+        if let Some(tangents) = bucket.tangents.as_mut() {
+            tangents
+                .try_reserve(bucket_plan.vertex_count)
+                .map_err(|_| {
+                    fatal(
+                        "M3A-LIMIT-EXCEEDED",
+                        "creature.segments.tangents",
+                        "output tangent allocation failed",
+                    )
+                })?;
+        }
+        if segment.deformation == RigSegmentDeformationV1::Skin {
+            bucket
+                .weights
+                .try_reserve(bucket_plan.vertex_count)
+                .map_err(|_| {
+                    fatal(
+                        "M3A-LIMIT-EXCEEDED",
+                        "creature.segments.weights",
+                        "output weight allocation failed",
+                    )
+                })?;
+        }
+        buckets.insert(key, bucket);
+    }
+
+    for (instance_index, instance) in instances.iter().enumerate() {
+        let primitive = instance.primitive;
+        let assignments = &plan.triangle_segments[instance_index];
+        for &segment_index in plan
+            .segment_order
+            .iter()
+            .filter(|index| assignments.contains(index))
+        {
+            let segment = &rig.segments[segment_index];
+            let material_slot = plan
+                .buckets
+                .keys()
+                .find(|key| key.0 == segment.id)
+                .map(|key| key.1)
+                .ok_or_else(|| {
+                    fatal(
+                        "M3A-INTERNAL-CONTRACT",
+                        "materials.bindings",
+                        "planned material slot is missing",
+                    )
+                })?;
+            let key = (segment.id, material_slot);
+            let bucket = buckets.get_mut(&key).ok_or_else(|| {
+                fatal(
+                    "M3A-INTERNAL-CONTRACT",
+                    "creature.segments",
+                    "planned output bucket is missing",
+                )
+            })?;
+            let parent_world = *rig_worlds.get(&segment.parent_node_id).ok_or_else(|| {
+                fatal(
+                    "M3A-INTERNAL-CONTRACT",
+                    "rig.segments.parentNodeId",
+                    "validated rig parent is missing",
+                )
+            })?;
+            let parent_inverse = parent_world.inverse_affine().ok_or_else(|| {
+                fatal(
+                    "M3A-PROFILE-HIERARCHY-INVALID",
+                    "rig.nodes.bindLocalMatrix",
+                    "rig parent bind world is singular",
+                )
+            })?;
+            let total_matrix = parent_inverse.mul(conversion).mul(instance.source_world);
+            let target_matrix = conversion.mul(instance.source_world);
+            let normal_matrix = total_matrix.inverse_transpose_linear().ok_or_else(|| {
+                fatal(
+                    "M3A-NONFINITE-FLOAT",
+                    "source.ir.nodes.transform",
+                    "geometry transform is singular",
+                )
+            })?;
+            let linear = total_matrix.linear();
+            let parity = determinant3(linear);
+            if !parity.is_finite() || parity.abs() <= 1.0e-12 {
+                return Err(fatal(
+                    "M3A-NONFINITE-FLOAT",
+                    "source.ir.nodes.transform",
+                    "composite geometry transform is singular",
+                ));
+            }
+            let mut mapping = Vec::new();
+            mapping
+                .try_reserve(primitive.positions.len())
+                .map_err(|_| {
+                    fatal(
+                        "M3A-LIMIT-EXCEEDED",
+                        "creature.segments",
+                        "output vertex mapping allocation failed",
+                    )
+                })?;
+            mapping.resize(primitive.positions.len(), None);
+            for (triangle_index, triangle) in primitive.indices.chunks_exact(3).enumerate() {
+                if assignments[triangle_index] != segment_index {
+                    continue;
+                }
+                let emitted = if parity < 0.0 {
+                    [triangle[0], triangle[2], triangle[1]]
+                } else {
+                    [triangle[0], triangle[1], triangle[2]]
+                };
+                for &source_index in triangle {
+                    let source_index_usize = source_index as usize;
+                    if mapping[source_index_usize].is_none() {
+                        let index = u32::try_from(bucket.positions.len()).map_err(|_| {
+                            fatal(
+                                "M3A-INTEGER-OVERFLOW",
+                                "creature.segments.positions",
+                                "output vertex index does not fit u32",
+                            )
+                        })?;
+                        bucket.positions.push(
+                            total_matrix
+                                .transform_point(primitive.positions[source_index_usize])?,
+                        );
+                        bucket.normals.push(normalize(
+                            mul3(normal_matrix, primitive.normals[source_index_usize]),
+                            "source.ir.primitives.normals",
+                        )?);
+                        if let Some(tangents) = bucket.tangents.as_mut() {
+                            let source = primitive.tangents[source_index_usize];
+                            let xyz = normalize(
+                                mul3(linear, [source[0], source[1], source[2]]),
+                                "source.ir.primitives.tangents",
+                            )?;
+                            tangents.push([xyz[0], xyz[1], xyz[2], source[3] * parity.signum()]);
+                        }
+                        bucket.uv0.push([
+                            primitive.uv0[source_index_usize][0],
+                            1.0 - primitive.uv0[source_index_usize][1],
+                        ]);
+                        match segment.deformation {
+                            RigSegmentDeformationV1::Rigid => {
+                                counters.rigid_vertices =
+                                    checked_add(counters.rigid_vertices, 1, "rigid vertices")?
+                            }
+                            RigSegmentDeformationV1::Skin => {
+                                let target_position = target_matrix
+                                    .transform_point(primitive.positions[source_index_usize])?;
+                                bucket.weights.push(transfer_skin_weights(
+                                    target_position,
+                                    segment,
+                                    parent_world,
+                                    gates,
+                                    counters,
+                                    limits,
+                                )?);
+                                counters.skinned_vertices =
+                                    checked_add(counters.skinned_vertices, 1, "skinned vertices")?;
+                            }
+                        }
+                        counters.normals = checked_add(counters.normals, 1, "normal transforms")?;
+                        counters.tangents = checked_add(
+                            counters.tangents,
+                            usize::from(!primitive.tangents.is_empty()),
+                            "tangent transforms",
+                        )?;
+                        counters.uv = checked_add(counters.uv, 1, "UV transforms")?;
+                        mapping[source_index_usize] = Some(index);
+                    }
+                }
+                for &source_index in &emitted {
+                    let output_index = mapping[source_index as usize].ok_or_else(|| {
+                        fatal(
+                            "M3A-INTERNAL-CONTRACT",
+                            "creature.segments.indices",
+                            "output vertex mapping is missing",
+                        )
+                    })?;
+                    bucket.indices.push(output_index);
+                }
+                if parity < 0.0 {
+                    counters.winding = checked_add(counters.winding, 1, "winding reversals")?;
+                }
+            }
         }
     }
-    counters.source_vertices = checked_add(
-        counters.source_vertices,
-        primitive.positions.len(),
-        "source vertices",
-    )?;
-    counters.output_vertices = checked_add(
-        counters.output_vertices,
-        primitive.positions.len(),
-        "output vertices",
-    )?;
-    counters.source_triangles = checked_add(
-        counters.source_triangles,
-        primitive.indices.len() / 3,
-        "source triangles",
-    )?;
-    counters.output_triangles = checked_add(
-        counters.output_triangles,
-        primitive.indices.len() / 3,
-        "output triangles",
-    )?;
-    if parity < 0.0 {
-        counters.winding = checked_add(
-            counters.winding,
-            primitive.indices.len() / 3,
-            "winding reversals",
+    if counters.distance_evaluations != plan.expected_distance_evaluations {
+        return Err(fatal(
+            "M3A-INTERNAL-CONTRACT",
+            "distanceEvaluations",
+            "distance evaluation accounting does not match the exact plan",
+        ));
+    }
+    Ok(buckets)
+}
+
+fn transfer_skin_weights(
+    point: [f32; 3],
+    segment: &CreatureRigSegmentV1,
+    parent_world: Mat4,
+    gates: &mut Vec<ProfileAGateV1>,
+    counters: &mut Counters,
+    limits: &ProfileALimitsV1,
+) -> Result<AuroraVertexWeightsV1, ProfileAConversionFatalError> {
+    let mut nearest: Option<(f64, usize, [f64; 3])> = None;
+    for (triangle_index, triangle) in segment.surface_indices.chunks_exact(3).enumerate() {
+        let a = parent_world.transform_point(segment.surface_positions[triangle[0] as usize])?;
+        let b = parent_world.transform_point(segment.surface_positions[triangle[1] as usize])?;
+        let c = parent_world.transform_point(segment.surface_positions[triangle[2] as usize])?;
+        let (distance, barycentric) =
+            evaluated_point_triangle(point, a, b, c, &mut counters.distance_evaluations, limits)?;
+        if nearest.is_none_or(|current| distance < current.0) {
+            nearest = Some((distance, triangle_index, barycentric));
+        }
+    }
+    let (_, triangle_index, barycentric) = nearest.ok_or_else(|| {
+        fatal(
+            "M3A-INTERNAL-CONTRACT",
+            "rig.segments.surfaceIndices",
+            "validated skin surface has no triangle",
+        )
+    })?;
+    let triangle = &segment.surface_indices[triangle_index * 3..triangle_index * 3 + 3];
+    let capacity = triangle
+        .iter()
+        .try_fold(0usize, |sum, index| {
+            sum.checked_add(segment.reference_weights[*index as usize].len())
+        })
+        .ok_or_else(|| {
+            fatal(
+                "M3A-INTEGER-OVERFLOW",
+                "creature.segments.weights",
+                "interpolated influence count overflow",
+            )
+        })?;
+    let mut influences = Vec::<(u32, f64)>::new();
+    influences.try_reserve(capacity).map_err(|_| {
+        fatal(
+            "M3A-LIMIT-EXCEEDED",
+            "creature.segments.weights",
+            "interpolated influence allocation failed",
+        )
+    })?;
+    for corner in 0..3 {
+        for influence in &segment.reference_weights[triangle[corner] as usize] {
+            influences.push((
+                influence.bone_node_id,
+                f64::from(influence.value) * barycentric[corner],
+            ));
+        }
+    }
+    influences.sort_by_key(|item| item.0);
+    let mut merged = Vec::<(u32, f64)>::new();
+    merged.try_reserve(influences.len()).map_err(|_| {
+        fatal(
+            "M3A-LIMIT-EXCEEDED",
+            "creature.segments.weights",
+            "merged influence allocation failed",
+        )
+    })?;
+    for (bone, value) in influences {
+        if let Some(last) = merged.last_mut().filter(|last| last.0 == bone) {
+            last.1 += value;
+            counters.merged_duplicate_influences = checked_add(
+                counters.merged_duplicate_influences,
+                1,
+                "merged duplicate influences",
+            )?;
+        } else {
+            merged.push((bone, value));
+        }
+    }
+    let mut forbidden = false;
+    merged.retain(|(bone, value)| {
+        if *value > 0.0 && !segment.allowed_bone_node_ids.contains(bone) {
+            forbidden = true;
+            false
+        } else {
+            true
+        }
+    });
+    if forbidden {
+        push_gate_checked(
+            gates,
+            gate(
+                "M3A-WEIGHT-BONE-FORBIDDEN",
+                &format!("rig.segments[{}].referenceWeights", segment.id),
+                "interpolated influence references a bone outside allowedBoneNodeIds",
+            ),
+            limits,
         )?;
     }
-    counters.normals = checked_add(
-        counters.normals,
-        primitive.normals.len(),
-        "normal transforms",
+    let before_zero = merged.len();
+    merged.retain(|(_, value)| *value > 0.0);
+    counters.dropped_zero_influences = checked_add(
+        counters.dropped_zero_influences,
+        before_zero - merged.len(),
+        "dropped zero influences",
     )?;
-    counters.tangents = checked_add(
-        counters.tangents,
-        primitive.tangents.len(),
-        "tangent transforms",
-    )?;
-    counters.uv = checked_add(counters.uv, primitive.uv0.len(), "UV transforms")?;
-    Ok(())
+    merged.sort_by(|left, right| {
+        right
+            .1
+            .total_cmp(&left.1)
+            .then_with(|| left.0.cmp(&right.0))
+    });
+    counters.max_influences_before = counters.max_influences_before.max(usize_u64(merged.len()));
+    if merged.len() > 4 {
+        counters.dropped_top_four_influences = checked_add(
+            counters.dropped_top_four_influences,
+            merged.len() - 4,
+            "dropped top-four influences",
+        )?;
+        merged.truncate(4);
+    }
+    counters.max_influences_after = counters.max_influences_after.max(usize_u64(merged.len()));
+    let sum = merged.iter().fold(0.0_f64, |sum, item| sum + item.1);
+    let invalid_sum = !sum.is_finite() || sum <= 0.0;
+    if invalid_sum {
+        push_gate_checked(
+            gates,
+            gate(
+                "M3A-WEIGHT-SUM-INVALID",
+                &format!("creature.segments[{}].weights", segment.id),
+                "interpolated weight sum must be positive and finite",
+            ),
+            limits,
+        )?;
+    }
+    let mut result = AuroraVertexWeightsV1 {
+        bone_node_ids: [None; 4],
+        values: [0.0; 4],
+        influence_count: u8::try_from(merged.len()).unwrap_or(4),
+    };
+    if !invalid_sum {
+        for (index, (bone, value)) in merged.iter().enumerate() {
+            result.bone_node_ids[index] = Some(*bone);
+            result.values[index] = (*value / sum) as f32;
+        }
+        let normalized_sum = result.values.iter().sum::<f32>();
+        if !normalized_sum.is_finite() || (normalized_sum - 1.0).abs() > 1.0e-5 {
+            push_gate_checked(
+                gates,
+                gate(
+                    "M3A-WEIGHT-SUM-INVALID",
+                    &format!("creature.segments[{}].weights", segment.id),
+                    "normalized weight sum is outside tolerance",
+                ),
+                limits,
+            )?;
+        } else {
+            counters.normalized_vertices =
+                checked_add(counters.normalized_vertices, 1, "normalized vertices")?;
+        }
+    }
+    Ok(result)
+}
+
+fn evaluated_point_triangle(
+    point: [f32; 3],
+    a: [f32; 3],
+    b: [f32; 3],
+    c: [f32; 3],
+    counter: &mut u64,
+    limits: &ProfileALimitsV1,
+) -> Result<(f64, [f64; 3]), ProfileAConversionFatalError> {
+    let next = counter.checked_add(1).ok_or_else(|| {
+        fatal(
+            "M3A-INTEGER-OVERFLOW",
+            "distanceEvaluations",
+            "distance evaluation count overflow",
+        )
+    })?;
+    if next > limits.max_distance_evaluations {
+        return Err(fatal(
+            "M3A-LIMIT-EXCEEDED",
+            "distanceEvaluations",
+            "distance evaluation limit exceeded before evaluation",
+        ));
+    }
+    *counter = next;
+    closest_point_triangle(point, a, b, c)
+}
+
+fn closest_point_triangle(
+    point: [f32; 3],
+    a: [f32; 3],
+    b: [f32; 3],
+    c: [f32; 3],
+) -> Result<(f64, [f64; 3]), ProfileAConversionFatalError> {
+    let p = point.map(f64::from);
+    let a = a.map(f64::from);
+    let b = b.map(f64::from);
+    let c = c.map(f64::from);
+    let sub = |x: [f64; 3], y: [f64; 3]| [x[0] - y[0], x[1] - y[1], x[2] - y[2]];
+    let dot = |x: [f64; 3], y: [f64; 3]| x[0] * y[0] + x[1] * y[1] + x[2] * y[2];
+    let finish = |bary: [f64; 3]| {
+        let closest = [
+            bary[0] * a[0] + bary[1] * b[0] + bary[2] * c[0],
+            bary[0] * a[1] + bary[1] * b[1] + bary[2] * c[1],
+            bary[0] * a[2] + bary[1] * b[2] + bary[2] * c[2],
+        ];
+        let delta = sub(p, closest);
+        (dot(delta, delta), bary)
+    };
+    let ab = sub(b, a);
+    let ac = sub(c, a);
+    let area = [
+        ab[1] * ac[2] - ab[2] * ac[1],
+        ab[2] * ac[0] - ab[0] * ac[2],
+        ab[0] * ac[1] - ab[1] * ac[0],
+    ];
+    let area_sq = dot(area, area);
+    if !area_sq.is_finite() || area_sq == 0.0 {
+        return Err(fatal(
+            "M3A-PROFILE-SEGMENT-INVALID",
+            "rig.segments.surfacePositions",
+            "reference surface triangle degenerates in target world",
+        ));
+    }
+    let ap = sub(p, a);
+    let d1 = dot(ab, ap);
+    let d2 = dot(ac, ap);
+    if d1 <= 0.0 && d2 <= 0.0 {
+        return Ok(finish([1.0, 0.0, 0.0]));
+    }
+    let bp = sub(p, b);
+    let d3 = dot(ab, bp);
+    let d4 = dot(ac, bp);
+    if d3 >= 0.0 && d4 <= d3 {
+        return Ok(finish([0.0, 1.0, 0.0]));
+    }
+    let vc = d1 * d4 - d3 * d2;
+    if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
+        let v = d1 / (d1 - d3);
+        return Ok(finish([1.0 - v, v, 0.0]));
+    }
+    let cp = sub(p, c);
+    let d5 = dot(ab, cp);
+    let d6 = dot(ac, cp);
+    if d6 >= 0.0 && d5 <= d6 {
+        return Ok(finish([0.0, 0.0, 1.0]));
+    }
+    let vb = d5 * d2 - d1 * d6;
+    if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
+        let w = d2 / (d2 - d6);
+        return Ok(finish([1.0 - w, 0.0, w]));
+    }
+    let va = d3 * d6 - d5 * d4;
+    if va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0 {
+        let w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+        return Ok(finish([0.0, 1.0 - w, w]));
+    }
+    let denominator = 1.0 / (va + vb + vc);
+    let v = vb * denominator;
+    let w = vc * denominator;
+    let result = finish([1.0 - v - w, v, w]);
+    if !result.0.is_finite() || result.1.iter().any(|value| !value.is_finite()) {
+        return Err(fatal(
+            "M3A-NONFINITE-FLOAT",
+            "segmentAssignment",
+            "closest-point result is non-finite",
+        ));
+    }
+    Ok(result)
 }
 
 fn matrix_from_transform(transform: &IrTransform) -> Result<Mat4, ProfileAConversionFatalError> {
@@ -3628,6 +4531,12 @@ fn push_gate_checked(
     value: ProfileAGateV1,
     limits: &ProfileALimitsV1,
 ) -> Result<(), ProfileAConversionFatalError> {
+    if gates
+        .iter()
+        .any(|existing| existing.code == value.code && existing.path == value.path)
+    {
+        return Ok(());
+    }
     let next = usize_u64(gates.len()).checked_add(1).ok_or_else(|| {
         fatal(
             "M3A-INTEGER-OVERFLOW",
@@ -3741,22 +4650,7 @@ fn report(
     diagnostics: Vec<ProfileADiagnosticV1>,
     creature_sha256: Option<String>,
 ) -> ProfileAConversionReportV1 {
-    let segments = if eligible {
-        rig.segments
-            .first()
-            .map(|segment| {
-                vec![ProfileASegmentReportV1 {
-                    segment_id: segment.id,
-                    material_slot: 0,
-                    deformation: segment.deformation.clone(),
-                    triangle_count: c.output_triangles,
-                    vertex_count: c.output_vertices,
-                }]
-            })
-            .unwrap_or_default()
-    } else {
-        Vec::new()
-    };
+    let segments = c.segment_reports.clone();
     ProfileAConversionReportV1 {
         schema_version: 1,
         source: ProfileAReportSourceV1 {
@@ -3802,11 +4696,17 @@ fn report(
         },
         segments,
         weights: ProfileAWeightsReportV1 {
-            rigid_vertex_count: c.output_vertices,
-            ..Default::default()
+            skinned_vertex_count: c.skinned_vertices,
+            rigid_vertex_count: c.rigid_vertices,
+            merged_duplicate_influence_count: c.merged_duplicate_influences,
+            dropped_zero_influence_count: c.dropped_zero_influences,
+            dropped_after_top_four_count: c.dropped_top_four_influences,
+            normalized_vertex_count: c.normalized_vertices,
+            max_influences_before: c.max_influences_before,
+            max_influences_after: c.max_influences_after,
         },
         work: ProfileAWorkReportV1 {
-            distance_evaluations: 0,
+            distance_evaluations: c.distance_evaluations,
             max_distance_evaluations: options.limits.max_distance_evaluations,
             work_bytes_peak: c.work_bytes_peak,
         },

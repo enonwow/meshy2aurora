@@ -225,6 +225,7 @@ dependencies = [
  "m2a-core",
  "serde",
  "serde_json",
+ "sha2",
  "wasm-bindgen",
  "wasm-bindgen-test",
 ]

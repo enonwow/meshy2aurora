@@ -128,3 +128,159 @@ Po kazdym slice dopisac bez nadpisywania historii:
 - deterministic output hash native/WASM;
 - limity i provenance fixture;
 - findings review oraz ich disposition.
+
+## M3B checkpoint 2026-07-12
+
+Status slice: `PASS`, independent review: `NO FINDINGS` (`P1=0`, `P2=0`).
+Status calego M3: `IN_PROGRESS`.
+
+M3B zaimplementowal i zweryfikowal:
+
+- exhaustive triangle-to-segment assignment w target world, exact tie po
+  rosnacym `segmentId` i nearest reference triangle tie po najnizszym ordinal;
+- buckety `(segmentId, materialSlot)`, reuse vertexa w bucket oraz jawna
+  duplikacje na granicy bucketow;
+- nearest-surface barycentric `SKIN` transfer, merge duplicate bones, usuniecie
+  merged values `<=0`, sort `(weight DESC, boneId ASC)`, top-four i normalizacje;
+- `RIGID` bez transferu i bez weight lanes;
+- exact `distanceEvaluations` z checked increment przed kazda evaluation oraz
+  osobne assignment/transfer accounting;
+- cumulative WorkBudget i fallible reserves dla assignment, bucket/output,
+  mapping i weight scratch;
+- stable blocking dla unreferenced source vertex bez silent drop;
+- zachowanie provisional segment/weight/work report po pozniejszym blocking gate;
+- target-world surface degeneracy/non-finite guard oraz duze finite weight sums
+  w `f64` przed bezpieczna normalizacja do `f32`.
+
+Zamkniete definicje raportu:
+
+- `duplicatedVertexCount` liczy tylko cross-bucket copies ponad pierwsza emisje
+  tego samego `(meshInstance, primitive, sourceVertex)`; instancing jest poza tym
+  licznikiem;
+- duplicate/zero/top-four/max-before/max-after counters maja exact raw/merged
+  semantyke zapisana w aktywnym suplemencie;
+- external profile reference bone spoza `allowedBoneNodeIds` jest malformed
+  profile i musi skonczyc sie fatal `M3A-PROFILE-SEGMENT-INVALID`;
+  `M3A-WEIGHT-BONE-FORBIDDEN` pozostaje tylko defensive post-validation/runtime
+  invariant gate. Kod/test tej ostatniej granicy musi byc wyrownany przed
+  finalnym M3 review; dokument normatywny jest rozstrzygajacy.
+
+Exact gates uruchomione na checkpointcie:
+
+```yaml
+commands:
+  cargo_fmt: PASS
+  cargo_clippy: "PASS --workspace --all-targets -- -D warnings"
+  cargo_test_workspace: "PASS 125/125; profile_a 29/29"
+  wasm_build: "PASS wasm32-unknown-unknown"
+  wasm_pack_node: "PASS 12/12"
+  git_diff_check: PASS
+review:
+  result: NO_FINDINGS
+  p1: 0
+  p2: 0
+```
+
+Test matrix M3B pokrywa exact counts `6`, `12` i `15`, limit boundary/limit+1,
+segment tie, barycentric transfer, duplicate/top-four, duze finite weights,
+blocking weight outcomes, mixed `RIGID/SKIN`, cross-bucket `4 -> 6` vertexow z
+`duplicatedVertexCount=2`, unreferenced vertex oraz degeneracje po world-transform
+rounding. Source input pozostaje niezmieniony; external payloads skopiowane: `0`.
+
+M3 nie przechodzi do `DONE`. Brakuje publicznego Profile A JSON/WASM adaptera i
+realnego native/WASM byte-identical deterministic outcome proof z sekcji 11.
+Obecne `wasm-pack 12/12` potwierdza brak regresji istniejacych adapterow, ale nie
+jest tym brakujacym Profile A parity proof. M4 pozostaje `NOT_STARTED`.
+
+## Final M3 checkpoint 2026-07-12
+
+Ten wpis jest rozstrzygajacym stanem po M3A, M3B, wyrównaniu profile-fatal
+boundary, publicznym adapterze i finalnym whole-M3 review. Wczesniejsze wpisy
+`IN_PROGRESS`, `PENDING_M3B`, `125/125` i `12/12` zachowuja stan historyczny z
+chwili checkpointu i nie opisuja juz stanu koncowego.
+
+Status M3: `DONE`.
+
+Final artifacts:
+
+- core conversion: `crates/m2a-core/src/profile_a.rs`;
+- core regression matrix: `crates/m2a-core/tests/profile_a.rs`;
+- public native/WASM adapter and frozen byte proofs:
+  `crates/m2a-wasm/src/lib.rs`;
+- adapter dependencies: `crates/m2a-wasm/Cargo.toml`, `Cargo.lock`;
+- locked contract:
+  `documentation/m3-profile-a-conversion-kontrakt-suplement-codex.md`;
+- append-only evidence: `documentation/evidence/M3-evidence.md`;
+- live stage state: `documentation/orchestrator-state.yaml`.
+
+Public API:
+
+```text
+Rust canonical: convert_profile_a_glb_json(bytes, rig_json, options_json)
+JS canonical:   convertProfileAGlbJson(bytes, rigJson, optionsJson)
+Rust alias:     convert_profile_a_json
+JS alias:       convertProfileAJson
+alias result:   byte-identical
+```
+
+Adapter wykonuje strict deserialize `CreatureRigProfileV1` i
+`ProfileAOptionsV1` z nested `deny_unknown_fields`, nastepnie deleguje dokladnie
+do `ingest_glb` i `convert_profile_a`. Malformed/unknown rig JSON, unknown options,
+truncated GLB, core limit fatal i blocking provenance maja deterministic envelope
+zgodny z core. Controlled fixtures maja provenance `SYNTHETIC`,
+`exportAllowed=true`, komplet attestations i nie zawieraja external payloadu,
+host path ani reference rig danych.
+
+Frozen native/WASM exact-byte proofs:
+
+| case | JSON length | SHA-256 |
+|---|---:|---|
+| RIGID success | 3186 | `bb1a7a8564be2938bc694b1ffb928e11b904aa62b61b2687bb8a0013bc6c10a1` |
+| multi-segment SKIN success | 3562 | `e474aa01d1108e2278e6cfaf6c9d2b71b71e4e393b55dbc729b7c8c4c6a8d9dd` |
+| malformed rig JSON fatal | 151 | `03bd6ebd5cdb45f738de87363d3ad6a95de9bbb5aa119a2fce3199255b8efa55` |
+| distance-limit core fatal | 162 | `3bfb45cf36af0d4af174cea656ab669714a55c4c88a9661c7ea573be75bec4a2` |
+
+Native i real Node/WASM assertuja te same length i pelne SHA-256. Work accounting
+uzywa fixed conservative 64-bit contract charges, dlatego `workBytesPeak` i caly
+success JSON sa identyczne na native64 i wasm32.
+
+Final gates:
+
+```yaml
+commands:
+  cargo_fmt: PASS
+  cargo_clippy: "PASS --workspace --all-targets -- -D warnings"
+  cargo_test_workspace: "PASS 127/127"
+  profile_a_core: "PASS 29/29"
+  profile_a_native_adapter: "PASS 2/2"
+  wasm_build: "PASS wasm32-unknown-unknown"
+  wasm_pack_node: "PASS 14/14"
+  git_diff_check: PASS
+review:
+  scope: WHOLE_M3
+  result: NO_FINDINGS
+  p1: 0
+  p2: 0
+```
+
+Final Docker build/test checkpoint (quality gate only, never Toolset/runtime proof):
+
+- command: `docker build --no-cache -t m2a-quality:m3 .`;
+- result: `PASS`, 116.6 s, build context 274.21 kB;
+- image digest: `sha256:f3a68aac52cb59a0b5be0199b6b2112e9f1737c4f2047831eecccbf5ee360fe1`;
+- image size: `1151988127` bytes;
+- container gates: workspace `127/127`, Profile A `29/29`, native adapter
+  `2/2`, Node/WASM `14/14`, fmt, clippy and wasm32 build `PASS`;
+- host/image SHA-256 identity: `Cargo.lock`, core `profile_a.rs`, core
+  `tests/profile_a.rs` and WASM `src/lib.rs` all `MATCH=true`;
+- Docker history scan for private host paths/reference names/secret labels:
+  `NO_MATCHES`.
+
+External profile reference bone spoza `allowedBoneNodeIds` jest zgodnie z
+kontraktem fatal `M3A-PROFILE-SEGMENT-INVALID`; defensive
+`M3A-WEIGHT-BONE-FORBIDDEN` nie jest publiczna alternatywa walidacji. Wszystkie
+M3A/M3B assignment, SKIN/RIGID, report, budget, strict JSON i parity gates sa
+zamkniete. `OPEN_M6` dla engine-facing i wizualnego UV proof pozostaje
+intencjonalnie przypisane do M6 i nie blokuje M3 DONE. M4 jest nastepnym etapem
+gotowym do osobnego checkpointu aktywacyjnego; implementacja M4 nie rozpoczela sie
+w tym wpisie.

@@ -1,7 +1,7 @@
 # M3 - kontrakt konwersji creature Profile A
 
 Data: 2026-07-12
-Status: `PROFILE_A_LOCKED_M3`; implementacja `IN_PROGRESS`; proof Toolset/game pozostaje `OPEN_M6`
+Status: `PROFILE_A_LOCKED_M3`; implementacja `DONE`; proof Toolset/game pozostaje `OPEN_M6`
 
 ## 1. Cel i autorytet
 
@@ -200,11 +200,15 @@ w `GlbIngestResult`.
 Adapter WASM:
 
 ```text
-convert_profile_a_glb_json(glb_bytes, rig_profile_json, options_json)
+Rust: convert_profile_a_glb_json(glb_bytes, rig_profile_json, options_json)
+JS:   convertProfileAGlbJson(glbBytes, rigProfileJson, optionsJson)
   -> deterministic JSON outcome/error envelope
 ```
 
 WASM wywoluje ten sam core. Nie ma osobnej implementacji transformacji.
+Wczesna, krotsza nazwa Rust `convert_profile_a_json` / JS
+`convertProfileAJson` pozostaje byte-identical aliasem canonical API; nowe
+integracje powinny uzywac nazwy z `Glb`.
 
 Pelny kontrakt opcji (wszystkie pola wymagane, unknown fields denied):
 
@@ -307,6 +311,32 @@ ProfileAConversionReportV1:
 Gates maja `{code,severity,path,expected,actual,message}`, diagnostics maja
 `{schemaVersion,code,severity,path,message}`. Wszystkie liczniki sa checked u64,
 a konwersja do host `usize` odbywa sie dopiero po sprawdzeniu zakresu.
+
+Semantyka licznikow M3B jest zamknieta:
+
+- `duplicatedVertexCount` liczy kopie ponad pierwsza emisje tego samego
+  `(meshInstance, primitive, sourceVertex)` spowodowane rozdzieleniem do roznych
+  bucketow `(segmentId, materialSlot)`. Osobne instancje sceny nie zwiekszaja tego
+  licznika; sa juz rozliczone przez `sourceVertexInstanceCount` i
+  `duplicatedMeshInstanceCount`;
+- raw interpolated influence to jeden wplyw jednego z trzech reference vertices
+  po pomnozeniu przez odpowiadajaca wspolrzedna barycentryczna;
+- `mergedDuplicateInfluenceCount` liczy kazdy raw influence po pierwszym dla tego
+  samego `boneNodeId`, ktory zostal wlaczony do tej samej merged entry;
+- `droppedZeroInfluenceCount` liczy merged bone entries usuniete po scaleniu,
+  poniewaz ich laczna wartosc jest `<=0`; nie liczy osobno kazdego raw zero lane;
+- `droppedAfterTopFourCount` liczy dodatnie, dozwolone merged entries odrzucone
+  po deterministycznym sortowaniu, poniewaz znajdowaly sie za pierwszymi czterema;
+- `normalizedVertexCount` liczy kazdy emitted `SKIN` vertex, dla ktorego zachowane
+  lanes zostaly poprawnie znormalizowane i przeszly tolerance sumy;
+- `maxInfluencesBefore` to maksimum liczby dodatnich, dozwolonych merged entries
+  po usunieciu zer, ale przed top-four; `maxInfluencesAfter` to maksimum po
+  top-four.
+
+Raport nie zeruje juz wykonanej pracy tylko dlatego, ze pozniejszy gate blokuje
+`creature`. Raz wyliczone `segments`, `weights` i `work` pozostaja w blocking
+outcome jako provisional evidence. Gate we wczesniejszej fazie nie wymysla
+wartosci, ktorych konwersja jeszcze nie wyliczyla.
 
 ## 5. Typy wejscia i wyjscia
 
@@ -586,6 +616,14 @@ Profil jest poprawny tylko, gdy:
 - `RIGID` ma parent i nie ma skin reference weights;
 - wszystkie wagi sa finite, nieujemne i wskazuja allowed bone.
 
+Ostatni warunek jest validation boundary kontrolowanego profilu. Reference weight
+wskazujacy bone spoza `allowedBoneNodeIds` oznacza malformed profile i konczy sie
+fatal `M3A-PROFILE-SEGMENT-INVALID` na `rig.segments.referenceWeights`, zanim
+powstanie assignment/output. `M3A-WEIGHT-BONE-FORBIDDEN` nie jest alternatywa dla
+tej walidacji: pozostaje defensive post-validation/runtime invariant gate na
+wypadek naruszenia invariant po poprawnej walidacji. Implementacja nigdy nie
+przenosi takiego wplywu automatycznie na parent.
+
 Przypisanie jest deterministyczne i wszystkie distance comparisons odbywaja
 sie w target world. Reference segment surface jest przeliczona do target world
 przez `rigParentBindWorld`; emitted geometry dopiero po wyborze segmentu trafia
@@ -621,22 +659,35 @@ Algorytm:
 3. Zbuduj deterministic material bindings; bucket wyjsciowy ma klucz
    `(segmentId, materialSlot)`.
 4. Vertex uzyty przez rozne buckety jest jawnie duplikowany; mapping source ->
-   output zapisuje raport.
+   output pozostaje wewnetrznym planem emisji, a publiczny raport zapisuje jego
+   wynik przez `duplicatedVertexCount` i per-bucket rows w `segments`. V1 nie
+   publikuje tablicy per-vertex mapping.
 5. Dla kazdego output `SKIN` vertex sprawdz wszystkie triangles powierzchni
    wybranego segmentu i wybierz nearest; tie rozstrzyga najnizszy surface
    triangle index.
 6. Uzyj closest point barycentric coordinates i interpoluj wagi trzech
    reference vertices.
-7. Odrzuc wplywy spoza `allowedBoneNodeIds` jako blocking gate; nie przenos ich
-   automatycznie na parent.
+7. Defensive invariant check po validation odrzuca wplyw spoza
+   `allowedBoneNodeIds` jako `M3A-WEIGHT-BONE-FORBIDDEN`; external malformed
+   profile zostal juz odrzucony fatalnie i zadna sciezka nie przenosi wplywu na
+   parent.
 8. Zmerguj te same bone ids, usun wartosci `<=0`, sortuj
    `(weight DESC, boneId ASC)`, zachowaj pierwsze cztery.
 9. Suma przed normalizacja musi byc dodatnia i finite. Po normalizacji suma
    musi wynosic `1.0 +- 1e-5`.
 
 Dla `RIGID` nie ma transferu wag: segment ma `weights=[]`, a raport liczy jego
-vertices jako rigid. Brak poprawnego wplywu SKIN, nieistniejaca/niedozwolona
-kosc, ujemna/NaN waga albo niejednoznaczna hierarchia blokuje creature.
+vertices jako rigid. Brak dodatniej sumy po poprawnym transferze blokuje
+`creature`. Nieistniejaca/niedozwolona kosc, ujemna/NaN waga albo niejednoznaczna
+hierarchia w external rig profile sa profile-validation fatal, zgodnie z granica
+powyzej.
+
+Source vertex nieuzyty przez zaden index nie ma target triangle, a wiec nie ma
+kontraktowego segment assignment. Taki source daje exact blocking
+`M3A-SEGMENT-ASSIGNMENT-FAILED` na `sourceSelection.meshInstances`, bez emisji
+`creature` i bez silent drop. Assignment/work wykonane przed wykryciem pozostaja
+w raporcie. M3 v1 nie przypisuje nieuzytego vertexa heurystycznie do najblizszego
+segmentu.
 
 ## 10. Stable errors i gates
 
@@ -730,7 +781,10 @@ Minimalna macierz testowa:
 - material `null` PASS/binding slot 0, one id PASS, 2 unique keys BLOCKING;
 - segment exact tie i tie-break po id;
 - duplikacja vertexa na granicy segment/material;
-- barycentric weights, duplicate bones, ponad 4 wplywy, zero sum, invalid bone;
+- unreferenced source vertex: exact blocking assignment gate, no silent drop;
+- barycentric weights, duplicate bones, ponad 4 wplywy, zero sum;
+- invalid profile reference bone: fatal profile validation; defensive forbidden
+  bone invariant gate pozostaje osobnym internal-path testem;
 - `SKIN` i `RIGID`;
 - forbidden provenance/hash/exportAllowed;
 - malformed/unknown JSON fatal vs valid REFERENCE_ONLY/UNKNOWN blocking;

@@ -9,8 +9,8 @@ use m2a_core::{
     profile_a::{
         Bounds3V1, CreatureRigNodeV1, CreatureRigProfileV1, CreatureRigSegmentV1,
         ProfileAOptionsV1, RigProvenanceAttestationsV1, RigProvenanceKindV1, RigProvenanceV1,
-        RigSegmentDeformationV1, canonical_creature_sha256, canonical_profile_sha256,
-        convert_profile_a,
+        RigSegmentDeformationV1, RigWeightInfluenceV1, canonical_creature_sha256,
+        canonical_profile_sha256, convert_profile_a,
     },
 };
 
@@ -62,6 +62,61 @@ fn profile(height: f32) -> CreatureRigProfileV1 {
 
 fn minimal_source() -> m2a_core::glb::GlbIngestResult {
     ingest_glb(&fixtures::minimal_indexed_triangle(), &GlbLimits::default()).unwrap()
+}
+
+fn rehash(mut rig: CreatureRigProfileV1) -> CreatureRigProfileV1 {
+    rig.content_sha256.clear();
+    rig.content_sha256 = canonical_profile_sha256(&rig).unwrap();
+    rig
+}
+
+fn skin_profile(reference_weights: Vec<Vec<RigWeightInfluenceV1>>) -> CreatureRigProfileV1 {
+    let mut rig = profile(1.0);
+    rig.profile_id = "synthetic-skin-transfer-profile".to_owned();
+    rig.nodes.extend((1..=6).map(|id| CreatureRigNodeV1 {
+        id,
+        name: format!("synthetic-bone-{id}"),
+        parent_id: Some(70),
+        bind_local_matrix: identity(),
+    }));
+    rig.segments = vec![CreatureRigSegmentV1 {
+        id: 12,
+        name: "synthetic-skin-surface".to_owned(),
+        deformation: RigSegmentDeformationV1::Skin,
+        parent_node_id: 70,
+        surface_positions: vec![
+            [-1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [-1.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+        ],
+        surface_indices: vec![0, 1, 2, 1, 3, 2],
+        allowed_bone_node_ids: (1..=6).collect(),
+        reference_weights,
+    }];
+    rehash(rig)
+}
+
+fn square_source() -> m2a_core::glb::GlbIngestResult {
+    let mut source = minimal_source();
+    let primitive = &mut source.ir.primitives[0];
+    primitive.positions = vec![
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [1.0, 1.0, 0.0],
+    ];
+    primitive.normals = vec![[0.0, 0.0, 1.0]; 4];
+    primitive.uv0 = vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
+    primitive.indices = vec![0, 1, 2, 1, 3, 2];
+    primitive.bounds_min = [0.0, 0.0, 0.0];
+    primitive.bounds_max = [1.0, 1.0, 0.0];
+    source.report.statistics.vertex_count = 4;
+    source.report.statistics.index_count = 6;
+    source.report.statistics.triangle_count = 2;
+    source.report.statistics.bounds_min = Some([0.0, 0.0, 0.0]);
+    source.report.statistics.bounds_max = Some([1.0, 1.0, 0.0]);
+    source
 }
 
 fn approx(actual: f32, expected: f32) {
@@ -733,6 +788,282 @@ fn exact_max_depth_rig_hierarchy_is_iterative_and_no_panic() {
     assert!(result.is_ok());
     let outcome = result.unwrap().unwrap();
     assert_eq!(outcome.creature.unwrap().nodes.len(), 4_096);
+}
+
+#[test]
+fn multi_segment_exact_tie_uses_lowest_id_and_distance_limit_is_exact() {
+    let source = minimal_source();
+    let source_before = serde_json::to_vec(&source).unwrap();
+    let mut rig = profile(1.0);
+    let mut high = rig.segments[0].clone();
+    high.id = 20;
+    high.name = "synthetic-high-id".to_owned();
+    let mut low = high.clone();
+    low.id = 10;
+    low.name = "synthetic-low-id".to_owned();
+    rig.segments = vec![high, low];
+    rig = rehash(rig);
+
+    let outcome = convert_profile_a(&source, &rig, &ProfileAOptionsV1::default()).unwrap();
+    assert_eq!(outcome.report.work.distance_evaluations, 6);
+    let creature = outcome.creature.unwrap();
+    assert_eq!(creature.segments.len(), 1);
+    assert_eq!(creature.segments[0].segment_id, 10);
+    assert_eq!(serde_json::to_vec(&source).unwrap(), source_before);
+
+    let mut exact = ProfileAOptionsV1::default();
+    exact.limits.max_distance_evaluations = 6;
+    convert_profile_a(&source, &rig, &exact).expect("exact distance boundary");
+    exact.limits.max_distance_evaluations = 5;
+    let error = convert_profile_a(&source, &rig, &exact).unwrap_err();
+    assert_eq!(
+        (error.code.as_str(), error.path.as_str()),
+        ("M3A-LIMIT-EXCEEDED", "distanceEvaluations")
+    );
+}
+
+#[test]
+fn skin_barycentric_interpolation_is_exhaustive_and_normalized() {
+    let weights = vec![
+        vec![RigWeightInfluenceV1 {
+            bone_node_id: 1,
+            value: 1.0,
+        }],
+        vec![RigWeightInfluenceV1 {
+            bone_node_id: 2,
+            value: 1.0,
+        }],
+        vec![RigWeightInfluenceV1 {
+            bone_node_id: 3,
+            value: 1.0,
+        }],
+        vec![RigWeightInfluenceV1 {
+            bone_node_id: 4,
+            value: 1.0,
+        }],
+    ];
+    let outcome = convert_profile_a(
+        &minimal_source(),
+        &skin_profile(weights),
+        &ProfileAOptionsV1::default(),
+    )
+    .unwrap();
+    assert_eq!(outcome.report.work.distance_evaluations, 12);
+    assert_eq!(outcome.report.weights.skinned_vertex_count, 3);
+    assert_eq!(outcome.report.weights.normalized_vertex_count, 3);
+    let segment = &outcome.creature.unwrap().segments[0];
+    assert_eq!(segment.deformation, RigSegmentDeformationV1::Skin);
+    assert_eq!(segment.weights.len(), 3);
+    assert_eq!(
+        segment.weights[0].bone_node_ids,
+        [Some(1), Some(2), None, None]
+    );
+    approx(segment.weights[0].values[0], 0.75);
+    approx(segment.weights[0].values[1], 0.25);
+    assert_eq!(
+        segment.weights[1].bone_node_ids,
+        [Some(2), Some(1), None, None]
+    );
+    approx(segment.weights[1].values[0], 0.75);
+    approx(segment.weights[1].values[1], 0.25);
+    assert_eq!(
+        segment.weights[2].bone_node_ids,
+        [Some(3), Some(4), None, None]
+    );
+    approx(segment.weights[2].values[0], 0.75);
+    approx(segment.weights[2].values[1], 0.25);
+}
+
+#[test]
+fn skin_duplicate_merge_top_four_and_large_finite_values_are_stable() {
+    let lanes = vec![
+        RigWeightInfluenceV1 {
+            bone_node_id: 1,
+            value: f32::MAX,
+        },
+        RigWeightInfluenceV1 {
+            bone_node_id: 1,
+            value: f32::MAX,
+        },
+        RigWeightInfluenceV1 {
+            bone_node_id: 2,
+            value: f32::MAX,
+        },
+        RigWeightInfluenceV1 {
+            bone_node_id: 3,
+            value: 4.0,
+        },
+        RigWeightInfluenceV1 {
+            bone_node_id: 4,
+            value: 3.0,
+        },
+        RigWeightInfluenceV1 {
+            bone_node_id: 5,
+            value: 2.0,
+        },
+        RigWeightInfluenceV1 {
+            bone_node_id: 6,
+            value: 1.0,
+        },
+        RigWeightInfluenceV1 {
+            bone_node_id: 6,
+            value: 0.0,
+        },
+    ];
+    let outcome = convert_profile_a(
+        &minimal_source(),
+        &skin_profile(vec![lanes.clone(), lanes.clone(), lanes.clone(), lanes]),
+        &ProfileAOptionsV1::default(),
+    )
+    .unwrap();
+    assert!(outcome.report.conversion_eligible);
+    assert!(outcome.report.weights.merged_duplicate_influence_count > 0);
+    assert!(outcome.report.weights.dropped_after_top_four_count > 0);
+    assert_eq!(outcome.report.weights.max_influences_before, 6);
+    assert_eq!(outcome.report.weights.max_influences_after, 4);
+    for weights in &outcome.creature.unwrap().segments[0].weights {
+        assert_eq!(weights.influence_count, 4);
+        assert_eq!(weights.bone_node_ids, [Some(1), Some(2), Some(3), Some(4)]);
+        approx(weights.values.iter().sum(), 1.0);
+        assert!(weights.values.iter().all(|value| value.is_finite()));
+    }
+}
+
+#[test]
+fn forbidden_profile_bone_is_fatal_and_zero_sum_is_a_deterministic_gate() {
+    let forbidden = vec![
+        vec![RigWeightInfluenceV1 {
+            bone_node_id: 999,
+            value: 1.0
+        }];
+        4
+    ];
+    let error = convert_profile_a(
+        &minimal_source(),
+        &skin_profile(forbidden),
+        &ProfileAOptionsV1::default(),
+    )
+    .unwrap_err();
+    assert_eq!(
+        (error.code.as_str(), error.path.as_str()),
+        (
+            "M3A-PROFILE-SEGMENT-INVALID",
+            "rig.segments.referenceWeights"
+        )
+    );
+
+    let zero = vec![
+        vec![RigWeightInfluenceV1 {
+            bone_node_id: 1,
+            value: 0.0
+        }];
+        4
+    ];
+    let mut one_diagnostic = ProfileAOptionsV1::default();
+    one_diagnostic.limits.max_diagnostics = 1;
+    let blocked =
+        convert_profile_a(&minimal_source(), &skin_profile(zero), &one_diagnostic).unwrap();
+    assert!(blocked.creature.is_none());
+    assert!(
+        blocked
+            .report
+            .gates
+            .iter()
+            .any(|gate| gate.code == "M3A-WEIGHT-SUM-INVALID")
+    );
+}
+
+#[test]
+fn mixed_rigid_skin_buckets_duplicate_boundary_vertices_only() {
+    let source = square_source();
+    let source_before = serde_json::to_vec(&source).unwrap();
+    let mut rig = profile(1.0);
+    rig.nodes.push(CreatureRigNodeV1 {
+        id: 1,
+        name: "synthetic-skin-bone".to_owned(),
+        parent_id: Some(70),
+        bind_local_matrix: identity(),
+    });
+    rig.segments[0].id = 5;
+    rig.segments[0].name = "synthetic-rigid-lower".to_owned();
+    rig.segments[0].surface_positions = vec![[-0.5, 0.0, 0.0], [0.5, 0.0, 0.0], [-0.5, 0.0, 1.0]];
+    rig.segments.push(CreatureRigSegmentV1 {
+        id: 10,
+        name: "synthetic-skin-upper".to_owned(),
+        deformation: RigSegmentDeformationV1::Skin,
+        parent_node_id: 70,
+        surface_positions: vec![[0.5, 0.0, 0.0], [0.5, 0.0, 1.0], [-0.5, 0.0, 1.0]],
+        surface_indices: vec![0, 1, 2],
+        allowed_bone_node_ids: vec![1],
+        reference_weights: vec![
+            vec![RigWeightInfluenceV1 {
+                bone_node_id: 1,
+                value: 1.0
+            }];
+            3
+        ],
+    });
+    rig = rehash(rig);
+    let outcome = convert_profile_a(&source, &rig, &ProfileAOptionsV1::default()).unwrap();
+    assert_eq!(outcome.report.work.distance_evaluations, 15);
+    assert_eq!(outcome.report.geometry.source_vertex_instance_count, 4);
+    assert_eq!(outcome.report.geometry.output_vertex_count, 6);
+    assert_eq!(outcome.report.geometry.duplicated_vertex_count, 2);
+    assert_eq!(outcome.report.weights.rigid_vertex_count, 3);
+    assert_eq!(outcome.report.weights.skinned_vertex_count, 3);
+    let creature = outcome.creature.unwrap();
+    assert_eq!(
+        creature
+            .segments
+            .iter()
+            .map(|segment| segment.segment_id)
+            .collect::<Vec<_>>(),
+        [5, 10]
+    );
+    assert!(creature.segments[0].weights.is_empty());
+    assert_eq!(creature.segments[1].weights.len(), 3);
+    assert_eq!(serde_json::to_vec(&source).unwrap(), source_before);
+}
+
+#[test]
+fn unreferenced_vertex_is_explicitly_blocked_without_panic_or_silent_drop() {
+    let mut source = minimal_source();
+    source.ir.primitives[0].positions.push([0.25, 0.25, 0.25]);
+    source.ir.primitives[0].normals.push([0.0, 0.0, 1.0]);
+    source.ir.primitives[0].uv0.push([0.25, 0.25]);
+    source.ir.primitives[0].bounds_max = [1.0, 1.0, 0.25];
+    source.report.statistics.vertex_count = 4;
+    source.report.statistics.bounds_max = Some([1.0, 1.0, 0.25]);
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        convert_profile_a(&source, &profile(1.0), &ProfileAOptionsV1::default())
+    }));
+    let blocked = result.expect("must not panic").unwrap();
+    assert!(blocked.creature.is_none());
+    assert!(
+        blocked
+            .report
+            .gates
+            .iter()
+            .any(|gate| gate.code == "M3A-SEGMENT-ASSIGNMENT-FAILED")
+    );
+}
+
+#[test]
+fn target_world_surface_rounding_degeneracy_is_stable_fatal() {
+    let mut rig = profile(1.0);
+    rig.nodes[0].bind_local_matrix[12] = 1.0e20;
+    rig.target_bounds.min[0] = -1.0e21;
+    rig.target_bounds.max[0] = 1.0e21;
+    rig = rehash(rig);
+    let error =
+        convert_profile_a(&minimal_source(), &rig, &ProfileAOptionsV1::default()).unwrap_err();
+    assert_eq!(
+        (error.code.as_str(), error.path.as_str()),
+        (
+            "M3A-PROFILE-SEGMENT-INVALID",
+            "rig.segments.surfacePositions"
+        )
+    );
 }
 
 #[test]

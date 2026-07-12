@@ -19,11 +19,11 @@ status_vocabulary:
   - "SUPERSEDED"
 
 orchestration:
-  active_stage: "M3"
-  next_ready_stage: "M4 remains NOT_STARTED until M3 is DONE"
-  next_action: "Implement the reviewed Profile-A contract: default-scene mesh instances baked source-local to world once, global target transform, rig-parent local output in separate AuroraCreatureIrV1, exact provenance/material/work accounting and native/WASM proof; do not start M4."
+  active_stage: "NONE"
+  next_ready_stage: "M4"
+  next_action: "Create a separate M4 activation checkpoint, then consume only reviewed AuroraCreatureIrV1 for binary MDL/MDX writer and own semantic readback work."
   one_active_stage_only: true
-  current_attempt_id: "M3-20260712-01"
+  current_attempt_id: null
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
   done_rule: "A stage may be DONE only when every definition_of_done item has evidence."
   stop_rule: "Stop and mark BLOCKED when a needed Aurora fact, decision, local tool state, or proof artifact is missing. Do not guess."
@@ -265,28 +265,24 @@ stages:
       - "documentation/orchestrator-state.yaml"
 
   M3:
-    status: "IN_PROGRESS"
-    status_reason: "M3A RIGID single-segment Profile-A conversion is implemented and independently reviewed with NO FINDINGS (P1=0/P2=0): exact M2 contract/correlation, default-scene instances, source-world to rig-local transform, basis/scale/alignment, material/provenance/report/hash/WorkBudget and iterative no-panic guards pass. M3 remains IN_PROGRESS because M3B segmentation/SKIN/nearest-surface/top-four weights and the public WASM conversion adapter/parity proof remain pending. Engine-facing and visual UV acceptance remain OPEN_M6."
+    status: "DONE"
+    status_reason: "M3A/M3B Profile-A conversion, strict public convert_profile_a_glb_json / convertProfileAGlbJson adapter, byte-identical alias, profile-fatal forbidden-bone boundary and frozen native/WASM success/fatal byte proofs are complete. Full gates passed 127 workspace tests, 29 Profile A core tests, 2 native adapter tests and 14 Node/WASM tests plus fmt, clippy, wasm32 build and diff-check. Final independent whole-M3 review reported NO FINDINGS (P1=0/P2=0). Engine-facing and visual UV acceptance remain intentionally OPEN_M6."
     owner: "Codex orchestrator + M3 implementation/review subagents"
     risk: "HIGH"
     dependencies: ["M1B DONE", "M1C DONE", "M2 DONE"]
     attempt_id: "M3-20260712-01"
-    current_problems:
-      - "M3A RIGID single-segment conversion is complete; deterministic multi-segment assignment, nearest-surface/barycentric SKIN transfer and max-four normalized weight policy remain M3B work."
-      - "Only SYNTHETIC/OWNED/USER_PROVIDED rigs with exportAllowed=true and all attestations true may produce output; REFERENCE_ONLY/UNKNOWN and CEP/retail skeletons remain blocking/read-only observations."
-      - "Basis and UV are reference-only implementation inferences; engine-facing and UV runtime proof remain OPEN_M6."
-      - "No original Meshy GLB sample has been supplied; synthetic fixtures remain the current proof base."
+    current_problems: []
     bugs: []
-    next_actions:
-      - "Implement M3B exact triangle-to-segment assignment, exhaustive nearest-surface/barycentric transfer, allowed-bone filtering, deterministic top-four normalization and distance/work accounting."
-      - "Add the public JSON/WASM adapter and native/WASM byte-identical outcome proof for the completed M3 core."
-      - "Run final M3 synthetic matrix and independent review; keep M4 NOT_STARTED until M3 is DONE."
-    evidence: ["documentation/evidence/M3-evidence.md: M3A PASS 118 workspace / 22 profile_a / 12 Node, independent NO FINDINGS; Docker no-cache quality image sha256:b346849fa471cbe460543295dc0afd8ebec76e3378a13de32b83126c23cd32c1; M3B pending"]
+    next_actions: []
+    evidence: ["documentation/evidence/M3-evidence.md: final M3 DONE; 127 workspace / 29 Profile A core / 2 native adapter / 14 Node-WASM; frozen RIGID, SKIN, malformed-JSON fatal and limit-fatal native-WASM SHA/length proofs; final whole-M3 NO FINDINGS P1=0/P2=0; Docker no-cache quality image sha256:f3a68aac52cb59a0b5be0199b6b2112e9f1737c4f2047831eecccbf5ee360fe1"]
     documentation:
       - "documentation/m3-profile-a-conversion-kontrakt-suplement-codex.md"
       - "documentation/evidence/M3-evidence.md"
-    expected_artifacts: ["Conversion report", "Axis/UV/weight gates"]
+    expected_artifacts: ["AuroraCreatureIrV1 conversion outcome/report", "Axis/UV/segment/weight gates", "Strict public Profile A JSON/WASM adapter", "Frozen native/WASM success and fatal byte proofs"]
     changed_files:
+      - "Cargo.lock"
+      - "crates/m2a-wasm/Cargo.toml"
+      - "crates/m2a-wasm/src/lib.rs"
       - "documentation/m3-profile-a-conversion-kontrakt-suplement-codex.md"
       - "documentation/evidence/M3-evidence.md"
       - "documentation/orchestrator-state.yaml"
@@ -300,14 +296,13 @@ stages:
 
   M4:
     status: "NOT_STARTED"
-    status_reason: "The writer and MDX directions are defined; M4 waits for M3 DONE and accepts writer-ready AuroraCreatureIrV1, never source-preserving AuroraAssetIR directly."
+    status_reason: "M3 is DONE and the writer/MDX directions are defined. M4 is ready for a separate activation checkpoint and will accept reviewed AuroraCreatureIrV1, never source-preserving AuroraAssetIR directly; no M4 implementation has started."
     owner: "implementation agent"
     risk: "HIGH"
     dependencies: ["M1B DONE", "M3 DONE", "GB-001 direction defined", "GB-002 profile-A decision recorded"]
-    current_problems:
-      - "AuroraCreatureIrV1 exists for the reviewed M3A RIGID slice, but M3B/WASM proof is incomplete and M3 remains IN_PROGRESS; M4 must not start."
+    current_problems: []
     bugs: []
-    next_actions: ["After M3 DONE, consume AuroraCreatureIrV1, follow the MDL/MDX crosswalk and close own readback before runtime proof; do not re-run source GLB conversion in M4."]
+    next_actions: ["At a separate activation checkpoint, set M4 IN_PROGRESS and consume AuroraCreatureIrV1, follow the MDL/MDX crosswalk and close own readback before runtime proof; do not re-run source GLB conversion in M4."]
     evidence: []
     documentation: ["documentation/evidence/M4-evidence.md"]
     expected_artifacts: ["Writer/readback tests", "Semantic diff report", "Aurora P-REF invariant-conformance report"]
