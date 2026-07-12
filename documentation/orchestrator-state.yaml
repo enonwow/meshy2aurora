@@ -19,11 +19,11 @@ status_vocabulary:
   - "SUPERSEDED"
 
 orchestration:
-  active_stage: "NONE"
-  next_ready_stage: "M4"
-  next_action: "Create a separate M4 activation checkpoint, then consume only reviewed AuroraCreatureIrV1 for binary MDL/MDX writer and own semantic readback work."
+  active_stage: "M4"
+  next_ready_stage: "NONE"
+  next_action: "Lock the remaining extended64 skin mapping/inverse-bind contract, then implement skin emission and semantic bone readback without changing the verified rigid writer path."
   one_active_stage_only: true
-  current_attempt_id: null
+  current_attempt_id: "M4-20260712-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
   done_rule: "A stage may be DONE only when every definition_of_done item has evidence."
   stop_rule: "Stop and mark BLOCKED when a needed Aurora fact, decision, local tool state, or proof artifact is missing. Do not guess."
@@ -33,11 +33,11 @@ global_blockers:
     severity: "P0"
     status: "DIRECTION_DEFINED_EVIDENCE_OPEN"
     title: "Binary MDL writer contract"
-    detail: "M1B structural skin evidence is CLOSED: 17/64 is a header boundary, not capacity, and canonical zero-weight 0xffff lanes are preserved. Profile-A writer/readback and NWN EE runtime proof remain open for M4."
+    detail: "M1B structural skin evidence is CLOSED: 17/64 is a header boundary, not capacity, and canonical zero-weight 0xffff lanes are preserved. M4 owns Profile-A writer/readback evidence; M6 owns NWN EE runtime and visual proof."
     affects: ["M4", "M5", "M6", "M7"]
     owner: "Codex"
     source: "documentation/mdl-binary-crosswalk-codex.md"
-    next_action: "M4 closes writer emission, semantic readback and NWN EE runtime evidence; do not treat the M1B reader proof as runtime acceptance."
+    next_action: "M4 closes writer emission and semantic readback. M6 closes NWN EE runtime/visual evidence; do not treat M1B or M4 own-readback as runtime acceptance."
   - id: "GB-002"
     severity: "P1"
     status: "RESOLVED_FOR_PROFILE_A"
@@ -295,18 +295,33 @@ stages:
       - "crates/m2a-core/tests/profile_a.rs"
 
   M4:
-    status: "NOT_STARTED"
-    status_reason: "M3 is DONE and the writer/MDX directions are defined. M4 is ready for a separate activation checkpoint and will accept reviewed AuroraCreatureIrV1, never source-preserving AuroraAssetIR directly; no M4 implementation has started."
-    owner: "implementation agent"
+    status: "IN_PROGRESS"
+    status_reason: "Rigid structural writer/readback slice is implemented and independently verified: deterministic MDL+appended MDX, exact EOF, semantic readback, canonical P-REF regression and Docker quality pass. M4 remains IN_PROGRESS only for the named extended64 skin mapping/inverse-bind slice."
+    owner: "Codex orchestrator + M4 implementation/review subagents"
     risk: "HIGH"
+    attempt_id: "M4-20260712-01"
     dependencies: ["M1B DONE", "M3 DONE", "GB-001 direction defined", "GB-002 profile-A decision recorded"]
-    current_problems: []
+    current_problems:
+      - "Extended64 skin emission still needs the exact forward/inverse bone-slot mapping, inverse-bind quaternion semantics, active-slot validation and raw index path before implementation."
     bugs: []
-    next_actions: ["At a separate activation checkpoint, set M4 IN_PROGRESS and consume AuroraCreatureIrV1, follow the MDL/MDX crosswalk and close own readback before runtime proof; do not re-run source GLB conversion in M4."]
-    evidence: []
-    documentation: ["documentation/evidence/M4-evidence.md"]
+    next_actions:
+      - "Audit and lock the exact extended64 forward/inverse bone-slot map, active-slot domain, inverse-bind quaternion/translation and bone-constant semantics."
+      - "Implement extended64 skin emission and semantic bone-name readback without changing the verified rigid path."
+    evidence: ["documentation/evidence/M4-evidence.md"]
+    documentation: ["documentation/evidence/M4-evidence.md", "documentation/m4-binary-writer-kontrakt-suplement-codex.md"]
     expected_artifacts: ["Writer/readback tests", "Semantic diff report", "Aurora P-REF invariant-conformance report"]
-    changed_files: []
+    changed_files:
+      - "crates/m2a-core/src/lib.rs"
+      - "crates/m2a-core/src/mdl/mod.rs"
+      - "crates/m2a-core/src/mdl/parse_binary_mdl.rs"
+      - "crates/m2a-core/src/mdl/semantic_readback.rs"
+      - "crates/m2a-core/src/mdl/types.rs"
+      - "crates/m2a-core/src/mdl/write_binary_mdl.rs"
+      - "crates/m2a-core/src/mdl/writer_types.rs"
+      - "crates/m2a-core/tests/mdl_writer.rs"
+      - "documentation/orchestrator-state.yaml"
+      - "documentation/evidence/M4-evidence.md"
+      - "documentation/m4-binary-writer-kontrakt-suplement-codex.md"
 
   M4A:
     status: "NOT_STARTED"

@@ -7,7 +7,9 @@ pub mod profile_a;
 pub mod reference_proof;
 
 pub use mdl::{
-    InspectionReport, ParseError, ParserLimits, inspect_binary_mdl, inspect_binary_mdl_with_limits,
+    BinaryMdlArtifactV1, InspectionReport, MdlFormatProfileV1, MdlMaterialTextureBindingV1,
+    MdlWriteError, MdlWriterOptionsV1, ParserLimits, inspect_binary_mdl,
+    inspect_binary_mdl_with_limits, write_binary_mdl,
 };
 pub use reference_proof::{
     CapabilityResult, CapabilityStatus, ExecutionMetadata, HashAlgorithm, InputFingerprint,

@@ -49,8 +49,25 @@ const KNOWN_NODE_FLAGS: u32 = 0x3ff;
 const SUPPORTED_NODE_FLAGS: u32 = FLAG_HEADER | FLAG_MESH | FLAG_SKIN;
 
 const MESH_FACES_OFFSET: usize = 0x78;
+const MESH_BOUNDS_MIN_OFFSET: usize = 0x84;
+const MESH_BOUNDS_MAX_OFFSET: usize = 0x90;
+const MESH_RADIUS_OFFSET: usize = 0x9c;
+const MESH_AVERAGE_OFFSET: usize = 0xa0;
+const MESH_DIFFUSE_OFFSET: usize = 0xac;
+const MESH_AMBIENT_OFFSET: usize = 0xb8;
+const MESH_SPECULAR_OFFSET: usize = 0xc4;
+const MESH_SHININESS_OFFSET: usize = 0xd0;
+const MESH_SHADOW_OFFSET: usize = 0xd4;
+const MESH_BEAMING_OFFSET: usize = 0xd8;
+const MESH_RENDER_OFFSET: usize = 0xdc;
+const MESH_TRANSPARENCY_OFFSET: usize = 0xe0;
+const MESH_RENDER_HINT_OFFSET: usize = 0xe4;
 const MESH_TEXTURE0_OFFSET: usize = 0xe8;
+const MESH_TILE_FADE_OFFSET: usize = 0x1e8;
+const MESH_INDEX_COUNTS_OFFSET: usize = 0x204;
+const MESH_RAW_INDEX_OFFSETS_OFFSET: usize = 0x210;
 const MESH_UNKNOWN_RAW_OFFSET: usize = 0x21c;
+const MESH_TYPE_OFFSET: usize = 0x224;
 const MESH_START_RAW_OFFSET: usize = 0x228;
 const MESH_VERTICES_RAW_OFFSET: usize = 0x22c;
 const MESH_VERTEX_COUNT_OFFSET: usize = 0x230;
@@ -128,6 +145,19 @@ pub fn inspect_binary_mdl_with_limits(
         .ok_or_else(|| ParseError::pointer(4, "raw data start overflow"))?;
     reader.read_slice(FILE_HEADER_SIZE, core_length, "core MDL block")?;
     reader.read_slice(raw_absolute, raw_data_size as usize, "appended MDX range")?;
+    let declared_end = raw_absolute
+        .checked_add(raw_data_size as usize)
+        .ok_or_else(|| ParseError::pointer(8, "declared payload end overflow"))?;
+    if declared_end != bytes.len() {
+        return Err(ParseError::new(
+            HEADER_INVALID,
+            declared_end.min(bytes.len()),
+            format!(
+                "file length {} does not equal exact declared header/core/raw length {declared_end}",
+                bytes.len()
+            ),
+        ));
+    }
     if core_length < MODEL_HEADER_SIZE {
         return Err(ParseError::pointer(
             FILE_HEADER_SIZE,
@@ -201,6 +231,7 @@ pub fn inspect_binary_mdl_with_limits(
         model: ModelReport {
             name: model_name,
             root_node_offset,
+            geometry_type: reader.read_u32(model_absolute + 0x6c, "model geometry type")?,
             classification: reader.read_u8(model_absolute + 0x72, "model classification")?,
             fog: reader.read_u8(model_absolute + 0x73, "model fog")?,
             child_model_count: reader.read_u32(model_absolute + 0x74, "model child count")?,
@@ -885,6 +916,37 @@ fn read_mesh(
     )?;
     let faces = read_faces(context, faces_header, vertex_count)?;
 
+    let index_counts_header = context.read_array_header(
+        absolute + MESH_INDEX_COUNTS_OFFSET,
+        4,
+        "mesh index counts",
+        "mesh-index-counts",
+    )?;
+    let raw_index_offsets_header = context.read_array_header(
+        absolute + MESH_RAW_INDEX_OFFSETS_OFFSET,
+        4,
+        "mesh raw index offsets",
+        "mesh-raw-index-offsets",
+    )?;
+    if index_counts_header.used != raw_index_offsets_header.used {
+        return Err(ParseError::header(
+            absolute + MESH_RAW_INDEX_OFFSETS_OFFSET + 4,
+            format!(
+                "mesh index count/offset arrays differ: {} != {}",
+                index_counts_header.used, raw_index_offsets_header.used
+            ),
+        ));
+    }
+    let index_counts = read_core_u32_values(context, index_counts_header, "mesh index count")?;
+    let raw_index_offsets =
+        read_core_i32_values(context, raw_index_offsets_header, "mesh raw index offset")?;
+    let raw_indices = read_raw_index_lists(
+        context,
+        &index_counts,
+        &raw_index_offsets,
+        vertex_count,
+        "mesh raw indices",
+    )?;
     let mut validated_raw_pointers = Vec::new();
     let unknown = read_and_validate_raw_pointer(
         context,
@@ -980,7 +1042,70 @@ fn read_mesh(
         textures,
         vertex_count,
         texture_count,
+        bounds_min: read_vec3(
+            context.reader,
+            absolute + MESH_BOUNDS_MIN_OFFSET,
+            "mesh bounds min",
+        )?,
+        bounds_max: read_vec3(
+            context.reader,
+            absolute + MESH_BOUNDS_MAX_OFFSET,
+            "mesh bounds max",
+        )?,
+        radius: context
+            .reader
+            .read_f32(absolute + MESH_RADIUS_OFFSET, "mesh radius")?,
+        average: finite_vec3(read_vec3(
+            context.reader,
+            absolute + MESH_AVERAGE_OFFSET,
+            "mesh average",
+        )?),
+        diffuse: read_f32x3(
+            context.reader,
+            absolute + MESH_DIFFUSE_OFFSET,
+            "mesh diffuse",
+        )?,
+        ambient: read_f32x3(
+            context.reader,
+            absolute + MESH_AMBIENT_OFFSET,
+            "mesh ambient",
+        )?,
+        specular: read_f32x3(
+            context.reader,
+            absolute + MESH_SPECULAR_OFFSET,
+            "mesh specular",
+        )?,
+        shininess: context
+            .reader
+            .read_f32(absolute + MESH_SHININESS_OFFSET, "mesh shininess")?,
+        shadow: context
+            .reader
+            .read_u32(absolute + MESH_SHADOW_OFFSET, "mesh shadow")?,
+        beaming: context
+            .reader
+            .read_u32(absolute + MESH_BEAMING_OFFSET, "mesh beaming")?,
+        render: context
+            .reader
+            .read_u32(absolute + MESH_RENDER_OFFSET, "mesh render")?,
+        transparency: context
+            .reader
+            .read_u32(absolute + MESH_TRANSPARENCY_OFFSET, "mesh transparency")?,
+        render_hint: context
+            .reader
+            .read_u32(absolute + MESH_RENDER_HINT_OFFSET, "mesh render hint")?,
+        tile_fade: context
+            .reader
+            .read_u32(absolute + MESH_TILE_FADE_OFFSET, "mesh tile fade")?,
+        mesh_type: context
+            .reader
+            .read_u32(absolute + MESH_TYPE_OFFSET, "mesh type")?,
+        start_mdx: context
+            .reader
+            .read_i32(absolute + MESH_START_RAW_OFFSET, "mesh start MDX")?,
         faces,
+        index_counts,
+        raw_index_offsets,
+        raw_indices,
         vertices,
         uv0,
         normals,
@@ -1365,6 +1490,30 @@ fn read_core_u32_values(
     Ok(values)
 }
 
+fn read_core_i32_values(
+    context: &ParseContext<'_, '_>,
+    header: ArrayHeader,
+    value_context: &str,
+) -> Result<Vec<i32>, ParseError> {
+    if header.used == 0 {
+        return Ok(Vec::new());
+    }
+    let absolute = context.core_absolute(
+        header.pointer,
+        checked_array_size(header.used, 4, header.pointer as usize, value_context)?,
+        value_context,
+    )?;
+    let mut values = Vec::with_capacity(header.used);
+    for index in 0..header.used {
+        values.push(
+            context
+                .reader
+                .read_i32(absolute + index * 4, value_context)?,
+        );
+    }
+    Ok(values)
+}
+
 fn read_core_f32x4(
     context: &ParseContext<'_, '_>,
     header: ArrayHeader,
@@ -1506,6 +1655,53 @@ fn read_raw_f32x4(
     Ok(values)
 }
 
+fn read_raw_index_lists(
+    context: &ParseContext<'_, '_>,
+    counts: &[u32],
+    pointers: &[i32],
+    vertex_count: usize,
+    value_context: &str,
+) -> Result<Vec<Vec<u16>>, ParseError> {
+    let mut lists = Vec::with_capacity(counts.len());
+    for (list_index, (&count, &pointer)) in counts.iter().zip(pointers).enumerate() {
+        let count = usize::try_from(count).map_err(|_| {
+            ParseError::pointer(
+                pointer.max(0) as usize,
+                format!("{value_context} count does not fit usize"),
+            )
+        })?;
+        if count == 0 {
+            let _ = context.raw_absolute(pointer, 0, value_context, false)?;
+            lists.push(Vec::new());
+            continue;
+        }
+        let length = checked_array_size(count, 2, pointer.max(0) as usize, "mesh raw index list")?;
+        let absolute = context
+            .raw_absolute(pointer, length, value_context, count > 0)?
+            .ok_or_else(|| {
+                ParseError::pointer(
+                    pointer.max(0) as usize,
+                    format!("{value_context} list {list_index} has no pointer"),
+                )
+            })?;
+        let mut values = Vec::with_capacity(count);
+        for index in 0..count {
+            let value = context
+                .reader
+                .read_u16(absolute + index * 2, value_context)?;
+            if value as usize >= vertex_count {
+                return Err(ParseError::header(
+                    absolute + index * 2,
+                    format!("mesh raw index {value} exceeds vertex count {vertex_count}"),
+                ));
+            }
+            values.push(value);
+        }
+        lists.push(values);
+    }
+    Ok(lists)
+}
+
 fn read_raw_u16x4(
     context: &ParseContext<'_, '_>,
     pointer: i32,
@@ -1564,6 +1760,22 @@ fn read_vec3(
         y: reader.read_f32(absolute + 4, context)?,
         z: reader.read_f32(absolute + 8, context)?,
     })
+}
+
+fn read_f32x3(
+    reader: &BinaryReader<'_>,
+    absolute: usize,
+    context: &str,
+) -> Result<[f32; 3], ParseError> {
+    Ok([
+        reader.read_f32(absolute, context)?,
+        reader.read_f32(absolute + 4, context)?,
+        reader.read_f32(absolute + 8, context)?,
+    ])
+}
+
+fn finite_vec3(value: Vec3) -> Option<Vec3> {
+    (value.x.is_finite() && value.y.is_finite() && value.z.is_finite()).then_some(value)
 }
 
 fn node_family_bits() -> [(u32, &'static str); 10] {
