@@ -72,7 +72,7 @@ Screenshot Toolsetu z niezmienionym retailowym modelem jest tylko referencja wiz
 | R2 | `c_horror`, base NWN `nwn_base.key -> data/models_01.bif`, type 2002 | model bazowego supermodelu; funkcje ustalane dopiero przez own reader | potwierdzony locator |
 | R3 | `c_phod_horror_b` i `c_phod_horror_p`, `cep3_core1.hak`, type 2002 | 42 wlasne animacje, animroot, transition time, eventy | potwierdzony metadata |
 | R4 | `c_nulltail`, `cep3_core1.hak`, type 2002 | najmniejszy plain trimesh: 1 mesh, zero skin/animacji/unsupported, poprawny zerowy MDX | `CANONICAL_PACKET_PASS`; M1B `VERIFYING` |
-| R5 | `c_vampire_f`, `cep3_core1.hak`, type 2002 | canonical `legacy17`, boundary `0x2d4`, map count `28`; 17/64 to width, nie capacity | `CANONICAL_PACKET_PASS`; M1B `VERIFYING` |
+| R5 | `c_vampire_f`, `cep3_core1.hak`, type 2002 | canonical `legacy17`, boundary `0x2d4`, reachable nodes `28`, 2 skin nodes, map/q/t/constants counts `28,28`; 17/64 to width, nie capacity | `CANONICAL_PACKET_PASS`; M1B `DONE` |
 | R6 | `c_eye`, `cep3_core1.hak`, type 2002 | `dangly` jako structured unsupported diagnostic przy zachowanych 6 mesh common prefixes | `CANONICAL_PACKET_PASS`; M1B `VERIFYING` |
 
 R1-R3 nie sa payloadami projektu. Zapisane sa jedynie ich locator, typ, cechy i hash odczytany lokalnie podczas evidence run.

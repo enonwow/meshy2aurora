@@ -3,6 +3,7 @@
 pub mod erf;
 pub mod glb;
 pub mod mdl;
+pub mod profile_a;
 pub mod reference_proof;
 
 pub use mdl::{

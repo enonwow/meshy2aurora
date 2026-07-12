@@ -106,7 +106,7 @@ To jest nazwany problem `GB-001-SKIN`, a nie powod do zgadywania. Zamkniecie:
 4. oba warianty, jesli realnie wystepuja, maja oddzielne testy;
 5. `17/64` jest szerokoscia inline mappingu/header boundary, nie capacity limitem `map count`, bind arrays ani bone refs.
 
-Canonical M1B bug evidence obserwuje `c_vampire_f` legacy17 z count `28` oraz `c_kocrachn` extended64 z count `38`; `0xffff` w `c_kocrachn` wystepuje w zero-weight lanes. Parser fix i finalny P-REF sa `PENDING`. Nie jest to jeszcze dowod emission/runtime acceptance writera.
+Canonical M1B evidence obserwuje `c_vampire_f` legacy17 z 2 skin nodes i count `28,28` oraz `c_kocrachn` extended64 z 3 skin nodes i count `38,38,38`; `0xffff` w `c_kocrachn` wystepuje w zero-weight lanes. Parser fix i finalny P-REF sa `DONE` dla readera. Nie jest to jeszcze dowod emission/runtime acceptance writera.
 
 ## 7. TDD i warunek zamkniecia GB-001
 
@@ -123,3 +123,23 @@ writer_gates:
 ```
 
 GB-001 ma status `DIRECTION_DEFINED_EVIDENCE_OPEN`: mozna projektowac IR i testy, ale M4 nie jest `DONE`, dopoki finalny proof nie przejdzie.
+
+## 8. Wejscie writera po M3
+
+M4 przyjmuje wyłącznie zwalidowany, writer-ready `AuroraCreatureIrV1` z
+`m3-profile-a-conversion-kontrakt-suplement-codex.md`. Nie przyjmuje bezposrednio
+source-preserving `AuroraAssetIr` i nie powtarza wyboru default scene, instance
+bake, basis/scale/alignment, segmentacji ani transferu wag.
+
+Mapowanie odpowiedzialnosci:
+
+```yaml
+M3_AuroraCreatureIrV1:
+  nodes: "exact clean-room rig nodes and target bind-local matrices"
+  segments: "rig-parent-local geometry, materialSlot, SKIN weights 1..4 or RIGID weights empty"
+  materialSourceBindings: "diagnostic source binding only; M5 owns texture output"
+M4_binary_writer:
+  consumes: "AuroraCreatureIrV1"
+  owns: "binary node layout, MDX buffers, offsets/pointers, empty-lane sentinel, readback"
+  forbidden: "source GLB scene traversal or reinterpretation of source node hierarchy"
+```

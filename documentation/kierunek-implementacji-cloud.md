@@ -1,6 +1,6 @@
 # kierunek-implementacji-cloud.md
 
-Status 2026-07-09: AKTYWNY TYLKO Z KOREKTA D7-D9. Sekcje sprzed "AKTUALIZACJA 2026-07-08: decyzja D7" sa historyczne, jesli sugeruja `aurora-web` jako oracle/proof/CLI albo ASCII MDL jako format runtime. Aktualny kierunek: standalone `binary MDL/MDX policy + 2DA + HAK`, proof przez NWN EE.
+Status 2026-07-12: HISTORYCZNY KIERUNEK, ZASTAPIONY DLA M3 przez `m3-profile-a-conversion-kontrakt-suplement-codex.md` i `animacje-kontrakt-profil-a-codex.md`. Ponizsze twierdzenia o kopiowaniu szkieletu/wag `c_kocrachn` i dziedziczeniu `c_Horror` nie sa aktywna polityka produktu. CEP/retail sa read-only observations; eksportowalny rig ma provenance `SYNTHETIC`, `OWNED` albo `USER_PROVIDED` z `exportAllowed=true`. Zachowujemy tekst ponizej jako historie decyzji. Sekcje sprzed "AKTUALIZACJA 2026-07-08: decyzja D7" sa rowniez historyczne, jesli sugeruja `aurora-web` jako oracle/proof/CLI albo ASCII MDL jako format runtime. Aktualny kierunek: standalone `binary MDL/MDX policy + 2DA + HAK`, self-contained proof przez NWN EE.
 Data: 2026-07-08 | Status: REKOMENDACJA (do akceptacji: Mateusz)
 Podstawa: mdl-2da-hak-odpowiedz-codex.md, aurora-*-codex.md (komplet 2026-07-08), meshy-api-cloud.md, cel-projektu-cloud.md.
 

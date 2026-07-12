@@ -283,17 +283,17 @@ documentation:
 ```yaml
 id: "M3"
 initial_status: "NOT_STARTED"
-goal: "przeksztalcic Meshy geometry do AuroraAssetIR creature z potwierdzona osia, skala, budzetem i strategy skeletonu"
+goal: "przeksztalcic default-scene Meshy geometry z source-preserving AuroraAssetIR do osobnego writer-ready AuroraCreatureIrV1 z potwierdzona osia, skala, budzetem i clean-room rig profile"
 owner: "implementation agent"
 dependencies: ["M1B DONE", "M1C DONE or equivalent read-only reference path", "M2 DONE"]
 scope:
   - "axis and scale normalization"
   - "triangle/material budget gates"
   - "UV V flip policy"
-  - "reference skeleton segmentation and max four normalized weights"
-  - "reference-supermodel animation strategy for non-humanoid creature"
+  - "owned/synthetic/user-provided rig segmentation and max four normalized weights"
+  - "default-scene reachable mesh instance bake; source hierarchy does not enter output"
 out_of_scope:
-  - "own retargeted animation clips in the first supermodel proof; they are required in M4A"
+  - "own retargeted animation clips; they are required in M4A"
   - "manual rig authoring"
 definition_of_done:
   - "axis and UV fixtures pass"
@@ -301,12 +301,17 @@ definition_of_done:
   - "over-budget or invalid skin input is blocked"
   - "no reference payload is packaged or committed"
 current_problems_initial:
-  - "reference skeleton/weight transfer is not implemented"
+  - "clean-room rig profile segmentation/weight transfer is not implemented"
   - "first real Meshy GLB is not yet supplied"
+progress_2026_07_12:
+  - "M3A RIGID single-segment conversion implemented and independently reviewed: NO FINDINGS P1=0/P2=0"
+  - "118 workspace tests, 22 Profile-A tests and 12 Node/WASM tests pass"
+  - "M3B segment assignment/SKIN/top-four weights and public WASM conversion parity remain required before M3 DONE"
 bugs_initial: []
 documentation:
   - "documentation/kierunek-implementacji-cloud.md"
   - "documentation/konwersja-meshy-odpowiedz-codex.md"
+  - "documentation/m3-profile-a-conversion-kontrakt-suplement-codex.md"
   - "documentation/evidence/M3-evidence.md"
 ```
 
@@ -315,10 +320,11 @@ documentation:
 ```yaml
 id: "M4"
 initial_status: "NOT_STARTED"
-goal: "wyemitowac native binary MDL z AuroraAssetIR i odczytac go ponownie wlasnym parserem"
+goal: "wyemitowac native binary MDL z writer-ready AuroraCreatureIrV1 i odczytac go ponownie wlasnym parserem"
 owner: "implementation agent"
 dependencies: ["M1B DONE", "M3 DONE", "GB-001 direction defined", "GB-002 profile-A decision recorded"]
 scope:
+  - "consume only validated M3 AuroraCreatureIrV1; never reinterpret source-preserving AuroraAssetIR directly"
   - "deterministic binary layout writer"
   - "pointer/offset planner"
   - "profile-A appended MDX block inside the type-2002 MDL resource"
