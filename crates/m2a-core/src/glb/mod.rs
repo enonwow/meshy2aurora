@@ -1,14 +1,41 @@
-use std::{collections::HashSet, fmt};
+use std::{collections::HashSet, fmt, io::Cursor};
 
 use gltf::{
     mesh::{Mode, Semantic},
     texture::{MagFilter, MinFilter, WrappingMode},
 };
+use image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader, Limits as ImageLimits};
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+use crate::tga::{TGA_MAX_OUTPUT_BYTES, TGA_SCHEMA_VERSION, TgaImageV1, TgaPixelFormatV1};
+
 pub const GLB_SCHEMA_VERSION: u32 = 1;
+pub const MAX_DECODED_IMAGE_DIMENSION_V1: u32 = 16_384;
+pub const MAX_DECODED_IMAGE_PIXELS_V1: u64 = 16 * 1024 * 1024;
+const TGA_CONTAINER_OVERHEAD_V1: u64 = 18 + 26;
+pub const MAX_DECODED_IMAGE_BYTES_V1: u64 = TGA_MAX_OUTPUT_BYTES - TGA_CONTAINER_OVERHEAD_V1;
+const MAX_IMAGE_DECODER_ALLOCATION_BYTES_V1: u64 = MAX_DECODED_IMAGE_PIXELS_V1 * 8;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct EmbeddedImageDecodeLimitsV1 {
+    pub max_width: u32,
+    pub max_height: u32,
+    pub max_pixels: u64,
+    pub max_decoded_bytes: u64,
+}
+
+impl Default for EmbeddedImageDecodeLimitsV1 {
+    fn default() -> Self {
+        Self {
+            max_width: MAX_DECODED_IMAGE_DIMENSION_V1,
+            max_height: MAX_DECODED_IMAGE_DIMENSION_V1,
+            max_pixels: MAX_DECODED_IMAGE_PIXELS_V1,
+            max_decoded_bytes: MAX_DECODED_IMAGE_BYTES_V1,
+        }
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GlbLimits {
@@ -407,6 +434,199 @@ pub struct GlbDiagnostic {
     pub byte_offset: Option<usize>,
     pub json_path: Option<String>,
     pub message: String,
+}
+
+pub fn decode_embedded_image_to_tga_v1(
+    input: &[u8],
+    image_index: usize,
+    glb_limits: &GlbLimits,
+    decode_limits: &EmbeddedImageDecodeLimitsV1,
+) -> Result<TgaImageV1, GlbFatalError> {
+    validate_embedded_image_decode_limits(decode_limits)?;
+
+    let ingest = ingest_glb(input, glb_limits)?;
+    let image_ref = ingest.ir.images.get(image_index).ok_or_else(|| {
+        GlbFatalError::new(
+            "M2A-GLB-IMAGE-INDEX-INVALID",
+            format!(
+                "image index {image_index} is outside the {} embedded images",
+                ingest.ir.images.len()
+            ),
+        )
+        .in_json(format!("images[{image_index}]"))
+    })?;
+    let (_, blob) = glb_payloads(input)?;
+    let byte_end = image_ref
+        .byte_offset
+        .checked_add(image_ref.byte_length)
+        .ok_or_else(|| {
+            GlbFatalError::new(
+                "M2A-GLB-INTEGER-OVERFLOW",
+                "embedded image byte range overflow",
+            )
+            .in_json(format!("images[{image_index}].bufferView"))
+        })?;
+    let bytes = blob.get(image_ref.byte_offset..byte_end).ok_or_else(|| {
+        GlbFatalError::new(
+            "M2A-GLB-BUFFER-VIEW-OOB",
+            "embedded image byte range exceeds the BIN chunk",
+        )
+        .in_json(format!("images[{image_index}].bufferView"))
+    })?;
+    let declared_format = match image_ref.mime_type.as_str() {
+        "image/png" => ImageFormat::Png,
+        "image/jpeg" => ImageFormat::Jpeg,
+        _ => {
+            return Err(GlbFatalError::new(
+                "M2A-GLB-IMAGE-MIME-UNSUPPORTED",
+                "embedded image mimeType must be image/png or image/jpeg",
+            )
+            .in_json(format!("images[{image_index}].mimeType")));
+        }
+    };
+    if let Some(detected_format) = detect_supported_image_format(bytes)
+        && detected_format != declared_format
+    {
+        return Err(GlbFatalError::new(
+            "M2A-GLB-IMAGE-MIME-MISMATCH",
+            format!(
+                "declared {} does not match embedded {} bytes",
+                image_ref.mime_type,
+                image_format_name(detected_format)
+            ),
+        )
+        .in_json(format!("images[{image_index}].mimeType")));
+    }
+
+    let mut decoder_limits = ImageLimits::default();
+    decoder_limits.max_image_width = Some(decode_limits.max_width);
+    decoder_limits.max_image_height = Some(decode_limits.max_height);
+    decoder_limits.max_alloc = Some(MAX_IMAGE_DECODER_ALLOCATION_BYTES_V1);
+    let mut decode_reader = ImageReader::with_format(Cursor::new(bytes), declared_format);
+    decode_reader.limits(decoder_limits);
+    let decoder = decode_reader.into_decoder().map_err(|error| {
+        map_embedded_image_decode_error(error, image_index, "could not initialize image decoder")
+    })?;
+    let (width, height) = decoder.dimensions();
+    let pixel_count = u64::from(width)
+        .checked_mul(u64::from(height))
+        .ok_or_else(|| embedded_image_limit_error(image_index, "pixel count overflows u64"))?;
+    if pixel_count > decode_limits.max_pixels {
+        return Err(embedded_image_limit_error(
+            image_index,
+            format!(
+                "decoded image has {pixel_count} pixels but the configured limit is {}",
+                decode_limits.max_pixels
+            ),
+        ));
+    }
+
+    let source_decoded_bytes = decoder.total_bytes();
+    if source_decoded_bytes > MAX_IMAGE_DECODER_ALLOCATION_BYTES_V1 {
+        return Err(embedded_image_limit_error(
+            image_index,
+            format!(
+                "source image decoder requires {source_decoded_bytes} bytes but the internal v1 limit is {MAX_IMAGE_DECODER_ALLOCATION_BYTES_V1}"
+            ),
+        ));
+    }
+    let has_alpha = decoder.color_type().has_alpha();
+    let channel_count = if has_alpha { 4_u64 } else { 3_u64 };
+    let decoded_bytes = pixel_count.checked_mul(channel_count).ok_or_else(|| {
+        embedded_image_limit_error(image_index, "decoded byte count overflows u64")
+    })?;
+    if decoded_bytes > decode_limits.max_decoded_bytes {
+        return Err(embedded_image_limit_error(
+            image_index,
+            format!(
+                "decoded image requires {decoded_bytes} bytes but the configured limit is {}",
+                decode_limits.max_decoded_bytes
+            ),
+        ));
+    }
+    let decoded = DynamicImage::from_decoder(decoder).map_err(|error| {
+        map_embedded_image_decode_error(error, image_index, "could not decode embedded image")
+    })?;
+
+    let (pixel_format, pixels) = if has_alpha {
+        (TgaPixelFormatV1::Rgba8, decoded.into_rgba8().into_raw())
+    } else {
+        (TgaPixelFormatV1::Rgb8, decoded.into_rgb8().into_raw())
+    };
+    if u64::try_from(pixels.len()).ok() != Some(decoded_bytes) {
+        return Err(GlbFatalError::new(
+            "M2A-GLB-IMAGE-DECODE-INVALID",
+            "decoded pixel buffer length does not match image dimensions",
+        )
+        .in_json(format!("images[{image_index}].bufferView")));
+    }
+
+    Ok(TgaImageV1 {
+        schema_version: TGA_SCHEMA_VERSION,
+        width,
+        height,
+        pixel_format,
+        pixels,
+    })
+}
+
+fn validate_embedded_image_decode_limits(
+    limits: &EmbeddedImageDecodeLimitsV1,
+) -> Result<(), GlbFatalError> {
+    if limits.max_width == 0
+        || limits.max_height == 0
+        || limits.max_pixels == 0
+        || limits.max_decoded_bytes == 0
+        || limits.max_width > MAX_DECODED_IMAGE_DIMENSION_V1
+        || limits.max_height > MAX_DECODED_IMAGE_DIMENSION_V1
+        || limits.max_pixels > MAX_DECODED_IMAGE_PIXELS_V1
+        || limits.max_decoded_bytes > MAX_DECODED_IMAGE_BYTES_V1
+    {
+        return Err(GlbFatalError::new(
+            "M2A-GLB-IMAGE-DECODE-LIMIT-EXCEEDED",
+            "image decode limits must be non-zero and no greater than their v1 maxima",
+        ));
+    }
+    Ok(())
+}
+
+fn detect_supported_image_format(bytes: &[u8]) -> Option<ImageFormat> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some(ImageFormat::Png)
+    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        Some(ImageFormat::Jpeg)
+    } else {
+        None
+    }
+}
+
+fn image_format_name(format: ImageFormat) -> &'static str {
+    match format {
+        ImageFormat::Png => "PNG",
+        ImageFormat::Jpeg => "JPEG",
+        _ => "unsupported image",
+    }
+}
+
+fn map_embedded_image_decode_error(
+    error: image::ImageError,
+    image_index: usize,
+    context: &str,
+) -> GlbFatalError {
+    if matches!(error, image::ImageError::Limits(_)) {
+        embedded_image_limit_error(image_index, format!("{context}: {error}"))
+    } else {
+        GlbFatalError::new(
+            "M2A-GLB-IMAGE-DECODE-INVALID",
+            format!("{context}: {error}"),
+        )
+        .in_json(format!("images[{image_index}].bufferView"))
+    }
+}
+
+fn embedded_image_limit_error(image_index: usize, message: impl Into<String>) -> GlbFatalError {
+    GlbFatalError::new("M2A-GLB-IMAGE-DECODE-LIMIT-EXCEEDED", message)
+        .in_json(format!("images[{image_index}].bufferView"))
 }
 
 pub fn inspect_glb(input: &[u8], limits: &GlbLimits) -> Result<GlbInspectionReport, GlbFatalError> {

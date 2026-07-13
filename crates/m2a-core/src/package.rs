@@ -44,12 +44,32 @@ pub struct PackageManifestV1 {
     pub resources: Vec<PackageManifestResourceV1>,
 }
 
+/// Complete model-only package output produced by one deterministic HAK write.
+///
+/// The manifest is derived from `hak` after own-readback; the HAK is never
+/// regenerated while composing this artifact.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ModelPackageArtifactV1 {
+    pub hak: HakArtifactV1,
+    pub manifest: PackageManifestV1,
+}
+
+/// Composes the three ready model-package payloads (binary MDL with appended
+/// MDX, TGA and appended `appearance.2da`) into one HAK plus its manifest.
+pub fn write_model_package_v1(
+    resources: &[HakResourceInputV1],
+    options: &HakWriterOptionsV1,
+) -> Result<ModelPackageArtifactV1, HakWriteError> {
+    let hak = write_hak_v1(resources, options)?;
+    let manifest = build_package_manifest_from_artifact(resources, &hak)?;
+    Ok(ModelPackageArtifactV1 { hak, manifest })
+}
+
 pub fn write_package_manifest_v1(
     resources: &[HakResourceInputV1],
     options: &HakWriterOptionsV1,
 ) -> Result<PackageManifestV1, HakWriteError> {
-    let artifact = write_hak_v1(resources, options)?;
-    build_package_manifest_from_artifact(resources, &artifact)
+    write_model_package_v1(resources, options).map(|artifact| artifact.manifest)
 }
 
 fn build_package_manifest_from_artifact(

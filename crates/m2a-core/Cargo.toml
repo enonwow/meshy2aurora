@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 gltf = { version = "=1.4.1", default-features = false, features = ["extensions", "names", "utils"] }
+image = { version = "=0.25.8", default-features = false, features = ["jpeg", "png"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

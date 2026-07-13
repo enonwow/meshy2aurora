@@ -1,4 +1,4 @@
-# M6 evidence - generated native module proof
+# M6 evidence - generated native model proof
 
 Data: 2026-07-13
 
@@ -6,7 +6,7 @@ Data: 2026-07-13
 stage: M6
 status: IN_PROGRESS
 attempt_id: M6-20260713-01
-active_slice: M6A_DONE_M6B_PRESET_NEXT
+active_slice: M6B_MODEL_PACKAGE_BRIDGE_DONE_LIVE_PROOF_NEXT
 runtime_proof: NOT_RUN
 retail_payload_committed: false
 ```
@@ -18,11 +18,11 @@ deterministic TGA, preserve-and-append 2DA, HAK V1.0, PackageManifest oraz
 publiczny boundary WASM z own-readback i frozen native/WASM byte proof.
 
 M6 nie traktuje tych bramek jako runtime acceptance. Celem etapu jest wlasny,
-wygenerowany modul NWN EE oraz rzeczywisty proof w Aurora Toolset i grze.
+wygenerowany pakiet modelu oraz rzeczywisty proof w Aurora Toolset i grze.
 
 ## 2. M6A contract-lock
 
-Aktywne, read-only badanie Aurora First obejmuje:
+Historyczne, read-only badanie Aurora First obejmowalo:
 
 - wspolny binary layout GFF V3.2;
 - minimalne typed UTC/IFO/ARE/GIT wymagane do proofu creature;
@@ -40,9 +40,11 @@ fixture source ani kodem do kopiowania.
 ```yaml
 gff_contract: LOCKED_P1_0_P2_0
 typed_utc_ifo_are_git_gic_schema: LOCKED
-typed_generated_gameplay_preset: NOT_READY
+typed_generated_gameplay_preset: DEFERRED_OUT_OF_ACTIVE_SCOPE
 mod_container_contract: LOCKED_STRUCTURAL
 own_writer_readback: DONE
+embedded_png_jpeg_decode: DONE
+model_package_compositor: DONE
 generated_file_packet: NOT_STARTED
 toolset_acceptance: NOT_RUN
 game_acceptance: NOT_RUN
@@ -67,10 +69,9 @@ FieldData/FieldIndices/ListIndices ownership, graph cycle/reuse, frozen traversa
 phases, LocString schema, precedence, inclusive limit scopes, official PDF vs
 Aurora errata oraz provenance typed packets. Final rereview: `P1=0; P2=0`.
 
-Typed ordered schemas UTC67, IFO55, ARE43/tile10, GIT70 i GIC sa `READY` dla
-writer/readback TDD. Generated gameplay preset pozostaje `NOT_READY`: nie sa
-jeszcze zamrozone Feat/Class/Equip values ani legalny synthetic
-`Tileset + Tile_ID`. Ta luka nie blokuje generic M6A GFF core.
+Typed ordered schemas UTC67, IFO55, ARE43/tile10, GIT70 i GIC pozostaja future
+infrastructure. Po korekcie zakresu nie sa aktywna sciezka modelowego proofu;
+Feat/Class/Equip oraz synthetic Tileset/Tile_ID nie sa blockerami produktu.
 
 ## 5. M6A GFF core implementation evidence
 
@@ -127,3 +128,38 @@ infrastructure, ale nie prowadza teraz dalszej implementacji. Aktywna sciezka
 M6 to generated binary MDL+MDX, TGA, appended appearance.2da i HAK, sprawdzone
 na Toolset-created lub istniejacym known-good test creature/module. Scaffold
 nie jest outputem produktu i nie wymaga generowania klas, featow ani ekwipunku.
+
+## 7. M6B model-package bridge
+
+Zamknieto dwa rzeczywiste braki pomiedzy osobnymi writerami a pakietem modelu:
+
+- `decode_embedded_image_to_tga_v1` dekoduje osadzony PNG/JPEG z GLB do
+  limitowanego `TgaImageV1` RGB8/RGBA8; kontroluje MIME, zakres `bufferView`,
+  wymiary, liczbe pikseli, wewnetrzna alokacje dekodera i finalny limit TGA;
+- `write_model_package_v1` wykonuje jeden HAK write i buduje manifest z tego
+  samego own-readback artifact;
+- WASM `writeModelPackageV1` zwraca raport i manifest jako JSON, a HAK przekazuje
+  jednokrotnie przez `takeHakBytes()` bez base64 i bez klonowania bufora.
+
+```yaml
+embedded_image_tests: "6/6 PASS"
+package_manifest_tests: "6/6 PASS"
+workspace_tests: "287/287 PASS"
+workspace_clippy_all_targets_deny_warnings: PASS
+cargo_fmt_check: PASS
+wasm32_build: PASS
+wasm_pack_node: "19/19 PASS"
+node_boundary: PASS
+git_diff_check: PASS
+decoder_review_initial: "P1=0; P2=1"
+decoder_review_final: "P1=0; P2=0"
+compositor_review_initial: "P1=0; P2=1"
+compositor_review_final: "P1=0; P2=0"
+generated_file_packet: NOT_STARTED
+runtime_proof: NOT_RUN
+```
+
+Nastepny krok nie wymaga klas ani generowania modulu: materializacja realnego
+`MDL+MDX`, TGA, appended `appearance.2da`, HAK i manifestu z owned/synthetic
+source, a potem proof na istniejacym `sandbox.mod` przy uzyciu test creature
+utworzonego w Toolsecie.

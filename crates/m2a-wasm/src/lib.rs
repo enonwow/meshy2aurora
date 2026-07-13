@@ -652,6 +652,67 @@ fn write_package_manifest_v1_json_inner(
         .map_err(|error| serialize_json(&error))
 }
 
+/// Model-only package result returned from one core composition pass.
+///
+/// JavaScript receives HAK bytes separately from JSON metadata, so binary
+/// payloads never cross the boundary as base64.
+#[wasm_bindgen]
+pub struct ModelPackageArtifactV1 {
+    hak_bytes: Vec<u8>,
+    report_json: String,
+    manifest_json: String,
+}
+
+#[wasm_bindgen]
+impl ModelPackageArtifactV1 {
+    /// Transfers ownership of the HAK buffer to JavaScript exactly once.
+    /// Later calls deterministically return an empty `Uint8Array`.
+    #[wasm_bindgen(js_name = takeHakBytes)]
+    pub fn take_hak_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.hak_bytes)
+    }
+
+    #[wasm_bindgen(getter, js_name = reportJson)]
+    pub fn report_json(&self) -> String {
+        self.report_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = manifestJson)]
+    pub fn manifest_json(&self) -> String {
+        self.manifest_json.clone()
+    }
+}
+
+fn write_model_package_v1_inner(
+    payload_blob: &[u8],
+    resources_json: &str,
+    options_json: &str,
+) -> Result<ModelPackageArtifactV1, String> {
+    let (resources, options) = parse_hak_boundary(payload_blob, resources_json, options_json)?;
+    let artifact = m2a_core::package::write_model_package_v1(&resources, &options)
+        .map_err(|error| serialize_json(&error))?;
+    Ok(ModelPackageArtifactV1 {
+        report_json: serialize_json(&artifact.hak.report),
+        manifest_json: serialize_json(&artifact.manifest),
+        hak_bytes: artifact.hak.payload,
+    })
+}
+
+/// Composes ready binary MDL+MDX, TGA and appended appearance.2da payloads.
+///
+/// One call performs one HAK write and returns its bytes, report and exact
+/// manifest. Call `takeHakBytes()` once to transfer the binary buffer without
+/// cloning it.
+#[wasm_bindgen(js_name = writeModelPackageV1)]
+pub fn write_model_package_v1(
+    payload_blob: &[u8],
+    resources_json: &str,
+    options_json: &str,
+) -> Result<ModelPackageArtifactV1, JsValue> {
+    write_model_package_v1_inner(payload_blob, resources_json, options_json)
+        .map_err(|error| JsValue::from_str(&error))
+}
+
 /// Returns the deterministic manifest sidecar after successful HAK own-readback.
 #[wasm_bindgen(js_name = writePackageManifestV1Json)]
 pub fn write_package_manifest_v1_json(
@@ -669,9 +730,10 @@ mod m5_native_tests {
         HakResourceDescriptorV1, HakResourceDescriptorsV1, append_two_da_row_artifact_json,
         append_two_da_row_v1, append_two_da_row_v1_report_json, inspect_two_da_v2_json,
         inspect_two_da_v2_json_inner, materialize_hak_resources, serialize_json,
-        write_hak_artifact_json, write_hak_v1, write_hak_v1_report_json,
-        write_package_manifest_v1_json, write_package_manifest_v1_json_inner,
-        write_tga_artifact_json, write_tga_v1, write_tga_v1_report_json,
+        write_hak_artifact_json, write_hak_v1, write_hak_v1_report_json, write_model_package_v1,
+        write_model_package_v1_inner, write_package_manifest_v1_json,
+        write_package_manifest_v1_json_inner, write_tga_artifact_json, write_tga_v1,
+        write_tga_v1_report_json,
     };
     use m2a_core::hak::{HakResourceInputV1, HakWriterOptionsV1};
     use m2a_core::tga::{TgaImageV1, TgaPixelFormatV1, TgaWriterOptionsV1};
@@ -941,6 +1003,48 @@ mod m5_native_tests {
                 expected.1
             );
         }
+    }
+
+    #[test]
+    fn model_package_adapter_returns_one_core_artifact_with_native_parity() {
+        let base_entries = package_entries();
+        let (blob, descriptors, resources) = hak_boundary(&base_entries);
+        let options = HakWriterOptionsV1::default();
+        let resources_json = serde_json::to_string(&descriptors).unwrap();
+        let options_json = serde_json::to_string(&options).unwrap();
+        let before = (blob.clone(), resources_json.clone(), options_json.clone());
+        let core = m2a_core::package::write_model_package_v1(&resources, &options).unwrap();
+
+        let mut wasm = write_model_package_v1_inner(&blob, &resources_json, &options_json).unwrap();
+        assert_eq!(
+            wasm.report_json(),
+            serde_json::to_string(&core.hak.report).unwrap()
+        );
+        assert_eq!(
+            wasm.manifest_json(),
+            serde_json::to_string(&core.manifest).unwrap()
+        );
+        assert_eq!((blob, resources_json, options_json), before);
+        assert!(!wasm.report_json().to_ascii_lowercase().contains("base64"));
+        assert!(!wasm.manifest_json().to_ascii_lowercase().contains("base64"));
+        assert_eq!(wasm.take_hak_bytes(), core.hak.payload);
+        assert!(wasm.take_hak_bytes().is_empty());
+
+        for order in [[2, 0, 1], [1, 2, 0]] {
+            let entries = order.map(|index| base_entries[index]);
+            let (blob, descriptors, _) = hak_boundary(&entries);
+            let resources_json = serde_json::to_string(&descriptors).unwrap();
+            let mut candidate =
+                write_model_package_v1_inner(&blob, &resources_json, &before.2).unwrap();
+            assert_eq!(candidate.manifest_json(), wasm.manifest_json());
+            assert_eq!(candidate.take_hak_bytes(), core.hak.payload);
+            assert!(candidate.take_hak_bytes().is_empty());
+        }
+
+        let mut public = write_model_package_v1(&before.0, &before.1, &before.2).unwrap();
+        assert_eq!(public.manifest_json(), wasm.manifest_json());
+        assert_eq!(public.take_hak_bytes(), core.hak.payload);
+        assert!(public.take_hak_bytes().is_empty());
     }
 
     #[test]

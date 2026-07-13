@@ -3,7 +3,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use m2a_core::hak::{HakResourceInputV1, HakWriterOptionsV1, RESREF_INVALID, write_hak_v1};
 use m2a_core::package::{
     PACKAGE_RESOURCE_INVALID, PACKAGE_ROLE_DUPLICATE, PACKAGE_ROLE_MISSING, PackageManifestV1,
-    PackageResourceRoleV1, write_package_manifest_v1,
+    PackageResourceRoleV1, write_model_package_v1, write_package_manifest_v1,
 };
 
 fn resource(resref: &str, resource_type: u16, payload: &[u8]) -> HakResourceInputV1 {
@@ -11,6 +11,83 @@ fn resource(resref: &str, resource_type: u16, payload: &[u8]) -> HakResourceInpu
         resref: resref.to_owned(),
         resource_type,
         payload: payload.to_vec(),
+    }
+}
+
+#[test]
+fn model_package_is_one_deterministic_hak_with_exact_manifest_parity() {
+    let resources = profile_resources();
+    let before = resources.clone();
+    let options = HakWriterOptionsV1::default();
+    let first = write_model_package_v1(&resources, &options).unwrap();
+    let second = write_model_package_v1(&resources, &options).unwrap();
+
+    assert_eq!(first, second);
+    assert_eq!(resources, before);
+    assert_eq!(
+        first.manifest.package_sha256,
+        first.hak.report.archive_sha256
+    );
+    assert_eq!(
+        first.manifest.resources.len(),
+        first.hak.report.resources.len()
+    );
+    for (manifest, report) in first
+        .manifest
+        .resources
+        .iter()
+        .zip(&first.hak.report.resources)
+    {
+        assert_eq!(manifest.resref, report.resref);
+        assert_eq!(manifest.resource_type, report.resource_type);
+        assert_eq!(manifest.byte_length, u64::from(report.payload_size));
+        assert_eq!(manifest.sha256, report.payload_sha256);
+        assert_eq!(manifest.hak_resource_id, report.resource_id);
+        assert_eq!(manifest.hak_payload_offset, report.payload_offset);
+    }
+}
+
+#[test]
+fn model_package_is_permutation_invariant_and_invalid_roles_never_panic() {
+    let items = profile_resources();
+    let expected = write_model_package_v1(&items, &HakWriterOptionsV1::default()).unwrap();
+    for permutation in [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ] {
+        let input = permutation.map(|index| items[index].clone());
+        assert_eq!(
+            write_model_package_v1(&input, &HakWriterOptionsV1::default()).unwrap(),
+            expected
+        );
+    }
+
+    let invalid = [
+        vec![resource("model", 2002, b"mdl")],
+        vec![
+            resource("appearance", 2017, b"2da"),
+            resource("model_a", 2002, b"a"),
+            resource("model_b", 2002, b"b"),
+        ],
+        vec![
+            resource("appearance_alt", 2017, b"2da"),
+            resource("model", 2002, b"mdl"),
+            resource("texture", 3, b"tga"),
+        ],
+    ];
+    for resources in invalid {
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            write_model_package_v1(&resources, &HakWriterOptionsV1::default())
+        }));
+        assert!(
+            result
+                .expect("invalid model package must not panic")
+                .is_err()
+        );
     }
 }
 

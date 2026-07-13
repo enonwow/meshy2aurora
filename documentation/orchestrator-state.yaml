@@ -60,11 +60,11 @@ global_blockers:
     severity: "P0"
     status: "DIRECTION_DEFINED_RUNTIME_OPEN"
     title: "2DA existing-table edit contract"
-    detail: "M5 implements and proves preserve-and-append 2DA plus deterministic HAK/own-readback. Generic GFF and typed UTC/IFO/ARE/GIT/MOD remain M6 contract work; NWN EE resolution remains runtime-open."
+    detail: "M5 implements preserve-and-append 2DA plus deterministic HAK/own-readback. M6B now adds embedded PNG/JPEG decode and a one-write model-package compositor for MDL+MDX, TGA and appearance.2da. Gameplay classes and a generated module are outside the active model proof; NWN EE resolution remains runtime-open."
     affects: ["M5", "M6", "M7"]
     owner: "Codex"
     source: "documentation/hak-2da-gff-crosswalk-codex.md"
-    next_action: "Preserve the closed M5 2DA/HAK proof. In M6, freeze GFF and typed module-resource contracts, implement generated-only writers/readback, then prove the generated module without committing retail data."
+    next_action: "Materialize the generated model package without committing retail data, attach its HAK to the known-good test scaffold and prove model/texture/animation resolution in NWN EE."
   - id: "GB-005"
     severity: "P0"
     status: "RESOLVED_STRUCTURAL_RUNTIME_OPEN"
@@ -402,22 +402,28 @@ stages:
 
   M6:
     status: "IN_PROGRESS"
-    status_reason: "Owner scope correction: the product creates the model package, not gameplay classes or a complete module. M6A GFF infrastructure remains complete but typed UTC/IFO/ARE/GIT/GIC generation is deferred. Active M6 work is a real model/texture/2DA/HAK proof in a known-good Toolset/game scaffold."
+    status_reason: "Owner scope correction is active: the product creates a model package, not gameplay classes or a complete module. M6B embedded PNG/JPEG decode and the one-write core/WASM model-package compositor are complete with final P1=0/P2=0 reviews. Active work is materialization and live model/texture/animation proof in a known-good Toolset/game scaffold."
     owner: "Mateusz + implementation agent"
     risk: "HIGH"
     dependencies: ["M5 DONE"]
     current_problems:
+      - "No saved generated MDL/TGA/appearance.2da/HAK/manifest packet has been materialized from owned/synthetic source yet."
       - "No saved live proof packet yet demonstrates the generated model package in Toolset/game."
-      - "Headless visual proof is not available; final live Toolset/game proof is required."
     bugs: []
     next_actions: ["Generate the model package from owned/synthetic source, attach its HAK to a known-good test module, set a Toolset-created test creature to the appended appearance row, and capture Toolset/game/animation evidence."]
-    evidence: ["documentation/evidence/M6-evidence.md: M6A GFF core DONE; 19 integration / 3 private / 278 workspace PASS, frozen 96-byte GFF sha256:954af919e592c1abc0a92edef52a0c2855c8940c48199db3c0bd01a62601e5f1, Docker no-cache sha256:60ea3d147de1e2f14452fd4459b9f2580978a6be113a84b66f2acdd3fffc0793, final contract and code rereviews P1=0/P2=0"]
+    evidence: ["documentation/evidence/M6-evidence.md: M6A GFF core DONE; M6B embedded image decode 6/6, package 6/6, workspace 287/287, clippy/fmt/wasm32/wasm-pack 19/19/Node boundary PASS; decoder and compositor final reviews P1=0/P2=0"]
     documentation: ["documentation/m6-gff-module-kontrakt-suplement-codex.md", "documentation/m6-typed-resource-manifests-codex.md", "documentation/evidence/M6-evidence.md"]
     expected_artifacts: ["Generated binary MDL with appended MDX", "Generated TGA", "Appended appearance.2da", "Generated HAK and resource manifest", "Toolset screenshots", "Game screenshot", "Animation proof"]
     changed_files:
       - "crates/m2a-core/src/gff.rs"
       - "crates/m2a-core/src/lib.rs"
       - "crates/m2a-core/tests/gff.rs"
+      - "crates/m2a-core/src/glb/mod.rs"
+      - "crates/m2a-core/src/package.rs"
+      - "crates/m2a-core/tests/embedded_image_decode.rs"
+      - "crates/m2a-core/tests/package_manifest.rs"
+      - "crates/m2a-wasm/src/lib.rs"
+      - "crates/m2a-wasm/tests/node_boundary.cjs"
       - "documentation/m6-gff-module-kontrakt-suplement-codex.md"
       - "documentation/m6-typed-resource-manifests-codex.md"
       - "documentation/hak-2da-gff-crosswalk-codex.md"

@@ -107,8 +107,15 @@ const hak = wasm.writeHakV1(hakBlob, hakResources, hakOptions);
 assert.ok(hak instanceof Uint8Array);
 const hakReport = wasm.writeHakV1ReportJson(hakBlob, hakResources, hakOptions);
 const manifest = wasm.writePackageManifestV1Json(hakBlob, hakResources, hakOptions);
+const modelPackage = wasm.writeModelPackageV1(hakBlob, hakResources, hakOptions);
+const modelPackageHak = modelPackage.takeHakBytes();
 assert.equal(typeof hakReport, "string");
 assert.equal(typeof manifest, "string");
+assert.ok(modelPackageHak instanceof Uint8Array);
+assert.equal(modelPackage.takeHakBytes().byteLength, 0);
+assert.equal(modelPackage.reportJson, hakReport);
+assert.equal(modelPackage.manifestJson, manifest);
+assert.equal(sha256(modelPackageHak), HAK_SHA256);
 assert.equal(JSON.parse(hakReport).archiveSha256, JSON.parse(manifest).packageSha256);
 assert.equal(hak.byteLength, HAK_BYTE_LENGTH);
 assert.equal(sha256(hak), HAK_SHA256);
@@ -135,6 +142,8 @@ for (const value of [
   hakOptions,
   hakReport,
   manifest,
+  modelPackage.reportJson,
+  modelPackage.manifestJson,
 ]) {
   assert.equal(typeof value, "string");
   assert.ok(!value.toLowerCase().includes("base64"));
