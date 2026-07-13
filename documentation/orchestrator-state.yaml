@@ -21,6 +21,10 @@ status_vocabulary:
 orchestration:
   active_stage: "M6"
   next_ready_stage: "NONE"
+  goal_stages: ["M6", "M7", "S1"]
+  goal_sequence: "Complete M6, then M7, then S1; preserve one active implementation stage at a time."
+  goal_exclusions: ["S2", "F1-F10", "gameplay classes", "full generated module pipeline"]
+  goal_terminal_condition: "M6, M7 and S1 are DONE with their required code, artifacts, independent reviews and live/e2e evidence."
   next_action: "Build the generated model package (binary MDL with appended MDX, TGA, appended appearance.2da and HAK) and prove that model in a known-good Toolset/game test scaffold; do not build gameplay classes or a full generated module."
   one_active_stage_only: true
   current_attempt_id: "M6-20260713-01"
