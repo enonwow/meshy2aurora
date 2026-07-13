@@ -21,7 +21,7 @@ status_vocabulary:
 orchestration:
   active_stage: "M4A"
   next_ready_stage: "NONE"
-  next_action: "Implement M4A1.2 from the locked Aurora First contract: add separate MdlAnimationSetV1 writer/readback while preserving the frozen zero-animation M4 hash. Reader M4A1.1 is fixed and verified; M4A2 GLB-to-output-rig animation mapping remains required before M4A DONE."
+  next_action: "Implement M4A2 from the locked Aurora First contract: add convert_profile_a_with_animations_v1 with explicit source-node to output-rig mapping while preserving the default M3 RejectPresent behavior. M4A1 reader/writer/readback is verified."
   one_active_stage_only: true
   current_attempt_id: "M4A-20260712-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
@@ -69,11 +69,11 @@ global_blockers:
     severity: "P0"
     status: "DIRECTION_DEFINED_RUNTIME_OPEN"
     title: "Full animation contract"
-    detail: "Profile A uses self-contained generated clips; supermodel inheritance is a later compatibility route. The M4A structural writer contract is locked from decompilation and canonical R3, while animroot/event callback/state-routing/runtime tree acceptance remain OPEN_M6."
+    detail: "Profile A uses self-contained generated clips; supermodel inheritance is a later compatibility route. M4A1 reader/writer/readback is verified from decompilation, canonical R3 and synthetic owned fixtures, while M4A2 mapping remains structural work and animroot/event callback/state-routing/runtime tree acceptance remain OPEN_M6."
     affects: ["M4A", "M5", "M6", "M7"]
     owner: "Codex"
     source: "documentation/animacje-kontrakt-profil-a-codex.md"
-    next_action: "Implement M4A1 writer/readback and required M4A2 GLB mapper, then prove loader/movement/gameplay states and event behavior in NWN EE during M6."
+    next_action: "Implement the required M4A2 GLB mapper, then prove loader/movement/gameplay states and event behavior in NWN EE during M6."
 
 stages:
   P0:
@@ -322,28 +322,30 @@ stages:
 
   M4A:
     status: "IN_PROGRESS"
-    status_reason: "M4A1.1 reader correction is complete with status READER_FIXED_M4A1_WRITER_NEXT: u16/packed-key semantics, native/WASM, canonical R3/P-REF, Docker no-cache and final P1=0/P2=0 review pass. M4A remains IN_PROGRESS, not DONE: M4A1.2 MdlAnimationSetV1 writer/readback and M4A2 GLB-to-output-rig mapper are still required; runtime acceptance is OPEN_M6."
+    status_reason: "M4A1 reader correction and self-contained MdlAnimationSetV1 writer/readback are verified: workspace 169, writer 31, WASM 15, canonical R3/P-REF 1/1, Docker no-cache and two final P1=0/P2=0 rereviews pass. M4A remains IN_PROGRESS, not DONE: M4A2 GLB-to-output-rig mapper is still required; runtime acceptance is OPEN_M6."
     owner: "Codex orchestrator + M4A contract/review subagents"
     risk: "HIGH"
     attempt_id: "M4A-20260712-01"
     dependencies: ["M4 DONE", "GB-005 direction defined"]
     current_problems:
-      - "M4A1 separate MdlAnimationSetV1 writer/readback and its full happy/negative/mutation matrix are not implemented."
       - "M4A2 source GLB animation to output-rig/Aurora-local-space mapping is not implemented and remains required before M4A DONE."
       - "Animroot consumer, event-name callbacks, state routing/loop behavior, zero opaque runtime fields and rig-only animation-tree acceptance remain named OPEN_M6 facts, not structural blockers."
     bugs: []
     next_actions:
-      - "M4A1.2: add separate versioned MdlAnimationSetV1, LINEAR translation/rotation writer, rig-only dummy animation tree, events, own readback and semantic diff."
-      - "M4A1.3: prove zero/one/multiple clips, stable errors, exact EOF/core/raw layout, native/WASM identity and frozen M4 zero-animation SHA."
       - "M4A2: implement convert_profile_a_with_animations_v1 with a stage-private AllowMappedForM4A2 policy after full mapping validation; keep default M3 RejectPresent behavior unchanged and reject STEP/CUBICSPLINE/scale/weights."
-      - "After implementation gates, run independent P1/P2 review; defer Toolset/game runtime claims to M6."
-    evidence: ["documentation/evidence/M4A-evidence.md: READER_FIXED_M4A1_WRITER_NEXT; core 151, workspace 153, MDL 40, WASM 14, canonical R3/P-REF 1/1 exact packed counters, Docker no-cache and final P1=0/P2=0; M4A1.2/M4A2 pending"]
+      - "After M4A2 implementation gates, run independent P1/P2 review and set stage status DONE with status_reason DONE_STRUCTURAL; defer Toolset/game runtime acceptance to M6."
+    evidence: ["documentation/evidence/M4A-evidence.md: M4A1_WRITER_VERIFIED_M4A2_NEXT; core 167, workspace 169, MDL parser 40, writer 31, WASM 15, canonical R3/P-REF 1/1, frozen M4 SHA PASS, Docker no-cache sha256:3f5c035faf90fbe831b9fe7c11dd7bbd24cd3fe4d71ec3a54f37a7332e1d12a6, two final P1=0/P2=0; M4A2 pending"]
     documentation: ["documentation/m4a-animation-writer-kontrakt-suplement-codex.md", "documentation/evidence/M4A-evidence.md", "documentation/animacje-kontrakt-profil-a-codex.md", "documentation/m1b-kontrakt-suplement-codex.md"]
     expected_artifacts: ["MdlAnimationSetV1 and controller reader correction", "Animation writer/readback semantic diff and mutation matrix", "M4A2 GLB animation mapper", "Frozen zero-animation M4 regression", "M6 Toolset/game animation proof"]
     changed_files:
       - "crates/m2a-core/src/mdl/binary_reader.rs"
       - "crates/m2a-core/src/mdl/parse_binary_mdl.rs"
+      - "crates/m2a-core/src/mdl/mod.rs"
+      - "crates/m2a-core/src/mdl/semantic_readback.rs"
       - "crates/m2a-core/src/mdl/types.rs"
+      - "crates/m2a-core/src/mdl/write_binary_mdl.rs"
+      - "crates/m2a-core/src/mdl/writer_types.rs"
+      - "crates/m2a-core/src/profile_a.rs"
       - "crates/m2a-core/tests/mdl/parser.rs"
       - "crates/m2a-core/tests/mdl_writer.rs"
       - "crates/m2a-core/tests/erf_reference_integration.rs"

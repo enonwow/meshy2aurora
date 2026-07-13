@@ -1,6 +1,6 @@
 # M4A - suplement kontraktu self-contained animation writera
 
-Data: 2026-07-13 | Autor: Codex | Status: CONTRACT_LOCKED_IMPLEMENTATION_NEXT
+Data: 2026-07-13 | Autor: Codex | Status: M4A1_WRITER_VERIFIED_M4A2_NEXT
 
 ## 1. Cel, zakres i autorytet
 
@@ -434,5 +434,22 @@ R3/P-REF `1/1` z exact `966` controllers (`type8=43`, `type20=923`,
 `sha256:2c8e9c44c349cea030ed919ce705d8c51c5563da0735f08b9d650779989d57bb`,
 size `1195609328`, final review `P1=0/P2=0`.
 
-M4A pozostaje `IN_PROGRESS`. Nastepny slice to M4A1.2:
-`MdlAnimationSetV1` writer/readback; M4A2 nadal jest wymagane przed M4A DONE.
+W chwili checkpointu M4A1.1 nastepnym slice'em bylo M4A1.2
+`MdlAnimationSetV1` writer/readback; M4A2 pozostawalo wymagane przed M4A DONE.
+
+## 13. Implementation checkpoint M4A1.2
+
+Status: `M4A1_WRITER_VERIFIED_M4A2_NEXT`.
+
+M4A1 types/writer/readback/semantic diff oraz kompletna happy/negative/mutation
+matrix sa zaimplementowane i zweryfikowane. Frozen empty-set SHA pozostaje bez
+zmian. Publiczny WASM zwraca byte-identyczny payload i report wzgledem core.
+
+Finalne gate'y checkpointu: core `167`, workspace `169` (`167+2`), MDL parser
+`40`, MDL writer `31`, WASM Node `15`, canonical R3/P-REF `1/1`, fmt/clippy/
+wasm32/diff-check PASS, Docker no-cache digest
+`sha256:3f5c035faf90fbe831b9fe7c11dd7bbd24cd3fe4d71ec3a54f37a7332e1d12a6`,
+size `1224136248`, dwa finalne rereview `P1=0/P2=0`.
+
+M4A pozostaje `IN_PROGRESS`. Nastepny wymagany slice to M4A2 mapper; runtime
+acceptance pieciu nazwanych ograniczen nadal pozostaje `OPEN_M6`.

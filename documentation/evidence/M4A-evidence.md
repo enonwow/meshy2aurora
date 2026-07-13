@@ -5,7 +5,7 @@ Data: 2026-07-13
 ```yaml
 stage: M4A
 attempt_id: M4A-20260712-01
-status: READER_FIXED_M4A1_WRITER_NEXT
+status: M4A1_WRITER_VERIFIED_M4A2_NEXT
 done: false
 implementation_started: true
 runtime_proof: OPEN_M6
@@ -14,10 +14,10 @@ canonical_payload_committed: false
 
 ## 1. Aktualny wynik
 
-Aurora First contract-lock zostal zakonczony. Zamrozono layout AnimationHeader,
-model animation ArrayDef, osobne animation root trees, controller key/data,
-timing, interpolation, transition i events. Nie ma jeszcze implementacji M4A1
-ani M4A2, dlatego dokument nie raportuje `DONE`.
+Aurora First contract-lock oraz M4A1 reader/writer/readback zostaly zakonczone.
+Zamrozono layout AnimationHeader, model animation ArrayDef, osobne animation
+root trees, controller key/data, timing, interpolation, transition i events.
+M4A2 nie jest jeszcze zaimplementowane, dlatego dokument nie raportuje `DONE`.
 
 Autorytatywny suplement:
 
@@ -150,10 +150,7 @@ closed_contract_findings:
   - "empty set bypasses animation-only sibling validation"
   - "duplicate track and invalid event-time diagnostics locked"
 implementation_work_required:
-  - MdlAnimationSetV1 and M4A1 writer/readback
   - GLB animation to output-rig mapper M4A2
-  - synthetic happy/negative/mutation matrix
-  - native/WASM and frozen empty-path gates
 open_m6:
   - M4A-DECOMP-ANIMROOT-CONSUMER
   - M4A-DECOMP-EVENT-NAME-SEMANTICS
@@ -177,19 +174,19 @@ Ten hash jest gate'em regresji, nie dowodem runtime.
 
 ## 8. Required evidence before next status change
 
-Po checkpointcie M4A1.1 nadal nie ma wynikow ponizszych gate'ow:
+Checkpoint M4A1.2 zamknal:
 
 - M4A1 zero/one/multiple animation round-trip;
 - stable fatal matrix i truncation-no-panic;
 - exact pointer/core/raw/EOF report;
 - frozen zero-animation SHA;
-- M4A2 owned GLB mapper fixtures;
 - native/public WASM byte identity;
 - fmt, clippy, workspace, wasm32 i Docker quality;
 - independent P1/P2 review.
 
-Dlatego M4A pozostaje `IN_PROGRESS` ze statusem checkpointu
-`READER_FIXED_M4A1_WRITER_NEXT`, nie `VERIFYING`, `DONE` ani `DONE_RUNTIME`.
+Pozostaje M4A2 owned GLB mapper wraz z jego fixture i finalnymi gate'ami calego
+M4A. Dlatego M4A pozostaje `IN_PROGRESS` ze statusem checkpointu
+`M4A1_WRITER_VERIFIED_M4A2_NEXT`, nie `VERIFYING`, `DONE` ani `DONE_RUNTIME`.
 
 ## 9. Checkpoint M4A1.1 - reader u16 i packed flags
 
@@ -234,5 +231,72 @@ nie zostal wyekstrahowany ani zapisany. Publiczny WASM raport zamraza
 `packedByte`, `interpolationFlags` i `decoded`. Existing M4 bind writer nadal
 emituje linear packed `3/4`, a frozen zero-animation regresja pozostaje PASS.
 
-Nastepny krok: M4A1.2 `MdlAnimationSetV1` writer/readback. Ten checkpoint nie
-zamyka calego M4A ani zadnego runtime proof.
+W chwili checkpointu M4A1.1 nastepnym krokiem bylo M4A1.2
+`MdlAnimationSetV1` writer/readback. Sam checkpoint M4A1.1 nie zamykal calego
+M4A ani zadnego runtime proof.
+
+## 10. Checkpoint M4A1.2 - self-contained animation writer/readback
+
+Data: 2026-07-13 | Status: M4A1_WRITER_VERIFIED_M4A2_NEXT
+
+Zaimplementowano osobny `MdlAnimationSetV1`, LINEAR translation/rotation
+writer, rig-only animation trees, stable-sort events, own readback, semantic
+diff oraz publiczna granice WASM zwracajaca bytes i deterministic report JSON.
+Zamrozona sciezka empty-set pozostaje byte-identyczna z M4.
+
+```yaml
+native:
+  m2a_core_tests: 167
+  workspace_tests: 169
+  workspace_breakdown: "167 core + 2 additional workspace"
+  mdl_parser_tests: 40
+  mdl_writer_tests: 31
+wasm:
+  node_tests: 15
+  native_public_bytes_identical: true
+  native_public_report_identical: true
+canonical:
+  r3_p_ref_runs: "1/1 PASS"
+  payload_extracted_or_committed: false
+owned_animation_fixture:
+  payload_length: 1704
+  core_length: 1588
+  raw_length: 104
+  model_animation_array: [232, 1, 1]
+  clip_header_core_offset: 236
+  event_array: [432, 3, 3]
+  root_core_offset: 540
+  controller_keys_array: [652, 2, 2]
+  controller_data_array: [676, 18, 18]
+frozen_empty_animation:
+  payload_length: 1188
+  core_length: 1072
+  raw_length: 104
+  sha256: e100130d1dfbd18657413cdb7a701396d466cee081683591fc9836bf0c11b4b2
+quality:
+  fmt: PASS
+  clippy_all_targets_deny_warnings: PASS
+  wasm32_build: PASS
+  git_diff_check: PASS
+docker_no_cache:
+  final_command_seconds_including_canonical_pre_gate: 137.9
+  tag: m2a-quality:m4a-animation-writer
+  digest: sha256:3f5c035faf90fbe831b9fe7c11dd7bbd24cd3fe4d71ec3a54f37a7332e1d12a6
+  size_bytes: 1224136248
+final_review:
+  reviewers: 2
+  p1: 0
+  p2: 0
+```
+
+Aurora First re-check potwierdzil, ze serialized consecutive quaternion keys
+moga miec `dot < 0`: Aurora laduje surowe endpointy, a hemisphere correction
+wykonuje dopiero runtime slerp. Writer normalizuje i globalnie sign-canonicalize
+kazdy key osobno; nie wykonuje blednego pairwise rewrite.
+
+Raport writera jawnie zachowuje piec nazwanych ograniczen `OPEN_M6`:
+animroot consumer, event-name semantics, state routing, opaque-zero oraz
+rig-only animation-tree profile. Checkpoint nie twierdzi runtime acceptance.
+
+Nastepny krok: M4A2 `convert_profile_a_with_animations_v1`, czyli jawne
+mapowanie owned GLB animation do output rig/Aurora local space.

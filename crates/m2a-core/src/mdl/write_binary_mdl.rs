@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    cmp::Ordering,
+    collections::{HashMap, HashSet},
+};
 
 use sha2::{Digest, Sha256};
 
@@ -6,10 +9,15 @@ use crate::profile_a::{AuroraCreatureIrV1, AuroraCreatureSegmentV1, RigSegmentDe
 
 use super::inspect_binary_mdl;
 use super::semantic_readback::{
-    ExpectedFace, ExpectedMesh, ExpectedNode, ExpectedReadback, ExpectedSkin, semantic_diff,
+    ExpectedAnimation, ExpectedAnimationController, ExpectedAnimationNode, ExpectedFace,
+    ExpectedMesh, ExpectedNode, ExpectedReadback, ExpectedSkin, semantic_diff,
 };
+use super::types::{ArrayReport, ParserLimits};
 use super::writer_types::{
-    BinaryMdlArtifactV1, M4_WRITER_SCHEMA_VERSION, M4SemanticProjectionV1, MdlFormatProfileV1,
+    BinaryMdlArtifactV1, M4_WRITER_SCHEMA_VERSION, M4SemanticProjectionV1,
+    MdlAnimationClipLayoutV1, MdlAnimationEventV1, MdlAnimationInterpolationV1,
+    MdlAnimationNodeLayoutV1, MdlAnimationSetV1, MdlAnimationTrackLayoutV1,
+    MdlAnimationTrackPathV1, MdlAnimationTrackV1, MdlAnimationWriterReportV1, MdlFormatProfileV1,
     MdlLayoutReportV1, MdlMeshNodeLayoutV1, MdlRigNodeLayoutV1, MdlWriteError,
     MdlWriterDeviationV1, MdlWriterOptionsV1, MdlWriterReportV1,
 };
@@ -24,6 +32,8 @@ const FACE_SIZE: usize = 0x20;
 const CONTROLLER_KEY_SIZE: usize = 0x0c;
 const CONTROLLER_KEY_COUNT: usize = 2;
 const CONTROLLER_DATA_COUNT: usize = 9;
+const ANIMATION_HEADER_SIZE: usize = 0xc4;
+const ANIMATION_EVENT_SIZE: usize = 0x24;
 const EPSILON: f32 = 1.0e-5;
 
 struct RigPlan {
@@ -85,6 +95,45 @@ struct Plan {
     model_radius: f32,
     textures: HashMap<u32, String>,
     deviations: Vec<MdlWriterDeviationV1>,
+    animation_pointer_array: Option<usize>,
+    animations: Vec<AnimationPlan>,
+}
+
+struct AnimationPlan {
+    clip_index: usize,
+    header: usize,
+    events: Option<usize>,
+    sorted_events: Vec<MdlAnimationEventV1>,
+    root: usize,
+    nodes: Vec<AnimationNodePlan>,
+    track_count: usize,
+}
+
+struct AnimationNodePlan {
+    rig_index: usize,
+    offset: usize,
+    children_array: Option<usize>,
+    children_offsets: Vec<u32>,
+    keys: Option<usize>,
+    data: Option<usize>,
+    tracks: Vec<AnimationTrackPlan>,
+    data_values: Vec<f32>,
+}
+
+struct AnimationTrackPlan {
+    controller_type: i32,
+    packed_byte: u8,
+    rows: u16,
+    time_index: u16,
+    data_index: u16,
+}
+
+struct PreparedAnimationTrack {
+    input_path: String,
+    controller_type: i32,
+    packed_byte: u8,
+    times: Vec<f32>,
+    flat_values: Vec<f32>,
 }
 
 struct MeshMetrics {
@@ -100,12 +149,21 @@ pub fn write_binary_mdl(
     creature: &AuroraCreatureIrV1,
     options: &MdlWriterOptionsV1,
 ) -> Result<BinaryMdlArtifactV1, MdlWriteError> {
-    let plan = plan(creature, options)?;
+    write_binary_mdl_with_animations(creature, &MdlAnimationSetV1::empty(), options)
+}
+
+pub fn write_binary_mdl_with_animations(
+    creature: &AuroraCreatureIrV1,
+    animations: &MdlAnimationSetV1,
+    options: &MdlWriterOptionsV1,
+) -> Result<BinaryMdlArtifactV1, MdlWriteError> {
+    let plan = plan(creature, animations, options)?;
     let mut core = zeroed(plan.core_length, "layout.coreLength")?;
     let mut raw = zeroed(plan.raw_length, "layout.rawLength")?;
     emit_model(&mut core, creature, options, &plan)?;
     emit_nodes(&mut core, creature, &plan)?;
     emit_meshes(&mut core, &mut raw, creature, &plan)?;
+    emit_animations(&mut core, creature, animations, &plan)?;
 
     let mut payload = Vec::new();
     payload.try_reserve_exact(plan.file_length).map_err(|_| {
@@ -139,16 +197,24 @@ pub fn write_binary_mdl(
 
     let inspection = inspect_binary_mdl(&payload).map_err(|source| {
         error(
-            "M4-READBACK-FAILED",
+            if animations.clips.is_empty() {
+                "M4-READBACK-FAILED"
+            } else {
+                "M4A-READBACK-FAILED"
+            },
             "payload",
             format!("own reader rejected emitted payload: {source}"),
         )
     })?;
-    let expected = expected_readback(creature, options, &plan)?;
+    let expected = expected_readback(creature, animations, options, &plan)?;
     let differences = semantic_diff(&expected, &inspection);
     if !differences.is_empty() {
         return Err(error(
-            "M4-SEMANTIC-DIFF",
+            if animations.clips.is_empty() {
+                "M4-SEMANTIC-DIFF"
+            } else {
+                "M4A-SEMANTIC-DIFF"
+            },
             "payload",
             format!("own readback differs at {}", differences.join(", ")),
         ));
@@ -189,6 +255,7 @@ pub fn write_binary_mdl(
             })
         })
         .collect::<Result<Vec<_>, MdlWriteError>>()?;
+    let animation_report = animation_writer_report(animations, &plan)?;
     let report = MdlWriterReportV1 {
         schema_version: M4_WRITER_SCHEMA_VERSION,
         format_profile: options.format_profile,
@@ -202,13 +269,14 @@ pub fn write_binary_mdl(
         },
         projection: M4SemanticProjectionV1 {
             model_resource_resref: options.model_resource_resref.clone(),
-            animation_count: 0,
+            animation_count: plan.animations.len(),
             rig_node_count: plan.rig.len(),
             mesh_node_count: plan.mesh.len(),
             triangle_count,
         },
         semantic_diff: differences,
         deviations: plan.deviations,
+        animation: animation_report,
     };
     Ok(BinaryMdlArtifactV1 {
         payload,
@@ -219,6 +287,7 @@ pub fn write_binary_mdl(
 
 fn plan(
     creature: &AuroraCreatureIrV1,
+    animations: &MdlAnimationSetV1,
     options: &MdlWriterOptionsV1,
 ) -> Result<Plan, MdlWriteError> {
     validate_public_contract(creature, options)?;
@@ -284,6 +353,20 @@ fn plan(
     }
 
     let mut cursor = MODEL_HEADER_SIZE;
+    let mut rig_children = vec![Vec::new(); node_count];
+    for (child, parent) in parent_indices.iter().enumerate() {
+        if let Some(parent) = parent {
+            rig_children[*parent].push(child);
+        }
+    }
+    let (animation_pointer_array, animation_plans) = plan_animations(
+        creature,
+        animations,
+        roots[0],
+        &id_to_index,
+        &rig_children,
+        &mut cursor,
+    )?;
     let mut rig = Vec::with_capacity(node_count);
     for (index, node) in creature.nodes.iter().enumerate() {
         let offset = take(&mut cursor, NODE_HEADER_SIZE, "layout.rigNodes")?;
@@ -601,6 +684,30 @@ fn plan(
             ),
         ]);
     }
+    if !animation_plans.is_empty() {
+        deviations.extend([
+            deviation(
+                "M4A-RUNTIME-OPAQUE-ZERO-OPEN-M6",
+                "animations.runtimeFields",
+            ),
+            deviation(
+                "M4A-RUNTIME-ANIM-TREE-PROFILE-OPEN-M6",
+                "animations.nodeTrees",
+            ),
+            deviation(
+                "M4A-DECOMP-ANIMROOT-CONSUMER-OPEN-M6",
+                "animations.animroot",
+            ),
+            deviation(
+                "M4A-DECOMP-EVENT-NAME-SEMANTICS-OPEN-M6",
+                "animations.events.names",
+            ),
+            deviation(
+                "M4A-RUNTIME-STATE-ROUTING-OPEN-M6",
+                "animations.stateRouting",
+            ),
+        ]);
+    }
 
     Ok(Plan {
         core_length,
@@ -614,6 +721,489 @@ fn plan(
         model_radius,
         textures,
         deviations,
+        animation_pointer_array,
+        animations: animation_plans,
+    })
+}
+
+fn plan_animations(
+    creature: &AuroraCreatureIrV1,
+    animation_set: &MdlAnimationSetV1,
+    root_index: usize,
+    id_to_index: &HashMap<u32, usize>,
+    rig_children: &[Vec<usize>],
+    cursor: &mut usize,
+) -> Result<(Option<usize>, Vec<AnimationPlan>), MdlWriteError> {
+    if animation_set.schema_version != 1 {
+        return Err(error(
+            "M4A-ANIMATION-SET-SCHEMA-INVALID",
+            "animationSet.schemaVersion",
+            "MdlAnimationSetV1 must use schema version 1",
+        ));
+    }
+    if animation_set.clips.is_empty() {
+        return Ok((None, Vec::new()));
+    }
+
+    let parser_limits = ParserLimits::default();
+    if creature.nodes.len() > parser_limits.max_nodes {
+        return Err(error(
+            "M4A-LAYOUT-OVERFLOW",
+            "creature.nodes",
+            "animation rig node count exceeds the own-reader product guardrail",
+        ));
+    }
+    let mut pending_depths = vec![(root_index, 0usize)];
+    while let Some((node, depth)) = pending_depths.pop() {
+        if depth > parser_limits.max_depth {
+            return Err(error(
+                "M4A-LAYOUT-OVERFLOW",
+                &format!("creature.nodes[{node}]"),
+                "animation rig depth exceeds the own-reader product guardrail",
+            ));
+        }
+        let child_depth = depth.checked_add(1).ok_or_else(|| {
+            error(
+                "M4A-LAYOUT-OVERFLOW",
+                "creature.nodes",
+                "animation rig depth overflow",
+            )
+        })?;
+        pending_depths.extend(
+            rig_children[node]
+                .iter()
+                .rev()
+                .map(|child| (*child, child_depth)),
+        );
+    }
+
+    for children in rig_children {
+        let mut names = HashSet::new();
+        for &child in children {
+            if !names.insert(creature.nodes[child].name.to_ascii_lowercase()) {
+                return Err(error(
+                    "M4A-TRACK-TARGET-AMBIGUOUS",
+                    &format!("creature.nodes[{child}].name"),
+                    "animation tree matching requires unique direct-child names",
+                ));
+            }
+        }
+    }
+
+    let pointer_array = animation_take(
+        cursor,
+        animation_mul(
+            animation_set.clips.len(),
+            4,
+            "layout.animations.pointerArray",
+        )?,
+        "layout.animations.pointerArray",
+    )?;
+    let mut names = HashSet::new();
+    let mut plans = Vec::with_capacity(animation_set.clips.len());
+    for (clip_index, clip) in animation_set.clips.iter().enumerate() {
+        let clip_path = format!("animationSet.clips[{clip_index}]");
+        validate_animation_string(
+            &clip.name,
+            63,
+            "M4A-ANIMATION-NAME-INVALID",
+            &format!("{clip_path}.name"),
+        )?;
+        let folded = clip.name.to_ascii_lowercase();
+        if !names.insert(folded.clone()) {
+            return Err(error(
+                "M4A-ANIMATION-NAME-INVALID",
+                &format!("{clip_path}.name"),
+                "clip names must be unique after ASCII case-fold",
+            ));
+        }
+        validate_animation_string(
+            &clip.animation_root,
+            63,
+            "M4A-ANIMROOT-INVALID",
+            &format!("{clip_path}.animationRoot"),
+        )?;
+        if !clip.length_seconds.is_finite() || clip.length_seconds <= 0.0 {
+            return Err(error(
+                "M4A-CLIP-LENGTH-INVALID",
+                &format!("{clip_path}.lengthSeconds"),
+                "clip length must be positive and finite",
+            ));
+        }
+        if !clip.transition_seconds.is_finite() || clip.transition_seconds < 0.0 {
+            return Err(error(
+                "M4A-TRANSITION-INVALID",
+                &format!("{clip_path}.transitionSeconds"),
+                "transition must be non-negative and finite",
+            ));
+        }
+
+        let mut sorted_events = clip.events.clone();
+        for (event_index, event) in sorted_events.iter().enumerate() {
+            let event_path = format!("{clip_path}.events[{event_index}]");
+            validate_animation_string(
+                &event.name,
+                31,
+                "M4A-EVENT-NAME-INVALID",
+                &format!("{event_path}.name"),
+            )?;
+            if !event.time_seconds.is_finite()
+                || event.time_seconds < 0.0
+                || event.time_seconds > clip.length_seconds
+            {
+                return Err(error(
+                    "M4A-EVENT-TIME-INVALID",
+                    &format!("{event_path}.timeSeconds"),
+                    "event time must be finite and inside the clip",
+                ));
+            }
+        }
+        sorted_events.sort_by(|left, right| {
+            if left.time_seconds == right.time_seconds {
+                Ordering::Equal
+            } else {
+                left.time_seconds.total_cmp(&right.time_seconds)
+            }
+        });
+
+        let mut tracks_by_node = (0..creature.nodes.len())
+            .map(|_| Vec::<PreparedAnimationTrack>::new())
+            .collect::<Vec<_>>();
+        let mut seen_tracks = HashSet::new();
+        for (track_index, track) in clip.tracks.iter().enumerate() {
+            let track_path = format!("{clip_path}.tracks[{track_index}]");
+            let node_index = *id_to_index.get(&track.target_node_id).ok_or_else(|| {
+                error(
+                    "M4A-TRACK-TARGET-MISSING",
+                    &format!("{track_path}.targetNodeId"),
+                    "animation target node id is absent from the output rig",
+                )
+            })?;
+            if !seen_tracks.insert((track.target_node_id, track.path)) {
+                return Err(error(
+                    "M4A-TRACK-DUPLICATE",
+                    &format!("{track_path}.path"),
+                    "a clip may contain only one track per target node and path",
+                ));
+            }
+            let prepared = prepare_animation_track(track, clip.length_seconds, &track_path)?;
+            tracks_by_node[node_index].push(prepared);
+        }
+        for tracks in &mut tracks_by_node {
+            tracks.sort_by_key(|track| track.controller_type);
+        }
+        let header = animation_take(cursor, ANIMATION_HEADER_SIZE, "layout.animations.header")?;
+        let events = if sorted_events.is_empty() {
+            None
+        } else {
+            Some(animation_take(
+                cursor,
+                animation_mul(
+                    sorted_events.len(),
+                    ANIMATION_EVENT_SIZE,
+                    "layout.animations.events",
+                )?,
+                "layout.animations.events",
+            )?)
+        };
+        let mut nodes = Vec::with_capacity(creature.nodes.len());
+        let root = plan_animation_node(
+            root_index,
+            rig_children,
+            &mut tracks_by_node,
+            &mut nodes,
+            cursor,
+        )?;
+        plans.push(AnimationPlan {
+            clip_index,
+            header,
+            events,
+            sorted_events,
+            root,
+            nodes,
+            track_count: clip.tracks.len(),
+        });
+    }
+    Ok((Some(pointer_array), plans))
+}
+
+fn prepare_animation_track(
+    track: &MdlAnimationTrackV1,
+    clip_length: f32,
+    path: &str,
+) -> Result<PreparedAnimationTrack, MdlWriteError> {
+    if track.interpolation != MdlAnimationInterpolationV1::Linear {
+        return Err(error(
+            "M4A-INTERPOLATION-UNSUPPORTED",
+            &format!("{path}.interpolation"),
+            "M4A1 supports LINEAR interpolation only",
+        ));
+    }
+    let (controller_type, packed_byte, arity) = match track.path {
+        MdlAnimationTrackPathV1::Translation => (8, 3, 3),
+        MdlAnimationTrackPathV1::Rotation => (20, 4, 4),
+        MdlAnimationTrackPathV1::Scale | MdlAnimationTrackPathV1::Weights => {
+            return Err(error(
+                "M4A-TRACK-PATH-UNSUPPORTED",
+                &format!("{path}.path"),
+                "M4A1 supports TRANSLATION and ROTATION only",
+            ));
+        }
+    };
+    if track.times_seconds.is_empty() || track.times_seconds.len() > usize::from(u16::MAX) {
+        return Err(error(
+            "M4A-CONTROLLER-U16-OVERFLOW",
+            &format!("{path}.timesSeconds"),
+            "track row count must fit nonzero u16",
+        ));
+    }
+    if track.values.len() != track.times_seconds.len()
+        || track.values.iter().any(|row| row.len() != arity)
+    {
+        return Err(error(
+            "M4A-TRACK-ARITY-INVALID",
+            &format!("{path}.values"),
+            "track values must match time rows and path arity",
+        ));
+    }
+    for (time_index, &time) in track.times_seconds.iter().enumerate() {
+        if !time.is_finite() || (time_index > 0 && time <= track.times_seconds[time_index - 1]) {
+            return Err(error(
+                "M4A-TRACK-TIME-NOT-STRICT",
+                &format!("{path}.timesSeconds[{time_index}]"),
+                "track times must be finite and strictly increasing",
+            ));
+        }
+        if time < 0.0 || time > clip_length {
+            return Err(error(
+                "M4A-TRACK-TIME-OOB",
+                &format!("{path}.timesSeconds[{time_index}]"),
+                "track time must be inside the clip",
+            ));
+        }
+    }
+    let mut flat_values = Vec::with_capacity(track.values.len() * arity);
+    for (row_index, row) in track.values.iter().enumerate() {
+        if row.iter().any(|value| !value.is_finite()) {
+            return Err(error(
+                "M4A-TRACK-VALUE-NONFINITE",
+                &format!("{path}.values[{row_index}]"),
+                "track values must be finite",
+            ));
+        }
+        if track.path == MdlAnimationTrackPathV1::Rotation {
+            let q = canonical_animation_quaternion(
+                [row[0], row[1], row[2], row[3]],
+                &format!("{path}.values[{row_index}]"),
+            )?;
+            flat_values.extend_from_slice(&q);
+        } else {
+            flat_values.extend_from_slice(row);
+        }
+    }
+    Ok(PreparedAnimationTrack {
+        input_path: path.to_owned(),
+        controller_type,
+        packed_byte,
+        times: track.times_seconds.clone(),
+        flat_values,
+    })
+}
+
+fn plan_animation_node(
+    rig_index: usize,
+    rig_children: &[Vec<usize>],
+    tracks_by_node: &mut [Vec<PreparedAnimationTrack>],
+    nodes: &mut Vec<AnimationNodePlan>,
+    cursor: &mut usize,
+) -> Result<usize, MdlWriteError> {
+    let offset = animation_take(cursor, NODE_HEADER_SIZE, "layout.animations.nodes")?;
+    let plan_index = nodes.len();
+    nodes.push(AnimationNodePlan {
+        rig_index,
+        offset,
+        children_array: None,
+        children_offsets: Vec::new(),
+        keys: None,
+        data: None,
+        tracks: Vec::new(),
+        data_values: Vec::new(),
+    });
+    let children_array = if rig_children[rig_index].is_empty() {
+        None
+    } else {
+        Some(animation_take(
+            cursor,
+            animation_mul(
+                rig_children[rig_index].len(),
+                4,
+                "layout.animations.children",
+            )?,
+            "layout.animations.children",
+        )?)
+    };
+    let mut children_offsets = Vec::with_capacity(rig_children[rig_index].len());
+    for &child in &rig_children[rig_index] {
+        let child_offset = plan_animation_node(child, rig_children, tracks_by_node, nodes, cursor)?;
+        children_offsets.push(animation_as_u32(
+            child_offset,
+            "layout.animations.childOffset",
+        )?);
+    }
+
+    let prepared_tracks = std::mem::take(&mut tracks_by_node[rig_index]);
+    let mut data_values = Vec::new();
+    let mut tracks = Vec::with_capacity(prepared_tracks.len());
+    for track in prepared_tracks {
+        let rows = track.times.len();
+        let time_index = data_values.len();
+        let data_index = animation_add(time_index, rows, "layout.animations.controllerData")?;
+        let columns = usize::from(track.packed_byte & 0x0f);
+        let time_end = animation_add(time_index, rows, "layout.animations.controllerData")?;
+        let value_count = animation_mul(rows, columns, "layout.animations.controllerData")?;
+        let data_end = animation_add(data_index, value_count, "layout.animations.controllerData")?;
+        if rows > usize::from(u16::MAX)
+            || time_index > usize::from(u16::MAX)
+            || data_index > usize::from(u16::MAX)
+            || time_end > usize::from(u16::MAX) + 1
+            || data_end > usize::from(u16::MAX) + 1
+        {
+            return Err(error(
+                "M4A-CONTROLLER-U16-OVERFLOW",
+                &format!("{}.timesSeconds", track.input_path),
+                "controller rows and every evaluated time/data index must fit u16",
+            ));
+        }
+        data_values.extend_from_slice(&track.times);
+        data_values.extend_from_slice(&track.flat_values);
+        tracks.push(AnimationTrackPlan {
+            controller_type: track.controller_type,
+            packed_byte: track.packed_byte,
+            rows: rows as u16,
+            time_index: time_index as u16,
+            data_index: data_index as u16,
+        });
+    }
+    let keys = if tracks.is_empty() {
+        None
+    } else {
+        Some(animation_take(
+            cursor,
+            animation_mul(
+                tracks.len(),
+                CONTROLLER_KEY_SIZE,
+                "layout.animations.controllerKeys",
+            )?,
+            "layout.animations.controllerKeys",
+        )?)
+    };
+    let data = if data_values.is_empty() {
+        None
+    } else {
+        Some(animation_take(
+            cursor,
+            animation_mul(data_values.len(), 4, "layout.animations.controllerData")?,
+            "layout.animations.controllerData",
+        )?)
+    };
+    nodes[plan_index] = AnimationNodePlan {
+        rig_index,
+        offset,
+        children_array,
+        children_offsets,
+        keys,
+        data,
+        tracks,
+        data_values,
+    };
+    Ok(offset)
+}
+
+fn canonical_animation_quaternion(mut q: [f32; 4], path: &str) -> Result<[f32; 4], MdlWriteError> {
+    let norm = q
+        .iter()
+        .map(|value| f64::from(*value).powi(2))
+        .sum::<f64>()
+        .sqrt();
+    if !norm.is_finite() || (norm - 1.0).abs() > f64::from(EPSILON) {
+        return Err(error(
+            "M4A-QUATERNION-INVALID",
+            path,
+            "rotation key must be a unit XYZW quaternion within 1e-5",
+        ));
+    }
+    for value in &mut q {
+        *value = (f64::from(*value) / norm) as f32;
+    }
+    let negate = q[3] < 0.0
+        || (q[3] == 0.0
+            && q[..3]
+                .iter()
+                .copied()
+                .find(|value| *value != 0.0)
+                .is_some_and(|value| value < 0.0));
+    if negate {
+        for value in &mut q {
+            *value = -*value;
+        }
+    }
+    Ok(q)
+}
+
+fn validate_animation_string(
+    value: &str,
+    max_bytes: usize,
+    code: &str,
+    path: &str,
+) -> Result<(), MdlWriteError> {
+    if value.is_empty()
+        || value.len() > max_bytes
+        || !value.is_ascii()
+        || value.bytes().any(|byte| byte == 0)
+    {
+        return Err(error(
+            code,
+            path,
+            format!("value must be a non-empty ASCII C string of at most {max_bytes} bytes"),
+        ));
+    }
+    Ok(())
+}
+
+fn animation_add(left: usize, right: usize, path: &str) -> Result<usize, MdlWriteError> {
+    left.checked_add(right).ok_or_else(|| {
+        error(
+            "M4A-LAYOUT-OVERFLOW",
+            path,
+            "animation layout addition overflow",
+        )
+    })
+}
+
+fn animation_mul(left: usize, right: usize, path: &str) -> Result<usize, MdlWriteError> {
+    left.checked_mul(right).ok_or_else(|| {
+        error(
+            "M4A-LAYOUT-OVERFLOW",
+            path,
+            "animation layout multiplication overflow",
+        )
+    })
+}
+
+fn animation_take(cursor: &mut usize, length: usize, path: &str) -> Result<usize, MdlWriteError> {
+    let start = *cursor;
+    *cursor = animation_add(start, length, path)?;
+    let _ = animation_as_u32(*cursor, path)?;
+    Ok(start)
+}
+
+fn animation_as_u32(value: usize, path: &str) -> Result<u32, MdlWriteError> {
+    u32::try_from(value).map_err(|_| {
+        error(
+            "M4A-LAYOUT-OVERFLOW",
+            path,
+            "animation layout value exceeds u32",
+        )
     })
 }
 
@@ -863,6 +1453,16 @@ fn emit_model(
         )?,
     )?;
     write_u32(core, 0x6c, 2)?;
+    if let Some(pointer_array) = plan.animation_pointer_array {
+        write_array(core, 0x78, pointer_array, plan.animations.len())?;
+        for (index, animation) in plan.animations.iter().enumerate() {
+            write_u32(
+                core,
+                pointer_array + index * 4,
+                as_u32(animation.header, "model.animationPointers")?,
+            )?;
+        }
+    }
     core[0x72] = 4;
     core[0x73] = 1;
     write_vec3(core, 0x88, plan.model_bounds_min)?;
@@ -871,6 +1471,102 @@ fn emit_model(
     write_f32(core, 0xa4, 1.0)?;
     write_c_string(core, 0xa8, 64, "null")?;
     let _ = creature;
+    Ok(())
+}
+
+fn emit_animations(
+    core: &mut [u8],
+    creature: &AuroraCreatureIrV1,
+    animation_set: &MdlAnimationSetV1,
+    plan: &Plan,
+) -> Result<(), MdlWriteError> {
+    for animation in &plan.animations {
+        let clip = &animation_set.clips[animation.clip_index];
+        write_c_string(core, animation.header + 0x08, 64, &clip.name)?;
+        write_u32(
+            core,
+            animation.header + 0x48,
+            animation_as_u32(animation.root, "animations.root")?,
+        )?;
+        write_u32(
+            core,
+            animation.header + 0x4c,
+            animation_as_u32(animation.nodes.len(), "animations.nodeCount")?,
+        )?;
+        write_f32(core, animation.header + 0x70, clip.length_seconds)?;
+        write_f32(core, animation.header + 0x74, clip.transition_seconds)?;
+        write_c_string(core, animation.header + 0x78, 64, &clip.animation_root)?;
+        if let Some(events) = animation.events {
+            write_array(
+                core,
+                animation.header + 0xb8,
+                events,
+                animation.sorted_events.len(),
+            )?;
+            for (event_index, event) in animation.sorted_events.iter().enumerate() {
+                let offset = events + event_index * ANIMATION_EVENT_SIZE;
+                write_f32(core, offset, event.time_seconds)?;
+                write_c_string(core, offset + 4, 32, &event.name)?;
+            }
+        }
+        for node in &animation.nodes {
+            let source = &creature.nodes[node.rig_index];
+            write_u32(
+                core,
+                node.offset + 0x1c,
+                animation_as_u32(node.rig_index, "animations.nodes.partNumber")?,
+            )?;
+            write_c_string(core, node.offset + 0x20, 32, &source.name)?;
+            if let Some(children) = node.children_array {
+                write_array(
+                    core,
+                    node.offset + 0x48,
+                    children,
+                    node.children_offsets.len(),
+                )?;
+                for (child_index, &child) in node.children_offsets.iter().enumerate() {
+                    write_u32(core, children + child_index * 4, child)?;
+                }
+            }
+            if let Some(keys) = node.keys {
+                write_array(core, node.offset + 0x54, keys, node.tracks.len())?;
+                for (track_index, track) in node.tracks.iter().enumerate() {
+                    write_animation_controller_key(
+                        core,
+                        keys + track_index * CONTROLLER_KEY_SIZE,
+                        track,
+                    )?;
+                }
+            }
+            if let Some(data) = node.data {
+                write_array(core, node.offset + 0x60, data, node.data_values.len())?;
+                for (value_index, &value) in node.data_values.iter().enumerate() {
+                    write_f32(core, data + value_index * 4, value)?;
+                }
+            }
+            write_u32(core, node.offset + 0x6c, 0x01)?;
+        }
+    }
+    Ok(())
+}
+
+fn write_animation_controller_key(
+    bytes: &mut [u8],
+    offset: usize,
+    track: &AnimationTrackPlan,
+) -> Result<(), MdlWriteError> {
+    write_i32(bytes, offset, track.controller_type)?;
+    write_u16(bytes, offset + 4, track.rows)?;
+    write_u16(bytes, offset + 6, track.time_index)?;
+    write_u16(bytes, offset + 8, track.data_index)?;
+    let packed = bytes.get_mut(offset + 10).ok_or_else(|| {
+        error(
+            "M4A-LAYOUT-OVERFLOW",
+            "payload",
+            "animation controller key escapes buffer",
+        )
+    })?;
+    *packed = track.packed_byte;
     Ok(())
 }
 
@@ -1091,6 +1787,7 @@ fn emit_meshes(
 
 fn expected_readback(
     creature: &AuroraCreatureIrV1,
+    animation_set: &MdlAnimationSetV1,
     options: &MdlWriterOptionsV1,
     plan: &Plan,
 ) -> Result<ExpectedReadback, MdlWriteError> {
@@ -1179,6 +1876,88 @@ fn expected_readback(
             skin: expected_skin,
         });
     }
+    let id_to_part = creature
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(index, node)| (node.id, index as u32))
+        .collect::<HashMap<_, _>>();
+    let mut animations = Vec::with_capacity(plan.animations.len());
+    for animation in &plan.animations {
+        let clip = &animation_set.clips[animation.clip_index];
+        let mut animation_nodes = Vec::with_capacity(animation.nodes.len());
+        for node in &animation.nodes {
+            let source = &creature.nodes[node.rig_index];
+            let mut controllers = Vec::with_capacity(node.tracks.len());
+            for (track_index, track) in node.tracks.iter().enumerate() {
+                let columns = usize::from(track.packed_byte & 0x0f);
+                let time_start = usize::from(track.time_index);
+                let data_start = usize::from(track.data_index);
+                let rows = usize::from(track.rows);
+                let times = node.data_values[time_start..time_start + rows].to_vec();
+                let values = (0..rows)
+                    .map(|row| {
+                        let start = data_start + row * columns;
+                        node.data_values[start..start + columns].to_vec()
+                    })
+                    .collect();
+                controllers.push(ExpectedAnimationController {
+                    key_offset: animation_as_u32(
+                        node.keys.unwrap_or_default() + track_index * CONTROLLER_KEY_SIZE,
+                        "semantic.animations.controllerKey",
+                    )?,
+                    controller_type: track.controller_type,
+                    packed_byte: track.packed_byte,
+                    rows,
+                    time_index: time_start,
+                    data_index: data_start,
+                    times,
+                    values,
+                });
+            }
+            animation_nodes.push(ExpectedAnimationNode {
+                offset: animation_as_u32(node.offset, "semantic.animations.node")?,
+                part_number: node.rig_index as u32,
+                name: source.name.clone(),
+                parent_part_number: source.parent_id.map(|parent| id_to_part[&parent]),
+                children_header: array_report(
+                    node.children_array,
+                    node.children_offsets.len(),
+                    "semantic.animations.children",
+                )?,
+                controller_keys_header: array_report(
+                    node.keys,
+                    node.tracks.len(),
+                    "semantic.animations.controllerKeys",
+                )?,
+                controller_data_header: array_report(
+                    node.data,
+                    node.data_values.len(),
+                    "semantic.animations.controllerData",
+                )?,
+                controllers,
+            });
+        }
+        animations.push(ExpectedAnimation {
+            offset: animation_as_u32(animation.header, "semantic.animations.header")?,
+            name: clip.name.clone(),
+            length: clip.length_seconds,
+            transition: clip.transition_seconds,
+            animation_root: clip.animation_root.clone(),
+            events_header: array_report(
+                animation.events,
+                animation.sorted_events.len(),
+                "semantic.animations.events",
+            )?,
+            events: animation
+                .sorted_events
+                .iter()
+                .map(|event| (event.time_seconds, event.name.clone()))
+                .collect(),
+            root_part_number: animation.nodes[0].rig_index as u32,
+            nodes: animation_nodes,
+        });
+    }
     Ok(ExpectedReadback {
         model_name: options.model_resource_resref.clone(),
         model_bounds_min: plan.model_bounds_min,
@@ -1191,6 +1970,158 @@ fn expected_readback(
             .unwrap()
             .part,
         nodes,
+        animation_pointers_header: array_report(
+            plan.animation_pointer_array,
+            plan.animations.len(),
+            "semantic.animations.pointerArray",
+        )?,
+        animations,
+    })
+}
+
+fn animation_writer_report(
+    animation_set: &MdlAnimationSetV1,
+    plan: &Plan,
+) -> Result<Option<MdlAnimationWriterReportV1>, MdlWriteError> {
+    if plan.animations.is_empty() {
+        return Ok(None);
+    }
+    let event_count = plan.animations.iter().try_fold(0usize, |sum, animation| {
+        animation_add(
+            sum,
+            animation.sorted_events.len(),
+            "report.animation.eventCount",
+        )
+    })?;
+    let track_count = plan.animations.iter().try_fold(0usize, |sum, animation| {
+        animation_add(sum, animation.track_count, "report.animation.trackCount")
+    })?;
+    let clips = plan
+        .animations
+        .iter()
+        .map(|animation| {
+            let nodes = animation
+                .nodes
+                .iter()
+                .map(|node| {
+                    let key_base = if node.tracks.is_empty() {
+                        0
+                    } else {
+                        node.keys.ok_or_else(|| {
+                            error(
+                                "M4A-LAYOUT-OVERFLOW",
+                                "report.animation.node.controllerKeysCoreOffset",
+                                "planned animation tracks are missing their key array",
+                            )
+                        })?
+                    };
+                    let tracks = node
+                        .tracks
+                        .iter()
+                        .enumerate()
+                        .map(|(track_index, track)| {
+                            Ok(MdlAnimationTrackLayoutV1 {
+                                target_node_id: plan.rig[node.rig_index].id,
+                                path: if track.controller_type == 8 {
+                                    MdlAnimationTrackPathV1::Translation
+                                } else {
+                                    MdlAnimationTrackPathV1::Rotation
+                                },
+                                controller_type: track.controller_type,
+                                packed_byte: track.packed_byte,
+                                key_core_offset: animation_as_u32(
+                                    key_base + track_index * CONTROLLER_KEY_SIZE,
+                                    "report.animation.track.keyCoreOffset",
+                                )?,
+                                row_count: usize::from(track.rows),
+                                time_index: usize::from(track.time_index),
+                                data_index: usize::from(track.data_index),
+                            })
+                        })
+                        .collect::<Result<Vec<_>, MdlWriteError>>()?;
+                    Ok(MdlAnimationNodeLayoutV1 {
+                        ir_node_id: plan.rig[node.rig_index].id,
+                        part_number: node.rig_index as u32,
+                        core_offset: animation_as_u32(
+                            node.offset,
+                            "report.animation.node.coreOffset",
+                        )?,
+                        children_array_core_offset: report_animation_offset(
+                            node.children_array,
+                            "report.animation.node.childrenArrayCoreOffset",
+                        )?,
+                        controller_keys_core_offset: report_animation_offset(
+                            node.keys,
+                            "report.animation.node.controllerKeysCoreOffset",
+                        )?,
+                        controller_data_core_offset: report_animation_offset(
+                            node.data,
+                            "report.animation.node.controllerDataCoreOffset",
+                        )?,
+                        tracks,
+                    })
+                })
+                .collect::<Result<Vec<_>, MdlWriteError>>()?;
+            Ok(MdlAnimationClipLayoutV1 {
+                name: animation_set.clips[animation.clip_index].name.clone(),
+                header_core_offset: animation_as_u32(
+                    animation.header,
+                    "report.animation.headerCoreOffset",
+                )?,
+                root_core_offset: animation_as_u32(
+                    animation.root,
+                    "report.animation.rootCoreOffset",
+                )?,
+                event_array_core_offset: report_animation_offset(
+                    animation.events,
+                    "report.animation.eventArrayCoreOffset",
+                )?,
+                event_count: animation.sorted_events.len(),
+                track_count: animation.track_count,
+                node_count: animation.nodes.len(),
+                nodes,
+            })
+        })
+        .collect::<Result<Vec<_>, MdlWriteError>>()?;
+    Ok(Some(MdlAnimationWriterReportV1 {
+        pointer_array_core_offset: animation_as_u32(
+            plan.animation_pointer_array.ok_or_else(|| {
+                error(
+                    "M4A-LAYOUT-OVERFLOW",
+                    "report.animation.pointerArrayCoreOffset",
+                    "non-empty animation plan is missing its model pointer array",
+                )
+            })?,
+            "report.animation.pointerArrayCoreOffset",
+        )?,
+        clip_count: plan.animations.len(),
+        event_count,
+        track_count,
+        clips,
+    }))
+}
+
+fn report_animation_offset(
+    offset: Option<usize>,
+    path: &str,
+) -> Result<Option<u32>, MdlWriteError> {
+    offset
+        .map(|value| animation_as_u32(value, path))
+        .transpose()
+}
+
+fn array_report(
+    pointer: Option<usize>,
+    count: usize,
+    path: &str,
+) -> Result<ArrayReport, MdlWriteError> {
+    Ok(ArrayReport {
+        pointer: pointer
+            .map(|value| animation_as_u32(value, path))
+            .transpose()?
+            .unwrap_or(0),
+        used: count,
+        allocated: count,
     })
 }
 
@@ -2025,11 +2956,14 @@ mod tests {
     };
 
     use super::super::writer_types::{
-        MdlFormatProfileV1, MdlMaterialTextureBindingV1, MdlWriterOptionsV1,
+        MdlAnimationClipV1, MdlAnimationEventV1, MdlAnimationInterpolationV1, MdlAnimationSetV1,
+        MdlAnimationTrackPathV1, MdlAnimationTrackV1, MdlFormatProfileV1,
+        MdlMaterialTextureBindingV1, MdlWriterOptionsV1,
     };
     use super::{
-        add, as_i32, expected_readback, inspect_binary_mdl, mul, plan, semantic_diff,
-        validate_skin_layout, validate_skin_signed_fields, write_binary_mdl,
+        ANIMATION_EVENT_SIZE, CONTROLLER_KEY_SIZE, add, as_i32, expected_readback,
+        inspect_binary_mdl, mul, plan, semantic_diff, validate_skin_layout,
+        validate_skin_signed_fields, write_binary_mdl, write_binary_mdl_with_animations,
     };
 
     #[test]
@@ -2049,8 +2983,9 @@ mod tests {
         let input = skin_input();
         let options = skin_options();
         let artifact = write_binary_mdl(&input, &options).unwrap();
-        let plan = plan(&input, &options).unwrap();
-        let expected = expected_readback(&input, &options, &plan).unwrap();
+        let animations = MdlAnimationSetV1::empty();
+        let plan = plan(&input, &animations, &options).unwrap();
+        let expected = expected_readback(&input, &animations, &options, &plan).unwrap();
         let skin_node = artifact.inspection.node_tree.roots[0]
             .children
             .last()
@@ -2161,9 +3096,225 @@ mod tests {
     }
 
     #[test]
+    fn semantic_animation_mutations_name_opaque_budget_and_padding() {
+        let input = skin_input();
+        let options = skin_options();
+        let animations = MdlAnimationSetV1 {
+            schema_version: 1,
+            clips: vec![MdlAnimationClipV1 {
+                name: "cpause1".to_owned(),
+                animation_root: "owned_root".to_owned(),
+                length_seconds: 1.0,
+                transition_seconds: 0.25,
+                events: vec![MdlAnimationEventV1 {
+                    time_seconds: 0.5,
+                    name: "owned_event".to_owned(),
+                }],
+                tracks: vec![
+                    MdlAnimationTrackV1 {
+                        target_node_id: 10,
+                        path: MdlAnimationTrackPathV1::Translation,
+                        interpolation: MdlAnimationInterpolationV1::Linear,
+                        times_seconds: vec![0.0, 1.0],
+                        values: vec![vec![0.0, 0.0, 0.0], vec![0.25, 0.0, 0.0]],
+                    },
+                    MdlAnimationTrackV1 {
+                        target_node_id: 10,
+                        path: MdlAnimationTrackPathV1::Rotation,
+                        interpolation: MdlAnimationInterpolationV1::Linear,
+                        times_seconds: vec![0.0, 1.0],
+                        values: vec![vec![0.0, 0.0, 0.0, 1.0], vec![0.0, 0.0, 0.0, 1.0]],
+                    },
+                ],
+            }],
+        };
+        let artifact = write_binary_mdl_with_animations(&input, &animations, &options).unwrap();
+        assert_eq!(
+            artifact
+                .report
+                .deviations
+                .iter()
+                .filter(|deviation| deviation.code.starts_with("M4A-"))
+                .map(|deviation| (deviation.code.as_str(), deviation.path.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                (
+                    "M4A-RUNTIME-OPAQUE-ZERO-OPEN-M6",
+                    "animations.runtimeFields"
+                ),
+                (
+                    "M4A-RUNTIME-ANIM-TREE-PROFILE-OPEN-M6",
+                    "animations.nodeTrees"
+                ),
+                (
+                    "M4A-DECOMP-ANIMROOT-CONSUMER-OPEN-M6",
+                    "animations.animroot"
+                ),
+                (
+                    "M4A-DECOMP-EVENT-NAME-SEMANTICS-OPEN-M6",
+                    "animations.events.names"
+                ),
+                (
+                    "M4A-RUNTIME-STATE-ROUTING-OPEN-M6",
+                    "animations.stateRouting"
+                ),
+            ]
+        );
+        let layout = plan(&input, &animations, &options).unwrap();
+        let expected = expected_readback(&input, &animations, &options, &layout).unwrap();
+        let clip = &artifact.inspection.animations[0];
+        let root = &clip.node_tree.roots[0];
+        let absolute = |offset: u32| 12 + offset as usize;
+        fn relocate_core_array(
+            payload: &[u8],
+            source_core_offset: u32,
+            byte_length: usize,
+            pointer_absolute: usize,
+        ) -> Vec<u8> {
+            let mut relocated = payload.to_vec();
+            let old_core_length = u32::from_le_bytes(relocated[4..8].try_into().unwrap()) as usize;
+            let source = 12 + source_core_offset as usize;
+            let copy = relocated[source..source + byte_length].to_vec();
+            relocated.splice(12 + old_core_length..12 + old_core_length, copy);
+            relocated[4..8]
+                .copy_from_slice(&(old_core_length as u32 + byte_length as u32).to_le_bytes());
+            relocated[pointer_absolute..pointer_absolute + 4]
+                .copy_from_slice(&(old_core_length as u32).to_le_bytes());
+            relocated
+        }
+
+        let relocated_events = relocate_core_array(
+            &artifact.payload,
+            clip.events_header.pointer,
+            clip.events_header.used * ANIMATION_EVENT_SIZE,
+            absolute(clip.offset) + 0xb8,
+        );
+        assert_eq!(
+            semantic_diff(&expected, &inspect_binary_mdl(&relocated_events).unwrap()),
+            ["animations[0].eventsHeader"]
+        );
+
+        let relocated_children = relocate_core_array(
+            &artifact.payload,
+            root.children_header.pointer,
+            root.children_header.used * 4,
+            absolute(root.offset) + 0x48,
+        );
+        assert_eq!(
+            semantic_diff(&expected, &inspect_binary_mdl(&relocated_children).unwrap()),
+            ["animations[0].nodes[0].children"]
+        );
+
+        let relocated_keys = relocate_core_array(
+            &artifact.payload,
+            root.controller_keys_header.pointer,
+            root.controller_keys_header.used * CONTROLLER_KEY_SIZE,
+            absolute(root.offset) + 0x54,
+        );
+        let key_diff = semantic_diff(&expected, &inspect_binary_mdl(&relocated_keys).unwrap());
+        assert!(key_diff.contains(&"animations[0].nodes[0].controllerKeys".to_owned()));
+        assert!(key_diff.contains(&"animations[0].nodes[0].controllers[0]".to_owned()));
+
+        let relocated_data = relocate_core_array(
+            &artifact.payload,
+            root.controller_data_header.pointer,
+            root.controller_data_header.used * 4,
+            absolute(root.offset) + 0x60,
+        );
+        assert_eq!(
+            semantic_diff(&expected, &inspect_binary_mdl(&relocated_data).unwrap()),
+            ["animations[0].nodes[0].controllerData"]
+        );
+
+        let mut opaque = artifact.payload.clone();
+        opaque[absolute(clip.offset) + 0x68..absolute(clip.offset) + 0x6c]
+            .copy_from_slice(&1_u32.to_le_bytes());
+        assert_eq!(
+            semantic_diff(&expected, &inspect_binary_mdl(&opaque).unwrap()),
+            ["animations[0].header"]
+        );
+
+        let mut animroot = artifact.payload.clone();
+        animroot[absolute(clip.offset) + 0x78] = b'x';
+        assert_eq!(
+            semantic_diff(&expected, &inspect_binary_mdl(&animroot).unwrap()),
+            ["animations[0].header"]
+        );
+
+        let mut budget = artifact.payload.clone();
+        budget[absolute(clip.offset) + 0x4c..absolute(clip.offset) + 0x50]
+            .copy_from_slice(&4_u32.to_le_bytes());
+        assert_eq!(
+            semantic_diff(&expected, &inspect_binary_mdl(&budget).unwrap()),
+            ["animations[0].nodes.countOrRoot"]
+        );
+
+        let mut name = artifact.payload.clone();
+        name[absolute(root.offset) + 0x20] = b'x';
+        assert_eq!(
+            semantic_diff(&expected, &inspect_binary_mdl(&name).unwrap()),
+            ["animations[0].nodes[0].header"]
+        );
+
+        let mut padding = artifact.payload.clone();
+        let key = absolute(root.controllers[0].key_offset);
+        padding[key + 11] = 1;
+        assert_eq!(
+            semantic_diff(&expected, &inspect_binary_mdl(&padding).unwrap()),
+            ["animations[0].nodes[0].controllers[0]"]
+        );
+
+        let translation = &root.controllers[0];
+        let first_time = absolute(root.controller_data_header.pointer) + translation.time_index * 4;
+        let second_time = first_time + 4;
+        let mut nonfinite_time = artifact.payload.clone();
+        nonfinite_time[first_time..first_time + 4].copy_from_slice(&f32::NAN.to_le_bytes());
+        assert_eq!(
+            semantic_diff(&expected, &inspect_binary_mdl(&nonfinite_time).unwrap()),
+            ["animations[0].nodes[0].controllers[0]"]
+        );
+        let mut unordered_time = artifact.payload.clone();
+        let first_time_bits = unordered_time[first_time..first_time + 4].to_vec();
+        unordered_time[second_time..second_time + 4].copy_from_slice(&first_time_bits);
+        assert_eq!(
+            semantic_diff(&expected, &inspect_binary_mdl(&unordered_time).unwrap()),
+            ["animations[0].nodes[0].controllers[0]"]
+        );
+        let mut changed_value = artifact.payload.clone();
+        let first_value =
+            absolute(root.controller_data_header.pointer) + translation.data_index * 4;
+        let value = f32::from_le_bytes(
+            changed_value[first_value..first_value + 4]
+                .try_into()
+                .unwrap(),
+        );
+        changed_value[first_value..first_value + 4].copy_from_slice(&value.next_up().to_le_bytes());
+        assert_eq!(
+            semantic_diff(&expected, &inspect_binary_mdl(&changed_value).unwrap()),
+            ["animations[0].nodes[0].controllers[0]"]
+        );
+
+        let mut quaternion_sign = artifact.payload.clone();
+        let rotation = &root.controllers[1];
+        let first_value = absolute(root.controller_data_header.pointer) + rotation.data_index * 4;
+        for row in 0..rotation.row_count {
+            for lane in 0..4 {
+                let offset = first_value + (row * 4 + lane) * 4;
+                let value =
+                    f32::from_le_bytes(quaternion_sign[offset..offset + 4].try_into().unwrap());
+                quaternion_sign[offset..offset + 4].copy_from_slice(&(-value).to_le_bytes());
+            }
+        }
+        assert_eq!(
+            semantic_diff(&expected, &inspect_binary_mdl(&quaternion_sign).unwrap()),
+            ["animations[0].nodes[0].controllers[1]"]
+        );
+    }
+
+    #[test]
     fn internal_skin_layout_drift_uses_the_stable_layout_error() {
         let input = skin_input();
-        let mut layout = plan(&input, &skin_options()).unwrap();
+        let mut layout = plan(&input, &MdlAnimationSetV1::empty(), &skin_options()).unwrap();
         layout.mesh[0].skin.as_mut().unwrap().forward_offset += 4;
         let error = validate_skin_layout(&layout.mesh, input.nodes.len() + input.segments.len())
             .unwrap_err();
@@ -2174,7 +3325,7 @@ mod tests {
     #[test]
     fn signed_skin_fields_are_rejected_by_preallocation_validation() {
         let input = skin_input();
-        let mut layout = plan(&input, &skin_options()).unwrap();
+        let mut layout = plan(&input, &MdlAnimationSetV1::empty(), &skin_options()).unwrap();
         let over = i32::MAX as usize + 1;
         let error = validate_skin_signed_fields(&layout.mesh, over).unwrap_err();
         assert_eq!(error.code, "M4-LAYOUT-OVERFLOW");

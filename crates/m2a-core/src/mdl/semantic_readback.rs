@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use super::types::{InspectionReport, MeshReport, NodeReport, SkinReport, SkinVariant, Vec2, Vec3};
+use super::types::{
+    ArrayReport, InspectionReport, MeshReport, NodeReport, SkinReport, SkinVariant, Vec2, Vec3,
+};
 
 pub(crate) struct ExpectedReadback {
     pub model_name: String,
@@ -9,6 +11,42 @@ pub(crate) struct ExpectedReadback {
     pub model_radius: f32,
     pub root_part_number: u32,
     pub nodes: Vec<ExpectedNode>,
+    pub animation_pointers_header: ArrayReport,
+    pub animations: Vec<ExpectedAnimation>,
+}
+
+pub(crate) struct ExpectedAnimation {
+    pub offset: u32,
+    pub name: String,
+    pub length: f32,
+    pub transition: f32,
+    pub animation_root: String,
+    pub events_header: ArrayReport,
+    pub events: Vec<(f32, String)>,
+    pub root_part_number: u32,
+    pub nodes: Vec<ExpectedAnimationNode>,
+}
+
+pub(crate) struct ExpectedAnimationNode {
+    pub offset: u32,
+    pub part_number: u32,
+    pub name: String,
+    pub parent_part_number: Option<u32>,
+    pub children_header: ArrayReport,
+    pub controller_keys_header: ArrayReport,
+    pub controller_data_header: ArrayReport,
+    pub controllers: Vec<ExpectedAnimationController>,
+}
+
+pub(crate) struct ExpectedAnimationController {
+    pub key_offset: u32,
+    pub controller_type: i32,
+    pub packed_byte: u8,
+    pub rows: usize,
+    pub time_index: usize,
+    pub data_index: usize,
+    pub times: Vec<f32>,
+    pub values: Vec<Vec<f32>>,
 }
 
 pub(crate) struct ExpectedNode {
@@ -63,9 +101,12 @@ pub(crate) fn semantic_diff(expected: &ExpectedReadback, actual: &InspectionRepo
     if actual.model.name != expected.model_name || actual.model.geometry_type != 2 {
         diff.push("model.name".to_owned());
     }
-    if !actual.animations.is_empty() {
-        diff.push("model.animations".to_owned());
-    }
+    compare_array(
+        "model.animationPointers",
+        &expected.animation_pointers_header,
+        &actual.model.animation_pointers_header,
+        &mut diff,
+    );
     if actual.byte_length != actual.file_header.raw_range.end {
         diff.push("file.exactEof".to_owned());
     }
@@ -181,7 +222,162 @@ pub(crate) fn semantic_diff(expected: &ExpectedReadback, actual: &InspectionRepo
             _ => diff.push(format!("{path}.kind")),
         }
     }
+    compare_animations(&expected.animations, actual, &mut diff);
     diff
+}
+
+fn compare_animations(
+    expected: &[ExpectedAnimation],
+    actual: &InspectionReport,
+    diff: &mut Vec<String>,
+) {
+    if actual.animations.len() != expected.len() {
+        diff.push("animations.count".to_owned());
+        return;
+    }
+    for (clip_index, (expected_clip, actual_clip)) in
+        expected.iter().zip(&actual.animations).enumerate()
+    {
+        let path = format!("animations[{clip_index}]");
+        if actual_clip.offset != expected_clip.offset
+            || actual_clip.name != expected_clip.name
+            || actual_clip.geometry_array_50.pointer != 0
+            || actual_clip.geometry_array_50.used != 0
+            || actual_clip.geometry_array_50.allocated != 0
+            || actual_clip.geometry_array_5c.pointer != 0
+            || actual_clip.geometry_array_5c.used != 0
+            || actual_clip.geometry_array_5c.allocated != 0
+            || actual_clip.runtime_68 != 0
+            || actual_clip.runtime_6c != 0
+            || actual_clip.length.to_bits() != expected_clip.length.to_bits()
+            || actual_clip.transition.to_bits() != expected_clip.transition.to_bits()
+            || actual_clip.animation_root != expected_clip.animation_root
+        {
+            diff.push(format!("{path}.header"));
+        }
+        compare_array(
+            &format!("{path}.eventsHeader"),
+            &expected_clip.events_header,
+            &actual_clip.events_header,
+            diff,
+        );
+        if actual_clip.events.len() != expected_clip.events.len() {
+            diff.push(format!("{path}.events.count"));
+        } else {
+            for (event_index, (expected_event, actual_event)) in expected_clip
+                .events
+                .iter()
+                .zip(&actual_clip.events)
+                .enumerate()
+            {
+                if actual_event.time.to_bits() != expected_event.0.to_bits()
+                    || actual_event.name != expected_event.1
+                {
+                    diff.push(format!("{path}.events[{event_index}]"));
+                }
+            }
+        }
+        let mut flat = Vec::new();
+        for root in &actual_clip.node_tree.roots {
+            flatten(root, &mut flat);
+        }
+        if flat.len() != expected_clip.nodes.len()
+            || actual_clip.node_tree.declared_node_count != expected_clip.nodes.len()
+            || actual_clip.node_tree.roots.len() != 1
+            || actual_clip.node_tree.roots[0].number != expected_clip.root_part_number
+        {
+            diff.push(format!("{path}.nodes.countOrRoot"));
+            continue;
+        }
+        let offsets = flat
+            .iter()
+            .map(|node| (node.offset, node.number))
+            .collect::<HashMap<_, _>>();
+        for (node_index, (expected_node, actual_node)) in
+            expected_clip.nodes.iter().zip(flat).enumerate()
+        {
+            let node_path = format!("{path}.nodes[{node_index}]");
+            let actual_parent = actual_node
+                .parent_offset
+                .and_then(|offset| offsets.get(&offset).copied());
+            if actual_node.offset != expected_node.offset
+                || actual_node.number != expected_node.part_number
+                || actual_node.name != expected_node.name
+                || actual_parent != expected_node.parent_part_number
+                || actual_node.inherit_color != 0
+                || actual_node.content_flags != 0x01
+                || actual_node.mesh.is_some()
+                || actual_node.skin.is_some()
+            {
+                diff.push(format!("{node_path}.header"));
+            }
+            compare_array(
+                &format!("{node_path}.children"),
+                &expected_node.children_header,
+                &actual_node.children_header,
+                diff,
+            );
+            compare_array(
+                &format!("{node_path}.controllerKeys"),
+                &expected_node.controller_keys_header,
+                &actual_node.controller_keys_header,
+                diff,
+            );
+            compare_array(
+                &format!("{node_path}.controllerData"),
+                &expected_node.controller_data_header,
+                &actual_node.controller_data_header,
+                diff,
+            );
+            if actual_node.controllers.len() != expected_node.controllers.len() {
+                diff.push(format!("{node_path}.controllers.count"));
+                continue;
+            }
+            for (controller_index, (expected_controller, actual_controller)) in expected_node
+                .controllers
+                .iter()
+                .zip(&actual_node.controllers)
+                .enumerate()
+            {
+                let controller_path = format!("{node_path}.controllers[{controller_index}]");
+                if actual_controller.key_offset != expected_controller.key_offset
+                    || actual_controller.controller_type != expected_controller.controller_type
+                    || actual_controller.packed_byte != expected_controller.packed_byte
+                    || actual_controller.interpolation_flags != 0
+                    || !actual_controller.decoded
+                    || actual_controller.padding_byte != 0
+                    || actual_controller.row_count != expected_controller.rows
+                    || actual_controller.time_index != expected_controller.time_index
+                    || actual_controller.data_index != expected_controller.data_index
+                    || !exact_f32_slice(&actual_controller.times, &expected_controller.times)
+                    || actual_controller.values.len() != expected_controller.values.len()
+                    || actual_controller
+                        .values
+                        .iter()
+                        .zip(&expected_controller.values)
+                        .any(|(actual_row, expected_row)| {
+                            !exact_f32_slice(actual_row, expected_row)
+                        })
+                {
+                    diff.push(controller_path);
+                }
+            }
+        }
+    }
+}
+
+fn compare_array(path: &str, expected: &ArrayReport, actual: &ArrayReport, diff: &mut Vec<String>) {
+    if actual != expected {
+        diff.push(path.to_owned());
+    }
+}
+
+fn exact_f32_slice(actual: &[f32], expected: &[f32]) -> bool {
+    actual.len() == expected.len()
+        && actual
+            .iter()
+            .zip(expected)
+            .all(|(actual, expected)| actual.to_bits() == expected.to_bits())
 }
 
 fn compare_skin(

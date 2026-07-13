@@ -10,6 +10,16 @@ struct ProfileAJsonInputError<'a> {
     message: &'a str,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MdlWriterJsonInputError<'a> {
+    schema_version: u32,
+    code: &'a str,
+    severity: &'a str,
+    path: &'a str,
+    message: &'a str,
+}
+
 const SERIALIZATION_ERROR_JSON: &str = concat!(
     r#"{"schemaVersion":1,"code":"M2A-JSON-SERIALIZATION","severity":"error","offset":0,"context":""#,
     "WASM adapter JSON serialization",
@@ -113,6 +123,90 @@ pub fn convert_profile_a_glb_json(bytes: &[u8], rig_json: &str, options_json: &s
 #[wasm_bindgen(js_name = convertProfileAJson)]
 pub fn convert_profile_a_json(bytes: &[u8], rig_json: &str, options_json: &str) -> String {
     convert_profile_a_glb_json(bytes, rig_json, options_json)
+}
+
+/// Writes an Aurora binary MDL from strict public JSON contracts.
+///
+/// The returned vector is mapped to a JavaScript `Uint8Array`. Failures are a
+/// stable serialized JSON object carried by `JsValue`; no binary encoding or
+/// validation is duplicated at the WASM boundary.
+#[wasm_bindgen(js_name = writeBinaryMdlWithAnimations)]
+pub fn write_binary_mdl_with_animations(
+    creature_json: &str,
+    animations_json: &str,
+    options_json: &str,
+) -> Result<Vec<u8>, JsValue> {
+    let (creature, animations, options) =
+        parse_mdl_writer_json(creature_json, animations_json, options_json)
+            .map_err(|error| JsValue::from_str(&error))?;
+    m2a_core::mdl::write_binary_mdl_with_animations(&creature, &animations, &options)
+        .map(|artifact| artifact.payload)
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+/// Returns the deterministic core writer report or the same stable JSON error
+/// used by `writeBinaryMdlWithAnimations`.
+#[wasm_bindgen(js_name = writeBinaryMdlWithAnimationsReportJson)]
+pub fn write_binary_mdl_with_animations_report_json(
+    creature_json: &str,
+    animations_json: &str,
+    options_json: &str,
+) -> String {
+    let (creature, animations, options) =
+        match parse_mdl_writer_json(creature_json, animations_json, options_json) {
+            Ok(values) => values,
+            Err(error) => return error,
+        };
+    match m2a_core::mdl::write_binary_mdl_with_animations(&creature, &animations, &options) {
+        Ok(artifact) => serialize_json(&artifact.report),
+        Err(error) => serialize_json(&error),
+    }
+}
+
+fn parse_mdl_writer_json(
+    creature_json: &str,
+    animations_json: &str,
+    options_json: &str,
+) -> Result<
+    (
+        m2a_core::profile_a::AuroraCreatureIrV1,
+        m2a_core::mdl::MdlAnimationSetV1,
+        m2a_core::mdl::MdlWriterOptionsV1,
+    ),
+    String,
+> {
+    let creature = serde_json::from_str(creature_json).map_err(|_| {
+        mdl_writer_json_error(
+            "M4A-CREATURE-JSON-INVALID",
+            "creatureJson",
+            "creature JSON does not match the strict public schema",
+        )
+    })?;
+    let animations = serde_json::from_str(animations_json).map_err(|_| {
+        mdl_writer_json_error(
+            "M4A-ANIMATION-JSON-INVALID",
+            "animationsJson",
+            "animation set JSON does not match the strict public schema",
+        )
+    })?;
+    let options = serde_json::from_str(options_json).map_err(|_| {
+        mdl_writer_json_error(
+            "M4A-OPTIONS-JSON-INVALID",
+            "optionsJson",
+            "writer options JSON does not match the strict public schema",
+        )
+    })?;
+    Ok((creature, animations, options))
+}
+
+fn mdl_writer_json_error(code: &str, path: &str, message: &str) -> String {
+    serialize_json(&MdlWriterJsonInputError {
+        schema_version: 1,
+        code,
+        severity: "FATAL",
+        path,
+        message,
+    })
 }
 
 fn serialize_json<T: serde::Serialize>(value: &T) -> String {
@@ -440,6 +534,8 @@ mod wasm_tests {
         convert_profile_a_glb_json, convert_profile_a_json, ingest_glb, ingest_glb_json,
         inspect_binary_mdl, inspect_glb, inspect_glb_json,
         profile_a_test_support as profile_support,
+        write_binary_mdl_with_animations as write_mdl_bytes,
+        write_binary_mdl_with_animations_report_json as write_mdl_report_json,
     };
     use wasm_bindgen_test::*;
 
@@ -449,6 +545,119 @@ mod wasm_tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../m2a-core/tests/fixtures/build_minimal_binary_mdl.rs"
         ));
+    }
+
+    #[wasm_bindgen_test]
+    fn public_animation_writer_is_native_wasm_byte_and_report_identical() {
+        use m2a_core::mdl::{
+            MdlAnimationClipV1, MdlAnimationInterpolationV1, MdlAnimationSetV1,
+            MdlAnimationTrackPathV1, MdlAnimationTrackV1, MdlFormatProfileV1,
+            MdlMaterialTextureBindingV1, MdlWriterOptionsV1,
+        };
+        use m2a_core::profile_a::{
+            AuroraCreatureIrV1, AuroraCreatureNodeV1, AuroraCreatureSegmentV1,
+            MaterialSourceBindingV1, RigSegmentDeformationV1,
+        };
+
+        let identity = [
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ];
+        let creature = AuroraCreatureIrV1 {
+            schema_version: 1,
+            profile_id: "wasm-owned-animation".to_owned(),
+            source_sha256: "0".repeat(64),
+            basis_status: "PROFILE_A_LOCKED_M3".to_owned(),
+            engine_facing_proof: "OPEN_M6".to_owned(),
+            uv_runtime_proof: "OPEN_M6".to_owned(),
+            nodes: vec![AuroraCreatureNodeV1 {
+                id: 70,
+                name: "root".to_owned(),
+                parent_id: None,
+                bind_local_matrix: identity,
+            }],
+            material_source_bindings: vec![MaterialSourceBindingV1 {
+                slot: 0,
+                source_material_id: None,
+                source_material_name: None,
+            }],
+            segments: vec![AuroraCreatureSegmentV1 {
+                segment_id: 1,
+                material_slot: 0,
+                deformation: RigSegmentDeformationV1::Rigid,
+                parent_node_id: 70,
+                positions: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+                normals: vec![[0.0, 0.0, 1.0]; 3],
+                tangents: None,
+                uv0: vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
+                indices: vec![0, 1, 2],
+                weights: Vec::new(),
+            }],
+        };
+        let animations = MdlAnimationSetV1 {
+            schema_version: 1,
+            clips: vec![MdlAnimationClipV1 {
+                name: "cpause1".to_owned(),
+                animation_root: "owned_root".to_owned(),
+                length_seconds: 1.0,
+                transition_seconds: 0.25,
+                events: Vec::new(),
+                tracks: vec![MdlAnimationTrackV1 {
+                    target_node_id: 70,
+                    path: MdlAnimationTrackPathV1::Translation,
+                    interpolation: MdlAnimationInterpolationV1::Linear,
+                    times_seconds: vec![0.0, 1.0],
+                    values: vec![vec![0.0, 0.0, 0.0], vec![0.25, 0.0, 0.0]],
+                }],
+            }],
+        };
+        let options = MdlWriterOptionsV1 {
+            schema_version: 1,
+            format_profile: MdlFormatProfileV1::M4DirectCreatureExtended64V1,
+            model_resource_resref: "wasm_mdl".to_owned(),
+            diffuse_texture_resref_by_material_slot: vec![MdlMaterialTextureBindingV1 {
+                material_slot: 0,
+                resref: "wasm_tex".to_owned(),
+            }],
+        };
+        let native =
+            m2a_core::mdl::write_binary_mdl_with_animations(&creature, &animations, &options)
+                .expect("native writer");
+        let creature_json = serde_json::to_string(&creature).unwrap();
+        let animations_json = serde_json::to_string(&animations).unwrap();
+        let options_json = serde_json::to_string(&options).unwrap();
+
+        let wasm_bytes =
+            write_mdl_bytes(&creature_json, &animations_json, &options_json).expect("WASM writer");
+        let wasm_report = write_mdl_report_json(&creature_json, &animations_json, &options_json);
+        assert_eq!(wasm_bytes, native.payload);
+        assert_eq!(wasm_report, serde_json::to_string(&native.report).unwrap());
+
+        let invalid = write_mdl_report_json(
+            &creature_json.replacen("{", "{\"unknown\":true,", 1),
+            &animations_json,
+            &options_json,
+        );
+        let error: serde_json::Value = serde_json::from_str(&invalid).unwrap();
+        assert_eq!(error["code"], "M4A-CREATURE-JSON-INVALID");
+        assert_eq!(error["path"], "creatureJson");
+
+        let invalid = write_mdl_report_json(
+            &creature_json,
+            &animations_json.replacen("{", "{\"unknown\":true,", 1),
+            &options_json,
+        );
+        let error: serde_json::Value = serde_json::from_str(&invalid).unwrap();
+        assert_eq!(error["code"], "M4A-ANIMATION-JSON-INVALID");
+        assert_eq!(error["path"], "animationsJson");
+
+        let invalid = write_mdl_report_json(
+            &creature_json,
+            &animations_json,
+            &options_json.replacen("{", "{\"unknown\":true,", 1),
+        );
+        let error: serde_json::Value = serde_json::from_str(&invalid).unwrap();
+        assert_eq!(error["code"], "M4A-OPTIONS-JSON-INVALID");
+        assert_eq!(error["path"], "optionsJson");
     }
 
     #[wasm_bindgen_test]

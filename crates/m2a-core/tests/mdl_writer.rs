@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use m2a_core::mdl::{
-    MdlFormatProfileV1, MdlMaterialTextureBindingV1, MdlWriterOptionsV1, inspect_binary_mdl,
-    write_binary_mdl,
+    MdlAnimationClipV1, MdlAnimationEventV1, MdlAnimationInterpolationV1, MdlAnimationSetV1,
+    MdlAnimationTrackPathV1, MdlAnimationTrackV1, MdlFormatProfileV1, MdlMaterialTextureBindingV1,
+    MdlWriterOptionsV1, inspect_binary_mdl, write_binary_mdl, write_binary_mdl_with_animations,
 };
 use m2a_core::profile_a::{
     AuroraCreatureIrV1, AuroraCreatureNodeV1, AuroraCreatureSegmentV1, AuroraVertexWeightsV1,
@@ -203,6 +204,60 @@ fn options() -> MdlWriterOptionsV1 {
         diffuse_texture_resref_by_material_slot: vec![MdlMaterialTextureBindingV1 {
             material_slot: 0,
             resref: "m2a_tex".to_owned(),
+        }],
+    }
+}
+
+fn translation_track(target_node_id: u32) -> MdlAnimationTrackV1 {
+    MdlAnimationTrackV1 {
+        target_node_id,
+        path: MdlAnimationTrackPathV1::Translation,
+        interpolation: MdlAnimationInterpolationV1::Linear,
+        times_seconds: vec![0.0, 1.0],
+        values: vec![vec![0.0, 0.0, 0.0], vec![0.25, -0.5, 1.0]],
+    }
+}
+
+fn rotation_track(target_node_id: u32) -> MdlAnimationTrackV1 {
+    let half = std::f32::consts::FRAC_PI_4;
+    MdlAnimationTrackV1 {
+        target_node_id,
+        path: MdlAnimationTrackPathV1::Rotation,
+        interpolation: MdlAnimationInterpolationV1::Linear,
+        times_seconds: vec![0.0, 1.0],
+        values: vec![
+            vec![0.0, 0.0, 0.0, 1.0],
+            vec![0.0, 0.0, -half.sin(), -half.cos()],
+        ],
+    }
+}
+
+fn cpause1_set(target_node_id: u32) -> MdlAnimationSetV1 {
+    MdlAnimationSetV1 {
+        schema_version: 1,
+        clips: vec![MdlAnimationClipV1 {
+            name: "cpause1".to_owned(),
+            animation_root: "owned_root".to_owned(),
+            length_seconds: 1.0,
+            transition_seconds: 0.25,
+            events: vec![
+                MdlAnimationEventV1 {
+                    time_seconds: 0.75,
+                    name: "owned_late".to_owned(),
+                },
+                MdlAnimationEventV1 {
+                    time_seconds: 0.5,
+                    name: "owned_equal_a".to_owned(),
+                },
+                MdlAnimationEventV1 {
+                    time_seconds: 0.5,
+                    name: "owned_equal_b".to_owned(),
+                },
+            ],
+            tracks: vec![
+                rotation_track(target_node_id),
+                translation_track(target_node_id),
+            ],
         }],
     }
 }
@@ -694,6 +749,971 @@ fn identical_input_is_byte_identical_report_identical_and_input_is_not_mutated()
 }
 
 #[test]
+fn empty_animation_api_is_the_frozen_m4_wrapper_byte_for_byte() {
+    let input = creature();
+    let legacy = write_binary_mdl(&input, &options()).expect("frozen M4 wrapper");
+    let explicit =
+        write_binary_mdl_with_animations(&input, &MdlAnimationSetV1::empty(), &options())
+            .expect("explicit empty animation set");
+
+    assert_eq!(legacy.payload, explicit.payload);
+    assert_eq!(legacy.report, explicit.report);
+    assert_eq!(legacy.inspection, explicit.inspection);
+    assert_eq!(legacy.payload.len(), 1188);
+    assert_eq!(legacy.report.layout.core_length, 1072);
+    assert_eq!(legacy.report.layout.raw_length, 104);
+    assert_eq!(
+        legacy.report.payload_sha256,
+        "e100130d1dfbd18657413cdb7a701396d466cee081683591fc9836bf0c11b4b2"
+    );
+    assert_eq!(legacy.inspection.model.animation_pointers_header.used, 0);
+    assert!(legacy.report.animation.is_none());
+}
+
+#[test]
+fn owned_cpause1_roundtrips_exact_animation_layout_events_and_linear_keys() {
+    let animation_set = cpause1_set(70);
+    let artifact = write_binary_mdl_with_animations(&creature(), &animation_set, &options())
+        .expect("owned cpause1 writer");
+
+    assert!(artifact.report.semantic_diff.is_empty());
+    assert_eq!(artifact.inspection.byte_length, artifact.payload.len());
+    assert_eq!(
+        (
+            artifact.report.layout.core_length,
+            artifact.report.layout.raw_length,
+            artifact.report.layout.file_length,
+            artifact.payload.len(),
+        ),
+        (1588, 104, 1704, 1704)
+    );
+    assert_eq!(
+        (
+            artifact.inspection.model.animation_pointers_header.pointer,
+            artifact.inspection.model.animation_pointers_header.used,
+            artifact
+                .inspection
+                .model
+                .animation_pointers_header
+                .allocated,
+        ),
+        (232, 1, 1)
+    );
+    let report = artifact
+        .report
+        .animation
+        .as_ref()
+        .expect("animation report");
+    assert_eq!(
+        (report.clip_count, report.event_count, report.track_count),
+        (1, 3, 2)
+    );
+    assert_eq!(
+        (
+            report.pointer_array_core_offset,
+            report.clips[0].header_core_offset,
+            report.clips[0].root_core_offset,
+            report.clips[0].event_array_core_offset,
+        ),
+        (232, 236, 540, Some(432))
+    );
+    assert_eq!(
+        report.clips[0].event_array_core_offset,
+        Some(report.clips[0].header_core_offset + 0xc4)
+    );
+    assert_eq!(report.clips[0].nodes.len(), 1);
+    assert_eq!(
+        report.clips[0].nodes[0]
+            .tracks
+            .iter()
+            .map(|track| (track.controller_type, track.packed_byte))
+            .collect::<Vec<_>>(),
+        vec![(8, 3), (20, 4)]
+    );
+    let clip = &artifact.inspection.animations[0];
+    assert_eq!(clip.name, "cpause1");
+    assert_eq!(clip.length.to_bits(), 1.0_f32.to_bits());
+    assert_eq!(clip.transition.to_bits(), 0.25_f32.to_bits());
+    assert_eq!(clip.animation_root, "owned_root");
+    assert_eq!(
+        (
+            clip.events_header.pointer,
+            clip.events_header.used,
+            clip.events_header.allocated,
+        ),
+        (432, 3, 3)
+    );
+    assert_eq!(
+        clip.events
+            .iter()
+            .map(|event| event.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["owned_equal_a", "owned_equal_b", "owned_late"]
+    );
+    assert_eq!(
+        clip.events
+            .iter()
+            .map(|event| event.time.to_bits())
+            .collect::<Vec<_>>(),
+        vec![0.5_f32.to_bits(), 0.5_f32.to_bits(), 0.75_f32.to_bits()]
+    );
+    assert_eq!(
+        (
+            clip.geometry_array_50.pointer,
+            clip.geometry_array_50.used,
+            clip.geometry_array_50.allocated,
+        ),
+        (0, 0, 0)
+    );
+    assert_eq!(
+        (
+            clip.geometry_array_5c.pointer,
+            clip.geometry_array_5c.used,
+            clip.geometry_array_5c.allocated,
+        ),
+        (0, 0, 0)
+    );
+    assert_eq!((clip.runtime_68, clip.runtime_6c), (0, 0));
+    assert_eq!(clip.node_tree.node_count, 1);
+    let root = &clip.node_tree.roots[0];
+    assert_eq!(
+        (root.number, root.name.as_str(), root.content_flags),
+        (0, "root", 1)
+    );
+    assert!(root.mesh.is_none() && root.skin.is_none());
+    assert_eq!(
+        (
+            root.children_header.pointer,
+            root.children_header.used,
+            root.children_header.allocated,
+        ),
+        (0, 0, 0)
+    );
+    assert_eq!(
+        (
+            root.controller_keys_header.pointer,
+            root.controller_keys_header.used,
+            root.controller_keys_header.allocated,
+        ),
+        (652, 2, 2)
+    );
+    assert_eq!(
+        (
+            root.controller_data_header.pointer,
+            root.controller_data_header.used,
+            root.controller_data_header.allocated,
+        ),
+        (676, 18, 18)
+    );
+    assert_eq!(
+        (
+            report.clips[0].nodes[0].core_offset,
+            report.clips[0].nodes[0].children_array_core_offset,
+            report.clips[0].nodes[0].controller_keys_core_offset,
+            report.clips[0].nodes[0].controller_data_core_offset,
+        ),
+        (540, None, Some(652), Some(676))
+    );
+    assert_eq!(
+        root.controllers
+            .iter()
+            .map(|controller| controller.controller_type)
+            .collect::<Vec<_>>(),
+        vec![8, 20]
+    );
+    let translation = &root.controllers[0];
+    assert_eq!(
+        (
+            translation.packed_byte,
+            translation.interpolation_flags,
+            translation.padding_byte,
+            translation.row_count,
+            translation.time_index,
+            translation.data_index
+        ),
+        (3, 0, 0, 2, 0, 2)
+    );
+    assert_eq!(translation.times, vec![0.0, 1.0]);
+    assert_eq!(
+        translation.values,
+        vec![vec![0.0, 0.0, 0.0], vec![0.25, -0.5, 1.0]]
+    );
+    let rotation = &root.controllers[1];
+    assert_eq!(
+        (
+            rotation.packed_byte,
+            rotation.interpolation_flags,
+            rotation.padding_byte,
+            rotation.row_count,
+            rotation.time_index,
+            rotation.data_index
+        ),
+        (4, 0, 0, 2, 8, 10)
+    );
+    assert!(rotation.values[1][2] > 0.0 && rotation.values[1][3] > 0.0);
+}
+
+#[test]
+fn multiple_owned_clips_are_deterministic_and_do_not_mutate_inputs() {
+    let input = skin_creature();
+    let mut animation_set = cpause1_set(20);
+    animation_set.clips.push(MdlAnimationClipV1 {
+        name: "cwalk".to_owned(),
+        animation_root: "owned_root".to_owned(),
+        length_seconds: 0.5,
+        transition_seconds: 0.0,
+        events: Vec::new(),
+        tracks: vec![MdlAnimationTrackV1 {
+            target_node_id: 70,
+            path: MdlAnimationTrackPathV1::Rotation,
+            interpolation: MdlAnimationInterpolationV1::Linear,
+            times_seconds: vec![0.0, 0.5],
+            values: vec![vec![0.0, 0.0, 0.0, 1.0], vec![0.0, 0.0, 0.0, 1.0]],
+        }],
+    });
+    let input_before = serde_json::to_vec(&input).unwrap();
+    let animations_before = serde_json::to_vec(&animation_set).unwrap();
+
+    let first = write_binary_mdl_with_animations(&input, &animation_set, &options()).unwrap();
+    let second = write_binary_mdl_with_animations(&input, &animation_set, &options()).unwrap();
+    assert_eq!(first.payload, second.payload);
+    assert_eq!(first.report, second.report);
+    assert_eq!(serde_json::to_vec(&input).unwrap(), input_before);
+    assert_eq!(
+        serde_json::to_vec(&animation_set).unwrap(),
+        animations_before
+    );
+    assert_eq!(first.inspection.animations.len(), 2);
+    assert_eq!(first.inspection.animations[1].events_header.used, 0);
+    assert_eq!(first.inspection.animations[1].events_header.pointer, 0);
+    for clip in &first.inspection.animations {
+        assert_eq!(clip.node_tree.node_count, input.nodes.len());
+        fn assert_rig_only(node: &serde_json::Value) {
+            assert_eq!(node["contentFlags"], 1);
+            assert!(node["mesh"].is_null() && node["skin"].is_null());
+            for child in node["children"].as_array().unwrap() {
+                assert_rig_only(child);
+            }
+        }
+        assert_rig_only(&serde_json::to_value(&clip.node_tree.roots[0]).unwrap());
+    }
+}
+
+#[test]
+fn equal_positive_and_negative_zero_event_times_keep_input_order_and_bits() {
+    let mut animation_set = cpause1_set(70);
+    animation_set.clips[0].events = vec![
+        MdlAnimationEventV1 {
+            time_seconds: 0.0,
+            name: "positive_zero_first".to_owned(),
+        },
+        MdlAnimationEventV1 {
+            time_seconds: -0.0,
+            name: "negative_zero_second".to_owned(),
+        },
+    ];
+    let artifact = write_binary_mdl_with_animations(&creature(), &animation_set, &options())
+        .expect("equal numeric event times are stably sorted");
+    let events = &artifact.inspection.animations[0].events;
+    assert_eq!(events[0].name, "positive_zero_first");
+    assert_eq!(events[1].name, "negative_zero_second");
+    assert_eq!(events[0].time.to_bits(), 0.0_f32.to_bits());
+    assert_eq!(events[1].time.to_bits(), (-0.0_f32).to_bits());
+}
+
+#[test]
+fn owned_cpause_fixture_has_measurable_translation_motion() {
+    let animation_set = cpause1_set(70);
+    let translation = animation_set.clips[0]
+        .tracks
+        .iter()
+        .find(|track| track.path == MdlAnimationTrackPathV1::Translation)
+        .unwrap();
+    let first = &translation.values[0];
+    let second = &translation.values[1];
+    let distance = ((second[0] - first[0]).powi(2)
+        + (second[1] - first[1]).powi(2)
+        + (second[2] - first[2]).powi(2))
+    .sqrt();
+    assert!(distance >= 0.01);
+    write_binary_mdl_with_animations(&creature(), &animation_set, &options())
+        .expect("owned loader-smoke fixture remains a legal writer input");
+}
+
+#[test]
+fn arbitrary_zero_track_and_one_row_nonendpoint_clips_are_legal() {
+    let animation_set = MdlAnimationSetV1 {
+        schema_version: 1,
+        clips: vec![
+            MdlAnimationClipV1 {
+                name: "owned_idle".to_owned(),
+                animation_root: "unmatched_owned_animroot".to_owned(),
+                length_seconds: 1.0,
+                transition_seconds: 0.0,
+                events: Vec::new(),
+                tracks: Vec::new(),
+            },
+            MdlAnimationClipV1 {
+                name: "owned_pose".to_owned(),
+                animation_root: "also_not_a_node".to_owned(),
+                length_seconds: 2.0,
+                transition_seconds: 0.1,
+                events: Vec::new(),
+                tracks: vec![MdlAnimationTrackV1 {
+                    target_node_id: 70,
+                    path: MdlAnimationTrackPathV1::Translation,
+                    interpolation: MdlAnimationInterpolationV1::Linear,
+                    times_seconds: vec![0.75],
+                    values: vec![vec![0.1, 0.2, 0.3]],
+                }],
+            },
+        ],
+    };
+    let artifact = write_binary_mdl_with_animations(&creature(), &animation_set, &options())
+        .expect("general writer does not impose loader-smoke policy");
+    assert_eq!(artifact.inspection.animations.len(), 2);
+    assert_eq!(artifact.inspection.animations[0].events_header.pointer, 0);
+    assert!(
+        artifact.inspection.animations[0].node_tree.roots[0]
+            .controllers
+            .is_empty()
+    );
+    let pose = &artifact.inspection.animations[1].node_tree.roots[0].controllers[0];
+    assert_eq!(pose.row_count, 1);
+    assert_eq!(pose.times, vec![0.75]);
+}
+
+#[test]
+fn duplicate_names_across_branches_are_legal_but_case_folded_siblings_are_ambiguous() {
+    let mut branched = creature();
+    branched.nodes.extend([
+        AuroraCreatureNodeV1 {
+            id: 71,
+            name: "left".to_owned(),
+            parent_id: Some(70),
+            bind_local_matrix: identity(),
+        },
+        AuroraCreatureNodeV1 {
+            id: 72,
+            name: "right".to_owned(),
+            parent_id: Some(70),
+            bind_local_matrix: identity(),
+        },
+        AuroraCreatureNodeV1 {
+            id: 73,
+            name: "shared".to_owned(),
+            parent_id: Some(71),
+            bind_local_matrix: identity(),
+        },
+        AuroraCreatureNodeV1 {
+            id: 74,
+            name: "shared".to_owned(),
+            parent_id: Some(72),
+            bind_local_matrix: identity(),
+        },
+    ]);
+    let legal = MdlAnimationSetV1 {
+        schema_version: 1,
+        clips: vec![MdlAnimationClipV1 {
+            name: "owned_branch".to_owned(),
+            animation_root: "owned".to_owned(),
+            length_seconds: 1.0,
+            transition_seconds: 0.0,
+            events: Vec::new(),
+            tracks: vec![MdlAnimationTrackV1 {
+                target_node_id: 73,
+                path: MdlAnimationTrackPathV1::Translation,
+                interpolation: MdlAnimationInterpolationV1::Linear,
+                times_seconds: vec![0.5],
+                values: vec![vec![0.0, 0.0, 0.0]],
+            }],
+        }],
+    };
+    let artifact = write_binary_mdl_with_animations(&branched, &legal, &options())
+        .expect("global duplicate names in different branches are unambiguous");
+    assert_eq!(artifact.inspection.animations[0].node_tree.node_count, 5);
+    let animation_root = &artifact.inspection.animations[0].node_tree.roots[0];
+    let target = &animation_root.children[0].children[0];
+    assert_eq!(
+        [
+            animation_root.name.as_str(),
+            animation_root.children[0].name.as_str(),
+            target.name.as_str(),
+        ],
+        ["root", "left", "shared"]
+    );
+    assert_eq!(target.number, 3);
+    assert_eq!(
+        target
+            .controllers
+            .iter()
+            .map(|controller| controller.controller_type)
+            .collect::<Vec<_>>(),
+        [8]
+    );
+    let same_named_other_branch = &animation_root.children[1].children[0];
+    assert_eq!(same_named_other_branch.name, "shared");
+    assert!(same_named_other_branch.controllers.is_empty());
+
+    let mut ambiguous = creature();
+    ambiguous.nodes.extend([
+        AuroraCreatureNodeV1 {
+            id: 71,
+            name: "Bone".to_owned(),
+            parent_id: Some(70),
+            bind_local_matrix: identity(),
+        },
+        AuroraCreatureNodeV1 {
+            id: 72,
+            name: "bone".to_owned(),
+            parent_id: Some(70),
+            bind_local_matrix: identity(),
+        },
+    ]);
+    let error = write_binary_mdl_with_animations(&ambiguous, &legal, &options())
+        .expect_err("Aurora child matching is ASCII case-insensitive");
+    assert_eq!(error.code, "M4A-TRACK-TARGET-AMBIGUOUS");
+    assert_eq!(error.path, "creature.nodes[2].name");
+}
+
+#[test]
+fn quaternion_sign_equivalents_produce_identical_animation_payloads() {
+    let positive = MdlAnimationSetV1 {
+        schema_version: 1,
+        clips: vec![MdlAnimationClipV1 {
+            name: "owned_rotation".to_owned(),
+            animation_root: "owned".to_owned(),
+            length_seconds: 1.0,
+            transition_seconds: 0.0,
+            events: Vec::new(),
+            tracks: vec![MdlAnimationTrackV1 {
+                target_node_id: 70,
+                path: MdlAnimationTrackPathV1::Rotation,
+                interpolation: MdlAnimationInterpolationV1::Linear,
+                times_seconds: vec![0.2, 0.8],
+                values: vec![
+                    vec![0.0, 0.0, 0.0, 1.0],
+                    vec![
+                        0.0,
+                        0.0,
+                        std::f32::consts::FRAC_1_SQRT_2,
+                        std::f32::consts::FRAC_1_SQRT_2,
+                    ],
+                ],
+            }],
+        }],
+    };
+    let mut negative = positive.clone();
+    for row in &mut negative.clips[0].tracks[0].values {
+        for value in row {
+            *value = -*value;
+        }
+    }
+    let positive_artifact =
+        write_binary_mdl_with_animations(&creature(), &positive, &options()).unwrap();
+    let negative_artifact =
+        write_binary_mdl_with_animations(&creature(), &negative, &options()).unwrap();
+    assert_eq!(positive_artifact.payload, negative_artifact.payload);
+}
+
+#[test]
+fn negative_consecutive_quaternion_dot_is_preserved_for_runtime_slerp() {
+    fn globally_canonicalized_unit(mut q: [f32; 4]) -> [f32; 4] {
+        let norm = q
+            .iter()
+            .map(|value| f64::from(*value).powi(2))
+            .sum::<f64>()
+            .sqrt();
+        for value in &mut q {
+            *value = (f64::from(*value) / norm) as f32;
+        }
+        if q[3] < 0.0 {
+            for value in &mut q {
+                *value = -*value;
+            }
+        }
+        q
+    }
+
+    let half_angle = std::f32::consts::FRAC_PI_3;
+    let scale = 1.000_005_f32;
+    let first = [
+        0.0,
+        0.0,
+        -half_angle.sin() * scale,
+        -half_angle.cos() * scale,
+    ];
+    let second = [
+        0.0,
+        0.0,
+        half_angle.sin() * scale,
+        -half_angle.cos() * scale,
+    ];
+    let input_dot = first
+        .iter()
+        .zip(second)
+        .map(|(left, right)| left * right)
+        .sum::<f32>();
+    assert!(input_dot < 0.0);
+
+    let mut animation_set = cpause1_set(70);
+    animation_set.clips[0].events.clear();
+    animation_set.clips[0].tracks = vec![MdlAnimationTrackV1 {
+        target_node_id: 70,
+        path: MdlAnimationTrackPathV1::Rotation,
+        interpolation: MdlAnimationInterpolationV1::Linear,
+        times_seconds: vec![0.0, 1.0],
+        values: vec![first.to_vec(), second.to_vec()],
+    }];
+    let artifact = write_binary_mdl_with_animations(&creature(), &animation_set, &options())
+        .expect("runtime slerp owns consecutive-key shortest-path handling");
+    let emitted = &artifact.inspection.animations[0].node_tree.roots[0].controllers[0].values;
+    let expected = [
+        globally_canonicalized_unit(first),
+        globally_canonicalized_unit(second),
+    ];
+    for (actual, expected) in emitted.iter().zip(expected) {
+        assert_eq!(
+            actual
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<_>>(),
+            expected
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<_>>()
+        );
+        assert!(actual[3] > 0.0);
+        let norm = actual.iter().map(|value| value * value).sum::<f32>();
+        assert!((norm - 1.0).abs() <= f32::EPSILON);
+    }
+    let emitted_dot = emitted[0]
+        .iter()
+        .zip(&emitted[1])
+        .map(|(left, right)| left * right)
+        .sum::<f32>();
+    assert!(
+        emitted_dot < 0.0,
+        "serialized keys stay globally canonical; runtime slerp handles dot < 0"
+    );
+    let shortest_angular_distance = 2.0 * emitted_dot.abs().acos();
+    assert!((shortest_angular_distance - 2.0 * std::f32::consts::FRAC_PI_3).abs() <= 1.0e-5);
+}
+
+#[test]
+fn quaternion_is_normalized_once_in_the_planner_before_emission() {
+    let scale = 1.000_005_f32;
+    let half_angle = 0.4_f32;
+    let raw = [0.0, 0.0, half_angle.sin() * scale, half_angle.cos() * scale];
+    let norm = raw
+        .iter()
+        .map(|value| f64::from(*value).powi(2))
+        .sum::<f64>()
+        .sqrt();
+    let expected = raw.map(|value| (f64::from(value) / norm) as f32);
+    let animation_set = MdlAnimationSetV1 {
+        schema_version: 1,
+        clips: vec![MdlAnimationClipV1 {
+            name: "owned_normalized".to_owned(),
+            animation_root: "owned".to_owned(),
+            length_seconds: 1.0,
+            transition_seconds: 0.0,
+            events: Vec::new(),
+            tracks: vec![MdlAnimationTrackV1 {
+                target_node_id: 70,
+                path: MdlAnimationTrackPathV1::Rotation,
+                interpolation: MdlAnimationInterpolationV1::Linear,
+                times_seconds: vec![0.5],
+                values: vec![raw.to_vec()],
+            }],
+        }],
+    };
+    let artifact = write_binary_mdl_with_animations(&creature(), &animation_set, &options())
+        .expect("unit-tolerance quaternion is normalized in the plan");
+    let actual = &artifact.inspection.animations[0].node_tree.roots[0].controllers[0].values[0];
+    assert_eq!(
+        actual
+            .iter()
+            .map(|value| value.to_bits())
+            .collect::<Vec<_>>(),
+        expected
+            .iter()
+            .map(|value| value.to_bits())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn animation_writer_negative_contract_has_stable_codes_and_paths() {
+    fn rejected(
+        mut animation_set: MdlAnimationSetV1,
+        edit: impl FnOnce(&mut MdlAnimationSetV1),
+    ) -> m2a_core::mdl::MdlWriteError {
+        edit(&mut animation_set);
+        write_binary_mdl_with_animations(&creature(), &animation_set, &options())
+            .expect_err("animation contract must reject the mutation")
+    }
+
+    let error = rejected(cpause1_set(70), |set| set.schema_version = 2);
+    assert_eq!(
+        (error.code.as_str(), error.path.as_str()),
+        (
+            "M4A-ANIMATION-SET-SCHEMA-INVALID",
+            "animationSet.schemaVersion"
+        )
+    );
+    let error = rejected(cpause1_set(70), |set| {
+        set.clips[0].name = "BAD-NONASCII-é".to_owned()
+    });
+    assert_eq!(error.code, "M4A-ANIMATION-NAME-INVALID");
+    let error = rejected(cpause1_set(70), |set| set.clips[0].animation_root.clear());
+    assert_eq!(error.code, "M4A-ANIMROOT-INVALID");
+    let error = rejected(cpause1_set(70), |set| set.clips[0].length_seconds = 0.0);
+    assert_eq!(error.code, "M4A-CLIP-LENGTH-INVALID");
+    let error = rejected(cpause1_set(70), |set| {
+        set.clips[0].transition_seconds = -0.1
+    });
+    assert_eq!(error.code, "M4A-TRANSITION-INVALID");
+    let error = rejected(cpause1_set(70), |set| {
+        set.clips[0].events[0].time_seconds = 1.1
+    });
+    assert_eq!(error.code, "M4A-EVENT-TIME-INVALID");
+    let error = rejected(cpause1_set(70), |set| {
+        set.clips[0].tracks[0].target_node_id = 999
+    });
+    assert_eq!(error.code, "M4A-TRACK-TARGET-MISSING");
+    let error = rejected(cpause1_set(70), |set| {
+        let duplicate = set.clips[0].tracks[0].clone();
+        set.clips[0].tracks.push(duplicate);
+    });
+    assert_eq!(error.code, "M4A-TRACK-DUPLICATE");
+    let error = rejected(cpause1_set(70), |set| {
+        set.clips[0].tracks[0].interpolation = MdlAnimationInterpolationV1::Step
+    });
+    assert_eq!(error.code, "M4A-INTERPOLATION-UNSUPPORTED");
+    let error = rejected(cpause1_set(70), |set| {
+        set.clips[0].tracks[0].path = MdlAnimationTrackPathV1::Scale
+    });
+    assert_eq!(error.code, "M4A-TRACK-PATH-UNSUPPORTED");
+    let error = rejected(cpause1_set(70), |set| {
+        set.clips[0].tracks[1].times_seconds[1] = 0.0
+    });
+    assert_eq!(error.code, "M4A-TRACK-TIME-NOT-STRICT");
+    let error = rejected(cpause1_set(70), |set| {
+        set.clips[0].tracks[1].values[0].pop();
+    });
+    assert_eq!(error.code, "M4A-TRACK-ARITY-INVALID");
+    let error = rejected(cpause1_set(70), |set| {
+        set.clips[0].tracks[1].values.pop();
+    });
+    assert_eq!(
+        (error.code.as_str(), error.path.as_str()),
+        (
+            "M4A-TRACK-ARITY-INVALID",
+            "animationSet.clips[0].tracks[1].values"
+        )
+    );
+    let error = rejected(cpause1_set(70), |set| {
+        set.clips[0].tracks[0].values[0] = vec![0.0, 0.0, 0.0, 0.0]
+    });
+    assert_eq!(error.code, "M4A-QUATERNION-INVALID");
+    let error = rejected(cpause1_set(70), |set| {
+        set.clips.push(set.clips[0].clone());
+        set.clips[1].name = "CPAUSE1".to_owned();
+    });
+    assert_eq!(error.code, "M4A-ANIMATION-NAME-INVALID");
+
+    for value in [String::new(), "x".repeat(64), "bad\0name".to_owned()] {
+        let error = rejected(cpause1_set(70), |set| set.clips[0].name = value);
+        assert_eq!(error.code, "M4A-ANIMATION-NAME-INVALID");
+    }
+    for value in [
+        "x".repeat(64),
+        "bad-nonascii-é".to_owned(),
+        "bad\0root".to_owned(),
+    ] {
+        let error = rejected(cpause1_set(70), |set| set.clips[0].animation_root = value);
+        assert_eq!(error.code, "M4A-ANIMROOT-INVALID");
+    }
+    for value in [
+        String::new(),
+        "x".repeat(32),
+        "bad-nonascii-é".to_owned(),
+        "bad\0event".to_owned(),
+    ] {
+        let error = rejected(cpause1_set(70), |set| set.clips[0].events[0].name = value);
+        assert_eq!(error.code, "M4A-EVENT-NAME-INVALID");
+    }
+    for value in [-1.0, f32::NAN, f32::INFINITY] {
+        let error = rejected(cpause1_set(70), |set| set.clips[0].length_seconds = value);
+        assert_eq!(error.code, "M4A-CLIP-LENGTH-INVALID");
+    }
+    for value in [f32::NAN, f32::INFINITY] {
+        let error = rejected(cpause1_set(70), |set| {
+            set.clips[0].transition_seconds = value
+        });
+        assert_eq!(error.code, "M4A-TRANSITION-INVALID");
+        let error = rejected(cpause1_set(70), |set| {
+            set.clips[0].events[0].time_seconds = value
+        });
+        assert_eq!(error.code, "M4A-EVENT-TIME-INVALID");
+    }
+    let error = rejected(cpause1_set(70), |set| {
+        set.clips[0].tracks[1].times_seconds[1] = -0.25
+    });
+    assert_eq!(error.code, "M4A-TRACK-TIME-NOT-STRICT");
+    let error = rejected(cpause1_set(70), |set| {
+        set.clips[0].tracks[1].times_seconds[0] = f32::NAN
+    });
+    assert_eq!(error.code, "M4A-TRACK-TIME-NOT-STRICT");
+    let error = rejected(cpause1_set(70), |set| {
+        set.clips[0].tracks[1].times_seconds[1] = 1.25
+    });
+    assert_eq!(error.code, "M4A-TRACK-TIME-OOB");
+    let error = rejected(cpause1_set(70), |set| {
+        set.clips[0].tracks[1].values[0][0] = f32::NAN
+    });
+    assert_eq!(error.code, "M4A-TRACK-VALUE-NONFINITE");
+    let error = rejected(cpause1_set(70), |set| {
+        set.clips[0].tracks[0].values[0] = vec![0.0, 0.0, 0.0, 1.001]
+    });
+    assert_eq!(error.code, "M4A-QUATERNION-INVALID");
+    let error = rejected(cpause1_set(70), |set| {
+        set.clips[0].tracks[0].interpolation = MdlAnimationInterpolationV1::CubicSpline
+    });
+    assert_eq!(error.code, "M4A-INTERPOLATION-UNSUPPORTED");
+    let error = rejected(cpause1_set(70), |set| {
+        set.clips[0].tracks[0].path = MdlAnimationTrackPathV1::Weights
+    });
+    assert_eq!(error.code, "M4A-TRACK-PATH-UNSUPPORTED");
+    for value in [
+        String::new(),
+        "x".repeat(32),
+        "bad-nonascii-é".to_owned(),
+        "bad\0node".to_owned(),
+    ] {
+        let mut bad_creature = creature();
+        bad_creature.nodes[0].name = value;
+        let error = write_binary_mdl_with_animations(&bad_creature, &cpause1_set(70), &options())
+            .expect_err("invalid node name");
+        assert_eq!(error.code, "M4-INVALID-NAME");
+    }
+}
+
+#[test]
+fn animation_controller_evaluated_u16_boundary_is_preflighted() {
+    fn large_translation(row_count: usize) -> MdlAnimationTrackV1 {
+        let times = (0..row_count)
+            .map(|index| index as f32 / (row_count - 1) as f32)
+            .collect::<Vec<_>>();
+        let values = (0..row_count)
+            .map(|index| vec![index as f32 / (row_count - 1) as f32, 0.0, 0.0])
+            .collect::<Vec<_>>();
+        MdlAnimationTrackV1 {
+            target_node_id: 70,
+            path: MdlAnimationTrackPathV1::Translation,
+            interpolation: MdlAnimationInterpolationV1::Linear,
+            times_seconds: times,
+            values,
+        }
+    }
+
+    let row_count = 16_384;
+    let mut animation_set = cpause1_set(70);
+    animation_set.clips[0].events.clear();
+    animation_set.clips[0].tracks = vec![large_translation(row_count)];
+    let artifact = write_binary_mdl_with_animations(&creature(), &animation_set, &options())
+        .expect("last evaluated translation data index u16::MAX is legal");
+    let controller = &artifact.inspection.animations[0].node_tree.roots[0].controllers[0];
+    assert_eq!(controller.row_count, row_count);
+    assert_eq!(controller.data_index, row_count);
+    assert_eq!(
+        artifact.inspection.animations[0].node_tree.roots[0]
+            .controller_data_header
+            .used,
+        usize::from(u16::MAX) + 1
+    );
+
+    animation_set.clips[0].tracks = vec![large_translation(row_count + 1)];
+    let error = write_binary_mdl_with_animations(&creature(), &animation_set, &options())
+        .expect_err("last evaluated translation data index exceeds u16");
+    assert_eq!(error.code, "M4A-CONTROLLER-U16-OVERFLOW");
+    assert_eq!(error.path, "animationSet.clips[0].tracks[0].timesSeconds");
+}
+
+#[test]
+fn animation_rig_depth_is_preflighted_before_recursive_layout() {
+    let mut input = creature();
+    let mut parent_id = 70;
+    for index in 1..258_u32 {
+        let id = 1_000 + index;
+        input.nodes.push(AuroraCreatureNodeV1 {
+            id,
+            name: format!("n{index}"),
+            parent_id: Some(parent_id),
+            bind_local_matrix: identity(),
+        });
+        parent_id = id;
+    }
+    let error = write_binary_mdl_with_animations(&input, &cpause1_set(70), &options())
+        .expect_err("depth beyond own-reader guardrail must fail before recursive planning");
+    assert_eq!(error.code, "M4A-LAYOUT-OVERFLOW");
+    assert_eq!(error.path, "creature.nodes[257]");
+}
+
+#[test]
+fn animation_reader_rejects_named_pointer_array_and_controller_mutations() {
+    let artifact = write_binary_mdl_with_animations(&creature(), &cpause1_set(70), &options())
+        .expect("mutation baseline");
+    let clip = &artifact.inspection.animations[0];
+    let root = &clip.node_tree.roots[0];
+    let controller = &root.controllers[0];
+    let core_absolute = |offset: u32| 12 + offset as usize;
+
+    let mut mutated = artifact.payload.clone();
+    write_u32_test(&mut mutated, 12 + 0x78 + 4, 2);
+    let error = inspect_binary_mdl(&mutated).expect_err("model used > allocated");
+    assert_eq!(error.code, "M2A-MDL-HEADER-INVALID");
+
+    let mut mutated = artifact.payload.clone();
+    let pointer_array = artifact.inspection.model.animation_pointers_header.pointer;
+    write_u32_test(&mut mutated, core_absolute(pointer_array), u32::MAX);
+    let error = inspect_binary_mdl(&mutated).expect_err("animation header pointer OOB");
+    assert_eq!(error.code, "M2A-MDL-POINTER-OOB");
+
+    let mut mutated = artifact.payload.clone();
+    write_u32_test(&mut mutated, core_absolute(clip.offset) + 0x48, u32::MAX);
+    let error = inspect_binary_mdl(&mutated).expect_err("animation root pointer OOB");
+    assert_eq!(error.code, "M2A-MDL-POINTER-OOB");
+
+    let mut mutated = artifact.payload.clone();
+    write_u32_test(&mut mutated, core_absolute(clip.offset) + 0x4c, 0);
+    let error = inspect_binary_mdl(&mutated).expect_err("declared animation budget mismatch");
+    assert_eq!(error.code, "M2A-MDL-HEADER-INVALID");
+
+    let mut mutated = artifact.payload.clone();
+    write_u32_test(
+        &mut mutated,
+        core_absolute(clip.offset) + 0xbc,
+        (clip.events_header.allocated + 1) as u32,
+    );
+    let error = inspect_binary_mdl(&mutated).expect_err("events used > allocated");
+    assert_eq!(error.code, "M2A-MDL-HEADER-INVALID");
+
+    let mut mutated = artifact.payload.clone();
+    write_u32_test(&mut mutated, core_absolute(clip.offset) + 0xb8, u32::MAX);
+    let error = inspect_binary_mdl(&mutated).expect_err("event pointer OOB");
+    assert_eq!(error.code, "M2A-MDL-POINTER-OOB");
+
+    let mut mutated = artifact.payload.clone();
+    write_u32_test(&mut mutated, core_absolute(clip.offset) + 0xbc, 4);
+    write_u32_test(&mut mutated, core_absolute(clip.offset) + 0xc0, 4);
+    let error = inspect_binary_mdl(&mutated).expect_err("event stride must not overlap root tree");
+    assert_eq!(error.code, "M2A-MDL-OFFSET-TYPE-CONFLICT");
+
+    let mut mutated = artifact.payload.clone();
+    write_u32_test(
+        &mut mutated,
+        core_absolute(root.offset) + 0x58,
+        (root.controller_keys_header.allocated + 1) as u32,
+    );
+    let error = inspect_binary_mdl(&mutated).expect_err("keys used > allocated");
+    assert_eq!(error.code, "M2A-MDL-HEADER-INVALID");
+
+    let mut mutated = artifact.payload.clone();
+    write_u32_test(&mut mutated, core_absolute(root.offset) + 0x54, u32::MAX);
+    let error = inspect_binary_mdl(&mutated).expect_err("key pointer OOB");
+    assert_eq!(error.code, "M2A-MDL-POINTER-OOB");
+
+    let mut mutated = artifact.payload.clone();
+    write_u32_test(
+        &mut mutated,
+        core_absolute(root.offset) + 0x64,
+        (root.controller_data_header.allocated + 1) as u32,
+    );
+    let error = inspect_binary_mdl(&mutated).expect_err("data used > allocated");
+    assert_eq!(error.code, "M2A-MDL-HEADER-INVALID");
+
+    let mut mutated = artifact.payload.clone();
+    write_u32_test(&mut mutated, core_absolute(root.offset) + 0x60, u32::MAX);
+    let error = inspect_binary_mdl(&mutated).expect_err("controller data pointer OOB");
+    assert_eq!(error.code, "M2A-MDL-POINTER-OOB");
+
+    let mut mutated = artifact.payload.clone();
+    let key = core_absolute(controller.key_offset);
+    mutated[key + 8..key + 10].copy_from_slice(&u16::MAX.to_le_bytes());
+    let error = inspect_binary_mdl(&mutated).expect_err("controller data index OOB");
+    assert_eq!(error.code, "M2A-MDL-CONTROLLER-INDEX-OOB");
+
+    let mut mutated = artifact.payload.clone();
+    mutated[key + 6..key + 8].copy_from_slice(&u16::MAX.to_le_bytes());
+    let error = inspect_binary_mdl(&mutated).expect_err("controller time index OOB");
+    assert_eq!(error.code, "M2A-MDL-CONTROLLER-INDEX-OOB");
+
+    let mut mutated = artifact.payload.clone();
+    mutated[key + 10] = 0;
+    let error = inspect_binary_mdl(&mutated).expect_err("zero packed columns");
+    assert_eq!(error.code, "M2A-MDL-CONTROLLER-LAYOUT-INVALID");
+
+    for packed in [4_u8, 0x23] {
+        let mut mutated = artifact.payload.clone();
+        mutated[key + 10] = packed;
+        let error = inspect_binary_mdl(&mutated).expect_err("invalid type8 packed byte");
+        assert_eq!(error.code, "M2A-MDL-CONTROLLER-LAYOUT-INVALID");
+    }
+    let rotation_key = core_absolute(root.controllers[1].key_offset);
+    let mut mutated = artifact.payload.clone();
+    mutated[rotation_key + 10] = 3;
+    let error = inspect_binary_mdl(&mutated).expect_err("invalid type20 low nibble");
+    assert_eq!(error.code, "M2A-MDL-CONTROLLER-LAYOUT-INVALID");
+
+    let child_artifact =
+        write_binary_mdl_with_animations(&skin_creature(), &cpause1_set(20), &options())
+            .expect("child pointer mutation baseline");
+    let child_root = &child_artifact.inspection.animations[0].node_tree.roots[0];
+    let mut mutated = child_artifact.payload.clone();
+    write_u32_test(
+        &mut mutated,
+        core_absolute(child_root.offset) + 0x48,
+        u32::MAX,
+    );
+    let error = inspect_binary_mdl(&mutated).expect_err("child pointer array OOB");
+    assert_eq!(error.code, "M2A-MDL-POINTER-OOB");
+
+    let mut mutated = artifact.payload.clone();
+    write_u32_test(&mut mutated, core_absolute(clip.offset) + 0x68, 7);
+    let inspected = inspect_binary_mdl(&mutated).expect("opaque runtime mutation remains visible");
+    assert_eq!(inspected.animations[0].runtime_68, 7);
+
+    let mut mutated = artifact.payload.clone();
+    let name = core_absolute(root.offset) + 0x20;
+    mutated[name..name + 32].fill(0);
+    mutated[name..name + 7].copy_from_slice(b"changed");
+    let inspected = inspect_binary_mdl(&mutated).expect("node name mutation remains visible");
+    assert_eq!(inspected.animations[0].node_tree.roots[0].name, "changed");
+}
+
+#[test]
+fn every_animation_payload_truncated_prefix_returns_without_panicking() {
+    let complete = write_binary_mdl_with_animations(&creature(), &cpause1_set(70), &options())
+        .expect("animation truncation baseline")
+        .payload;
+    for length in 0..complete.len() {
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            inspect_binary_mdl(&complete[..length])
+        }));
+        assert!(
+            outcome.is_ok(),
+            "animation payload prefix {length} panicked"
+        );
+        assert!(
+            outcome.unwrap().is_err(),
+            "truncated animation payload prefix {length} parsed"
+        );
+    }
+}
+
+#[test]
 fn tangents_are_a_stable_nonfatal_deviation() {
     let mut input = creature();
     input.segments[0].tangents = Some(vec![[1.0, 0.0, 0.0, 1.0]; 3]);
@@ -771,6 +1791,28 @@ fn hierarchy_transform_mesh_and_limit_failures_are_stable() {
         bind_local_matrix: identity(),
     });
     assert_code(write_binary_mdl(&bad, &options()), "M4-HIERARCHY-INVALID");
+
+    let mut cycle = creature();
+    cycle.nodes.extend([
+        AuroraCreatureNodeV1 {
+            id: 71,
+            name: "cycle_a".to_owned(),
+            parent_id: Some(72),
+            bind_local_matrix: identity(),
+        },
+        AuroraCreatureNodeV1 {
+            id: 72,
+            name: "cycle_b".to_owned(),
+            parent_id: Some(71),
+            bind_local_matrix: identity(),
+        },
+    ]);
+    let error = write_binary_mdl(&cycle, &options()).expect_err("disconnected cycle must fail");
+    assert_eq!(
+        (error.code.as_str(), error.path.as_str()),
+        ("M4-HIERARCHY-INVALID", "creature.nodes")
+    );
+    assert_eq!(error.message, "rig hierarchy contains a cycle");
 
     let mut bad = creature();
     bad.nodes[0].bind_local_matrix[0] = 2.0;

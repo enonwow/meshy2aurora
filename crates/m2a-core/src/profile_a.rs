@@ -333,8 +333,8 @@ pub struct ProfileATransformReportV1 {
     pub translation: Option<[f32; 3]>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MaterialSourceBindingV1 {
     pub slot: u32,
     pub source_material_id: Option<u32>,
@@ -414,8 +414,8 @@ pub struct ProfileAConversionOutcomeV1 {
     pub creature: Option<AuroraCreatureIrV1>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AuroraCreatureIrV1 {
     pub schema_version: u32,
     pub profile_id: String,
@@ -428,8 +428,8 @@ pub struct AuroraCreatureIrV1 {
     pub segments: Vec<AuroraCreatureSegmentV1>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AuroraCreatureNodeV1 {
     pub id: u32,
     pub name: String,
@@ -437,8 +437,8 @@ pub struct AuroraCreatureNodeV1 {
     pub bind_local_matrix: [f32; 16],
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AuroraCreatureSegmentV1 {
     pub segment_id: u32,
     pub material_slot: u32,
@@ -452,8 +452,8 @@ pub struct AuroraCreatureSegmentV1 {
     pub weights: Vec<AuroraVertexWeightsV1>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AuroraVertexWeightsV1 {
     pub bone_node_ids: [Option<u32>; 4],
     pub values: [f32; 4],

@@ -199,7 +199,7 @@ pub fn inspect_binary_mdl_with_limits(
         declared_node_count,
         "base model root",
     )?;
-    let animations = parse_animations(&mut context, model_absolute)?;
+    let (animation_pointers_header, animations) = parse_animations(&mut context, model_absolute)?;
 
     let core_end = FILE_HEADER_SIZE
         .checked_add(core_length)
@@ -244,6 +244,7 @@ pub fn inspect_binary_mdl_with_limits(
                 64,
                 "model supermodel name",
             )?,
+            animation_pointers_header,
         },
         node_tree,
         animations,
@@ -599,6 +600,9 @@ fn parse_node_tree(
                 inherit_color: node.inherit_color,
                 content_flags: node.content_flags,
                 unsupported_families: node.unsupported_families,
+                children_header: node.children_header,
+                controller_keys_header: node.controller_keys_header,
+                controller_data_header: node.controller_data_header,
                 controllers: node.controllers,
                 mesh: node.mesh,
                 skin: node.skin,
@@ -628,6 +632,9 @@ struct FlatNode {
     inherit_color: u32,
     content_flags: u32,
     unsupported_families: Vec<String>,
+    children_header: ArrayReport,
+    controller_keys_header: ArrayReport,
+    controller_data_header: ArrayReport,
     controllers: Vec<ControllerReport>,
     mesh: Option<MeshReport>,
     skin: Option<SkinReport>,
@@ -727,17 +734,26 @@ fn read_node(
         inherit_color,
         content_flags,
         unsupported_families,
-        controllers,
+        children_header: children.into(),
+        controller_keys_header: controllers.keys_header,
+        controller_data_header: controllers.data_header,
+        controllers: controllers.controllers,
         mesh,
         skin,
         child_offsets,
     })
 }
 
+struct ControllerBlockReport {
+    keys_header: ArrayReport,
+    data_header: ArrayReport,
+    controllers: Vec<ControllerReport>,
+}
+
 fn read_controllers(
     context: &mut ParseContext<'_, '_>,
     node_absolute: usize,
-) -> Result<Vec<ControllerReport>, ParseError> {
+) -> Result<ControllerBlockReport, ParseError> {
     let keys = context.read_array_header(
         node_absolute + NODE_CONTROLLER_KEYS_OFFSET,
         CONTROLLER_KEY_SIZE,
@@ -770,7 +786,11 @@ fn read_controllers(
         }
     }
     if keys.used == 0 {
-        return Ok(Vec::new());
+        return Ok(ControllerBlockReport {
+            keys_header: keys.into(),
+            data_header: data.into(),
+            controllers: Vec::new(),
+        });
     }
     let keys_absolute = context.core_absolute(
         keys.pointer,
@@ -799,6 +819,9 @@ fn read_controllers(
             key_absolute + 10,
             "controller packed columns and interpolation flags",
         )?;
+        let padding_byte = context
+            .reader
+            .read_u8(key_absolute + 11, "controller padding byte")?;
         let columns = usize::from(packed_byte & 0x0f);
         let interpolation_flags = packed_byte & 0xf0;
         if interpolation_flags & !0x10 != 0 {
@@ -892,11 +915,15 @@ fn read_controllers(
             (Vec::new(), Vec::new())
         };
         reports.push(ControllerReport {
+            key_offset: u32::try_from(key_absolute - FILE_HEADER_SIZE).map_err(|_| {
+                ParseError::controller(key_absolute, "controller key offset does not fit u32")
+            })?,
             controller_type,
             controller_name,
             packed_byte,
             interpolation_flags,
             decoded,
+            padding_byte,
             row_count: rows,
             time_index,
             data_index,
@@ -905,7 +932,11 @@ fn read_controllers(
             values,
         });
     }
-    Ok(reports)
+    Ok(ControllerBlockReport {
+        keys_header: keys.into(),
+        data_header: data.into(),
+        controllers: reports,
+    })
 }
 
 fn controller_semantics(controller_type: i32) -> Option<(&'static str, usize)> {
@@ -1420,7 +1451,7 @@ fn read_skin(
 fn parse_animations(
     context: &mut ParseContext<'_, '_>,
     model_absolute: usize,
-) -> Result<Vec<AnimationReport>, ParseError> {
+) -> Result<(ArrayReport, Vec<AnimationReport>), ParseError> {
     let header = context.read_array_header(
         model_absolute + 0x78,
         POINTER_SIZE,
@@ -1457,6 +1488,28 @@ fn parse_animations(
                 GEOMETRY_NAME_LENGTH,
                 "animation name",
             )?,
+            geometry_array_50: context
+                .read_array_header(
+                    absolute + 0x50,
+                    1,
+                    "animation opaque geometry array 0x50",
+                    "animation-geometry-array-50",
+                )?
+                .into(),
+            geometry_array_5c: context
+                .read_array_header(
+                    absolute + 0x5c,
+                    1,
+                    "animation opaque geometry array 0x5c",
+                    "animation-geometry-array-5c",
+                )?
+                .into(),
+            runtime_68: context
+                .reader
+                .read_u32(absolute + 0x68, "animation opaque runtime field 0x68")?,
+            runtime_6c: context
+                .reader
+                .read_u32(absolute + 0x6c, "animation opaque runtime field 0x6c")?,
             length: context
                 .reader
                 .read_f32(absolute + 0x70, "animation length")?,
@@ -1468,11 +1521,12 @@ fn parse_animations(
                 64,
                 "animation root name",
             )?,
+            events_header: event_header.into(),
             events,
             node_tree,
         });
     }
-    Ok(reports)
+    Ok((header.into(), reports))
 }
 
 fn read_animation_events(

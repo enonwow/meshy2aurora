@@ -69,6 +69,7 @@ pub struct ModelReport {
     pub radius: f32,
     pub animation_scale: f32,
     pub supermodel_name: String,
+    pub animation_pointers_header: ArrayReport,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
@@ -105,6 +106,9 @@ pub struct NodeReport {
     pub inherit_color: u32,
     pub content_flags: u32,
     pub unsupported_families: Vec<String>,
+    pub children_header: ArrayReport,
+    pub controller_keys_header: ArrayReport,
+    pub controller_data_header: ArrayReport,
     pub controllers: Vec<ControllerReport>,
     pub mesh: Option<MeshReport>,
     pub skin: Option<SkinReport>,
@@ -114,11 +118,13 @@ pub struct NodeReport {
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ControllerReport {
+    pub key_offset: u32,
     pub controller_type: i32,
     pub controller_name: Option<String>,
     pub packed_byte: u8,
     pub interpolation_flags: u8,
     pub decoded: bool,
+    pub padding_byte: u8,
     pub row_count: usize,
     pub time_index: usize,
     pub data_index: usize,
@@ -219,9 +225,14 @@ pub struct ArrayReport {
 pub struct AnimationReport {
     pub offset: u32,
     pub name: String,
+    pub geometry_array_50: ArrayReport,
+    pub geometry_array_5c: ArrayReport,
+    pub runtime_68: u32,
+    pub runtime_6c: u32,
     pub length: f32,
     pub transition: f32,
     pub animation_root: String,
+    pub events_header: ArrayReport,
     pub events: Vec<AnimationEventReport>,
     pub node_tree: NodeTreeReport,
 }
