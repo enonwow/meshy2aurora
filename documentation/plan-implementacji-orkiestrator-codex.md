@@ -427,7 +427,8 @@ goal: "udowodnic, ze wygenerowany HAK i modul testowy laduja model w Toolset i g
 owner: "Mateusz + implementation agent"
 dependencies: ["M5 DONE"]
 scope:
-  - "generated HAK, target-specific creature UTC and generated minimal module/GIT instance"
+  - "generated HAK, target-specific creature UTC and generated minimal MOD with typed IFO/ARE/GIT/GIC"
+  - "GIT contains the full typed creature instance; GIC contains aligned one-to-one comment entries"
   - "manual Toolset/game runbook"
   - "file-level assertions plus visual screenshots"
   - "explicit proof packet"
@@ -436,7 +437,8 @@ out_of_scope:
   - "aurora-web as proof or validator"
 definition_of_done:
   - "generated UTC is accepted as a creature blueprint by Toolset"
-  - "generated GIT instance resolves the target UTC"
+  - "generated GIT full creature instance has TemplateResRef and Appearance_Type aligned with the target UTC"
+  - "generated GIC list counts/order/child IDs align one-to-one with GIT"
   - "Toolset screenshot with HAK attached"
   - "Toolset screenshot with visible generated creature"
   - "game screenshot with visible generated creature"

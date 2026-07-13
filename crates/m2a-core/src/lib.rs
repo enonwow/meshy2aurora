@@ -1,6 +1,7 @@
 //! Format-safe core for the standalone Meshy-to-Aurora pipeline.
 
 pub mod erf;
+pub mod gff;
 pub mod glb;
 pub mod hak;
 pub mod mdl;

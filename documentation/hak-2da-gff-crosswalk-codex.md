@@ -139,7 +139,7 @@ label nie jest poprawnym decimal `u32`.
 
 ## 5. GFF V3.2 oraz modul proof
 
-Wlasny writer GFF ma obslugiwac wspolny header i tablice struct/field/label/field-data/field-indices/list-indices z little-endian checked offsets. Dla MVP wdrazamy tylko typy pol wymagane przez wygenerowany UTC, IFO, ARE/GIT; nie probujemy od razu obslugiwac wszystkich formatow gry.
+Wlasny writer GFF ma obslugiwac wspolny header i tablice struct/field/label/field-data/field-indices/list-indices z little-endian checked offsets. Dla MVP wdrazamy tylko typy pol wymagane przez wygenerowany UTC, IFO, ARE/GIT/GIC; nie probujemy od razu obslugiwac wszystkich formatow gry. Exact ordered manifesty, struct IDs, nesting i readiness sa zamrozone w `documentation/m6-typed-resource-manifests-codex.md`.
 
 ```yaml
 minimum_generated_proof:
@@ -154,7 +154,8 @@ minimum_generated_proof:
     - "Mod_HakList list"
     - "each element contains Mod_Hak string"
   module_area:
-    - "minimal generated ARE/GIT placing the generated UTC"
+    - "generated ARE/GIT placing a full typed creature instance, not a reference-only sparse guess"
+    - "generated GIC with lists aligned one-to-one with GIT and Comment string children"
 ```
 
 ## 6. HAK precedence
@@ -177,9 +178,11 @@ gates:
     - "row is appended, never inserted into a hole"
     - "append above 65535 is rejected"
   gff:
-    - "own reader reads own UTC/IFO/ARE/GIT"
+    - "own reader reads own UTC/IFO/ARE/GIT/GIC"
     - "Mod_HakList order round-trips"
     - "UTC Appearance_Type equals appended 2DA index"
+    - "GIT creature TemplateResRef and Appearance_Type equal the generated UTC linkage"
+    - "GIC list lengths, indices and child struct IDs align with GIT"
   runtime:
     - "Toolset opens generated module"
     - "game resolves generated appearance row, MDL and texture"
