@@ -20,6 +20,46 @@ struct MdlWriterJsonInputError<'a> {
     message: &'a str,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct M5BoundaryJsonError<'a> {
+    schema_version: u32,
+    code: &'a str,
+    severity: &'a str,
+    path: &'a str,
+    message: &'a str,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HakResourceDescriptorV1 {
+    resref: String,
+    resource_type: u16,
+    payload_offset: u32,
+    payload_size: u32,
+}
+
+impl m2a_core::hak::HakResourceMetadataV1 for HakResourceDescriptorV1 {
+    fn hak_resref(&self) -> &str {
+        &self.resref
+    }
+
+    fn hak_resource_type(&self) -> u16 {
+        self.resource_type
+    }
+
+    fn hak_payload_size(&self) -> Option<u64> {
+        Some(u64::from(self.payload_size))
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HakResourceDescriptorsV1 {
+    schema_version: u32,
+    resources: Vec<HakResourceDescriptorV1>,
+}
+
 const SERIALIZATION_ERROR_JSON: &str = concat!(
     r#"{"schemaVersion":1,"code":"M2A-JSON-SERIALIZATION","severity":"error","offset":0,"context":""#,
     "WASM adapter JSON serialization",
@@ -264,6 +304,852 @@ fn mdl_writer_json_error(code: &str, path: &str, message: &str) -> String {
 
 fn serialize_json<T: serde::Serialize>(value: &T) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| SERIALIZATION_ERROR_JSON.to_owned())
+}
+
+fn m5_boundary_error(code: &str, path: &str, message: &str) -> String {
+    m5_error_json(code, "FATAL", path, message)
+}
+
+fn m5_error_json(code: &str, severity: &str, path: &str, message: &str) -> String {
+    serialize_json(&M5BoundaryJsonError {
+        schema_version: 1,
+        code,
+        severity,
+        path,
+        message,
+    })
+}
+
+fn two_da_core_error_json(error: &m2a_core::two_da::TwoDaError) -> String {
+    m5_error_json(&error.code, &error.severity, &error.path, &error.message)
+}
+
+fn parse_tga_json(
+    image_json: &str,
+    options_json: &str,
+) -> Result<(m2a_core::tga::TgaImageV1, m2a_core::tga::TgaWriterOptionsV1), String> {
+    let image = serde_json::from_str(image_json).map_err(|_| {
+        m5_boundary_error(
+            "M5-TGA-IMAGE-JSON-INVALID",
+            "imageJson",
+            "image JSON does not match the strict public schema",
+        )
+    })?;
+    let options = serde_json::from_str(options_json).map_err(|_| {
+        m5_boundary_error(
+            "M5-TGA-OPTIONS-JSON-INVALID",
+            "optionsJson",
+            "TGA options JSON does not match the strict public schema",
+        )
+    })?;
+    Ok((image, options))
+}
+
+fn write_tga_artifact_json(
+    image_json: &str,
+    options_json: &str,
+) -> Result<m2a_core::tga::TgaArtifactV1, String> {
+    let (image, options) = parse_tga_json(image_json, options_json)?;
+    m2a_core::tga::write_tga_v1(&image, &options).map_err(|error| serialize_json(&error))
+}
+
+/// Writes a deterministic TGA from strict image/options JSON.
+#[wasm_bindgen(js_name = writeTgaV1)]
+pub fn write_tga_v1(image_json: &str, options_json: &str) -> Result<Vec<u8>, JsValue> {
+    write_tga_artifact_json(image_json, options_json)
+        .map(|artifact| artifact.payload)
+        .map_err(|error| JsValue::from_str(&error))
+}
+
+/// Returns the report for the same deterministic TGA core operation.
+#[wasm_bindgen(js_name = writeTgaV1ReportJson)]
+pub fn write_tga_v1_report_json(image_json: &str, options_json: &str) -> Result<String, JsValue> {
+    write_tga_artifact_json(image_json, options_json)
+        .map(|artifact| serialize_json(&artifact.report))
+        .map_err(|error| JsValue::from_str(&error))
+}
+
+fn parse_two_da_limits_json(limits_json: &str) -> Result<m2a_core::two_da::TwoDaLimitsV1, String> {
+    serde_json::from_str(limits_json).map_err(|_| {
+        m5_boundary_error(
+            "M5-2DA-LIMITS-JSON-INVALID",
+            "limitsJson",
+            "2DA limits JSON does not match the strict public schema",
+        )
+    })
+}
+
+fn inspect_two_da_v2_json_inner(bytes: &[u8], limits_json: &str) -> Result<String, String> {
+    let limits = parse_two_da_limits_json(limits_json)?;
+    m2a_core::two_da::inspect_two_da_v2(bytes, &limits)
+        .map(|inspection| serialize_json(&inspection))
+        .map_err(|error| two_da_core_error_json(&error))
+}
+
+/// Inspects strict 2DA V2.0 bytes with caller-supplied strict limits JSON.
+#[wasm_bindgen(js_name = inspectTwoDaV2Json)]
+pub fn inspect_two_da_v2_json(bytes: &[u8], limits_json: &str) -> Result<String, JsValue> {
+    inspect_two_da_v2_json_inner(bytes, limits_json).map_err(|error| JsValue::from_str(&error))
+}
+
+fn parse_two_da_append_json(
+    request_json: &str,
+    limits_json: &str,
+) -> Result<
+    (
+        m2a_core::two_da::TwoDaAppendRequestV1,
+        m2a_core::two_da::TwoDaLimitsV1,
+    ),
+    String,
+> {
+    let request = serde_json::from_str(request_json).map_err(|_| {
+        m5_boundary_error(
+            "M5-2DA-REQUEST-JSON-INVALID",
+            "requestJson",
+            "2DA append request JSON does not match the strict public schema",
+        )
+    })?;
+    let limits = parse_two_da_limits_json(limits_json)?;
+    Ok((request, limits))
+}
+
+fn append_two_da_row_artifact_json(
+    bytes: &[u8],
+    request_json: &str,
+    limits_json: &str,
+) -> Result<m2a_core::two_da::TwoDaAppendArtifactV1, String> {
+    let (request, limits) = parse_two_da_append_json(request_json, limits_json)?;
+    m2a_core::two_da::append_two_da_row_v1(bytes, &request, &limits)
+        .map_err(|error| two_da_core_error_json(&error))
+}
+
+/// Appends one full-width row while preserving every source byte.
+#[wasm_bindgen(js_name = appendTwoDaRowV1)]
+pub fn append_two_da_row_v1(
+    bytes: &[u8],
+    request_json: &str,
+    limits_json: &str,
+) -> Result<Vec<u8>, JsValue> {
+    append_two_da_row_artifact_json(bytes, request_json, limits_json)
+        .map(|artifact| artifact.payload)
+        .map_err(|error| JsValue::from_str(&error))
+}
+
+/// Returns the report for the same deterministic append core operation.
+#[wasm_bindgen(js_name = appendTwoDaRowV1ReportJson)]
+pub fn append_two_da_row_v1_report_json(
+    bytes: &[u8],
+    request_json: &str,
+    limits_json: &str,
+) -> Result<String, JsValue> {
+    append_two_da_row_artifact_json(bytes, request_json, limits_json)
+        .map(|artifact| serialize_json(&artifact.report))
+        .map_err(|error| JsValue::from_str(&error))
+}
+
+fn parse_hak_resources_json(resources_json: &str) -> Result<HakResourceDescriptorsV1, String> {
+    let descriptors: HakResourceDescriptorsV1 =
+        serde_json::from_str(resources_json).map_err(|_| {
+            m5_boundary_error(
+                "M5-HAK-RESOURCES-JSON-INVALID",
+                "resourcesJson",
+                "HAK resources JSON does not match the strict public schema",
+            )
+        })?;
+    if descriptors.schema_version != 1 {
+        return Err(m5_boundary_error(
+            "M5-HAK-RESOURCES-JSON-INVALID",
+            "resourcesJson",
+            "HAK resources schemaVersion must be 1",
+        ));
+    }
+    Ok(descriptors)
+}
+
+fn parse_hak_options_json(options_json: &str) -> Result<m2a_core::hak::HakWriterOptionsV1, String> {
+    serde_json::from_str(options_json).map_err(|_| {
+        m5_boundary_error(
+            "M5-HAK-OPTIONS-JSON-INVALID",
+            "optionsJson",
+            "HAK options JSON does not match the strict public schema",
+        )
+    })
+}
+
+fn hak_range_error(path: &str, message: &str) -> String {
+    m5_boundary_error("M5-HAK-PAYLOAD-RANGE-INVALID", path, message)
+}
+
+fn hak_allocation_error(message: &str) -> String {
+    m5_boundary_error("M5-HAK-ALLOCATION-FAILED", "output", message)
+}
+
+fn clone_hak_string(value: &str) -> Result<String, String> {
+    let mut output = String::new();
+    output
+        .try_reserve_exact(value.len())
+        .map_err(|_| hak_allocation_error("could not reserve HAK resource resref"))?;
+    output.push_str(value);
+    Ok(output)
+}
+
+fn validate_hak_payload_ranges(
+    payload_blob: &[u8],
+    descriptors: &HakResourceDescriptorsV1,
+) -> Result<(), String> {
+    let mut ranges = Vec::new();
+    ranges
+        .try_reserve_exact(descriptors.resources.len())
+        .map_err(|_| hak_allocation_error("could not reserve HAK payload range plan"))?;
+    for (index, descriptor) in descriptors.resources.iter().enumerate() {
+        let start = usize::try_from(descriptor.payload_offset).map_err(|_| {
+            hak_range_error(
+                &format!("resources[{index}].payloadOffset"),
+                "payloadOffset does not fit this platform",
+            )
+        })?;
+        if start > payload_blob.len() {
+            return Err(hak_range_error(
+                &format!("resources[{index}].payloadOffset"),
+                "payloadOffset is outside payloadBlob",
+            ));
+        }
+        let size = usize::try_from(descriptor.payload_size).map_err(|_| {
+            hak_range_error(
+                &format!("resources[{index}].payloadSize"),
+                "payloadSize does not fit this platform",
+            )
+        })?;
+        let end = start.checked_add(size).ok_or_else(|| {
+            hak_range_error(
+                &format!("resources[{index}].payloadSize"),
+                "payload range overflows this platform",
+            )
+        })?;
+        if end > payload_blob.len() {
+            return Err(hak_range_error(
+                &format!("resources[{index}].payloadSize"),
+                "payload range extends past payloadBlob",
+            ));
+        }
+        if size != 0 {
+            ranges.push((start, end));
+        }
+    }
+    ranges.sort_unstable();
+    let mut cursor = 0usize;
+    for (start, end) in ranges {
+        if start < cursor {
+            return Err(hak_range_error(
+                "payloadBlob",
+                "non-empty resource payload ranges overlap",
+            ));
+        }
+        if start > cursor {
+            return Err(hak_range_error(
+                "payloadBlob",
+                "resource payload ranges leave a gap",
+            ));
+        }
+        cursor = end;
+    }
+    if cursor != payload_blob.len() {
+        return Err(hak_range_error(
+            "payloadBlob",
+            "resource payload ranges do not consume exact payloadBlob",
+        ));
+    }
+
+    Ok(())
+}
+
+fn materialize_hak_resources(
+    payload_blob: &[u8],
+    descriptors: &HakResourceDescriptorsV1,
+) -> Result<Vec<m2a_core::hak::HakResourceInputV1>, String> {
+    let mut resources = Vec::new();
+    resources
+        .try_reserve_exact(descriptors.resources.len())
+        .map_err(|_| hak_allocation_error("could not reserve HAK resources"))?;
+    for descriptor in &descriptors.resources {
+        let start = descriptor.payload_offset as usize;
+        let end = start + descriptor.payload_size as usize;
+        let mut payload = Vec::new();
+        payload
+            .try_reserve_exact(descriptor.payload_size as usize)
+            .map_err(|_| hak_allocation_error("could not reserve HAK resource payload"))?;
+        payload.extend_from_slice(&payload_blob[start..end]);
+        resources.push(m2a_core::hak::HakResourceInputV1 {
+            resref: clone_hak_string(&descriptor.resref)?,
+            resource_type: descriptor.resource_type,
+            payload,
+        });
+    }
+    Ok(resources)
+}
+
+fn parse_hak_boundary(
+    payload_blob: &[u8],
+    resources_json: &str,
+    options_json: &str,
+) -> Result<
+    (
+        Vec<m2a_core::hak::HakResourceInputV1>,
+        m2a_core::hak::HakWriterOptionsV1,
+    ),
+    String,
+> {
+    let descriptors = parse_hak_resources_json(resources_json)?;
+    let options = parse_hak_options_json(options_json)?;
+    validate_hak_payload_ranges(payload_blob, &descriptors)?;
+    m2a_core::hak::preflight_hak_v1(&descriptors.resources, &options)
+        .map_err(|error| serialize_json(&error))?;
+    let resources = materialize_hak_resources(payload_blob, &descriptors)?;
+    Ok((resources, options))
+}
+
+fn write_hak_artifact_json(
+    payload_blob: &[u8],
+    resources_json: &str,
+    options_json: &str,
+) -> Result<m2a_core::hak::HakArtifactV1, String> {
+    let (resources, options) = parse_hak_boundary(payload_blob, resources_json, options_json)?;
+    m2a_core::hak::write_hak_v1(&resources, &options).map_err(|error| serialize_json(&error))
+}
+
+/// Writes deterministic HAK bytes from one blob and strict resource descriptors.
+#[wasm_bindgen(js_name = writeHakV1)]
+pub fn write_hak_v1(
+    payload_blob: &[u8],
+    resources_json: &str,
+    options_json: &str,
+) -> Result<Vec<u8>, JsValue> {
+    write_hak_artifact_json(payload_blob, resources_json, options_json)
+        .map(|artifact| artifact.payload)
+        .map_err(|error| JsValue::from_str(&error))
+}
+
+/// Returns the report for the same deterministic HAK core operation.
+#[wasm_bindgen(js_name = writeHakV1ReportJson)]
+pub fn write_hak_v1_report_json(
+    payload_blob: &[u8],
+    resources_json: &str,
+    options_json: &str,
+) -> Result<String, JsValue> {
+    write_hak_artifact_json(payload_blob, resources_json, options_json)
+        .map(|artifact| serialize_json(&artifact.report))
+        .map_err(|error| JsValue::from_str(&error))
+}
+
+fn write_package_manifest_v1_json_inner(
+    payload_blob: &[u8],
+    resources_json: &str,
+    options_json: &str,
+) -> Result<String, String> {
+    let (resources, options) = parse_hak_boundary(payload_blob, resources_json, options_json)?;
+    m2a_core::package::write_package_manifest_v1(&resources, &options)
+        .map(|manifest| serialize_json(&manifest))
+        .map_err(|error| serialize_json(&error))
+}
+
+/// Returns the deterministic manifest sidecar after successful HAK own-readback.
+#[wasm_bindgen(js_name = writePackageManifestV1Json)]
+pub fn write_package_manifest_v1_json(
+    payload_blob: &[u8],
+    resources_json: &str,
+    options_json: &str,
+) -> Result<String, JsValue> {
+    write_package_manifest_v1_json_inner(payload_blob, resources_json, options_json)
+        .map_err(|error| JsValue::from_str(&error))
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod m5_native_tests {
+    use super::{
+        HakResourceDescriptorV1, HakResourceDescriptorsV1, append_two_da_row_artifact_json,
+        append_two_da_row_v1, append_two_da_row_v1_report_json, inspect_two_da_v2_json,
+        inspect_two_da_v2_json_inner, materialize_hak_resources, serialize_json,
+        write_hak_artifact_json, write_hak_v1, write_hak_v1_report_json,
+        write_package_manifest_v1_json, write_package_manifest_v1_json_inner,
+        write_tga_artifact_json, write_tga_v1, write_tga_v1_report_json,
+    };
+    use m2a_core::hak::{HakResourceInputV1, HakWriterOptionsV1};
+    use m2a_core::tga::{TgaImageV1, TgaPixelFormatV1, TgaWriterOptionsV1};
+    use m2a_core::two_da::{
+        TwoDaAppendRequestV1, TwoDaCellAssignmentV1, TwoDaCellValueV1, TwoDaLimitsV1,
+    };
+
+    fn tga_image() -> TgaImageV1 {
+        TgaImageV1 {
+            schema_version: 1,
+            width: 1,
+            height: 1,
+            pixel_format: TgaPixelFormatV1::Rgb8,
+            pixels: vec![255, 0, 128],
+        }
+    }
+
+    fn two_da_request() -> TwoDaAppendRequestV1 {
+        TwoDaAppendRequestV1 {
+            schema_version: 1,
+            cells: vec![TwoDaCellAssignmentV1 {
+                column_name: "A".to_owned(),
+                value: TwoDaCellValueV1::Text {
+                    value: "new".to_owned(),
+                },
+            }],
+        }
+    }
+
+    fn hak_boundary(
+        entries: &[(&str, u16, &[u8])],
+    ) -> (Vec<u8>, HakResourceDescriptorsV1, Vec<HakResourceInputV1>) {
+        let mut blob = Vec::new();
+        let mut descriptors = Vec::new();
+        let mut resources = Vec::new();
+        for &(resref, resource_type, payload) in entries {
+            let payload_offset = blob.len() as u32;
+            blob.extend_from_slice(payload);
+            descriptors.push(HakResourceDescriptorV1 {
+                resref: resref.to_owned(),
+                resource_type,
+                payload_offset,
+                payload_size: payload.len() as u32,
+            });
+            resources.push(HakResourceInputV1 {
+                resref: resref.to_owned(),
+                resource_type,
+                payload: payload.to_vec(),
+            });
+        }
+        (
+            blob,
+            HakResourceDescriptorsV1 {
+                schema_version: 1,
+                resources: descriptors,
+            },
+            resources,
+        )
+    }
+
+    fn package_entries() -> [(&'static str, u16, &'static [u8]); 3] {
+        [
+            ("texture", 3, b"tga"),
+            ("appearance", 2017, b"2da"),
+            ("model", 2002, b"mdl"),
+        ]
+    }
+
+    #[test]
+    fn tga_public_bytes_and_report_are_exact_core_and_inputs_are_immutable() {
+        let image = tga_image();
+        let options = TgaWriterOptionsV1::default();
+        let image_json = serde_json::to_string(&image).unwrap();
+        let options_json = serde_json::to_string(&options).unwrap();
+        let before = (image_json.clone(), options_json.clone());
+        let core = m2a_core::tga::write_tga_v1(&image, &options).unwrap();
+
+        assert_eq!(
+            write_tga_v1(&image_json, &options_json).unwrap(),
+            core.payload
+        );
+        assert_eq!(
+            write_tga_v1_report_json(&image_json, &options_json).unwrap(),
+            serde_json::to_string(&core.report).unwrap()
+        );
+        assert_eq!((image_json, options_json), before);
+    }
+
+    #[test]
+    fn two_da_public_inspect_append_and_report_are_exact_core_and_immutable() {
+        let source = b"2DA V2.0\n\nA B\n0 old ****\n".to_vec();
+        let request = two_da_request();
+        let limits = TwoDaLimitsV1::default();
+        let request_json = serde_json::to_string(&request).unwrap();
+        let limits_json = serde_json::to_string(&limits).unwrap();
+        let before = (source.clone(), request_json.clone(), limits_json.clone());
+
+        let inspection = m2a_core::two_da::inspect_two_da_v2(&source, &limits).unwrap();
+        assert_eq!(
+            inspect_two_da_v2_json(&source, &limits_json).unwrap(),
+            serde_json::to_string(&inspection).unwrap()
+        );
+        let core = m2a_core::two_da::append_two_da_row_v1(&source, &request, &limits).unwrap();
+        assert_eq!(
+            append_two_da_row_v1(&source, &request_json, &limits_json).unwrap(),
+            core.payload
+        );
+        assert_eq!(
+            append_two_da_row_v1_report_json(&source, &request_json, &limits_json).unwrap(),
+            serde_json::to_string(&core.report).unwrap()
+        );
+        assert_eq!((source, request_json, limits_json), before);
+    }
+
+    #[test]
+    fn boundary_json_errors_are_frozen_strict_and_follow_argument_precedence() {
+        let options_json = serde_json::to_string(&TgaWriterOptionsV1::default()).unwrap();
+        let image_error = write_tga_artifact_json("{", &options_json).unwrap_err();
+        assert_eq!(
+            image_error,
+            r#"{"schemaVersion":1,"code":"M5-TGA-IMAGE-JSON-INVALID","severity":"FATAL","path":"imageJson","message":"image JSON does not match the strict public schema"}"#
+        );
+        let mut image = serde_json::to_value(tga_image()).unwrap();
+        image["unknown"] = serde_json::json!(true);
+        assert_eq!(
+            write_tga_artifact_json(&image.to_string(), &options_json).unwrap_err(),
+            image_error
+        );
+        let options_error =
+            write_tga_artifact_json(&serialize_json(&tga_image()), "{").unwrap_err();
+        assert_eq!(
+            options_error,
+            r#"{"schemaVersion":1,"code":"M5-TGA-OPTIONS-JSON-INVALID","severity":"FATAL","path":"optionsJson","message":"TGA options JSON does not match the strict public schema"}"#
+        );
+        for path in ["unknown", "limits.unknown"] {
+            let mut options = serde_json::to_value(TgaWriterOptionsV1::default()).unwrap();
+            if path == "unknown" {
+                options["unknown"] = serde_json::json!(true);
+            } else {
+                options["limits"]["unknown"] = serde_json::json!(true);
+            }
+            assert_eq!(
+                write_tga_artifact_json(&serialize_json(&tga_image()), &options.to_string())
+                    .unwrap_err(),
+                options_error,
+                "{path}"
+            );
+        }
+
+        let source = b"2DA V2.0\n\nA\n";
+        let request_error = append_two_da_row_artifact_json(source, "{", "{").unwrap_err();
+        assert_eq!(
+            request_error,
+            r#"{"schemaVersion":1,"code":"M5-2DA-REQUEST-JSON-INVALID","severity":"FATAL","path":"requestJson","message":"2DA append request JSON does not match the strict public schema"}"#
+        );
+        let limits_error = inspect_two_da_v2_json_inner(source, "{").unwrap_err();
+        assert_eq!(
+            limits_error,
+            r#"{"schemaVersion":1,"code":"M5-2DA-LIMITS-JSON-INVALID","severity":"FATAL","path":"limitsJson","message":"2DA limits JSON does not match the strict public schema"}"#
+        );
+        let mut limits = serde_json::to_value(TwoDaLimitsV1::default()).unwrap();
+        limits["unknown"] = serde_json::json!(true);
+        assert_eq!(
+            inspect_two_da_v2_json_inner(source, &limits.to_string()).unwrap_err(),
+            limits_error
+        );
+        for path in ["request", "cell", "value"] {
+            let mut request = serde_json::to_value(two_da_request()).unwrap();
+            match path {
+                "request" => request["unknown"] = serde_json::json!(true),
+                "cell" => request["cells"][0]["unknown"] = serde_json::json!(true),
+                "value" => request["cells"][0]["value"]["unknown"] = serde_json::json!(true),
+                _ => unreachable!(),
+            }
+            assert_eq!(
+                append_two_da_row_artifact_json(
+                    source,
+                    &request.to_string(),
+                    &serde_json::to_string(&TwoDaLimitsV1::default()).unwrap()
+                )
+                .unwrap_err(),
+                request_error,
+                "{path}"
+            );
+        }
+    }
+
+    #[test]
+    fn core_errors_remain_exact_json_and_boundary_never_uses_base64() {
+        let invalid_image = TgaImageV1 {
+            width: 0,
+            ..tga_image()
+        };
+        let options = TgaWriterOptionsV1::default();
+        let direct = m2a_core::tga::write_tga_v1(&invalid_image, &options).unwrap_err();
+        assert_eq!(
+            write_tga_artifact_json(
+                &serde_json::to_string(&invalid_image).unwrap(),
+                &serde_json::to_string(&options).unwrap()
+            )
+            .unwrap_err(),
+            serde_json::to_string(&direct).unwrap()
+        );
+
+        let limits = TwoDaLimitsV1::default();
+        let direct = m2a_core::two_da::inspect_two_da_v2(b"bad\n", &limits).unwrap_err();
+        let boundary =
+            inspect_two_da_v2_json_inner(b"bad\n", &serde_json::to_string(&limits).unwrap())
+                .unwrap_err();
+        assert_eq!(boundary, super::two_da_core_error_json(&direct));
+        assert_eq!(
+            boundary,
+            r#"{"schemaVersion":1,"code":"M5-2DA-HEADER-INVALID","severity":"FATAL","path":"header","message":"line 1 must be exactly 2DA V2.0"}"#
+        );
+        assert!(!boundary.contains("byteOffset"));
+
+        let image_json = serde_json::to_string(&tga_image()).unwrap();
+        let report =
+            write_tga_v1_report_json(&image_json, &serde_json::to_string(&options).unwrap())
+                .unwrap();
+        assert!(!image_json.to_ascii_lowercase().contains("base64"));
+        assert!(!report.to_ascii_lowercase().contains("base64"));
+    }
+
+    #[test]
+    fn hak_and_package_match_core_are_deterministic_immutable_and_frozen() {
+        let base_entries = package_entries();
+        let (blob, descriptors, resources) = hak_boundary(&base_entries);
+        let options = HakWriterOptionsV1::default();
+        let resources_json = serde_json::to_string(&descriptors).unwrap();
+        let options_json = serde_json::to_string(&options).unwrap();
+        let before = (blob.clone(), resources_json.clone(), options_json.clone());
+        let core_hak = m2a_core::hak::write_hak_v1(&resources, &options).unwrap();
+        let core_manifest =
+            m2a_core::package::write_package_manifest_v1(&resources, &options).unwrap();
+
+        assert_eq!(
+            write_hak_v1(&blob, &resources_json, &options_json).unwrap(),
+            core_hak.payload
+        );
+        assert_eq!(
+            write_hak_v1_report_json(&blob, &resources_json, &options_json).unwrap(),
+            serde_json::to_string(&core_hak.report).unwrap()
+        );
+        let manifest =
+            write_package_manifest_v1_json(&blob, &resources_json, &options_json).unwrap();
+        assert_eq!(manifest, serde_json::to_string(&core_manifest).unwrap());
+        assert_eq!(
+            manifest,
+            "{\"schemaVersion\":1,\"packageSha256\":\"494862f6a12f91d5a269519d0579a05ace5bb50fd8f72b5711fcae7445444477\",\"resources\":[{\"role\":\"APPEARANCE_TABLE\",\"resref\":\"appearance\",\"type\":2017,\"byteLength\":3,\"sha256\":\"ddf81e9e4f364c6f086fd730b8f6d2bc4b46068045a085e1be8fc7470a615c6f\",\"hakResourceId\":0,\"hakPayloadOffset\":256},{\"role\":\"MODEL\",\"resref\":\"model\",\"type\":2002,\"byteLength\":3,\"sha256\":\"d3c3c54797643905c5cc97f7da4717058dbe6ad183ef1586104cadd197ca47c6\",\"hakResourceId\":1,\"hakPayloadOffset\":259},{\"role\":\"TEXTURE\",\"resref\":\"texture\",\"type\":3,\"byteLength\":3,\"sha256\":\"9dedca90fc9c44caeb39e0a6b8d28a157105bfba113872846ce0b2f5eff923d3\",\"hakResourceId\":2,\"hakPayloadOffset\":262}]}"
+        );
+        assert_eq!((blob, resources_json, options_json.clone()), before);
+        assert!(!manifest.to_ascii_lowercase().contains("base64"));
+
+        let expected = (core_hak, manifest);
+        for order in [[2, 0, 1], [1, 2, 0]] {
+            let entries = order.map(|index| base_entries[index]);
+            let (blob, descriptors, _) = hak_boundary(&entries);
+            let resources_json = serde_json::to_string(&descriptors).unwrap();
+            assert_eq!(
+                write_hak_artifact_json(&blob, &resources_json, &options_json).unwrap(),
+                expected.0
+            );
+            assert_eq!(
+                write_package_manifest_v1_json_inner(&blob, &resources_json, &options_json)
+                    .unwrap(),
+                expected.1
+            );
+        }
+    }
+
+    #[test]
+    fn hak_boundary_precedence_ranges_zero_size_and_no_panic_are_stable() {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+
+        let options_json = serde_json::to_string(&HakWriterOptionsV1::default()).unwrap();
+        assert_eq!(
+            write_hak_artifact_json(&[], "{", "{").unwrap_err(),
+            r#"{"schemaVersion":1,"code":"M5-HAK-RESOURCES-JSON-INVALID","severity":"FATAL","path":"resourcesJson","message":"HAK resources JSON does not match the strict public schema"}"#
+        );
+        let (_, valid, _) = hak_boundary(&[("a", 1, b"x")]);
+        let valid_json = serde_json::to_string(&valid).unwrap();
+        assert_eq!(
+            write_hak_artifact_json(&[], &valid_json, "{").unwrap_err(),
+            r#"{"schemaVersion":1,"code":"M5-HAK-OPTIONS-JSON-INVALID","severity":"FATAL","path":"optionsJson","message":"HAK options JSON does not match the strict public schema"}"#
+        );
+        for nested in [false, true] {
+            let mut options = serde_json::to_value(HakWriterOptionsV1::default()).unwrap();
+            if nested {
+                options["limits"]["unknown"] = serde_json::json!(true);
+            } else {
+                options["unknown"] = serde_json::json!(true);
+            }
+            let error =
+                write_hak_artifact_json(&[], &valid_json, &options.to_string()).unwrap_err();
+            assert!(error.contains("M5-HAK-OPTIONS-JSON-INVALID"));
+        }
+        for nested in [false, true] {
+            let mut resources = serde_json::to_value(&valid).unwrap();
+            if nested {
+                resources["resources"][0]["unknown"] = serde_json::json!(true);
+            } else {
+                resources["unknown"] = serde_json::json!(true);
+            }
+            let error =
+                write_hak_artifact_json(&[], &resources.to_string(), &options_json).unwrap_err();
+            assert!(error.contains("M5-HAK-RESOURCES-JSON-INVALID"));
+        }
+
+        let cases = [
+            (vec![1], vec![("a", 1, 2, 0)], "resources[0].payloadOffset"),
+            (vec![1], vec![("a", 1, 0, 2)], "resources[0].payloadSize"),
+            (
+                vec![1, 2],
+                vec![("a", 1, 0, 2), ("b", 1, 1, 1)],
+                "payloadBlob",
+            ),
+            (vec![1, 2], vec![("a", 1, 1, 1)], "payloadBlob"),
+            (vec![1, 2], vec![("a", 1, 0, 1)], "payloadBlob"),
+        ];
+        for (blob, raw, expected_path) in cases {
+            let descriptors = HakResourceDescriptorsV1 {
+                schema_version: 1,
+                resources: raw
+                    .into_iter()
+                    .map(|(resref, resource_type, payload_offset, payload_size)| {
+                        HakResourceDescriptorV1 {
+                            resref: resref.to_owned(),
+                            resource_type,
+                            payload_offset,
+                            payload_size,
+                        }
+                    })
+                    .collect(),
+            };
+            let resources_json = serde_json::to_string(&descriptors).unwrap();
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                write_hak_artifact_json(&blob, &resources_json, &options_json)
+            }));
+            let error = result
+                .expect("range validation must not panic")
+                .unwrap_err();
+            let value: serde_json::Value = serde_json::from_str(&error).unwrap();
+            assert_eq!(value["code"], "M5-HAK-PAYLOAD-RANGE-INVALID");
+            assert_eq!(value["path"], expected_path);
+        }
+
+        let empty = HakResourceDescriptorsV1 {
+            schema_version: 1,
+            resources: vec![HakResourceDescriptorV1 {
+                resref: "empty".to_owned(),
+                resource_type: 1,
+                payload_offset: 0,
+                payload_size: 0,
+            }],
+        };
+        assert!(
+            materialize_hak_resources(&[], &empty).unwrap()[0]
+                .payload
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn hak_range_precedes_borrowed_core_preflight_and_both_precede_payload_copy() {
+        let descriptor = |resref: &str, payload_size: u32| HakResourceDescriptorsV1 {
+            schema_version: 1,
+            resources: vec![HakResourceDescriptorV1 {
+                resref: resref.to_owned(),
+                resource_type: 3,
+                payload_offset: 99,
+                payload_size,
+            }],
+        };
+
+        let invalid_resref = serde_json::to_string(&descriptor("BAD", 1)).unwrap();
+        let default_options = serde_json::to_string(&HakWriterOptionsV1::default()).unwrap();
+        let error = write_hak_artifact_json(&[], &invalid_resref, &default_options).unwrap_err();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&error).unwrap()["code"],
+            "M5-HAK-PAYLOAD-RANGE-INVALID"
+        );
+
+        let valid_descriptor = serde_json::to_string(&descriptor("texture", 1)).unwrap();
+        let invalid_options = serde_json::to_string(&HakWriterOptionsV1 {
+            schema_version: 2,
+            ..HakWriterOptionsV1::default()
+        })
+        .unwrap();
+        let error = write_hak_artifact_json(&[], &valid_descriptor, &invalid_options).unwrap_err();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&error).unwrap()["code"],
+            "M5-HAK-PAYLOAD-RANGE-INVALID"
+        );
+
+        let entry_limited = serde_json::to_string(&HakWriterOptionsV1 {
+            schema_version: 1,
+            limits: m2a_core::hak::HakWriterLimitsV1 {
+                max_entry_count: 0,
+                max_output_bytes: m2a_core::hak::HAK_MAX_OUTPUT_BYTES,
+            },
+        })
+        .unwrap();
+        let error = write_hak_artifact_json(&[], &valid_descriptor, &entry_limited).unwrap_err();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&error).unwrap()["code"],
+            "M5-HAK-PAYLOAD-RANGE-INVALID"
+        );
+
+        let output_limited = serde_json::to_string(&HakWriterOptionsV1 {
+            schema_version: 1,
+            limits: m2a_core::hak::HakWriterLimitsV1 {
+                max_entry_count: 1,
+                max_output_bytes: 160,
+            },
+        })
+        .unwrap();
+        let error = write_hak_artifact_json(&[], &valid_descriptor, &output_limited).unwrap_err();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&error).unwrap()["code"],
+            "M5-HAK-PAYLOAD-RANGE-INVALID"
+        );
+
+        let duplicate = HakResourceDescriptorsV1 {
+            schema_version: 1,
+            resources: vec![
+                HakResourceDescriptorV1 {
+                    resref: "same".to_owned(),
+                    resource_type: 3,
+                    payload_offset: 99,
+                    payload_size: 1,
+                },
+                HakResourceDescriptorV1 {
+                    resref: "same".to_owned(),
+                    resource_type: 3,
+                    payload_offset: 100,
+                    payload_size: 1,
+                },
+            ],
+        };
+        let error = write_hak_artifact_json(
+            &[],
+            &serde_json::to_string(&duplicate).unwrap(),
+            &default_options,
+        )
+        .unwrap_err();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&error).unwrap()["code"],
+            "M5-HAK-PAYLOAD-RANGE-INVALID"
+        );
+
+        let range_error =
+            write_hak_artifact_json(&[], &valid_descriptor, &default_options).unwrap_err();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&range_error).unwrap()["code"],
+            "M5-HAK-PAYLOAD-RANGE-INVALID"
+        );
+
+        let valid_range_invalid_resref = HakResourceDescriptorsV1 {
+            schema_version: 1,
+            resources: vec![HakResourceDescriptorV1 {
+                resref: "BAD".to_owned(),
+                resource_type: 3,
+                payload_offset: 0,
+                payload_size: 1,
+            }],
+        };
+        let error = write_hak_artifact_json(
+            &[0],
+            &serde_json::to_string(&valid_range_invalid_resref).unwrap(),
+            &default_options,
+        )
+        .unwrap_err();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&error).unwrap()["code"],
+            "M5-HAK-RESREF-INVALID"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -710,12 +1596,15 @@ mod profile_a_native_tests {
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests {
     use super::{
-        convert_profile_a_glb_json, convert_profile_a_json,
+        HakResourceDescriptorV1, HakResourceDescriptorsV1, append_two_da_row_v1,
+        append_two_da_row_v1_report_json, convert_profile_a_glb_json, convert_profile_a_json,
         convert_profile_a_with_animations_glb_json, ingest_glb, ingest_glb_json,
-        inspect_binary_mdl, inspect_glb, inspect_glb_json,
+        inspect_binary_mdl, inspect_glb, inspect_glb_json, inspect_two_da_v2_json,
         profile_a_test_support as profile_support,
         write_binary_mdl_with_animations as write_mdl_bytes,
-        write_binary_mdl_with_animations_report_json as write_mdl_report_json,
+        write_binary_mdl_with_animations_report_json as write_mdl_report_json, write_hak_v1,
+        write_hak_v1_report_json, write_package_manifest_v1_json, write_tga_v1,
+        write_tga_v1_report_json,
     };
     use wasm_bindgen_test::*;
 
@@ -725,6 +1614,189 @@ mod wasm_tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../m2a-core/tests/fixtures/build_minimal_binary_mdl.rs"
         ));
+    }
+
+    #[wasm_bindgen_test]
+    fn m5_tga_boundary_matches_core_is_immutable_and_has_frozen_error() {
+        use m2a_core::tga::{TgaImageV1, TgaPixelFormatV1, TgaWriterOptionsV1};
+
+        let image = TgaImageV1 {
+            schema_version: 1,
+            width: 1,
+            height: 1,
+            pixel_format: TgaPixelFormatV1::Rgb8,
+            pixels: vec![255, 0, 128],
+        };
+        let options = TgaWriterOptionsV1::default();
+        let image_json = serde_json::to_string(&image).unwrap();
+        let options_json = serde_json::to_string(&options).unwrap();
+        let before = (image_json.clone(), options_json.clone());
+        let core = m2a_core::tga::write_tga_v1(&image, &options).unwrap();
+
+        assert_eq!(
+            write_tga_v1(&image_json, &options_json).unwrap(),
+            core.payload
+        );
+        assert_eq!(
+            write_tga_v1_report_json(&image_json, &options_json).unwrap(),
+            serde_json::to_string(&core.report).unwrap()
+        );
+        assert_eq!((image_json, options_json), before);
+
+        let error = write_tga_v1("{", &before.1)
+            .unwrap_err()
+            .as_string()
+            .unwrap();
+        assert_eq!(
+            error,
+            r#"{"schemaVersion":1,"code":"M5-TGA-IMAGE-JSON-INVALID","severity":"FATAL","path":"imageJson","message":"image JSON does not match the strict public schema"}"#
+        );
+        assert!(!error.to_ascii_lowercase().contains("base64"));
+        for nested in [false, true] {
+            let mut invalid = serde_json::to_value(options).unwrap();
+            if nested {
+                invalid["limits"]["unknown"] = serde_json::json!(true);
+            } else {
+                invalid["unknown"] = serde_json::json!(true);
+            }
+            let error = write_tga_v1(&before.0, &invalid.to_string())
+                .unwrap_err()
+                .as_string()
+                .unwrap();
+            assert!(error.contains("M5-TGA-OPTIONS-JSON-INVALID"));
+        }
+    }
+
+    #[wasm_bindgen_test]
+    fn m5_two_da_boundary_matches_core_is_immutable_and_strict() {
+        use m2a_core::two_da::{
+            TwoDaAppendRequestV1, TwoDaCellAssignmentV1, TwoDaCellValueV1, TwoDaLimitsV1,
+        };
+
+        let source = b"2DA V2.0\n\nA B\n0 old ****\n".to_vec();
+        let request = TwoDaAppendRequestV1 {
+            schema_version: 1,
+            cells: vec![TwoDaCellAssignmentV1 {
+                column_name: "A".to_owned(),
+                value: TwoDaCellValueV1::Text {
+                    value: "new".to_owned(),
+                },
+            }],
+        };
+        let limits = TwoDaLimitsV1::default();
+        let request_json = serde_json::to_string(&request).unwrap();
+        let limits_json = serde_json::to_string(&limits).unwrap();
+        let before = (source.clone(), request_json.clone(), limits_json.clone());
+
+        let inspection = m2a_core::two_da::inspect_two_da_v2(&source, &limits).unwrap();
+        assert_eq!(
+            inspect_two_da_v2_json(&source, &limits_json).unwrap(),
+            serde_json::to_string(&inspection).unwrap()
+        );
+        let core = m2a_core::two_da::append_two_da_row_v1(&source, &request, &limits).unwrap();
+        assert_eq!(
+            append_two_da_row_v1(&source, &request_json, &limits_json).unwrap(),
+            core.payload
+        );
+        assert_eq!(
+            append_two_da_row_v1_report_json(&source, &request_json, &limits_json).unwrap(),
+            serde_json::to_string(&core.report).unwrap()
+        );
+        assert_eq!((source, request_json, limits_json), before);
+
+        let error = append_two_da_row_v1(&before.0, "{", "{")
+            .unwrap_err()
+            .as_string()
+            .unwrap();
+        assert_eq!(
+            error,
+            r#"{"schemaVersion":1,"code":"M5-2DA-REQUEST-JSON-INVALID","severity":"FATAL","path":"requestJson","message":"2DA append request JSON does not match the strict public schema"}"#
+        );
+        assert!(!error.to_ascii_lowercase().contains("base64"));
+        let mut invalid_limits = serde_json::to_value(limits).unwrap();
+        invalid_limits["unknown"] = serde_json::json!(true);
+        let error = inspect_two_da_v2_json(&before.0, &invalid_limits.to_string())
+            .unwrap_err()
+            .as_string()
+            .unwrap();
+        assert!(error.contains("M5-2DA-LIMITS-JSON-INVALID"));
+        for path in ["request", "cell", "value"] {
+            let mut invalid = serde_json::to_value(&request).unwrap();
+            match path {
+                "request" => invalid["unknown"] = serde_json::json!(true),
+                "cell" => invalid["cells"][0]["unknown"] = serde_json::json!(true),
+                "value" => invalid["cells"][0]["value"]["unknown"] = serde_json::json!(true),
+                _ => unreachable!(),
+            }
+            let error = append_two_da_row_v1(&before.0, &invalid.to_string(), &before.2)
+                .unwrap_err()
+                .as_string()
+                .unwrap();
+            assert!(error.contains("M5-2DA-REQUEST-JSON-INVALID"), "{path}");
+        }
+    }
+
+    #[wasm_bindgen_test]
+    fn m5_hak_package_boundary_matches_core_is_immutable_and_strict() {
+        use m2a_core::hak::{HakResourceInputV1, HakWriterOptionsV1};
+
+        let entries: [(&str, u16, &[u8]); 3] = [
+            ("texture", 3, b"tga"),
+            ("appearance", 2017, b"2da"),
+            ("model", 2002, b"mdl"),
+        ];
+        let mut blob = Vec::new();
+        let mut descriptors = Vec::new();
+        let mut resources = Vec::new();
+        for (resref, resource_type, payload) in entries {
+            let payload_offset = blob.len() as u32;
+            blob.extend_from_slice(payload);
+            descriptors.push(HakResourceDescriptorV1 {
+                resref: resref.to_owned(),
+                resource_type,
+                payload_offset,
+                payload_size: payload.len() as u32,
+            });
+            resources.push(HakResourceInputV1 {
+                resref: resref.to_owned(),
+                resource_type,
+                payload: payload.to_vec(),
+            });
+        }
+        let descriptors = HakResourceDescriptorsV1 {
+            schema_version: 1,
+            resources: descriptors,
+        };
+        let options = HakWriterOptionsV1::default();
+        let resources_json = serde_json::to_string(&descriptors).unwrap();
+        let options_json = serde_json::to_string(&options).unwrap();
+        let before = (blob.clone(), resources_json.clone(), options_json.clone());
+        let hak = m2a_core::hak::write_hak_v1(&resources, &options).unwrap();
+        let manifest = m2a_core::package::write_package_manifest_v1(&resources, &options).unwrap();
+
+        assert_eq!(
+            write_hak_v1(&blob, &resources_json, &options_json).unwrap(),
+            hak.payload
+        );
+        assert_eq!(
+            write_hak_v1_report_json(&blob, &resources_json, &options_json).unwrap(),
+            serde_json::to_string(&hak.report).unwrap()
+        );
+        assert_eq!(
+            write_package_manifest_v1_json(&blob, &resources_json, &options_json).unwrap(),
+            serde_json::to_string(&manifest).unwrap()
+        );
+        assert_eq!((blob, resources_json, options_json), before);
+
+        let error = write_hak_v1(&before.0, "{", "{")
+            .unwrap_err()
+            .as_string()
+            .unwrap();
+        assert_eq!(
+            error,
+            r#"{"schemaVersion":1,"code":"M5-HAK-RESOURCES-JSON-INVALID","severity":"FATAL","path":"resourcesJson","message":"HAK resources JSON does not match the strict public schema"}"#
+        );
+        assert!(!error.to_ascii_lowercase().contains("base64"));
     }
 
     #[wasm_bindgen_test]

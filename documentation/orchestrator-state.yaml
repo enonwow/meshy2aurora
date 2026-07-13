@@ -19,11 +19,11 @@ status_vocabulary:
   - "SUPERSEDED"
 
 orchestration:
-  active_stage: "M5"
-  next_ready_stage: "NONE"
-  next_action: "Implement M5 public WASM adapters and final resource/package manifest proof for the closed TGA, 2DA and HAK core writers."
+  active_stage: "NONE"
+  next_ready_stage: "M6"
+  next_action: "Start M6 with an Aurora First contract-lock for GFF V3.2, typed UTC/IFO/ARE/GIT and a generated MOD container before any live Toolset proof."
   one_active_stage_only: true
-  current_attempt_id: "M5-20260713-01"
+  current_attempt_id: "NONE"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
   done_rule: "A stage may be DONE only when every definition_of_done item has evidence."
   stop_rule: "Stop and mark BLOCKED when a needed Aurora fact, decision, local tool state, or proof artifact is missing. Do not guess."
@@ -60,11 +60,11 @@ global_blockers:
     severity: "P0"
     status: "DIRECTION_DEFINED_RUNTIME_OPEN"
     title: "2DA existing-table edit contract"
-    detail: "The app reads a user-selected base table/HAK, preserves it and appends one full row at EOF within uint16 range. Own HAK/GFF readback and NWN EE resolution remain open."
+    detail: "M5 implements and proves preserve-and-append 2DA plus deterministic HAK/own-readback. Generic GFF and typed UTC/IFO/ARE/GIT/MOD remain M6 contract work; NWN EE resolution remains runtime-open."
     affects: ["M5", "M6", "M7"]
     owner: "Codex"
     source: "documentation/hak-2da-gff-crosswalk-codex.md"
-    next_action: "Implement append-only 2DA plus HAK/GFF writers in M5, then prove the generated module without committing retail data."
+    next_action: "Preserve the closed M5 2DA/HAK proof. In M6, freeze GFF and typed module-resource contracts, implement generated-only writers/readback, then prove the generated module without committing retail data."
   - id: "GB-005"
     severity: "P0"
     status: "RESOLVED_STRUCTURAL_RUNTIME_OPEN"
@@ -366,20 +366,19 @@ stages:
       - "documentation/orchestrator-state.yaml"
 
   M5:
-    status: "IN_PROGRESS"
-    status_reason: "Core Slice A TGA, Slice B 2DA and Slice C HAK are structurally complete with exact layout/own readback, full gates and final independent P1=0/P2=0 reviews. Public WASM adapters and final resource/package manifest proof remain; TXI and typed GFF/UTC/GIT are deferred pending their own contracts."
+    status: "DONE"
+    status_reason: "M5 is structurally complete: deterministic TGA, preserve-and-append 2DA, HAK V1.0, PackageManifest and strict public WASM APIs pass 256 workspace tests, native/WASM/real Node ABI, no-cache Docker and final independent P1=0/P2=0 review. Toolset/game runtime remains OPEN_M6; TXI, full bake and typed GFF resources are outside the locked M5 scope."
     owner: "Codex orchestrator + implementation/review subagents"
     risk: "HIGH"
     dependencies: ["M4A DONE", "GB-004 direction defined"]
-    current_problems:
-      - "Public WASM adapters and final resource/package manifest proof are not implemented yet."
-      - "GB-004 runtime proof is open; append-only writer direction is defined."
+    current_problems: []
     bugs: []
-    next_actions: ["Implement public WASM adapters for TGA, 2DA and HAK plus final deterministic resource/package manifest proof."]
+    next_actions: ["Preserve structural evidence; execute Toolset/game resolution only in M6."]
     evidence:
       - "documentation/evidence/M5-evidence.md: TGA Slice A 7/7 targeted, private readback PASS, clippy/fmt/diff PASS, independent final rereview P1=0/P2=0"
       - "documentation/evidence/M5-evidence.md: 2DA Slice B 15 integration / 19 private / 221 workspace PASS, final independent rereview P1=0/P2=0"
       - "documentation/evidence/M5-evidence.md: HAK Slice C 12 integration / 7 private, ERF 2 private / 18 integration, 242 workspace PASS, final independent rereview P1=0/P2=0"
+      - "documentation/evidence/M5-evidence.md: final M5 256 workspace / 10 native WASM / 19 wasm-pack Node / real Node ABI PASS; Docker no-cache sha256:d1d75d68371b11ddd658c7ed34d584e256ec1906fb363b61a1ee85eede0a42d6; final P1=0/P2=0"
     documentation: ["documentation/m5-native-package-kontrakt-suplement-codex.md", "documentation/evidence/M5-evidence.md"]
     expected_artifacts: ["Generated TGA", "Generated 2DA", "Generated HAK", "Resource manifest"]
     changed_files:
@@ -388,25 +387,31 @@ stages:
       - "crates/m2a-core/src/two_da.rs"
       - "crates/m2a-core/src/hak.rs"
       - "crates/m2a-core/src/erf.rs"
+      - "crates/m2a-core/src/package.rs"
       - "crates/m2a-core/tests/tga_writer.rs"
       - "crates/m2a-core/tests/two_da.rs"
       - "crates/m2a-core/tests/hak_writer.rs"
       - "crates/m2a-core/tests/erf.rs"
+      - "crates/m2a-core/tests/package_manifest.rs"
+      - "crates/m2a-wasm/src/lib.rs"
+      - "crates/m2a-wasm/tests/node_boundary.cjs"
+      - ".github/workflows/ci.yml"
       - "documentation/m5-native-package-kontrakt-suplement-codex.md"
       - "documentation/evidence/M5-evidence.md"
       - "documentation/orchestrator-state.yaml"
 
   M6:
-    status: "NOT_STARTED"
-    status_reason: "Requires generated native HAK and content."
+    status: "READY"
+    status_reason: "M5 structural package writers are DONE. M6 may start with an Aurora First contract-lock for GFF/typed module resources and MOD; live Toolset/game proof remains a later M6 gate."
     owner: "Mateusz + implementation agent"
     risk: "HIGH"
     dependencies: ["M5 DONE"]
     current_problems:
-      - "No generated HAK/module exists."
-      - "Headless visual proof is not available; manual visual proof is expected."
+      - "Exact GFF V3.2 and typed UTC/IFO/ARE/GIT/MOD manifests are not locked."
+      - "No generated module proof packet exists."
+      - "Headless visual proof is not available; final live Toolset/game proof is required."
     bugs: []
-    next_actions: ["Wait for M5 and prepare manual runbook."]
+    next_actions: ["Freeze the M6 GFF/typed-resource/MOD contract from Aurora First anchors, then implement own writer/readback with TDD."]
     evidence: []
     documentation: ["documentation/evidence/M6-evidence.md"]
     expected_artifacts: ["Generated creature UTC", "Generated GIT instance", "Toolset screenshots", "Game screenshot", "Animation proof", "HAK hash and resource manifest"]

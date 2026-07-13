@@ -1,6 +1,6 @@
 # M5 - native texture, 2DA i HAK contract
 
-Data: 2026-07-13 | Autor: Codex | Status: M5_CONTRACT_LOCKED_SLICE_A_NEXT
+Data: 2026-07-13 | Autor: Codex | Status: M5_DONE_STRUCTURAL_OPEN_M6
 
 ## 1. Zakres i status
 
@@ -695,7 +695,168 @@ env-selected i read-only in-place; nie sa fixture source, expected payload ani
 golden archive writera. Evidence zapisuje tylko layout, counts, hashes i
 logiczne labels, bez payloadow i prywatnych host paths.
 
-## 6. Jawne odroczenia
+## 6. Zamrozony boundary WASM i manifest pakietu
+
+### 6.1 Exact public WASM API
+
+Ponizsza powierzchnia jest kanoniczna dla M5 i zastepuje prowizoryczny szkic
+adaptera 2DA z 4.5. Kazdy input JSON jest strict `camelCase`, ma
+`deny_unknown_fields` i jest dekodowany przed wywolaniem core:
+
+```text
+writeTgaV1(imageJson, optionsJson) -> Result<Uint8Array, JsValue>
+writeTgaV1ReportJson(imageJson, optionsJson) -> Result<String, JsValue>
+
+inspectTwoDaV2Json(bytes, limitsJson) -> Result<String, JsValue>
+appendTwoDaRowV1(bytes, requestJson, limitsJson) -> Result<Uint8Array, JsValue>
+appendTwoDaRowV1ReportJson(bytes, requestJson, limitsJson) -> Result<String, JsValue>
+
+writeHakV1(payloadBlob, resourcesJson, optionsJson) -> Result<Uint8Array, JsValue>
+writeHakV1ReportJson(payloadBlob, resourcesJson, optionsJson) -> Result<String, JsValue>
+writePackageManifestV1Json(payloadBlob, resourcesJson, optionsJson)
+    -> Result<String, JsValue>
+```
+
+TGA przyjmuje exact JSON `TgaImageV1` i `TgaWriterOptionsV1`; `pixels` pozostaje
+tablica bytes JSON. 2DA przyjmuje source jako `Uint8Array`, exact
+`TwoDaAppendRequestV1` i `TwoDaLimitsV1`; inspect zwraca
+`TwoDaInspectionV1` JSON, a report adapter exact `TwoDaAppendReportV1` JSON.
+
+HAK przyjmuje jeden `payloadBlob: Uint8Array` oraz:
+
+```rust
+pub struct HakResourceDescriptorV1 {
+    pub resref: String,
+    pub resource_type: u16,
+    pub payload_offset: u32,
+    pub payload_size: u32,
+}
+
+pub struct HakResourceDescriptorsV1 {
+    pub schema_version: u32, // exact 1
+    pub resources: Vec<HakResourceDescriptorV1>,
+}
+```
+
+`resourcesJson` jest exact `HakResourceDescriptorsV1`, a `optionsJson` exact
+`HakWriterOptionsV1`. Dla kazdego descriptor `payloadOffset + payloadSize` jest
+checked i musi miescic sie w `payloadBlob`. Niepuste ranges nie moga sie
+nakladac, a ich suma/union musi pokrywac exact `0..payloadBlob.len()` bez gaps i
+trailing bytes; zero-size descriptor moze wskazywac dowolny offset
+`0..=payloadBlob.len()` i nie uczestniczy w coverage. Descriptor order jest
+original input order do walidacji resref/duplicate, po czym core stosuje sort z
+5.2. Boundary materializuje owned payload kazdego resource dopiero po range i
+limit validation.
+
+Zaden adapter nie przyjmuje ani nie zwraca base64. Sukces byte API zwraca
+`Uint8Array`; sukces report/inspect/manifest API zwraca exact compact JSON.
+`JsValue` bledu zawiera compact JSON o polach w kolejnosci
+`schemaVersion,code,severity,path,message`, z `schemaVersion=1` i exact
+`severity=FATAL`. Core error zachowuje swoj code/path bez przepisywania.
+Boundary decode/range errors sa zamrozone:
+
+| Code | Stable path |
+|---|---|
+| `M5-TGA-IMAGE-JSON-INVALID` | `imageJson` |
+| `M5-TGA-OPTIONS-JSON-INVALID` | `optionsJson` |
+| `M5-2DA-LIMITS-JSON-INVALID` | `limitsJson` |
+| `M5-2DA-REQUEST-JSON-INVALID` | `requestJson` |
+| `M5-HAK-RESOURCES-JSON-INVALID` | `resourcesJson` |
+| `M5-HAK-OPTIONS-JSON-INVALID` | `optionsJson` |
+| `M5-HAK-PAYLOAD-RANGE-INVALID` | `resources[i].payloadOffset`, `resources[i].payloadSize` albo `payloadBlob` |
+
+JSON jest walidowany w kolejnosci argumentow widocznej w sygnaturze; dla HAK:
+`resourcesJson`, potem `optionsJson`, potem blob ranges/coverage, nastepnie exact
+core precedence z 5.3. Byte i report adapter deleguja do tego samego core i dla
+tych samych inputow musza opisywac ten sam artifact.
+
+### 6.2 `PackageManifestV1`
+
+Manifest jest strict, deterministycznym JSON sidecar wygenerowanego HAK, nie
+jest dodatkowym resource wewnatrz archiwum:
+
+```rust
+pub enum PackageResourceRoleV1 {
+    Model,              // JSON "MODEL"
+    Texture,            // JSON "TEXTURE"
+    AppearanceTable,    // JSON "APPEARANCE_TABLE"
+}
+
+pub struct PackageManifestResourceV1 {
+    pub role: PackageResourceRoleV1,
+    pub resref: String,
+    #[serde(rename = "type")]
+    pub resource_type: u16,
+    pub byte_length: u64,
+    pub sha256: String,
+    pub hak_resource_id: u32,
+    pub hak_payload_offset: u32,
+}
+
+pub struct PackageManifestV1 {
+    pub schema_version: u32,
+    pub package_sha256: String,
+    pub resources: Vec<PackageManifestResourceV1>,
+}
+```
+
+Wszystkie typy manifestu sa `camelCase`; role maja exact JSON spelling pokazany
+wyzej. `PackageManifestV1.schemaVersion == 1`. Manifest ma exact trzy entries i
+exact jedna role kazdego rodzaju:
+
+- `MODEL`: jedyny resource typu MDL `2002`;
+- `TEXTURE`: jedyny resource typu TGA `3`;
+- `APPEARANCE_TABLE`: exact `(resref="appearance", type=2017)`.
+
+HAK profilu pakietowego nie moze miec czwartego resource ani brakujacej roli.
+`resources` manifestu ma identyczna kolejnosc jak `HakWriterReportV1.resources`,
+czyli final sort `(resref bytes, numeric type)`, a nie kolejnosc rol. Kazde pole
+jest wyliczone z finalnego HAK reportu i source payloadu: `packageSha256` jest
+exact `archiveSha256`; `resref`, `type`, `hakResourceId` i `hakPayloadOffset`
+sa identyczne z wpisem reportu; `byteLength` jest jego `payloadSize`; `sha256`
+jest exact `payloadSha256`. Caller nie moze nadpisac zadnego pola manifestu.
+
+Manifest powstaje dopiero po successful HAK own-readback. Naruszenia profilu
+maja shape `HakWriteError` i stabilna taksonomie:
+
+| Code | Stable path |
+|---|---|
+| `M5-PACKAGE-ROLE-MISSING` | `resources` |
+| `M5-PACKAGE-ROLE-DUPLICATE` | `resources[i]` drugiego resource danej roli |
+| `M5-PACKAGE-RESOURCE-INVALID` | `resources[i].resref` albo `resources[i].resourceType` |
+| `M5-PACKAGE-HAK-MISMATCH` | `hakReport` |
+| `M5-PACKAGE-SEMANTIC-DIFF` | `manifest.resources[i]` albo `manifest.packageSha256` |
+
+Walidacja profilu idzie w final HAK report order: najpierw count `==3`, potem
+kazdy resref/type i duplicate role, potem missing role, nastepnie exact
+report/payload hashes, IDs, offsets i package SHA. Nie ma czesciowego manifestu.
+
+### 6.3 Boundary i manifest test gates
+
+Obowiazkowe testy native/wasm32:
+
+- strict valid i unknown-field JSON dla kazdego image/request/limits/resources/
+  options inputu oraz frozen JSON kazdego boundary error code/path;
+- HAK blob: exact boundary, zero payload, out-of-range, checked-add overflow,
+  overlap, gap, trailing byte i duplicate descriptor; wszystkie invalid cases
+  sa no-panic;
+- byte API i report API daja wspolny length/SHA/report, a native i wasm32 daja
+  byte-identyczny TGA/2DA/HAK oraz identyczny compact report/error JSON;
+- input JSON strings i kazdy source `Uint8Array`/`payloadBlob` pozostaja
+  byte-identyczne po success i error;
+- brak base64 w publicznym input/output oraz test blokujacy accidental base64
+  carrier;
+- manifest happy case ma exact trzy role, final HAK sort order, exact
+  byteLength/SHA/ID/offset/package SHA i frozen compact JSON;
+- shuffled descriptor input daje identyczny HAK, report i manifest;
+- missing/duplicate/wrong type, `appearance` resref mismatch, extra resource,
+  report/payload/hash/ID/offset mutation i package SHA mutation daja exact
+  stable error classification;
+- manifest jest emitowany dopiero po successful private verifier i
+  `ErfArchive` readback; wszystkie mutation i arbitrary malformed JSON cases sa
+  no-panic.
+
+## 7. Jawne odroczenia
 
 - TXI: brak zamrozonego profilu dyrektyw/kodowania/kolejnosci; domyslnie brak.
 - Full image bake: potrzebny osobny payload/decode/resize contract.

@@ -29,6 +29,37 @@ pub struct HakResourceInputV1 {
     pub payload: Vec<u8>,
 }
 
+/// Borrowed metadata required to validate and plan a HAK before payload bytes
+/// are copied into owned resource buffers.
+pub trait HakResourceMetadataV1 {
+    fn hak_resref(&self) -> &str;
+    fn hak_resource_type(&self) -> u16;
+    fn hak_payload_size(&self) -> Option<u64>;
+}
+
+impl HakResourceMetadataV1 for HakResourceInputV1 {
+    fn hak_resref(&self) -> &str {
+        &self.resref
+    }
+
+    fn hak_resource_type(&self) -> u16 {
+        self.resource_type
+    }
+
+    fn hak_payload_size(&self) -> Option<u64> {
+        u64::try_from(self.payload.len()).ok()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HakPreflightPlanV1 {
+    pub entry_count: u32,
+    pub key_table_offset: u32,
+    pub resource_table_offset: u32,
+    pub payload_offset: u32,
+    pub byte_length: u64,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HakWriterLimitsV1 {
@@ -137,11 +168,40 @@ pub fn write_hak_v1(
     )
 }
 
+/// Validates options, limits, keys and the complete output layout using only
+/// borrowed resource metadata. No resource payload is copied or materialized.
+pub fn preflight_hak_v1<T: HakResourceMetadataV1>(
+    resources: &[T],
+    options: &HakWriterOptionsV1,
+) -> Result<HakPreflightPlanV1, HakWriteError> {
+    let (_, plan) = preflight_hak_layout(resources, options)?;
+    Ok(HakPreflightPlanV1 {
+        entry_count: plan.scalar.entry_count,
+        key_table_offset: 0xa0,
+        resource_table_offset: plan.scalar.resource_table_offset,
+        payload_offset: plan.scalar.payload_offset,
+        byte_length: plan.scalar.byte_length,
+    })
+}
+
 fn write_hak_v1_inner(
     resources: &[HakResourceInputV1],
     options: &HakWriterOptionsV1,
     #[cfg(test)] force_output_allocation_failure: bool,
 ) -> Result<HakArtifactV1, HakWriteError> {
+    let (sorted, plan) = preflight_hak_layout(resources, options)?;
+    emit_hak_v1(
+        &sorted,
+        &plan,
+        #[cfg(test)]
+        force_output_allocation_failure,
+    )
+}
+
+fn preflight_hak_layout<'a, T: HakResourceMetadataV1>(
+    resources: &'a [T],
+    options: &HakWriterOptionsV1,
+) -> Result<(Vec<&'a T>, LayoutPlan), HakWriteError> {
     validate_options(options)?;
     let entry_count = u64::try_from(resources.len()).map_err(|_| {
         HakWriteError::fatal(
@@ -162,7 +222,7 @@ fn write_hak_v1_inner(
     }
 
     for (index, resource) in resources.iter().enumerate() {
-        if !valid_resref(&resource.resref) {
+        if !valid_resref(resource.hak_resref()) {
             return Err(HakWriteError::fatal(
                 RESREF_INVALID,
                 &format!("resources[{index}].resref"),
@@ -180,7 +240,7 @@ fn write_hak_v1_inner(
         )
     })?;
     for (index, resource) in resources.iter().enumerate() {
-        if !keys.insert((resource.resref.as_str(), resource.resource_type)) {
+        if !keys.insert((resource.hak_resref(), resource.hak_resource_type())) {
             return Err(HakWriteError::fatal(
                 DUPLICATE_KEY,
                 &format!("resources[{index}]"),
@@ -199,14 +259,14 @@ fn write_hak_v1_inner(
     })?;
     sorted.extend(resources.iter());
     sorted.sort_unstable_by(|left, right| {
-        left.resref
+        left.hak_resref()
             .as_bytes()
-            .cmp(right.resref.as_bytes())
-            .then_with(|| left.resource_type.cmp(&right.resource_type))
+            .cmp(right.hak_resref().as_bytes())
+            .then_with(|| left.hak_resource_type().cmp(&right.hak_resource_type()))
     });
 
     let total_payload_bytes = sorted.iter().try_fold(0_u64, |total, resource| {
-        let length = u64::try_from(resource.payload.len()).map_err(|_| {
+        let length = resource.hak_payload_size().ok_or_else(|| {
             HakWriteError::fatal(U32_OVERFLOW, "layout", "payload length does not fit u64")
         })?;
         total.checked_add(length).ok_or_else(|| {
@@ -222,13 +282,20 @@ fn write_hak_v1_inner(
         scalar_plan,
         entry_count,
         sorted.iter().map(|resource| {
-            u64::try_from(resource.payload.len()).map_err(|_| {
+            resource.hak_payload_size().ok_or_else(|| {
                 HakWriteError::fatal(U32_OVERFLOW, "layout", "payload length does not fit u64")
             })
         }),
         sorted.len(),
     )?;
+    Ok((sorted, plan))
+}
 
+fn emit_hak_v1(
+    sorted: &[&HakResourceInputV1],
+    plan: &LayoutPlan,
+    #[cfg(test)] force_output_allocation_failure: bool,
+) -> Result<HakArtifactV1, HakWriteError> {
     let output_capacity = usize::try_from(plan.scalar.byte_length).map_err(|_| {
         HakWriteError::fatal(
             ALLOCATION_FAILED,
@@ -320,8 +387,8 @@ fn write_hak_v1_inner(
         archive_sha256,
         resources: reports,
     };
-    verify_exact_layout(&payload, &sorted, &plan)?;
-    verify_semantic_readback(&payload, &sorted, &plan, &report)?;
+    verify_exact_layout(&payload, sorted, plan)?;
+    verify_semantic_readback(&payload, sorted, plan, &report)?;
     Ok(HakArtifactV1 { payload, report })
 }
 

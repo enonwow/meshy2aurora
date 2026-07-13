@@ -3,8 +3,8 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use m2a_core::erf::{ErfArchive, ErfFileType};
 use m2a_core::hak::{
     DUPLICATE_KEY, ENTRY_LIMIT_EXCEEDED, HAK_MAX_ENTRY_COUNT, HAK_MAX_OUTPUT_BYTES,
-    HakResourceInputV1, HakWriterLimitsV1, HakWriterOptionsV1, OPTIONS_INVALID,
-    OUTPUT_LIMIT_EXCEEDED, RESREF_INVALID, write_hak_v1,
+    HakResourceInputV1, HakResourceMetadataV1, HakWriterLimitsV1, HakWriterOptionsV1,
+    OPTIONS_INVALID, OUTPUT_LIMIT_EXCEEDED, RESREF_INVALID, preflight_hak_v1, write_hak_v1,
 };
 use m2a_core::two_da::{
     TwoDaAppendRequestV1, TwoDaCellAssignmentV1, TwoDaCellValueV1, TwoDaLimitsV1,
@@ -27,6 +27,66 @@ fn options(max_entry_count: u64, max_output_bytes: u64) -> HakWriterOptionsV1 {
             max_output_bytes,
         },
     }
+}
+
+#[derive(Clone, Copy)]
+struct BorrowedDescriptor<'a> {
+    resref: &'a str,
+    resource_type: u16,
+    payload_size: u64,
+}
+
+impl HakResourceMetadataV1 for BorrowedDescriptor<'_> {
+    fn hak_resref(&self) -> &str {
+        self.resref
+    }
+
+    fn hak_resource_type(&self) -> u16 {
+        self.resource_type
+    }
+
+    fn hak_payload_size(&self) -> Option<u64> {
+        Some(self.payload_size)
+    }
+}
+
+#[test]
+fn borrowed_preflight_plans_full_output_without_payload_materialization() {
+    let descriptors = [
+        BorrowedDescriptor {
+            resref: "texture",
+            resource_type: 3,
+            payload_size: 3,
+        },
+        BorrowedDescriptor {
+            resref: "appearance",
+            resource_type: 2017,
+            payload_size: 3,
+        },
+        BorrowedDescriptor {
+            resref: "model",
+            resource_type: 2002,
+            payload_size: 3,
+        },
+    ];
+    let plan = preflight_hak_v1(&descriptors, &HakWriterOptionsV1::default()).unwrap();
+    assert_eq!(plan.entry_count, 3);
+    assert_eq!(plan.key_table_offset, 160);
+    assert_eq!(plan.resource_table_offset, 232);
+    assert_eq!(plan.payload_offset, 256);
+    assert_eq!(plan.byte_length, 265);
+
+    let invalid = [BorrowedDescriptor {
+        resref: "BAD",
+        resource_type: 3,
+        payload_size: u64::MAX,
+    }];
+    assert_eq!(
+        preflight_hak_v1(&invalid, &HakWriterOptionsV1::default())
+            .unwrap_err()
+            .code,
+        RESREF_INVALID
+    );
 }
 
 fn u32_at(bytes: &[u8], offset: usize) -> u32 {
@@ -107,6 +167,11 @@ fn all_three_resource_permutations_are_byte_and_report_identical() {
         [2, 1, 0],
     ];
     let expected = write_hak_v1(&items, &HakWriterOptionsV1::default()).unwrap();
+    assert_eq!(expected.payload.len(), 265);
+    assert_eq!(
+        expected.report.archive_sha256,
+        "494862f6a12f91d5a269519d0579a05ace5bb50fd8f72b5711fcae7445444477"
+    );
     for permutation in permutations {
         let input = permutation.map(|index| items[index].clone());
         let actual = write_hak_v1(&input, &HakWriterOptionsV1::default()).unwrap();

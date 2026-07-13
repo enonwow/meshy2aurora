@@ -4,9 +4,9 @@ Data: 2026-07-13
 
 ```yaml
 stage: M5
-status: IN_PROGRESS
+status: DONE
 attempt_id: M5-20260713-01
-contract: M5_CONTRACT_LOCKED_SLICE_A_PASS_SLICE_B_NEXT
+contract: M5_DONE_STRUCTURAL_OPEN_M6
 runtime_proof: OPEN_M6
 retail_payload_committed: false
 ```
@@ -138,6 +138,47 @@ scoped_diff_check: PASS
 independent_final_rereview: "P1=0; P2=0"
 ```
 
-Slice C jest strukturalnie zamkniety. M5 nadal pozostaje `IN_PROGRESS`, poniewaz
-publiczne adaptery WASM i finalny resource/package manifest proof sa jeszcze
-otwarte. Runtime Toolset/game pozostaje zgodnie z kontraktem `OPEN_M6`.
+Slice C zostal strukturalnie zamkniety przed finalnym publicznym boundary i
+manifestem opisanym ponizej. Runtime Toolset/game pozostaje zgodnie z
+kontraktem `OPEN_M6`.
+
+## 7. Final package manifest, public WASM i bramki M5
+
+Dodano strict `PackageManifestV1` dla exact trzech rol: `MODEL` type 2002,
+`TEXTURE` type 3 oraz `APPEARANCE_TABLE` exact `appearance/2017`. Manifest
+powstaje dopiero po successful HAK own-readback, zachowuje final HAK report
+order i zamraza package/resource hashes, IDs oraz offsets.
+
+Publiczny boundary WASM udostepnia exact TGA, 2DA, HAK i PackageManifest API
+bez base64. HAK przyjmuje jeden `Uint8Array` blob i borrowed descriptors.
+Kolejnosc jest zamrozona jako JSON decode, range/coverage, pelny core preflight
+bez kopiowania, fallible payload materialization, writer/readback. CI buduje
+rzeczywisty pakiet Node i uruchamia JS ABI harness.
+
+```yaml
+workspace_tests: "256/256 PASS"
+package_manifest: "4/4 PASS"
+native_m2a_wasm: "10/10 PASS"
+wasm_pack_node: "19/19 PASS"
+generated_node_abi: "M5 Node boundary PASS"
+wasm32_build: PASS
+workspace_clippy_all_targets_deny_warnings: PASS
+cargo_fmt_check: PASS
+git_diff_check: PASS
+frozen_tga: "60 bytes / sha256 ab5365a31f1ef4d57b33943ae01735a33e5337d4d0d6b9eba5b715a3fb360c79"
+frozen_two_da: "36 bytes / sha256 fed4b73584a864c1a5532b1dfea78f07a603116fa59ef4b6f5f70b84fc96cb67"
+frozen_hak: "265 bytes / sha256 494862f6a12f91d5a269519d0579a05ace5bb50fd8f72b5711fcae7445444477"
+frozen_package_manifest_sha256: "494862f6a12f91d5a269519d0579a05ace5bb50fd8f72b5711fcae7445444477"
+docker_no_cache:
+  tag: "m2a-quality:m5-final"
+  duration_seconds: 162.4
+  image_id: "sha256:d1d75d68371b11ddd658c7ed34d584e256ec1906fb363b61a1ee85eede0a42d6"
+  size_bytes: 1337790327
+independent_final_rereview: "P1=0; P2=0"
+retail_payload_committed: false
+runtime_proof: OPEN_M6
+```
+
+M5 jest `DONE` strukturalnie. TXI, full image bake, generic GFF oraz typed
+UTC/IFO/ARE/GIT/MOD pozostaja poza zamrozonym zakresem M5. Toolset/game
+acceptance przechodzi do M6; nie jest dowodzona przez own-readback ani testy.

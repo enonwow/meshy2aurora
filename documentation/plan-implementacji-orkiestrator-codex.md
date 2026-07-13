@@ -401,10 +401,10 @@ out_of_scope:
 definition_of_done:
   - "synthetic TGA, 2DA and HAK tests pass"
   - "HAK contains only generated resources and correct types/resrefs"
-  - "appearance/table edit has Aurora First evidence and runtime proof"
+  - "appearance/table edit has Aurora First structural evidence; Toolset/game runtime proof is owned by M6"
   - "packer output can be read back by own reader"
 current_problems_initial:
-  - "exact existing-table edit and HAK resolution behavior needs Aurora First/runtime proof"
+  - "exact existing-table edit needs Aurora First structural proof; HAK resolution remains an M6 runtime gate"
   - "no own HAK writer exists"
 bugs_initial: []
 documentation:
@@ -412,6 +412,11 @@ documentation:
   - "documentation/aurora-2da-creature-codex.md"
   - "documentation/evidence/M5-evidence.md"
 ```
+
+The locked M5 supplement supersedes the original runtime wording above:
+`documentation/m5-native-package-kontrakt-suplement-codex.md`. Requiring M6
+runtime acceptance before `M5 DONE` would recreate a dependency cycle because
+M6 depends on `M5 DONE`.
 
 ### M6. Generated NWN EE proof
 

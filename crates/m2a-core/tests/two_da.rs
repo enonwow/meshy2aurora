@@ -75,6 +75,31 @@ fn append_is_exact_prefix_plus_deterministic_source_eol_suffix() {
 }
 
 #[test]
+fn node_boundary_append_fixture_has_frozen_native_length_and_hashes() {
+    let source = b"2DA V2.0\n\nA B\n0 old ****\n";
+    let artifact = append_two_da_row_v1(
+        source,
+        &request(vec![("A", text("new"))]),
+        &TwoDaLimitsV1::default(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        artifact.payload,
+        b"2DA V2.0\n\nA B\n0 old ****\n1 new ****\n"
+    );
+    assert_eq!(artifact.payload.len(), 36);
+    assert_eq!(
+        artifact.report.source_sha256,
+        "13742e2d1fc92fdb18ac59689e03e601957c381ee48a20faddd84637c162ca24"
+    );
+    assert_eq!(
+        artifact.report.output_sha256,
+        "fed4b73584a864c1a5532b1dfea78f07a603116fa59ef4b6f5f70b84fc96cb67"
+    );
+}
+
+#[test]
 fn starred_row_is_not_a_hole_and_existing_bad_labels_are_only_warnings() {
     let source = b"2DA V2.0\r\n\r\nLABEL\r\n0 first\r\n0 ****\r\n2 third\r\n";
     let artifact = append_two_da_row_v1(

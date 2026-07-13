@@ -33,5 +33,9 @@ jobs:
         run: cargo +1.96.1 build -p m2a-wasm --target wasm32-unknown-unknown
       - name: Test public Node adapter
         run: wasm-pack test --node crates/m2a-wasm
+      - name: Build generated Node package
+        run: wasm-pack build crates/m2a-wasm --target nodejs --out-dir pkg
+      - name: Test generated Node package boundary
+        run: node crates/m2a-wasm/tests/node_boundary.cjs crates/m2a-wasm/pkg/m2a_wasm.js
       - name: Hygiene
         run: git diff --check
