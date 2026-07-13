@@ -25,9 +25,9 @@ orchestration:
   goal_sequence: "Complete M6, then M7, then S1; preserve one active implementation stage at a time."
   goal_exclusions: ["S2", "F1-F10", "gameplay classes", "full generated module pipeline"]
   goal_terminal_condition: "M6, M7 and S1 are DONE with their required code, artifacts, independent reviews and live/e2e evidence."
-  next_action: "Build the generated model package (binary MDL with appended MDX, TGA, appended appearance.2da and HAK) and prove that model in a known-good Toolset/game test scaffold; do not build gameplay classes or a full generated module."
+  next_action: "Use the materialized M6 model packet in the separate m2a_m6_proof.mod scaffold and capture Toolset/game/cpause1 evidence; do not build gameplay classes or a full generated module."
   one_active_stage_only: true
-  current_attempt_id: "M6-20260713-01"
+  current_attempt_id: "M6-20260713-02"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
   done_rule: "A stage may be DONE only when every definition_of_done item has evidence."
   stop_rule: "Stop and mark BLOCKED when a needed Aurora fact, decision, local tool state, or proof artifact is missing. Do not guess."
@@ -406,16 +406,15 @@ stages:
 
   M6:
     status: "IN_PROGRESS"
-    status_reason: "Owner scope correction is active: the product creates a model package, not gameplay classes or a complete module. M6B embedded PNG/JPEG decode and the one-write core/WASM model-package compositor are complete with final P1=0/P2=0 reviews. Active work is materialization and live model/texture/animation proof in a known-good Toolset/game scaffold."
+    status_reason: "Owner scope correction is active: the product creates a model package, not gameplay classes or a complete module. M6C now materializes a reviewed owned Skin GLB into MDL+MDX, TGA, appended local appearance.2da and a three-resource HAK with exact hashes. Active work is the live model/texture/animation proof in a separate Toolset/game scaffold."
     owner: "Mateusz + implementation agent"
     risk: "HIGH"
     dependencies: ["M5 DONE"]
     current_problems:
-      - "No saved generated MDL/TGA/appearance.2da/HAK/manifest packet has been materialized from owned/synthetic source yet."
-      - "No saved live proof packet yet demonstrates the generated model package in Toolset/game."
+      - "The offline proof packet is complete, but no saved live Toolset/game capture yet demonstrates the generated model, texture and cpause1 animation."
     bugs: []
-    next_actions: ["Generate the model package from owned/synthetic source, attach its HAK to a known-good test module, set a Toolset-created test creature to the appended appearance row, and capture Toolset/game/animation evidence."]
-    evidence: ["documentation/evidence/M6-evidence.md: M6A GFF core DONE; M6B embedded image decode 6/6, package 6/6, workspace 287/287, clippy/fmt/wasm32/wasm-pack 19/19/Node boundary PASS; decoder and compositor final reviews P1=0/P2=0"]
+    next_actions: ["Open only the separate m2a_m6_proof.mod scaffold, attach m2a_m6p01.hak, set one stock Toolset creature instance to appearance row 15219, and capture Toolset/game/cpause1 evidence without generating gameplay classes."]
+    evidence: ["documentation/evidence/M6-evidence.md: M6A GFF core DONE; M6B compositor DONE; M6C owned Skin packet materialized from real local appearance.2da at row 15219, exact file hashes PASS, final independent review P1=0/P2=0; runtime proof remains open"]
     documentation: ["documentation/m6-gff-module-kontrakt-suplement-codex.md", "documentation/m6-typed-resource-manifests-codex.md", "documentation/evidence/M6-evidence.md"]
     expected_artifacts: ["Generated binary MDL with appended MDX", "Generated TGA", "Appended appearance.2da", "Generated HAK and resource manifest", "Toolset screenshots", "Game screenshot", "Animation proof"]
     changed_files:

@@ -5,8 +5,8 @@ Data: 2026-07-13
 ```yaml
 stage: M6
 status: IN_PROGRESS
-attempt_id: M6-20260713-01
-active_slice: M6B_MODEL_PACKAGE_BRIDGE_DONE_LIVE_PROOF_NEXT
+attempt_id: M6-20260713-02
+active_slice: M6C_MODEL_PACKET_MATERIALIZED_LIVE_PROOF_NEXT
 runtime_proof: NOT_RUN
 retail_payload_committed: false
 ```
@@ -45,7 +45,7 @@ mod_container_contract: LOCKED_STRUCTURAL
 own_writer_readback: DONE
 embedded_png_jpeg_decode: DONE
 model_package_compositor: DONE
-generated_file_packet: NOT_STARTED
+generated_file_packet: DONE
 toolset_acceptance: NOT_RUN
 game_acceptance: NOT_RUN
 animation_runtime_proof: NOT_RUN
@@ -163,3 +163,61 @@ Nastepny krok nie wymaga klas ani generowania modulu: materializacja realnego
 `MDL+MDX`, TGA, appended `appearance.2da`, HAK i manifestu z owned/synthetic
 source, a potem proof na istniejacym `sandbox.mod` przy uzyciu test creature
 utworzonego w Toolsecie.
+
+## 8. M6C owned model materialization
+
+Dodano model-only composer i proof materializer bez generowania UTC, klas,
+featow, ITP ani pelnego modulu. Owned fixture jest asymetryczna bryla 3D Skin:
+12 trojkatow, dwa aktywne jointy, osadzony checker PNG oraz klip LINEAR
+mapowany do `cpause1`. Decoy texture/image pod indeksami `0` wymuszaja
+rozwiazanie uzywanego lancucha material -> texture -> image po ID `1`.
+
+Realny run uzywa read-only payloadu `appearance.2da` z lokalnego
+`lc_2da.hak`. Tabela ma 35 kolumn i nie ma kolumny phenotype; composer wymaga
+dziewieciu stalych kolumn, a `DefaultPhenoType` i jego udokumentowane aliasy
+uzupelnia tylko wtedy, gdy faktycznie wystepuja. Wejsciowy payload jest jawnie
+oznaczony jako `PRESERVED_AND_APPENDED`; atestacja no-copy dotyczy tylko
+wlasnego modelu, nie bazowej tabeli 2DA.
+
+```yaml
+materializer_focused_tests: "7/7 PASS"
+workspace_tests: "294/294 PASS"
+workspace_clippy_all_targets_deny_warnings: PASS
+cargo_fmt_check: PASS
+wasm32_build: PASS
+git_diff_check: PASS
+independent_review_initial: "P1=1; P2=1"
+independent_review_final: "P1=0; P2=0"
+source_appearance_payload:
+  byte_length: 7655336
+  sha256: "ca0b80b74e068d8ebbd94df6005b5971e50eca5c8662fca10a40688ea2c033a2"
+owned_glb:
+  byte_length: 4380
+  sha256: "c0018699c1402ad4f4c66b3caaa6a0f071f784fa23442e5d804bbc2ab4ff85b3"
+generated_model:
+  resref: "m2a_m6p01"
+  byte_length: 3812
+  sha256: "fcbb72daa711848411207ced3c0dd9f392706daa85274666e44a15f970594a1c"
+generated_texture:
+  resref: "m2a_m6t01"
+  byte_length: 60
+  sha256: "b9be7eaf5fb61c0a57211faa10c964496e979cc905a8c51dd5c4aeeff023442c"
+generated_appearance:
+  physical_row: 15219
+  changed_cells: 9
+  byte_length: 7655521
+  sha256: "294af127279e0bb5a656bc3e397acc06d4890033439396a7020d28de02b4198d"
+generated_hak:
+  resources: 3
+  byte_length: 7659649
+  sha256: "ebe23acf86ee704637f7986681458895578f5dc50ad18d02f8f5d0804d743cda"
+packet: "proof-output/M6-20260713-02"
+packet_manifest_hashes: PASS
+runtime_proof: NOT_RUN
+```
+
+Do live proofu przygotowano osobna kopie `m2a_m6_proof.mod` oraz zainstalowano
+`m2a_m6p01.hak`. Oryginalny `sandbox.mod`, kopia proofowa przed pierwszym
+otwarciem oraz zachowany `live/sandbox.source.mod` maja identyczny SHA-256
+`66FECEFE4D78FF4A7373BA6EF1823D5B32A9E81B2E3A58E03BF2107463A4AAF3`.
+Toolset/game/animation pozostaja jedynymi otwartymi bramkami M6.
