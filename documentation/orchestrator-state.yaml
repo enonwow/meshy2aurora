@@ -19,9 +19,9 @@ status_vocabulary:
   - "SUPERSEDED"
 
 orchestration:
-  active_stage: "M4A"
+  active_stage: "M5"
   next_ready_stage: "NONE"
-  next_action: "Implement M4A2 from the locked Aurora First contract: add convert_profile_a_with_animations_v1 with explicit source-node to output-rig mapping while preserving the default M3 RejectPresent behavior. M4A1 reader/writer/readback is verified."
+  next_action: "Lock the M5 execution contract from the documented append-only 2DA and deterministic TGA/HAK/GFF direction, then implement the first writer slice test-first."
   one_active_stage_only: true
   current_attempt_id: "M4A-20260712-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
@@ -67,13 +67,13 @@ global_blockers:
     next_action: "Implement append-only 2DA plus HAK/GFF writers in M5, then prove the generated module without committing retail data."
   - id: "GB-005"
     severity: "P0"
-    status: "DIRECTION_DEFINED_RUNTIME_OPEN"
+    status: "RESOLVED_STRUCTURAL_RUNTIME_OPEN"
     title: "Full animation contract"
-    detail: "Profile A uses self-contained generated clips; supermodel inheritance is a later compatibility route. M4A1 reader/writer/readback is verified from decompilation, canonical R3 and synthetic owned fixtures, while M4A2 mapping remains structural work and animroot/event callback/state-routing/runtime tree acceptance remain OPEN_M6."
+    detail: "Profile A self-contained animation is structurally complete: M4A1 reader/writer/readback and M4A2 GLB-to-output-rig mapper pass native/WASM, negative, frozen and Docker gates. Animroot/event callback/state-routing/runtime tree acceptance remain OPEN_M6."
     affects: ["M4A", "M5", "M6", "M7"]
     owner: "Codex"
     source: "documentation/animacje-kontrakt-profil-a-codex.md"
-    next_action: "Implement the required M4A2 GLB mapper, then prove loader/movement/gameplay states and event behavior in NWN EE during M6."
+    next_action: "Preserve M4A structural proof and prove loader/movement/gameplay states plus event behavior in NWN EE during M6."
 
 stages:
   P0:
@@ -321,20 +321,30 @@ stages:
       - "documentation/m4-binary-writer-kontrakt-suplement-codex.md"
 
   M4A:
-    status: "IN_PROGRESS"
-    status_reason: "M4A1 reader correction and self-contained MdlAnimationSetV1 writer/readback are verified: workspace 169, writer 31, WASM 15, canonical R3/P-REF 1/1, Docker no-cache and two final P1=0/P2=0 rereviews pass. M4A remains IN_PROGRESS, not DONE: M4A2 GLB-to-output-rig mapper is still required; runtime acceptance is OPEN_M6."
+    status: "DONE"
+    status_reason: "M4A is structurally complete. M4A1 reader/writer/readback and M4A2 explicit GLB-to-output-rig mapper pass 179 workspace tests, 38 Profile A tests, 16 Node/WASM tests, frozen native-wasm JSON SHA/length, fmt, clippy, wasm32, Docker no-cache and final independent P1=0/P2=0 review. Runtime acceptance remains OPEN_M6."
     owner: "Codex orchestrator + M4A contract/review subagents"
     risk: "HIGH"
     attempt_id: "M4A-20260712-01"
     dependencies: ["M4 DONE", "GB-005 direction defined"]
-    current_problems:
-      - "M4A2 source GLB animation to output-rig/Aurora-local-space mapping is not implemented and remains required before M4A DONE."
-      - "Animroot consumer, event-name callbacks, state routing/loop behavior, zero opaque runtime fields and rig-only animation-tree acceptance remain named OPEN_M6 facts, not structural blockers."
-    bugs: []
-    next_actions:
-      - "M4A2: implement convert_profile_a_with_animations_v1 with a stage-private AllowMappedForM4A2 policy after full mapping validation; keep default M3 RejectPresent behavior unchanged and reject STEP/CUBICSPLINE/scale/weights."
-      - "After M4A2 implementation gates, run independent P1/P2 review and set stage status DONE with status_reason DONE_STRUCTURAL; defer Toolset/game runtime acceptance to M6."
-    evidence: ["documentation/evidence/M4A-evidence.md: M4A1_WRITER_VERIFIED_M4A2_NEXT; core 167, workspace 169, MDL parser 40, writer 31, WASM 15, canonical R3/P-REF 1/1, frozen M4 SHA PASS, Docker no-cache sha256:3f5c035faf90fbe831b9fe7c11dd7bbd24cd3fe4d71ec3a54f37a7332e1d12a6, two final P1=0/P2=0; M4A2 pending"]
+    current_problems: []
+    named_non_blocking_gaps:
+      - "Animroot consumer, event-name callbacks, state routing/loop behavior, zero opaque runtime fields and rig-only animation-tree acceptance remain OPEN_M6."
+    bugs:
+      - id: "M4A2-BUG-001"
+        severity: "P1"
+        status: "FIXED"
+        repro: "First translation key differs from source rest translation."
+        expected: "Retarget delta is key minus source rest ts0."
+        actual: "Regression passes and output is source-rest-relative."
+      - id: "M4A2-BUG-002"
+        severity: "P2"
+        status: "FIXED"
+        repro: "Finite translation key and rest subtraction overflows f32."
+        expected: "Stable M4A-TRACK-VALUE-NONFINITE without panic or partial output."
+        actual: "Per-row output finiteness validation and regression pass."
+    next_actions: []
+    evidence: ["documentation/evidence/M4A-evidence.md: M4A_DONE_STRUCTURAL_OPEN_M6; workspace 179, Profile A 38, MDL parser 40, writer 31, WASM 16, frozen animated JSON 3885 bytes / sha256:34d91f87a7d0d029267d88b0a5bf108e6041d71c50cdf93daed72d98445adf68, Docker no-cache sha256:7408b1471dead2b15e39bb0ca96eeccb217c3da521d057f14964fd13a409d16f, final P1=0/P2=0"]
     documentation: ["documentation/m4a-animation-writer-kontrakt-suplement-codex.md", "documentation/evidence/M4A-evidence.md", "documentation/animacje-kontrakt-profil-a-codex.md", "documentation/m1b-kontrakt-suplement-codex.md"]
     expected_artifacts: ["MdlAnimationSetV1 and controller reader correction", "Animation writer/readback semantic diff and mutation matrix", "M4A2 GLB animation mapper", "Frozen zero-animation M4 regression", "M6 Toolset/game animation proof"]
     changed_files:
@@ -356,8 +366,8 @@ stages:
       - "documentation/orchestrator-state.yaml"
 
   M5:
-    status: "NOT_STARTED"
-    status_reason: "Depends on native model output, full animation support and the confirmed existing-table edit path."
+    status: "READY"
+    status_reason: "M4A structural output and the existing-table edit direction are complete enough to lock and implement M5; NWN EE runtime acceptance remains assigned to M6."
     owner: "implementation agent"
     risk: "HIGH"
     dependencies: ["M4A DONE", "GB-004 direction defined"]
@@ -365,7 +375,7 @@ stages:
       - "No own TGA/2DA/HAK writer exists."
       - "GB-004 runtime proof is open; append-only writer direction is defined."
     bugs: []
-    next_actions: ["Wait for M4A, then implement the documented append-only 2DA and deterministic HAK/GFF path and close runtime evidence."]
+    next_actions: ["Lock the M5 execution contract, then implement deterministic TGA and append-only 2DA as the first test-first writer slices before HAK/GFF packaging."]
     evidence: []
     documentation: ["documentation/evidence/M5-evidence.md"]
     expected_artifacts: ["Generated TGA", "Generated 2DA", "Generated HAK", "Resource manifest"]

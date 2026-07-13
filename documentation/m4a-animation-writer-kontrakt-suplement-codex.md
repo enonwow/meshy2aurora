@@ -1,6 +1,6 @@
 # M4A - suplement kontraktu self-contained animation writera
 
-Data: 2026-07-13 | Autor: Codex | Status: M4A1_WRITER_VERIFIED_M4A2_NEXT
+Data: 2026-07-13 | Autor: Codex | Status: M4A_DONE_STRUCTURAL_OPEN_M6
 
 ## 1. Cel, zakres i autorytet
 
@@ -316,10 +316,11 @@ Base geometry/weight transfer nadal pochodzi z istniejacego Profile A rig;
 source skin jest w M4A2 tylko kontrolowanym zrodlem joint identity/animation
 channels, nie niejawna zamiana kontraktu wag M3.
 
-Jesli base conversion jest blocked albo jakikolwiek channel nie ma jawnego
-target mapping, outcome nie zawiera ani creature, ani animation setu. Ta route
-produkuje oba artefakty w jednym spojnym wyniku i zamyka problem, w ktorym
-animowany GLB nie mogl dostarczyc `AuroraCreatureIrV1` przez domyslny gate M3.
+Jesli base conversion jest blocked, outcome zachowuje blocked base report i nie
+zawiera ani creature, ani animation setu. Brak jawnego target mapping jest
+fatal `Err`, zgodnie z execution lock w sekcji 15. Ta route produkuje oba
+artefakty w jednym spojnym wyniku i zamyka problem, w ktorym animowany GLB nie
+mogl dostarczyc `AuroraCreatureIrV1` przez domyslny gate M3.
 
 ## 8. Stable fatal taxonomy
 
@@ -451,5 +452,166 @@ wasm32/diff-check PASS, Docker no-cache digest
 `sha256:3f5c035faf90fbe831b9fe7c11dd7bbd24cd3fe4d71ec3a54f37a7332e1d12a6`,
 size `1224136248`, dwa finalne rereview `P1=0/P2=0`.
 
-M4A pozostaje `IN_PROGRESS`. Nastepny wymagany slice to M4A2 mapper; runtime
-acceptance pieciu nazwanych ograniczen nadal pozostaje `OPEN_M6`.
+W tym historycznym checkpointcie M4A pozostawalo `IN_PROGRESS`, a nastepnym
+wymaganym slice'em byl M4A2 mapper. Slice zostal zakonczony w sekcji 16;
+runtime acceptance pieciu nazwanych ograniczen nadal pozostaje `OPEN_M6`.
+
+## 15. M4A2 execution contract lock
+
+Status: `M4A2_IMPLEMENTED_VERIFIED`.
+
+### 15.1 Public input i output
+
+```rust
+pub struct ProfileAAnimationNodeMappingV1 {
+    pub source_node_id: u32,
+    pub output_rig_node_id: u32,
+}
+
+pub struct ProfileAAnimationClipMappingV1 {
+    pub source_animation_id: u32,
+    pub output_clip_name: String,
+    pub transition_seconds: f32,
+}
+
+pub struct ProfileAAnimationMappingV1 {
+    pub schema_version: u32,
+    pub source_skin_id: u32,
+    pub provenance: RigProvenanceV1,
+    pub node_mappings: Vec<ProfileAAnimationNodeMappingV1>,
+    pub clip_mappings: Vec<ProfileAAnimationClipMappingV1>,
+}
+
+pub struct ProfileAAnimatedOutcomeV1 {
+    pub base: ProfileAConversionOutcomeV1,
+    pub animations: Option<MdlAnimationSetV1>,
+}
+```
+
+`animationRoot` nie jest dowolnym inputem M4A2. Jest wyprowadzany z nazwy
+jedynego root noda output rig. M4A2 v1 emituje puste eventy. Kazda source
+animation musi miec dokladnie jeden clip mapping; clip names musza pozostac
+unikalne po ASCII case-fold. Mapping source node -> output rig node jest jawny,
+injective, hierarchy-preserving i pokrywa wszystkie jointy wybranego source
+skinu, jego skeleton root, pelny ancestor chain mapped nodow oraz target kazdego
+animation channel.
+
+M4A2 v1 akceptuje dokladnie jeden source skin. Multi-skin, subset animation
+selection oraz event authoring sa pozniejszymi rozszerzeniami kontraktu.
+
+### 15.2 Rest-pose-relative retargeting
+
+glTF animation TRS sa absolutnymi wartosciami local node, ale nie wolno ich
+kopiowac jako absolute output-rig TRS. Mapper przenosi source-rest-relative
+delta na target bind local.
+
+Dla column-major matrices, `P(x,y,z)=(x,z,y)`, skali M3 `s`, source rest local
+`Ls0`, source sampled local `Lsk` oraz target bind local `Lt0`:
+
+```text
+H   = uniformScale(s) * P
+Ls0'= H * Ls0 * inverse(H)
+Lsk'= H * Lsk * inverse(H)
+Dk  = inverse(Ls0') * Lsk'
+Ltk = Lt0 * Dk
+```
+
+`Lsk` jest skladane niezaleznie per track, bez laczenia roznych siatek czasu:
+
+```text
+translation track: Lsk = T(ts(k)) * Rs0
+rotation track:    Lsk = T(ts0)   * Rs(k)
+```
+
+Statyczna skala wynosi jeden. Klucz translacji nie zalezy od samplowania
+rotation channel i klucz rotacji nie zalezy od samplowania translation channel.
+
+W rozdzielonej postaci:
+
+```text
+translation delta:
+  d'    = s * P * (ts(k) - ts0)
+  to(k) = to0 + Ro0 * inverse(P*Rs0*P^-1) * d'
+
+rotation:
+  Rs(k)' = P * Rs(k) * P^-1
+  Ro(k)  = Ro0 * inverse(P*Rs0*P^-1) * Rs(k)'
+```
+
+Bottom-center/model alignment translation z M3 nie jest dodawana do zadnego
+keyframe. Target root bind zachowuje bazowe polozenie. Times sa kopiowane
+bitowo bez rebasingu, a clip length jest rowny `IrAnimation.duration_seconds`.
+
+Source animated nodes oraz ich mapped ancestor chain musza uzywac `TRS` ze
+statycznym unit scale. `MATRIX`, non-unit scale, shear i non-rigid target bind
+sa fatal `M4A-MAPPER-BASIS-INVALID`, poniewaz M4A1 nie emituje scale/shear.
+Quaternion jest GLB XYZW -> normalize -> basis conjugation -> XYZW -> normalize
+i global per-key sign canonicalization. Pairwise sign flip pozostaje zabroniony;
+shortest-path hemisphere correction wykonuje runtime slerp Aurory.
+
+### 15.3 Validation order i default M3 preservation
+
+Nowa route najpierw waliduje mapping, provenance, pelne pokrycie skin/animations
+i wszystkie channels. Dopiero potem wywoluje prywatne
+`convert_profile_a_impl(..., AllowMappedForM4A2)`. Istniejace publiczne
+`convert_profile_a` zawsze uzywa `RejectPresent` i zachowuje dotychczasowe
+`M3A-SOURCE-RIG-DEFERRED` oraz `M3A-SOURCE-ANIMATION-DEFERRED`.
+
+`AllowMappedForM4A2` pomija tylko te dwa stage-private deferred gates. Nie
+usuwa ani nie zmienia `source.ir`, reportu ani pozostalych source blocking
+gates. Jezeli base conversion jest blocked, wynik zachowuje base report oraz
+`animations=None`. Invalid lub niepelny mapping jest fatal i nie zwraca
+czesciowego outcome.
+
+### 15.4 Stable M4A2 fatal taxonomy
+
+Ta lista rozszerza ogolna taxonomy z sekcji 8 i jest autorytatywna dla M4A2.
+
+- `M4A-MAPPING-SCHEMA-INVALID`;
+- `M4A-MAPPING-JSON-INVALID` - publiczna granica WASM, zanim powstanie typed
+  mapping;
+- `M4A-MAPPER-PROVENANCE-FORBIDDEN`;
+- `M4A-MAPPER-SKIN-INVALID`;
+- `M4A-MAPPER-TARGET-MISSING`;
+- `M4A-MAPPER-TARGET-AMBIGUOUS`;
+- `M4A-MAPPER-BASIS-INVALID`;
+- istniejace `M4A-ANIMATION-NAME-INVALID`, `M4A-ANIMROOT-INVALID`,
+  `M4A-CLIP-LENGTH-INVALID`, `M4A-TRANSITION-INVALID`, `M4A-TRACK-DUPLICATE`,
+  `M4A-TRACK-PATH-UNSUPPORTED`, `M4A-INTERPOLATION-UNSUPPORTED`,
+  `M4A-TRACK-TIME-NOT-STRICT`, `M4A-TRACK-TIME-OOB`,
+  `M4A-TRACK-VALUE-NONFINITE`, `M4A-TRACK-ARITY-INVALID` oraz
+  `M4A-QUATERNION-INVALID`.
+
+Mapping validation failures sa `Err(ProfileAAnimationFatalError)` o tym samym
+stabilnym JSON shape co `ProfileAConversionFatalError`. Base geometry gates
+pozostaja `Ok(ProfileAAnimatedOutcomeV1)` z `base.creature=None` i
+`animations=None`.
+
+## 16. M4A2 implementation checkpoint
+
+Status: `M4A_DONE_STRUCTURAL_OPEN_M6`.
+
+Zaimplementowano typed mapper `convert_profile_a_with_animations_v1` oraz
+publiczna granice WASM `convertProfileAWithAnimationsGlbJson`. Stage-private
+`AllowMappedForM4A2` jest osiagalne dopiero po pelnej walidacji mappingu;
+dotychczasowe `convert_profile_a` nadal zawsze uzywa `RejectPresent`.
+
+Synthetic owned matrix dowodzi pelnego mappingu jointow/ancestorow/channels,
+rest-pose-relative translation i rotation, basis `P`, uniform scale tylko dla
+translation delta, braku model alignment w keyframes, bitowego zachowania
+times, handoffu do M4A1 writera, determinism i niemutowalnosci inputow.
+Negatywna macierz obejmuje schema/provenance/skin, missing/duplicate/hierarchy
+mapping, clip mapping, STEP/CUBICSPLINE/scale/weights, times/value/arity,
+non-unit source scale, non-rigid target bind oraz finite arithmetic overflow.
+
+Publiczny JSON outcome ma wspolny frozen proof native i wasm32:
+
+```yaml
+length: 3885
+sha256: 34d91f87a7d0d029267d88b0a5bf108e6041d71c50cdf93daed72d98445adf68
+```
+
+M4A jest zakonczone strukturalnie. Animroot consumer, event callbacks, state
+routing/loop behavior, opaque runtime fields oraz rig-only animation-tree
+acceptance pozostaja jawnie `OPEN_M6`; ten checkpoint nie twierdzi runtime
+acceptance w Toolsecie ani grze.

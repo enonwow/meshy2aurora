@@ -35,7 +35,16 @@ const WORK_CREATURE_SEGMENT: u64 = 160;
 const WORK_VERTEX_WEIGHTS: u64 = 52;
 const WORK_U32_F64_PAIR: u64 = 16;
 
-use crate::glb::{GlbIngestResult, IrNode, IrPrimitive, IrTransform};
+use crate::{
+    glb::{
+        GlbIngestResult, IrAnimation, IrAnimationChannel, IrAnimationSampler, IrNode, IrPrimitive,
+        IrTransform,
+    },
+    mdl::{
+        MdlAnimationClipV1, MdlAnimationInterpolationV1, MdlAnimationSetV1,
+        MdlAnimationTrackPathV1, MdlAnimationTrackV1,
+    },
+};
 
 pub const PROFILE_A_SCHEMA_VERSION: u32 = 1;
 
@@ -222,6 +231,31 @@ impl Default for ProfileAOptionsV1 {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProfileAAnimationNodeMappingV1 {
+    pub source_node_id: u32,
+    pub output_rig_node_id: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProfileAAnimationClipMappingV1 {
+    pub source_animation_id: u32,
+    pub output_clip_name: String,
+    pub transition_seconds: f32,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProfileAAnimationMappingV1 {
+    pub schema_version: u32,
+    pub source_skin_id: u32,
+    pub provenance: RigProvenanceV1,
+    pub node_mappings: Vec<ProfileAAnimationNodeMappingV1>,
+    pub clip_mappings: Vec<ProfileAAnimationClipMappingV1>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileAConversionFatalError {
@@ -255,6 +289,52 @@ impl fmt::Display for ProfileAConversionFatalError {
 }
 
 impl std::error::Error for ProfileAConversionFatalError {}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileAAnimationFatalError {
+    pub schema_version: u32,
+    pub code: String,
+    pub severity: String,
+    pub path: String,
+    pub message: String,
+}
+
+impl ProfileAAnimationFatalError {
+    fn new(code: &str, path: &str, message: impl Into<String>) -> Self {
+        Self {
+            schema_version: PROFILE_A_SCHEMA_VERSION,
+            code: code.to_owned(),
+            severity: "FATAL".to_owned(),
+            path: path.to_owned(),
+            message: message.into(),
+        }
+    }
+}
+
+impl From<ProfileAConversionFatalError> for ProfileAAnimationFatalError {
+    fn from(error: ProfileAConversionFatalError) -> Self {
+        Self {
+            schema_version: error.schema_version,
+            code: error.code,
+            severity: error.severity,
+            path: error.path,
+            message: error.message,
+        }
+    }
+}
+
+impl fmt::Display for ProfileAAnimationFatalError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "{} at {}: {}",
+            self.code, self.path, self.message
+        )
+    }
+}
+
+impl std::error::Error for ProfileAAnimationFatalError {}
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -414,6 +494,13 @@ pub struct ProfileAConversionOutcomeV1 {
     pub creature: Option<AuroraCreatureIrV1>,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileAAnimatedOutcomeV1 {
+    pub base: ProfileAConversionOutcomeV1,
+    pub animations: Option<MdlAnimationSetV1>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AuroraCreatureIrV1 {
@@ -462,6 +549,26 @@ pub struct AuroraVertexWeightsV1 {
 
 #[derive(Clone, Copy)]
 struct Mat4([f32; 16]);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SourceInventoryPolicy {
+    RejectPresent,
+    AllowMappedForM4A2,
+}
+
+#[derive(Clone, Copy)]
+struct AnimationRestPose {
+    translation: [f32; 3],
+    rotation: [[f32; 3]; 3],
+}
+
+struct ValidatedAnimationMapping {
+    animation_root: String,
+    source_to_output: BTreeMap<u32, u32>,
+    source_rest: BTreeMap<u32, AnimationRestPose>,
+    target_rest: BTreeMap<u32, AnimationRestPose>,
+    clip_mapping_index_by_source: BTreeMap<u32, usize>,
+}
 
 #[derive(Default)]
 struct Counters {
@@ -646,8 +753,51 @@ pub fn convert_profile_a(
     rig: &CreatureRigProfileV1,
     options: &ProfileAOptionsV1,
 ) -> Result<ProfileAConversionOutcomeV1, ProfileAConversionFatalError> {
+    convert_profile_a_impl(source, rig, options, SourceInventoryPolicy::RejectPresent)
+}
+
+pub fn convert_profile_a_with_animations_v1(
+    source: &GlbIngestResult,
+    rig: &CreatureRigProfileV1,
+    profile_options: &ProfileAOptionsV1,
+    mapping: &ProfileAAnimationMappingV1,
+) -> Result<ProfileAAnimatedOutcomeV1, ProfileAAnimationFatalError> {
+    let validated = validate_animation_mapping_v1(source, rig, mapping)?;
+    let base = convert_profile_a_impl(
+        source,
+        rig,
+        profile_options,
+        SourceInventoryPolicy::AllowMappedForM4A2,
+    )
+    .map_err(ProfileAAnimationFatalError::from)?;
+    if base.creature.is_none() {
+        return Ok(ProfileAAnimatedOutcomeV1 {
+            base,
+            animations: None,
+        });
+    }
+    let scale = base.report.transform.scale.ok_or_else(|| {
+        animation_fatal(
+            "M4A-MAPPER-BASIS-INVALID",
+            "base.report.transform.scale",
+            "successful Profile A conversion did not expose its uniform scale",
+        )
+    })?;
+    let animations = emit_animation_set_v1(source, mapping, &validated, scale)?;
+    Ok(ProfileAAnimatedOutcomeV1 {
+        base,
+        animations: Some(animations),
+    })
+}
+
+fn convert_profile_a_impl(
+    source: &GlbIngestResult,
+    rig: &CreatureRigProfileV1,
+    options: &ProfileAOptionsV1,
+    source_inventory_policy: SourceInventoryPolicy,
+) -> Result<ProfileAConversionOutcomeV1, ProfileAConversionFatalError> {
     let base_work_bytes = validate_api(source, rig, options)?;
-    let mut gates = collect_preflight_gates(source, rig, options)?;
+    let mut gates = collect_preflight_gates(source, rig, options, source_inventory_policy)?;
     let mut transform_report = empty_transform_report(rig.alignment_anchor);
     let mut counters = Counters {
         work_bytes_peak: base_work_bytes,
@@ -1065,6 +1215,776 @@ pub fn convert_profile_a(
         ),
         creature: Some(creature),
     })
+}
+
+fn animation_fatal(
+    code: &str,
+    path: &str,
+    message: impl Into<String>,
+) -> ProfileAAnimationFatalError {
+    ProfileAAnimationFatalError::new(code, path, message)
+}
+
+fn validate_animation_mapping_v1(
+    source: &GlbIngestResult,
+    rig: &CreatureRigProfileV1,
+    mapping: &ProfileAAnimationMappingV1,
+) -> Result<ValidatedAnimationMapping, ProfileAAnimationFatalError> {
+    if mapping.schema_version != PROFILE_A_SCHEMA_VERSION {
+        return Err(animation_fatal(
+            "M4A-MAPPING-SCHEMA-INVALID",
+            "mapping.schemaVersion",
+            "only ProfileAAnimationMappingV1 schema version 1 is supported",
+        ));
+    }
+    if !animation_provenance_allowed(&mapping.provenance) {
+        return Err(animation_fatal(
+            "M4A-MAPPER-PROVENANCE-FORBIDDEN",
+            "mapping.provenance",
+            "mapping provenance policy forbids export",
+        ));
+    }
+    if source.ir.skins.len() != 1 || source.ir.skins[0].id != mapping.source_skin_id {
+        return Err(animation_fatal(
+            "M4A-MAPPER-SKIN-INVALID",
+            "mapping.sourceSkinId",
+            "M4A2 v1 requires exactly one source skin matching sourceSkinId",
+        ));
+    }
+    let skin = &source.ir.skins[0];
+    let skeleton_root = skin.skeleton_root_node_id.ok_or_else(|| {
+        animation_fatal(
+            "M4A-MAPPER-SKIN-INVALID",
+            "source.ir.skins[0].skeletonRootNodeId",
+            "the selected source skin must declare a skeleton root",
+        )
+    })?;
+
+    let mut source_nodes = BTreeMap::<u32, &IrNode>::new();
+    for (index, node) in source.ir.nodes.iter().enumerate() {
+        if source_nodes.insert(node.id, node).is_some() {
+            return Err(animation_fatal(
+                "M4A-MAPPER-TARGET-AMBIGUOUS",
+                &format!("source.ir.nodes[{index}].id"),
+                "source node ids must be unique",
+            ));
+        }
+        if node.parent_ids.len() > 1 {
+            return Err(animation_fatal(
+                "M4A-MAPPER-TARGET-AMBIGUOUS",
+                &format!("source.ir.nodes[{index}].parentIds"),
+                "M4A2 v1 requires a single-parent source hierarchy",
+            ));
+        }
+    }
+    let mut rig_nodes = BTreeMap::new();
+    for (index, node) in rig.nodes.iter().enumerate() {
+        if rig_nodes.insert(node.id, node).is_some() {
+            return Err(animation_fatal(
+                "M4A-MAPPER-TARGET-AMBIGUOUS",
+                &format!("rig.nodes[{index}].id"),
+                "output rig node ids must be unique",
+            ));
+        }
+    }
+    let roots = rig
+        .nodes
+        .iter()
+        .filter(|node| node.parent_id.is_none())
+        .collect::<Vec<_>>();
+    if roots.len() != 1 {
+        return Err(animation_fatal(
+            "M4A-ANIMROOT-INVALID",
+            "rig.nodes",
+            "M4A2 requires exactly one output rig root",
+        ));
+    }
+    validate_animation_name(
+        &roots[0].name,
+        63,
+        "M4A-ANIMROOT-INVALID",
+        "rig.nodes.root.name",
+    )?;
+
+    let mut clip_mapping_index_by_source = BTreeMap::new();
+    let mut folded_clip_names = BTreeSet::new();
+    for (index, clip) in mapping.clip_mappings.iter().enumerate() {
+        if clip_mapping_index_by_source
+            .insert(clip.source_animation_id, index)
+            .is_some()
+        {
+            return Err(animation_fatal(
+                "M4A-MAPPER-TARGET-AMBIGUOUS",
+                &format!("mapping.clipMappings[{index}].sourceAnimationId"),
+                "each source animation must have exactly one clip mapping",
+            ));
+        }
+        if !source
+            .ir
+            .animations
+            .iter()
+            .any(|animation| animation.id == clip.source_animation_id)
+        {
+            return Err(animation_fatal(
+                "M4A-MAPPER-TARGET-MISSING",
+                &format!("mapping.clipMappings[{index}].sourceAnimationId"),
+                "clip mapping references a missing source animation",
+            ));
+        }
+        validate_animation_name(
+            &clip.output_clip_name,
+            63,
+            "M4A-ANIMATION-NAME-INVALID",
+            &format!("mapping.clipMappings[{index}].outputClipName"),
+        )?;
+        if !folded_clip_names.insert(clip.output_clip_name.to_ascii_lowercase()) {
+            return Err(animation_fatal(
+                "M4A-ANIMATION-NAME-INVALID",
+                &format!("mapping.clipMappings[{index}].outputClipName"),
+                "output clip names must be unique after ASCII case-fold",
+            ));
+        }
+        if !clip.transition_seconds.is_finite() || clip.transition_seconds < 0.0 {
+            return Err(animation_fatal(
+                "M4A-TRANSITION-INVALID",
+                &format!("mapping.clipMappings[{index}].transitionSeconds"),
+                "transition must be non-negative and finite",
+            ));
+        }
+    }
+    let mut animation_ids = BTreeSet::new();
+    for (index, animation) in source.ir.animations.iter().enumerate() {
+        if !animation_ids.insert(animation.id) {
+            return Err(animation_fatal(
+                "M4A-MAPPER-TARGET-AMBIGUOUS",
+                &format!("source.ir.animations[{index}].id"),
+                "source animation ids must be unique",
+            ));
+        }
+        if !clip_mapping_index_by_source.contains_key(&animation.id) {
+            return Err(animation_fatal(
+                "M4A-MAPPER-TARGET-MISSING",
+                &format!("source.ir.animations[{index}].id"),
+                "every source animation requires exactly one clip mapping",
+            ));
+        }
+        validate_source_animation_v1(animation, index)?;
+    }
+
+    let mut source_to_output = BTreeMap::new();
+    let mut used_outputs = BTreeSet::new();
+    let mut source_rest = BTreeMap::new();
+    let mut target_rest = BTreeMap::new();
+    for (index, entry) in mapping.node_mappings.iter().enumerate() {
+        if source_to_output
+            .insert(entry.source_node_id, entry.output_rig_node_id)
+            .is_some()
+        {
+            return Err(animation_fatal(
+                "M4A-MAPPER-TARGET-AMBIGUOUS",
+                &format!("mapping.nodeMappings[{index}].sourceNodeId"),
+                "source nodes may be mapped only once",
+            ));
+        }
+        if !used_outputs.insert(entry.output_rig_node_id) {
+            return Err(animation_fatal(
+                "M4A-MAPPER-TARGET-AMBIGUOUS",
+                &format!("mapping.nodeMappings[{index}].outputRigNodeId"),
+                "node mapping must be injective",
+            ));
+        }
+        let source_node = source_nodes.get(&entry.source_node_id).ok_or_else(|| {
+            animation_fatal(
+                "M4A-MAPPER-TARGET-MISSING",
+                &format!("mapping.nodeMappings[{index}].sourceNodeId"),
+                "mapped source node does not exist",
+            )
+        })?;
+        let target_node = rig_nodes.get(&entry.output_rig_node_id).ok_or_else(|| {
+            animation_fatal(
+                "M4A-MAPPER-TARGET-MISSING",
+                &format!("mapping.nodeMappings[{index}].outputRigNodeId"),
+                "mapped output rig node does not exist",
+            )
+        })?;
+        source_rest.insert(entry.source_node_id, source_rest_pose(source_node, index)?);
+        target_rest.insert(
+            entry.output_rig_node_id,
+            target_rest_pose(target_node.bind_local_matrix, index)?,
+        );
+    }
+
+    let mut required = BTreeSet::new();
+    required.insert(skeleton_root);
+    for &joint in &skin.joint_node_ids {
+        required.insert(joint);
+    }
+    for animation in &source.ir.animations {
+        for channel in &animation.channels {
+            required.insert(channel.target_node_id);
+        }
+    }
+    required.extend(source_to_output.keys().copied());
+    let mut pending = required.iter().copied().collect::<Vec<_>>();
+    let mut expanded = BTreeSet::new();
+    while let Some(node_id) = pending.pop() {
+        if !expanded.insert(node_id) {
+            continue;
+        }
+        let node = source_nodes.get(&node_id).ok_or_else(|| {
+            animation_fatal(
+                "M4A-MAPPER-TARGET-MISSING",
+                "mapping.nodeMappings",
+                format!("required source node {node_id} does not exist"),
+            )
+        })?;
+        if let Some(&parent_id) = node.parent_ids.first()
+            && required.insert(parent_id)
+        {
+            pending.push(parent_id);
+        }
+    }
+    for node_id in required {
+        if !source_to_output.contains_key(&node_id) {
+            return Err(animation_fatal(
+                "M4A-MAPPER-TARGET-MISSING",
+                "mapping.nodeMappings",
+                format!("required source node {node_id} has no explicit output mapping"),
+            ));
+        }
+    }
+    for (&source_id, &output_id) in &source_to_output {
+        let source_node = source_nodes[&source_id];
+        let target_node = rig_nodes[&output_id];
+        let expected_parent = source_node
+            .parent_ids
+            .first()
+            .map(|parent| source_to_output.get(parent).copied())
+            .transpose_option()
+            .ok_or_else(|| {
+                animation_fatal(
+                    "M4A-MAPPER-TARGET-MISSING",
+                    "mapping.nodeMappings",
+                    "mapped source ancestor has no explicit output mapping",
+                )
+            })?;
+        if target_node.parent_id != expected_parent {
+            return Err(animation_fatal(
+                "M4A-MAPPER-BASIS-INVALID",
+                "mapping.nodeMappings",
+                "node mapping must preserve the complete parent hierarchy",
+            ));
+        }
+    }
+
+    Ok(ValidatedAnimationMapping {
+        animation_root: roots[0].name.clone(),
+        source_to_output,
+        source_rest,
+        target_rest,
+        clip_mapping_index_by_source,
+    })
+}
+
+trait TransposeOption<T> {
+    fn transpose_option(self) -> Option<Option<T>>;
+}
+
+impl<T> TransposeOption<T> for Option<Option<T>> {
+    fn transpose_option(self) -> Option<Option<T>> {
+        match self {
+            None => Some(None),
+            Some(Some(value)) => Some(Some(value)),
+            Some(None) => None,
+        }
+    }
+}
+
+fn animation_provenance_allowed(provenance: &RigProvenanceV1) -> bool {
+    matches!(
+        provenance.kind,
+        RigProvenanceKindV1::Synthetic
+            | RigProvenanceKindV1::Owned
+            | RigProvenanceKindV1::UserProvided
+    ) && provenance.export_allowed
+        && provenance.attestations.controlled_construction
+        && provenance.attestations.no_reference_payload_copied
+        && provenance.attestations.rights_confirmed
+}
+
+fn validate_animation_name(
+    value: &str,
+    max_bytes: usize,
+    code: &str,
+    path: &str,
+) -> Result<(), ProfileAAnimationFatalError> {
+    if value.is_empty()
+        || value.len() > max_bytes
+        || !value.is_ascii()
+        || value.bytes().any(|byte| byte == 0)
+    {
+        return Err(animation_fatal(
+            code,
+            path,
+            format!("value must be a non-empty ASCII C string of at most {max_bytes} bytes"),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_source_animation_v1(
+    animation: &IrAnimation,
+    animation_index: usize,
+) -> Result<(), ProfileAAnimationFatalError> {
+    let clip_path = format!("source.ir.animations[{animation_index}]");
+    if !animation.duration_seconds.is_finite() || animation.duration_seconds <= 0.0 {
+        return Err(animation_fatal(
+            "M4A-CLIP-LENGTH-INVALID",
+            &format!("{clip_path}.durationSeconds"),
+            "source animation duration must be positive and finite",
+        ));
+    }
+    let mut sampler_ids = BTreeSet::new();
+    for (index, sampler) in animation.samplers.iter().enumerate() {
+        if !sampler_ids.insert(sampler.id) {
+            return Err(animation_fatal(
+                "M4A-MAPPER-TARGET-AMBIGUOUS",
+                &format!("{clip_path}.samplers[{index}].id"),
+                "source animation sampler ids must be unique",
+            ));
+        }
+    }
+    let mut seen_tracks = BTreeSet::new();
+    for (channel_index, channel) in animation.channels.iter().enumerate() {
+        let channel_path = format!("{clip_path}.channels[{channel_index}]");
+        let arity = match channel.target_path.as_str() {
+            "TRANSLATION" | "translation" => 3,
+            "ROTATION" | "rotation" => 4,
+            _ => {
+                return Err(animation_fatal(
+                    "M4A-TRACK-PATH-UNSUPPORTED",
+                    &format!("{channel_path}.targetPath"),
+                    "M4A2 v1 supports translation and rotation channels only",
+                ));
+            }
+        };
+        let folded_path = channel.target_path.to_ascii_lowercase();
+        if !seen_tracks.insert((channel.target_node_id, folded_path)) {
+            return Err(animation_fatal(
+                "M4A-TRACK-DUPLICATE",
+                &channel_path,
+                "a clip may contain only one channel per target node and path",
+            ));
+        }
+        let sampler = source_animation_sampler(animation, channel).ok_or_else(|| {
+            animation_fatal(
+                "M4A-MAPPER-TARGET-MISSING",
+                &format!("{channel_path}.samplerId"),
+                "animation channel references a missing sampler",
+            )
+        })?;
+        if sampler.interpolation != "LINEAR" {
+            return Err(animation_fatal(
+                "M4A-INTERPOLATION-UNSUPPORTED",
+                &format!("{channel_path}.interpolation"),
+                "M4A2 v1 supports LINEAR interpolation only",
+            ));
+        }
+        if sampler.input_times_seconds.is_empty()
+            || sampler.input_times_seconds.len() > usize::from(u16::MAX)
+        {
+            return Err(animation_fatal(
+                "M4A-CONTROLLER-U16-OVERFLOW",
+                &format!("{channel_path}.timesSeconds"),
+                "track row count must fit nonzero u16",
+            ));
+        }
+        let expected_type = if arity == 3 { "VEC3" } else { "VEC4" };
+        if sampler.output_accessor_type != expected_type
+            || sampler.output_values.len()
+                != sampler.input_times_seconds.len().saturating_mul(arity)
+        {
+            return Err(animation_fatal(
+                "M4A-TRACK-ARITY-INVALID",
+                &format!("{channel_path}.values"),
+                "track values must match time rows and path arity",
+            ));
+        }
+        for (time_index, &time) in sampler.input_times_seconds.iter().enumerate() {
+            if !time.is_finite()
+                || (time_index > 0 && time <= sampler.input_times_seconds[time_index - 1])
+            {
+                return Err(animation_fatal(
+                    "M4A-TRACK-TIME-NOT-STRICT",
+                    &format!("{channel_path}.timesSeconds[{time_index}]"),
+                    "track times must be finite and strictly increasing",
+                ));
+            }
+            if time < 0.0 || time > animation.duration_seconds {
+                return Err(animation_fatal(
+                    "M4A-TRACK-TIME-OOB",
+                    &format!("{channel_path}.timesSeconds[{time_index}]"),
+                    "track time must be inside the source animation duration",
+                ));
+            }
+        }
+        if sampler.output_values.iter().any(|value| !value.is_finite()) {
+            return Err(animation_fatal(
+                "M4A-TRACK-VALUE-NONFINITE",
+                &format!("{channel_path}.values"),
+                "track values must be finite",
+            ));
+        }
+        if arity == 4 {
+            for (row, values) in sampler.output_values.chunks_exact(4).enumerate() {
+                canonical_animation_quaternion(
+                    [values[0], values[1], values[2], values[3]],
+                    &format!("{channel_path}.values[{row}]"),
+                )?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn source_animation_sampler<'a>(
+    animation: &'a IrAnimation,
+    channel: &IrAnimationChannel,
+) -> Option<&'a IrAnimationSampler> {
+    animation
+        .samplers
+        .iter()
+        .find(|sampler| sampler.id == channel.sampler_id)
+}
+
+fn source_rest_pose(
+    node: &IrNode,
+    mapping_index: usize,
+) -> Result<AnimationRestPose, ProfileAAnimationFatalError> {
+    let path = format!("mapping.nodeMappings[{mapping_index}].sourceNodeId");
+    if node.transform.kind != "TRS" || node.transform.matrix.is_some() {
+        return Err(animation_fatal(
+            "M4A-MAPPER-BASIS-INVALID",
+            &path,
+            "mapped source nodes and ancestors must use TRS transforms",
+        ));
+    }
+    let translation = node.transform.translation.unwrap_or([0.0; 3]);
+    let scale = node.transform.scale.unwrap_or([1.0; 3]);
+    if translation.iter().any(|value| !value.is_finite())
+        || scale
+            .iter()
+            .any(|value| !value.is_finite() || (*value - 1.0).abs() > 1.0e-5)
+    {
+        return Err(animation_fatal(
+            "M4A-MAPPER-BASIS-INVALID",
+            &path,
+            "mapped source TRS must be finite and have static unit scale",
+        ));
+    }
+    let quaternion = canonical_animation_quaternion(
+        node.transform.rotation.unwrap_or([0.0, 0.0, 0.0, 1.0]),
+        &path,
+    )?;
+    Ok(AnimationRestPose {
+        translation,
+        rotation: quaternion_to_matrix3(quaternion),
+    })
+}
+
+fn target_rest_pose(
+    matrix: [f32; 16],
+    mapping_index: usize,
+) -> Result<AnimationRestPose, ProfileAAnimationFatalError> {
+    let path = format!("mapping.nodeMappings[{mapping_index}].outputRigNodeId");
+    let matrix = Mat4(matrix);
+    if !matrix.is_finite()
+        || matrix.get(3, 0).abs() > 1.0e-5
+        || matrix.get(3, 1).abs() > 1.0e-5
+        || matrix.get(3, 2).abs() > 1.0e-5
+        || (matrix.get(3, 3) - 1.0).abs() > 1.0e-5
+    {
+        return Err(animation_fatal(
+            "M4A-MAPPER-BASIS-INVALID",
+            &path,
+            "mapped target bind must be a finite affine rigid transform",
+        ));
+    }
+    let rotation = matrix.linear();
+    let gram = animation_mul3(transpose3(rotation), rotation);
+    for (row, values) in gram.iter().enumerate() {
+        for (column, value) in values.iter().enumerate() {
+            let expected = if row == column { 1.0 } else { 0.0 };
+            if (*value - expected).abs() > 1.0e-4 {
+                return Err(animation_fatal(
+                    "M4A-MAPPER-BASIS-INVALID",
+                    &path,
+                    "mapped target bind may not contain scale or shear",
+                ));
+            }
+        }
+    }
+    if (determinant3(rotation) - 1.0).abs() > 1.0e-4 {
+        return Err(animation_fatal(
+            "M4A-MAPPER-BASIS-INVALID",
+            &path,
+            "mapped target bind rotation must be proper and rigid",
+        ));
+    }
+    Ok(AnimationRestPose {
+        translation: [matrix.get(0, 3), matrix.get(1, 3), matrix.get(2, 3)],
+        rotation,
+    })
+}
+
+fn emit_animation_set_v1(
+    source: &GlbIngestResult,
+    mapping: &ProfileAAnimationMappingV1,
+    validated: &ValidatedAnimationMapping,
+    scale: f32,
+) -> Result<MdlAnimationSetV1, ProfileAAnimationFatalError> {
+    if !scale.is_finite() || scale <= 0.0 {
+        return Err(animation_fatal(
+            "M4A-MAPPER-BASIS-INVALID",
+            "base.report.transform.scale",
+            "Profile A animation scale must be positive and finite",
+        ));
+    }
+    let mut clips = Vec::new();
+    clips.try_reserve(source.ir.animations.len()).map_err(|_| {
+        animation_fatal(
+            "M4A-LAYOUT-OVERFLOW",
+            "animationSet.clips",
+            "animation clip allocation failed",
+        )
+    })?;
+    for (animation_index, animation) in source.ir.animations.iter().enumerate() {
+        let clip_index = validated.clip_mapping_index_by_source[&animation.id];
+        let clip_mapping = &mapping.clip_mappings[clip_index];
+        let mut tracks = Vec::new();
+        tracks.try_reserve(animation.channels.len()).map_err(|_| {
+            animation_fatal(
+                "M4A-LAYOUT-OVERFLOW",
+                "animationSet.clips.tracks",
+                "animation track allocation failed",
+            )
+        })?;
+        for (channel_index, channel) in animation.channels.iter().enumerate() {
+            let sampler = source_animation_sampler(animation, channel).ok_or_else(|| {
+                animation_fatal(
+                    "M4A-MAPPER-TARGET-MISSING",
+                    "source.ir.animations.channels.samplerId",
+                    "validated animation sampler is missing",
+                )
+            })?;
+            let output_id = validated.source_to_output[&channel.target_node_id];
+            let source_rest = validated.source_rest[&channel.target_node_id];
+            let target_rest = validated.target_rest[&output_id];
+            let source_rest_basis = animation_basis_conjugate(source_rest.rotation);
+            let correction = animation_mul3(target_rest.rotation, transpose3(source_rest_basis));
+            let (path, values) = match channel.target_path.to_ascii_lowercase().as_str() {
+                "translation" => {
+                    let rows = sampler
+                        .output_values
+                        .chunks_exact(3)
+                        .enumerate()
+                        .map(|(row_index, row)| {
+                            let delta = [
+                                row[0] - source_rest.translation[0],
+                                row[1] - source_rest.translation[1],
+                                row[2] - source_rest.translation[2],
+                            ];
+                            let basis_delta = animation_basis_vector(delta);
+                            let mapped = mul3(
+                                correction,
+                                [
+                                    basis_delta[0] * scale,
+                                    basis_delta[1] * scale,
+                                    basis_delta[2] * scale,
+                                ],
+                            );
+                            let output = [
+                                canonical_animation_zero(target_rest.translation[0] + mapped[0]),
+                                canonical_animation_zero(target_rest.translation[1] + mapped[1]),
+                                canonical_animation_zero(target_rest.translation[2] + mapped[2]),
+                            ];
+                            if output.iter().any(|value| !value.is_finite()) {
+                                return Err(animation_fatal(
+                                    "M4A-TRACK-VALUE-NONFINITE",
+                                    &format!(
+                                        "animationSet.clips[{animation_index}].tracks[{channel_index}].values[{row_index}]"
+                                    ),
+                                    "retargeted translation row must contain only finite values",
+                                ));
+                            }
+                            Ok(output.to_vec())
+                        })
+                        .collect::<Result<Vec<_>, ProfileAAnimationFatalError>>()?;
+                    (MdlAnimationTrackPathV1::Translation, rows)
+                }
+                "rotation" => {
+                    let rows = sampler
+                        .output_values
+                        .chunks_exact(4)
+                        .enumerate()
+                        .map(|(row_index, row)| {
+                            let source_q = canonical_animation_quaternion(
+                                [row[0], row[1], row[2], row[3]],
+                                &format!("source.ir.animations.channels.values[{row_index}]"),
+                            )?;
+                            let source_key_basis =
+                                animation_basis_conjugate(quaternion_to_matrix3(source_q));
+                            let output_rotation = animation_mul3(correction, source_key_basis);
+                            let q = matrix3_to_canonical_quaternion(
+                                output_rotation,
+                                &format!("animationSet.tracks.values[{row_index}]"),
+                            )?;
+                            Ok(vec![q[0], q[1], q[2], q[3]])
+                        })
+                        .collect::<Result<Vec<_>, ProfileAAnimationFatalError>>()?;
+                    (MdlAnimationTrackPathV1::Rotation, rows)
+                }
+                _ => unreachable!("validated M4A2 channel path"),
+            };
+            tracks.push(MdlAnimationTrackV1 {
+                target_node_id: output_id,
+                path,
+                interpolation: MdlAnimationInterpolationV1::Linear,
+                times_seconds: sampler.input_times_seconds.clone(),
+                values,
+            });
+        }
+        clips.push(MdlAnimationClipV1 {
+            name: clip_mapping.output_clip_name.clone(),
+            animation_root: validated.animation_root.clone(),
+            length_seconds: animation.duration_seconds,
+            transition_seconds: clip_mapping.transition_seconds,
+            events: Vec::new(),
+            tracks,
+        });
+    }
+    let mut set = MdlAnimationSetV1::empty();
+    set.clips = clips;
+    Ok(set)
+}
+
+fn canonical_animation_quaternion(
+    mut quaternion: [f32; 4],
+    path: &str,
+) -> Result<[f32; 4], ProfileAAnimationFatalError> {
+    let norm = quaternion
+        .iter()
+        .map(|value| f64::from(*value).powi(2))
+        .sum::<f64>()
+        .sqrt();
+    if !norm.is_finite() || norm <= f64::from(f32::EPSILON) {
+        return Err(animation_fatal(
+            "M4A-QUATERNION-INVALID",
+            path,
+            "rotation key must be a finite nonzero XYZW quaternion",
+        ));
+    }
+    for value in &mut quaternion {
+        *value = canonical_animation_zero((f64::from(*value) / norm) as f32);
+    }
+    let negate = quaternion[3] < 0.0
+        || (quaternion[3] == 0.0
+            && quaternion[..3]
+                .iter()
+                .copied()
+                .find(|value| *value != 0.0)
+                .is_some_and(|value| value < 0.0));
+    if negate {
+        for value in &mut quaternion {
+            *value = canonical_animation_zero(-*value);
+        }
+    }
+    Ok(quaternion)
+}
+
+fn canonical_animation_zero(value: f32) -> f32 {
+    if value == 0.0 { 0.0 } else { value }
+}
+
+fn quaternion_to_matrix3(q: [f32; 4]) -> [[f32; 3]; 3] {
+    let [x, y, z, w] = q;
+    [
+        [
+            1.0 - 2.0 * (y * y + z * z),
+            2.0 * (x * y - z * w),
+            2.0 * (x * z + y * w),
+        ],
+        [
+            2.0 * (x * y + z * w),
+            1.0 - 2.0 * (x * x + z * z),
+            2.0 * (y * z - x * w),
+        ],
+        [
+            2.0 * (x * z - y * w),
+            2.0 * (y * z + x * w),
+            1.0 - 2.0 * (x * x + y * y),
+        ],
+    ]
+}
+
+fn matrix3_to_canonical_quaternion(
+    matrix: [[f32; 3]; 3],
+    path: &str,
+) -> Result<[f32; 4], ProfileAAnimationFatalError> {
+    let trace = matrix[0][0] + matrix[1][1] + matrix[2][2];
+    let q = if trace > 0.0 {
+        let s = (trace + 1.0).sqrt() * 2.0;
+        [
+            (matrix[2][1] - matrix[1][2]) / s,
+            (matrix[0][2] - matrix[2][0]) / s,
+            (matrix[1][0] - matrix[0][1]) / s,
+            0.25 * s,
+        ]
+    } else if matrix[0][0] > matrix[1][1] && matrix[0][0] > matrix[2][2] {
+        let s = (1.0 + matrix[0][0] - matrix[1][1] - matrix[2][2]).sqrt() * 2.0;
+        [
+            0.25 * s,
+            (matrix[0][1] + matrix[1][0]) / s,
+            (matrix[0][2] + matrix[2][0]) / s,
+            (matrix[2][1] - matrix[1][2]) / s,
+        ]
+    } else if matrix[1][1] > matrix[2][2] {
+        let s = (1.0 + matrix[1][1] - matrix[0][0] - matrix[2][2]).sqrt() * 2.0;
+        [
+            (matrix[0][1] + matrix[1][0]) / s,
+            0.25 * s,
+            (matrix[1][2] + matrix[2][1]) / s,
+            (matrix[0][2] - matrix[2][0]) / s,
+        ]
+    } else {
+        let s = (1.0 + matrix[2][2] - matrix[0][0] - matrix[1][1]).sqrt() * 2.0;
+        [
+            (matrix[0][2] + matrix[2][0]) / s,
+            (matrix[1][2] + matrix[2][1]) / s,
+            0.25 * s,
+            (matrix[1][0] - matrix[0][1]) / s,
+        ]
+    };
+    canonical_animation_quaternion(q, path)
+}
+
+fn animation_basis_vector(value: [f32; 3]) -> [f32; 3] {
+    [value[0], value[2], value[1]]
+}
+
+fn animation_basis_conjugate(matrix: [[f32; 3]; 3]) -> [[f32; 3]; 3] {
+    let basis = [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0, 0.0]];
+    animation_mul3(animation_mul3(basis, matrix), basis)
+}
+
+fn animation_mul3(left: [[f32; 3]; 3], right: [[f32; 3]; 3]) -> [[f32; 3]; 3] {
+    let mut result = [[0.0; 3]; 3];
+    for (row, result_row) in result.iter_mut().enumerate() {
+        for (column, value) in result_row.iter_mut().enumerate() {
+            *value = (0..3).map(|k| left[row][k] * right[k][column]).sum();
+        }
+    }
+    result
 }
 
 fn validate_api(
@@ -2078,6 +2998,7 @@ fn collect_preflight_gates(
     source: &GlbIngestResult,
     rig: &CreatureRigProfileV1,
     options: &ProfileAOptionsV1,
+    source_inventory_policy: SourceInventoryPolicy,
 ) -> Result<Vec<ProfileAGateV1>, ProfileAConversionFatalError> {
     let mut gates = Vec::new();
     for source_gate in source
@@ -2096,7 +3017,10 @@ fn collect_preflight_gates(
             &options.limits,
         )?;
     }
-    if !source.ir.skins.is_empty() || source.ir.nodes.iter().any(|node| node.skin_id.is_some()) {
+    if source_inventory_policy == SourceInventoryPolicy::RejectPresent
+        && (!source.ir.skins.is_empty()
+            || source.ir.nodes.iter().any(|node| node.skin_id.is_some()))
+    {
         push_gate_checked(
             &mut gates,
             gate(
@@ -2107,7 +3031,9 @@ fn collect_preflight_gates(
             &options.limits,
         )?;
     }
-    if !source.ir.animations.is_empty() {
+    if source_inventory_policy == SourceInventoryPolicy::RejectPresent
+        && !source.ir.animations.is_empty()
+    {
         push_gate_checked(
             &mut gates,
             gate(

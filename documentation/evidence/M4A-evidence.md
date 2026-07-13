@@ -5,8 +5,8 @@ Data: 2026-07-13
 ```yaml
 stage: M4A
 attempt_id: M4A-20260712-01
-status: M4A1_WRITER_VERIFIED_M4A2_NEXT
-done: false
+status: M4A_DONE_STRUCTURAL_OPEN_M6
+done: true
 implementation_started: true
 runtime_proof: OPEN_M6
 canonical_payload_committed: false
@@ -14,10 +14,12 @@ canonical_payload_committed: false
 
 ## 1. Aktualny wynik
 
-Aurora First contract-lock oraz M4A1 reader/writer/readback zostaly zakonczone.
+Aurora First contract-lock, M4A1 reader/writer/readback oraz M4A2 mapper zostaly
+zakonczone strukturalnie.
 Zamrozono layout AnimationHeader, model animation ArrayDef, osobne animation
 root trees, controller key/data, timing, interpolation, transition i events.
-M4A2 nie jest jeszcze zaimplementowane, dlatego dokument nie raportuje `DONE`.
+Runtime acceptance pozostaje przypisane do M6 i nie jest deklarowane przez ten
+status.
 
 Autorytatywny suplement:
 
@@ -184,9 +186,9 @@ Checkpoint M4A1.2 zamknal:
 - fmt, clippy, workspace, wasm32 i Docker quality;
 - independent P1/P2 review.
 
-Pozostaje M4A2 owned GLB mapper wraz z jego fixture i finalnymi gate'ami calego
-M4A. Dlatego M4A pozostaje `IN_PROGRESS` ze statusem checkpointu
-`M4A1_WRITER_VERIFIED_M4A2_NEXT`, nie `VERIFYING`, `DONE` ani `DONE_RUNTIME`.
+M4A2 owned GLB mapper, synthetic fixture, public WASM boundary i finalne gate'y
+calego M4A sa zakonczone. M4A ma status `DONE` strukturalnie; runtime facts
+pozostaja `OPEN_M6`, wiec dokument nie raportuje `DONE_RUNTIME`.
 
 ## 9. Checkpoint M4A1.1 - reader u16 i packed flags
 
@@ -298,5 +300,79 @@ Raport writera jawnie zachowuje piec nazwanych ograniczen `OPEN_M6`:
 animroot consumer, event-name semantics, state routing, opaque-zero oraz
 rig-only animation-tree profile. Checkpoint nie twierdzi runtime acceptance.
 
-Nastepny krok: M4A2 `convert_profile_a_with_animations_v1`, czyli jawne
-mapowanie owned GLB animation do output rig/Aurora local space.
+Historycznie nastepnym krokiem po tym checkpointcie byl M4A2
+`convert_profile_a_with_animations_v1`; zostal zrealizowany w sekcji 12.
+
+## 11. Checkpoint M4A2 contract lock
+
+Data: 2026-07-13 | Status: M4A2_CONTRACT_LOCKED_IMPLEMENTATION_NEXT
+
+Przed kodem zamrozono brakujace decyzje wykonawcze M4A2:
+
+- rest-pose-relative local delta zamiast kopiowania absolute source TRS;
+- basis `P(x,y,z)=(x,z,y)` i uniform scale tylko dla translation delta;
+- brak ponownego model alignment w keyframes;
+- jeden source skin, pelne mapowanie jointow/channels/animations;
+- jawne source/output node IDs i per-animation output clip name/transition;
+- provenance owned/user-provided/synthetic wymagane w mappingu;
+- unique output rig root jako `animationRoot`, empty events w v1;
+- TRS + unit static scale; MATRIX/shear/non-rigid sa fatal;
+- default M3 `RejectPresent` pozostaje bez zmian.
+
+Autorytatywna formula i taxonomy znajduja sie w sekcji 15 suplementu
+`documentation/m4a-animation-writer-kontrakt-suplement-codex.md`.
+
+## 12. Checkpoint M4A2 - GLB animation mapper
+
+Data: 2026-07-13 | Status: M4A_DONE_STRUCTURAL_OPEN_M6
+
+Zaimplementowano:
+
+- wersjonowane publiczne mapping/outcome/fatal types;
+- `convert_profile_a_with_animations_v1` z pelnym explicit mappingiem jednego
+  source skinu, wszystkich jointow, ancestorow, channels i animations;
+- rest-pose-relative translation/rotation do output rig local space;
+- stage-private `AllowMappedForM4A2` po walidacji oraz zachowany publiczny M3
+  `RejectPresent`;
+- publiczny WASM `convertProfileAWithAnimationsGlbJson` ze strict JSON;
+- handoff wynikowego `MdlAnimationSetV1` do zweryfikowanego writera M4A1.
+
+Dwa niezalezne audyty wykryly i zamknely realne bledy przed statusem DONE:
+
+1. translation delta poczatkowo odejmowala pierwszy key zamiast source rest
+   `ts0`; regresja uzywa teraz pierwszego key roznego od rest;
+2. finite input mogl overflow do `NaN/Inf` po retargetingu; output row jest
+   teraz walidowany i zwraca `M4A-TRACK-VALUE-NONFINITE`.
+
+```yaml
+native:
+  workspace_tests: 179
+  profile_a_tests: 38
+  mdl_parser_tests: 40
+  mdl_writer_tests: 31
+  wasm_native_tests: 3
+wasm:
+  node_tests: 16
+  wasm32_build: PASS
+  frozen_animated_json_length: 3885
+  frozen_animated_json_sha256: 34d91f87a7d0d029267d88b0a5bf108e6041d71c50cdf93daed72d98445adf68
+quality:
+  fmt: PASS
+  clippy_all_targets_deny_warnings: PASS
+  workspace: PASS
+  git_diff_check: PASS
+docker_no_cache:
+  tag: m2a-quality:m4a2-final
+  wall_seconds: 142.6
+  digest: sha256:7408b1471dead2b15e39bb0ca96eeccb217c3da521d057f14964fd13a409d16f
+  size_bytes: 1242291385
+final_review:
+  reviewers: 2
+  p1: 0
+  p2: 0
+```
+
+Synthetic fixtures sa controlled/owned i nie zawieraja retail payloadu.
+Canonical CEP/HAK pozostawal read-only in-place; nic nie zostalo wyekstrahowane
+ani skopiowane do repo. Structural DONE nie zamyka pieciu nazwanych runtime
+facts, ktore pozostaja `OPEN_M6`.

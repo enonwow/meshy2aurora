@@ -6,11 +6,16 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use m2a_core::{
     glb::{GlbLimits, IrNode, IrTransform, ingest_glb},
+    mdl::{
+        MdlAnimationTrackPathV1, MdlFormatProfileV1, MdlMaterialTextureBindingV1,
+        MdlWriterOptionsV1, write_binary_mdl_with_animations,
+    },
     profile_a::{
         Bounds3V1, CreatureRigNodeV1, CreatureRigProfileV1, CreatureRigSegmentV1,
+        ProfileAAnimationClipMappingV1, ProfileAAnimationMappingV1, ProfileAAnimationNodeMappingV1,
         ProfileAOptionsV1, RigProvenanceAttestationsV1, RigProvenanceKindV1, RigProvenanceV1,
         RigSegmentDeformationV1, RigWeightInfluenceV1, canonical_creature_sha256,
-        canonical_profile_sha256, convert_profile_a,
+        canonical_profile_sha256, convert_profile_a, convert_profile_a_with_animations_v1,
     },
 };
 
@@ -68,6 +73,104 @@ fn rehash(mut rig: CreatureRigProfileV1) -> CreatureRigProfileV1 {
     rig.content_sha256.clear();
     rig.content_sha256 = canonical_profile_sha256(&rig).unwrap();
     rig
+}
+
+fn linear_animated_source() -> m2a_core::glb::GlbIngestResult {
+    let input = fixtures::mutate_json(
+        fixtures::skin_animation_with_inverse_bind_matrices(),
+        |root| {
+            root["animations"][0]["samplers"][1]["interpolation"] = serde_json::json!("LINEAR");
+            root["animations"][0]["samplers"]
+                .as_array_mut()
+                .expect("synthetic animation samplers")
+                .truncate(2);
+            root["animations"][0]["channels"]
+                .as_array_mut()
+                .expect("synthetic animation channels")
+                .truncate(2);
+        },
+    );
+    ingest_glb(&input, &GlbLimits::default()).expect("synthetic LINEAR animation source")
+}
+
+fn animated_profile() -> CreatureRigProfileV1 {
+    let mut rig = profile(2.0);
+    let mut child_bind = identity();
+    child_bind[0] = 0.0;
+    child_bind[1] = 1.0;
+    child_bind[4] = -1.0;
+    child_bind[5] = 0.0;
+    child_bind[12] = 10.0;
+    child_bind[13] = 20.0;
+    child_bind[14] = 30.0;
+    rig.nodes.push(CreatureRigNodeV1 {
+        id: 71,
+        name: "synthetic-animated-child".to_owned(),
+        parent_id: Some(70),
+        bind_local_matrix: child_bind,
+    });
+    rehash(rig)
+}
+
+fn animation_mapping() -> ProfileAAnimationMappingV1 {
+    ProfileAAnimationMappingV1 {
+        schema_version: 1,
+        source_skin_id: 0,
+        provenance: RigProvenanceV1 {
+            kind: RigProvenanceKindV1::Synthetic,
+            export_allowed: true,
+            attestations: RigProvenanceAttestationsV1 {
+                controlled_construction: true,
+                no_reference_payload_copied: true,
+                rights_confirmed: true,
+            },
+        },
+        node_mappings: vec![
+            ProfileAAnimationNodeMappingV1 {
+                source_node_id: 0,
+                output_rig_node_id: 70,
+            },
+            ProfileAAnimationNodeMappingV1 {
+                source_node_id: 1,
+                output_rig_node_id: 71,
+            },
+        ],
+        clip_mappings: vec![ProfileAAnimationClipMappingV1 {
+            source_animation_id: 0,
+            output_clip_name: "cpause1".to_owned(),
+            transition_seconds: 0.25,
+        }],
+    }
+}
+
+fn animation_writer_options() -> MdlWriterOptionsV1 {
+    MdlWriterOptionsV1 {
+        schema_version: 1,
+        format_profile: MdlFormatProfileV1::M4DirectCreatureExtended64V1,
+        model_resource_resref: "m2a_anim".to_owned(),
+        diffuse_texture_resref_by_material_slot: vec![MdlMaterialTextureBindingV1 {
+            material_slot: 0,
+            resref: "m2a_tex".to_owned(),
+        }],
+    }
+}
+
+fn assert_animation_fatal(
+    source: &m2a_core::glb::GlbIngestResult,
+    rig: &CreatureRigProfileV1,
+    mapping: &ProfileAAnimationMappingV1,
+    expected_code: &str,
+) {
+    let outcome = catch_unwind(AssertUnwindSafe(|| {
+        convert_profile_a_with_animations_v1(source, rig, &ProfileAOptionsV1::default(), mapping)
+    }));
+    let error = outcome
+        .expect("M4A2 invalid input must not panic")
+        .expect_err("M4A2 invalid input must be fatal");
+    assert_eq!(
+        error.code, expected_code,
+        "unexpected M4A2 error: {error:?}"
+    );
 }
 
 fn skin_profile(reference_weights: Vec<Vec<RigWeightInfluenceV1>>) -> CreatureRigProfileV1 {
@@ -380,6 +483,289 @@ fn source_rig_and_animation_are_explicit_blocking_gates() {
             .iter()
             .any(|gate| gate.code == "M3A-SOURCE-ANIMATION-DEFERRED")
     );
+}
+
+#[test]
+fn default_m3_rejects_animated_source_unchanged() {
+    let source = linear_animated_source();
+    let source_before = serde_json::to_vec(&source).unwrap();
+    let outcome = convert_profile_a(&source, &animated_profile(), &ProfileAOptionsV1::default())
+        .expect("default M3 returns its established blocking outcome");
+
+    assert!(outcome.creature.is_none());
+    assert_eq!(
+        outcome
+            .report
+            .gates
+            .iter()
+            .filter(|gate| {
+                matches!(
+                    gate.code.as_str(),
+                    "M3A-SOURCE-RIG-DEFERRED" | "M3A-SOURCE-ANIMATION-DEFERRED"
+                )
+            })
+            .map(|gate| (
+                gate.code.as_str(),
+                gate.path.as_str(),
+                gate.severity.as_str()
+            ))
+            .collect::<Vec<_>>(),
+        [
+            (
+                "M3A-SOURCE-ANIMATION-DEFERRED",
+                "source.ir.animations",
+                "BLOCKING"
+            ),
+            ("M3A-SOURCE-RIG-DEFERRED", "source.ir.skins", "BLOCKING"),
+        ]
+    );
+    assert_eq!(source_before, serde_json::to_vec(&source).unwrap());
+}
+
+#[test]
+fn mapped_linear_animation_retargets_rest_delta_and_hands_off_to_writer() {
+    let source = linear_animated_source();
+    let rig = animated_profile();
+    let mapping = animation_mapping();
+    let source_before = serde_json::to_vec(&source).unwrap();
+    let rig_before = serde_json::to_vec(&rig).unwrap();
+    let mapping_before = serde_json::to_vec(&mapping).unwrap();
+
+    let first = convert_profile_a_with_animations_v1(
+        &source,
+        &rig,
+        &ProfileAOptionsV1::default(),
+        &mapping,
+    )
+    .expect("fully mapped synthetic LINEAR animation");
+    let second = convert_profile_a_with_animations_v1(
+        &source,
+        &rig,
+        &ProfileAOptionsV1::default(),
+        &mapping,
+    )
+    .expect("deterministic mapped animation");
+
+    assert_eq!(
+        serde_json::to_vec(&first).unwrap(),
+        serde_json::to_vec(&second).unwrap()
+    );
+    assert_eq!(source_before, serde_json::to_vec(&source).unwrap());
+    assert_eq!(rig_before, serde_json::to_vec(&rig).unwrap());
+    assert_eq!(mapping_before, serde_json::to_vec(&mapping).unwrap());
+    assert_eq!(first.base.report.transform.scale, Some(2.0));
+    assert_eq!(
+        first.base.report.transform.translation,
+        Some([-1.0, 0.0, 0.0])
+    );
+
+    let creature = first.base.creature.as_ref().expect("mapped base creature");
+    let animations = first.animations.as_ref().expect("mapped animation set");
+    assert_eq!(animations.clips.len(), 1);
+    let clip = &animations.clips[0];
+    assert_eq!(clip.name, "cpause1");
+    assert_eq!(clip.animation_root, "synthetic-rigid-root");
+    assert_eq!(clip.length_seconds.to_bits(), 1.25_f32.to_bits());
+    assert_eq!(clip.transition_seconds.to_bits(), 0.25_f32.to_bits());
+    assert!(clip.events.is_empty());
+    assert_eq!(clip.tracks.len(), 2);
+
+    let translation = clip
+        .tracks
+        .iter()
+        .find(|track| track.path == MdlAnimationTrackPathV1::Translation)
+        .expect("mapped translation track");
+    let rotation = clip
+        .tracks
+        .iter()
+        .find(|track| track.path == MdlAnimationTrackPathV1::Rotation)
+        .expect("mapped rotation track");
+    for track in [translation, rotation] {
+        assert_eq!(track.target_node_id, 71);
+        assert_eq!(
+            track
+                .times_seconds
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<_>>(),
+            [0.0_f32.to_bits(), 0.5_f32.to_bits(), 1.25_f32.to_bits()]
+        );
+    }
+
+    assert_eq!(
+        translation.values,
+        [
+            vec![10.0, 20.0, 28.0],
+            vec![4.0, 22.0, 32.0],
+            vec![-2.0, 28.0, 38.0],
+        ]
+    );
+    assert_eq!(rotation.values.len(), 3);
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    for (actual, expected) in rotation.values[0].iter().zip([0.0, 0.0, half, half]) {
+        approx(*actual, expected);
+    }
+    for (actual, expected) in rotation.values[1].iter().zip([0.0, 0.0, 0.0, 1.0]) {
+        approx(*actual, expected);
+    }
+    approx(rotation.values[2][0], 0.0);
+    approx(rotation.values[2][1], 0.0);
+    approx(rotation.values[2][2], -half);
+    approx(rotation.values[2][3], half);
+
+    let artifact =
+        write_binary_mdl_with_animations(creature, animations, &animation_writer_options())
+            .expect("mapped animation writer handoff");
+    assert!(artifact.report.semantic_diff.is_empty());
+    assert_eq!(artifact.inspection.animations.len(), 1);
+}
+
+#[test]
+fn mapped_animation_requires_every_channel_target_mapping() {
+    let source = linear_animated_source();
+    let rig = animated_profile();
+    let mut mapping = animation_mapping();
+    mapping
+        .node_mappings
+        .retain(|entry| entry.source_node_id != 1);
+
+    assert_animation_fatal(&source, &rig, &mapping, "M4A-MAPPER-TARGET-MISSING");
+}
+
+#[test]
+fn mapped_animation_schema_provenance_and_skin_fail_with_stable_codes() {
+    let source = linear_animated_source();
+    let rig = animated_profile();
+
+    let mut mapping = animation_mapping();
+    mapping.schema_version = 2;
+    assert_animation_fatal(&source, &rig, &mapping, "M4A-MAPPING-SCHEMA-INVALID");
+
+    let mut mapping = animation_mapping();
+    mapping.provenance.kind = RigProvenanceKindV1::ReferenceOnly;
+    assert_animation_fatal(&source, &rig, &mapping, "M4A-MAPPER-PROVENANCE-FORBIDDEN");
+
+    let mut mapping = animation_mapping();
+    mapping.provenance.export_allowed = false;
+    assert_animation_fatal(&source, &rig, &mapping, "M4A-MAPPER-PROVENANCE-FORBIDDEN");
+
+    let mut mapping = animation_mapping();
+    mapping.provenance.attestations.rights_confirmed = false;
+    assert_animation_fatal(&source, &rig, &mapping, "M4A-MAPPER-PROVENANCE-FORBIDDEN");
+
+    let mut mapping = animation_mapping();
+    mapping.source_skin_id = 99;
+    assert_animation_fatal(&source, &rig, &mapping, "M4A-MAPPER-SKIN-INVALID");
+}
+
+#[test]
+fn mapped_animation_rejects_duplicate_missing_and_nonhierarchical_mappings() {
+    let source = linear_animated_source();
+    let rig = animated_profile();
+
+    let mut duplicate_node = animation_mapping();
+    duplicate_node
+        .node_mappings
+        .push(duplicate_node.node_mappings[1].clone());
+    assert_animation_fatal(
+        &source,
+        &rig,
+        &duplicate_node,
+        "M4A-MAPPER-TARGET-AMBIGUOUS",
+    );
+
+    let mut missing_clip = animation_mapping();
+    missing_clip.clip_mappings.clear();
+    assert_animation_fatal(&source, &rig, &missing_clip, "M4A-MAPPER-TARGET-MISSING");
+
+    let mut duplicate_clip = animation_mapping();
+    duplicate_clip
+        .clip_mappings
+        .push(duplicate_clip.clip_mappings[0].clone());
+    assert_animation_fatal(
+        &source,
+        &rig,
+        &duplicate_clip,
+        "M4A-MAPPER-TARGET-AMBIGUOUS",
+    );
+
+    let mut nonhierarchical = animation_mapping();
+    nonhierarchical.node_mappings[0].output_rig_node_id = 71;
+    nonhierarchical.node_mappings[1].output_rig_node_id = 70;
+    assert_animation_fatal(&source, &rig, &nonhierarchical, "M4A-MAPPER-BASIS-INVALID");
+}
+
+#[test]
+fn mapped_animation_rejects_unsupported_interpolation_and_target_paths() {
+    let rig = animated_profile();
+    let mapping = animation_mapping();
+
+    let mut step = linear_animated_source();
+    step.ir.animations[0].samplers[0].interpolation = "STEP".to_owned();
+    assert_animation_fatal(&step, &rig, &mapping, "M4A-INTERPOLATION-UNSUPPORTED");
+
+    for path in ["SCALE", "WEIGHTS"] {
+        let mut source = linear_animated_source();
+        source.ir.animations[0].channels[0].target_path = path.to_owned();
+        assert_animation_fatal(&source, &rig, &mapping, "M4A-TRACK-PATH-UNSUPPORTED");
+    }
+}
+
+#[test]
+fn mapped_animation_rejects_invalid_times_values_and_arity_without_panicking() {
+    let rig = animated_profile();
+    let mapping = animation_mapping();
+
+    let mut nonfinite_time = linear_animated_source();
+    nonfinite_time.ir.animations[0].samplers[0].input_times_seconds[1] = f32::NAN;
+    assert_animation_fatal(&nonfinite_time, &rig, &mapping, "M4A-TRACK-TIME-NOT-STRICT");
+
+    let mut nonfinite_value = linear_animated_source();
+    nonfinite_value.ir.animations[0].samplers[0].output_values[0] = f32::INFINITY;
+    assert_animation_fatal(
+        &nonfinite_value,
+        &rig,
+        &mapping,
+        "M4A-TRACK-VALUE-NONFINITE",
+    );
+
+    let mut arity = linear_animated_source();
+    arity.ir.animations[0].samplers[0].output_values.pop();
+    assert_animation_fatal(&arity, &rig, &mapping, "M4A-TRACK-ARITY-INVALID");
+}
+
+#[test]
+fn mapped_animation_finite_translation_subtraction_overflow_is_fatal() {
+    let mut source = linear_animated_source();
+    source.ir.nodes[1].transform.translation = Some([-f32::MAX, 1.0, 0.0]);
+    source.ir.animations[0].samplers[0].output_values[0] = f32::MAX;
+
+    assert_animation_fatal(
+        &source,
+        &animated_profile(),
+        &animation_mapping(),
+        "M4A-TRACK-VALUE-NONFINITE",
+    );
+}
+
+#[test]
+fn mapped_animation_rejects_nonunit_source_scale_and_nonrigid_target_bind() {
+    let mapping = animation_mapping();
+
+    let mut scaled_source = linear_animated_source();
+    scaled_source.ir.nodes[1].transform.scale = Some([1.0, 2.0, 1.0]);
+    assert_animation_fatal(
+        &scaled_source,
+        &animated_profile(),
+        &mapping,
+        "M4A-MAPPER-BASIS-INVALID",
+    );
+
+    let source = linear_animated_source();
+    let mut nonrigid = animated_profile();
+    nonrigid.nodes[1].bind_local_matrix[0] = 2.0;
+    let nonrigid = rehash(nonrigid);
+    assert_animation_fatal(&source, &nonrigid, &mapping, "M4A-MAPPER-BASIS-INVALID");
 }
 
 #[test]

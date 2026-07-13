@@ -84,30 +84,9 @@ pub fn ingest_glb(bytes: &[u8]) -> String {
 /// outcome or fatal error.
 #[wasm_bindgen(js_name = convertProfileAGlbJson)]
 pub fn convert_profile_a_glb_json(bytes: &[u8], rig_json: &str, options_json: &str) -> String {
-    let rig = match serde_json::from_str::<m2a_core::profile_a::CreatureRigProfileV1>(rig_json) {
-        Ok(value) => value,
-        Err(_) => {
-            return serialize_json(&ProfileAJsonInputError {
-                schema_version: 1,
-                code: "M3A-PROFILE-JSON-INVALID",
-                severity: "FATAL",
-                path: "rigJson",
-                message: "rig profile JSON does not match the public schema",
-            });
-        }
-    };
-    let options = match serde_json::from_str::<m2a_core::profile_a::ProfileAOptionsV1>(options_json)
-    {
-        Ok(value) => value,
-        Err(_) => {
-            return serialize_json(&ProfileAJsonInputError {
-                schema_version: 1,
-                code: "M3A-OPTIONS-INVALID",
-                severity: "FATAL",
-                path: "optionsJson",
-                message: "options JSON does not match the public schema",
-            });
-        }
+    let (rig, options) = match parse_profile_a_json(rig_json, options_json) {
+        Ok(values) => values,
+        Err(error) => return error,
     };
     let source = match m2a_core::glb::ingest_glb(bytes, &m2a_core::glb::GlbLimits::default()) {
         Ok(value) => value,
@@ -119,10 +98,84 @@ pub fn convert_profile_a_glb_json(bytes: &[u8], rig_json: &str, options_json: &s
     }
 }
 
+/// Converts a Meshy-style animated GLB with explicit clean-room rig and
+/// source-to-output animation mappings.
+///
+/// This boundary only performs strict JSON decoding and GLB ingestion. Mapping
+/// validation, retargeting and all deterministic output generation are owned by
+/// the public `m2a-core` M4A2 route.
+#[wasm_bindgen(js_name = convertProfileAWithAnimationsGlbJson)]
+pub fn convert_profile_a_with_animations_glb_json(
+    bytes: &[u8],
+    rig_json: &str,
+    options_json: &str,
+    mapping_json: &str,
+) -> String {
+    let (rig, options) = match parse_profile_a_json(rig_json, options_json) {
+        Ok(values) => values,
+        Err(error) => return error,
+    };
+    let mapping =
+        match serde_json::from_str::<m2a_core::profile_a::ProfileAAnimationMappingV1>(mapping_json)
+        {
+            Ok(value) => value,
+            Err(_) => {
+                return serialize_json(&ProfileAJsonInputError {
+                    schema_version: 1,
+                    code: "M4A-MAPPING-JSON-INVALID",
+                    severity: "FATAL",
+                    path: "mappingJson",
+                    message: "animation mapping JSON does not match the public schema",
+                });
+            }
+        };
+    let source = match m2a_core::glb::ingest_glb(bytes, &m2a_core::glb::GlbLimits::default()) {
+        Ok(value) => value,
+        Err(error) => return serialize_json(&error),
+    };
+    match m2a_core::profile_a::convert_profile_a_with_animations_v1(
+        &source, &rig, &options, &mapping,
+    ) {
+        Ok(outcome) => serialize_json(&outcome),
+        Err(error) => serialize_json(&error),
+    }
+}
+
 /// Concise alias retained for callers that adopted the initial M3 adapter name.
 #[wasm_bindgen(js_name = convertProfileAJson)]
 pub fn convert_profile_a_json(bytes: &[u8], rig_json: &str, options_json: &str) -> String {
     convert_profile_a_glb_json(bytes, rig_json, options_json)
+}
+
+fn parse_profile_a_json(
+    rig_json: &str,
+    options_json: &str,
+) -> Result<
+    (
+        m2a_core::profile_a::CreatureRigProfileV1,
+        m2a_core::profile_a::ProfileAOptionsV1,
+    ),
+    String,
+> {
+    let rig = serde_json::from_str(rig_json).map_err(|_| {
+        serialize_json(&ProfileAJsonInputError {
+            schema_version: 1,
+            code: "M3A-PROFILE-JSON-INVALID",
+            severity: "FATAL",
+            path: "rigJson",
+            message: "rig profile JSON does not match the public schema",
+        })
+    })?;
+    let options = serde_json::from_str(options_json).map_err(|_| {
+        serialize_json(&ProfileAJsonInputError {
+            schema_version: 1,
+            code: "M3A-OPTIONS-INVALID",
+            severity: "FATAL",
+            path: "optionsJson",
+            message: "options JSON does not match the public schema",
+        })
+    })?;
+    Ok((rig, options))
 }
 
 /// Writes an Aurora binary MDL from strict public JSON contracts.
@@ -214,9 +267,15 @@ fn serialize_json<T: serde::Serialize>(value: &T) -> String {
 }
 
 #[cfg(test)]
+#[path = "../../m2a-core/tests/fixtures/build_synthetic_glb.rs"]
+#[allow(dead_code)]
+mod profile_a_animation_fixtures;
+
+#[cfg(test)]
 mod profile_a_test_support {
     use m2a_core::profile_a::{
         Bounds3V1, CreatureRigNodeV1, CreatureRigProfileV1, CreatureRigSegmentV1,
+        ProfileAAnimationClipMappingV1, ProfileAAnimationMappingV1, ProfileAAnimationNodeMappingV1,
         ProfileAOptionsV1, RigProvenanceAttestationsV1, RigProvenanceKindV1, RigProvenanceV1,
         RigSegmentDeformationV1, RigWeightInfluenceV1, canonical_profile_sha256,
     };
@@ -234,6 +293,9 @@ mod profile_a_test_support {
     pub const MALFORMED_JSON_SHA256: &str =
         "03bd6ebd5cdb45f738de87363d3ad6a95de9bbb5aa119a2fce3199255b8efa55";
     pub const MALFORMED_JSON_LENGTH: usize = 151;
+    pub const ANIMATED_JSON_SHA256: &str =
+        "34d91f87a7d0d029267d88b0a5bf108e6041d71c50cdf93daed72d98445adf68";
+    pub const ANIMATED_JSON_LENGTH: usize = 3885;
 
     pub fn identity() -> [f32; 16] {
         [
@@ -345,6 +407,74 @@ mod profile_a_test_support {
         serde_json::to_string(options).unwrap()
     }
 
+    pub fn linear_animated_glb() -> Vec<u8> {
+        super::profile_a_animation_fixtures::mutate_json(
+            super::profile_a_animation_fixtures::skin_animation_with_inverse_bind_matrices(),
+            |root| {
+                root["animations"][0]["samplers"][1]["interpolation"] = serde_json::json!("LINEAR");
+                root["animations"][0]["samplers"]
+                    .as_array_mut()
+                    .expect("synthetic animation samplers")
+                    .truncate(2);
+                root["animations"][0]["channels"]
+                    .as_array_mut()
+                    .expect("synthetic animation channels")
+                    .truncate(2);
+            },
+        )
+    }
+
+    pub fn animated_profile() -> CreatureRigProfileV1 {
+        let mut profile = rigid_profile();
+        profile.target_bounds.max[2] = 2.0;
+        let mut child_bind = identity();
+        child_bind[0] = 0.0;
+        child_bind[1] = 1.0;
+        child_bind[4] = -1.0;
+        child_bind[5] = 0.0;
+        child_bind[12] = 10.0;
+        child_bind[13] = 20.0;
+        child_bind[14] = 30.0;
+        profile.nodes.push(CreatureRigNodeV1 {
+            id: 71,
+            name: "synthetic-animated-child".to_owned(),
+            parent_id: Some(70),
+            bind_local_matrix: child_bind,
+        });
+        finish(profile)
+    }
+
+    pub fn animation_mapping() -> ProfileAAnimationMappingV1 {
+        ProfileAAnimationMappingV1 {
+            schema_version: 1,
+            source_skin_id: 0,
+            provenance: RigProvenanceV1 {
+                kind: RigProvenanceKindV1::Synthetic,
+                export_allowed: true,
+                attestations: RigProvenanceAttestationsV1 {
+                    controlled_construction: true,
+                    no_reference_payload_copied: true,
+                    rights_confirmed: true,
+                },
+            },
+            node_mappings: vec![
+                ProfileAAnimationNodeMappingV1 {
+                    source_node_id: 0,
+                    output_rig_node_id: 70,
+                },
+                ProfileAAnimationNodeMappingV1 {
+                    source_node_id: 1,
+                    output_rig_node_id: 71,
+                },
+            ],
+            clip_mappings: vec![ProfileAAnimationClipMappingV1 {
+                source_animation_id: 0,
+                output_clip_name: "cpause1".to_owned(),
+                transition_seconds: 0.25,
+            }],
+        }
+    }
+
     pub fn sha256(value: &str) -> String {
         let digest = Sha256::digest(value.as_bytes());
         digest.iter().map(|byte| format!("{byte:02x}")).collect()
@@ -429,7 +559,8 @@ mod profile_a_test_support {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod profile_a_native_tests {
     use super::{
-        convert_profile_a_glb_json, convert_profile_a_json, profile_a_test_support as support,
+        convert_profile_a_glb_json, convert_profile_a_json,
+        convert_profile_a_with_animations_glb_json, profile_a_test_support as support,
     };
 
     fn direct_core_json(
@@ -526,12 +657,61 @@ mod profile_a_native_tests {
         );
         assert_eq!(support::sha256(&fatal), support::LIMIT_FATAL_JSON_SHA256);
     }
+
+    #[test]
+    fn native_animated_profile_a_adapter_matches_core_and_rejects_invalid_mapping_json() {
+        let glb = support::linear_animated_glb();
+        let rig = support::animated_profile();
+        let options = support::options();
+        let mapping = support::animation_mapping();
+        let rig_json = serde_json::to_string(&rig).unwrap();
+        let options_json = serde_json::to_string(&options).unwrap();
+        let mapping_json = serde_json::to_string(&mapping).unwrap();
+
+        let source = m2a_core::glb::ingest_glb(&glb, &m2a_core::glb::GlbLimits::default())
+            .expect("controlled animated source ingest");
+        let core = m2a_core::profile_a::convert_profile_a_with_animations_v1(
+            &source, &rig, &options, &mapping,
+        )
+        .expect("controlled animated core conversion");
+        let expected = serde_json::to_string(&core).unwrap();
+        assert_eq!(expected.len(), support::ANIMATED_JSON_LENGTH);
+        assert_eq!(support::sha256(&expected), support::ANIMATED_JSON_SHA256);
+        assert_eq!(
+            convert_profile_a_with_animations_glb_json(
+                &glb,
+                &rig_json,
+                &options_json,
+                &mapping_json,
+            ),
+            expected
+        );
+
+        let malformed =
+            convert_profile_a_with_animations_glb_json(&glb, &rig_json, &options_json, "{");
+        assert_eq!(
+            malformed,
+            r#"{"schemaVersion":1,"code":"M4A-MAPPING-JSON-INVALID","severity":"FATAL","path":"mappingJson","message":"animation mapping JSON does not match the public schema"}"#
+        );
+        let mut unknown = serde_json::to_value(&mapping).unwrap();
+        unknown["unknownField"] = serde_json::json!(true);
+        assert_eq!(
+            convert_profile_a_with_animations_glb_json(
+                &glb,
+                &rig_json,
+                &options_json,
+                &unknown.to_string(),
+            ),
+            malformed
+        );
+    }
 }
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests {
     use super::{
-        convert_profile_a_glb_json, convert_profile_a_json, ingest_glb, ingest_glb_json,
+        convert_profile_a_glb_json, convert_profile_a_json,
+        convert_profile_a_with_animations_glb_json, ingest_glb, ingest_glb_json,
         inspect_binary_mdl, inspect_glb, inspect_glb_json,
         profile_a_test_support as profile_support,
         write_binary_mdl_with_animations as write_mdl_bytes,
@@ -707,6 +887,54 @@ mod wasm_tests {
                 expected_deformation
             );
         }
+    }
+
+    #[wasm_bindgen_test]
+    fn animated_profile_a_adapter_is_native_wasm_json_identical_and_strict() {
+        let glb = profile_support::linear_animated_glb();
+        let rig = profile_support::animated_profile();
+        let options = profile_support::options();
+        let mapping = profile_support::animation_mapping();
+        let source = m2a_core::glb::ingest_glb(&glb, &m2a_core::glb::GlbLimits::default())
+            .expect("controlled animated source ingest");
+        let core = m2a_core::profile_a::convert_profile_a_with_animations_v1(
+            &source, &rig, &options, &mapping,
+        )
+        .expect("controlled animated core conversion");
+        let rig_json = serde_json::to_string(&rig).unwrap();
+        let options_json = serde_json::to_string(&options).unwrap();
+        let mapping_json = serde_json::to_string(&mapping).unwrap();
+        let actual = convert_profile_a_with_animations_glb_json(
+            &glb,
+            &rig_json,
+            &options_json,
+            &mapping_json,
+        );
+        assert_eq!(actual, serde_json::to_string(&core).unwrap());
+        assert_eq!(actual.len(), profile_support::ANIMATED_JSON_LENGTH);
+        assert_eq!(
+            profile_support::sha256(&actual),
+            profile_support::ANIMATED_JSON_SHA256
+        );
+
+        let malformed =
+            convert_profile_a_with_animations_glb_json(&glb, &rig_json, &options_json, "{");
+        let error: serde_json::Value = serde_json::from_str(&malformed).unwrap();
+        assert_eq!(error["code"], "M4A-MAPPING-JSON-INVALID");
+        assert_eq!(error["severity"], "FATAL");
+        assert_eq!(error["path"], "mappingJson");
+
+        let mut unknown = serde_json::to_value(&mapping).unwrap();
+        unknown["unknownField"] = serde_json::json!(true);
+        assert_eq!(
+            convert_profile_a_with_animations_glb_json(
+                &glb,
+                &rig_json,
+                &options_json,
+                &unknown.to_string(),
+            ),
+            malformed
+        );
     }
 
     #[wasm_bindgen_test]
