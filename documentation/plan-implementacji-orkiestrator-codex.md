@@ -423,22 +423,23 @@ M6 depends on `M5 DONE`.
 ```yaml
 id: "M6"
 initial_status: "NOT_STARTED"
-goal: "udowodnic, ze wygenerowany HAK i modul testowy laduja model w Toolset i grze"
+goal: "udowodnic, ze wygenerowany pakiet modelu laduje model w Toolset i grze"
 owner: "Mateusz + implementation agent"
 dependencies: ["M5 DONE"]
 scope:
-  - "generated HAK, target-specific creature UTC and generated minimal MOD with typed IFO/ARE/GIT/GIC"
-  - "GIT contains the full typed creature instance; GIC contains aligned one-to-one comment entries"
+  - "generated binary MDL with appended MDX, texture, appended appearance.2da, HAK and manifest"
+  - "known-good existing or Toolset-created shell module and test creature used only as proof scaffolding"
   - "manual Toolset/game runbook"
   - "file-level assertions plus visual screenshots"
   - "explicit proof packet"
 out_of_scope:
+  - "generation of gameplay classes, feats, skills, equipment or inventory"
+  - "ITP palette authoring for the first direct model proof"
+  - "full generated UTC/IFO/ARE/GIT/GIC/MOD product pipeline; GFF core remains reusable future infrastructure"
   - "headless GUI automation without separate approval"
   - "aurora-web as proof or validator"
 definition_of_done:
-  - "generated UTC is accepted as a creature blueprint by Toolset"
-  - "generated GIT full creature instance has TemplateResRef and Appearance_Type aligned with the target UTC"
-  - "generated GIC list counts/order/child IDs align one-to-one with GIT"
+  - "test creature uses the exact appended appearance.2da physical row"
   - "Toolset screenshot with HAK attached"
   - "Toolset screenshot with visible generated creature"
   - "game screenshot with visible generated creature"
@@ -446,7 +447,7 @@ definition_of_done:
   - "no missing model/texture marker, crash or unusable orientation"
   - "evidence packet names exact generated resrefs and HAK hash"
 current_problems_initial:
-  - "no generated MDL/HAK/module exists"
+  - "no saved generated model-package live proof exists"
   - "headless visual proof is not confirmed and is not required"
 bugs_initial: []
 documentation:

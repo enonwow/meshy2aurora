@@ -112,5 +112,18 @@ retail_payload_committed: false
 runtime_proof: NOT_RUN
 ```
 
-M6A jest strukturalnie `DONE`. Caly M6 pozostaje `IN_PROGRESS`; nastepny jest
-M6B contract/preset work. Live Toolset/game acceptance nie zostala wykonana.
+M6A jest strukturalnie `DONE`. Live Toolset/game acceptance nie zostala
+wykonana.
+
+## 6. Korekta zakresu wlasciciela
+
+Wlasciciel doprecyzowal, ze produkt tworzy model, a nie klasy i pozostale dane
+gameplay creature. Dlatego `FeatList`, `ClassList`, `Equip_ItemList`, ITP oraz
+pelny generated UTC/IFO/ARE/GIT/GIC/MOD nie sa aktywnym deliverable pierwszego
+proofu modelu.
+
+GFF core i typed schema research pozostaja poprawnym, zreviewowanym future
+infrastructure, ale nie prowadza teraz dalszej implementacji. Aktywna sciezka
+M6 to generated binary MDL+MDX, TGA, appended appearance.2da i HAK, sprawdzone
+na Toolset-created lub istniejacym known-good test creature/module. Scaffold
+nie jest outputem produktu i nie wymaga generowania klas, featow ani ekwipunku.

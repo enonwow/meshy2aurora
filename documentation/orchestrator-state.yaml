@@ -21,7 +21,7 @@ status_vocabulary:
 orchestration:
   active_stage: "M6"
   next_ready_stage: "NONE"
-  next_action: "Start M6B by proving non-guessed generated defaults for the locked typed UTC/IFO/ARE/GIT/GIC schemas, including Feat/Class/Equip and a legal synthetic Tileset/Tile_ID preset."
+  next_action: "Build the generated model package (binary MDL with appended MDX, TGA, appended appearance.2da and HAK) and prove that model in a known-good Toolset/game test scaffold; do not build gameplay classes or a full generated module."
   one_active_stage_only: true
   current_attempt_id: "M6-20260713-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
@@ -402,19 +402,18 @@ stages:
 
   M6:
     status: "IN_PROGRESS"
-    status_reason: "M6A generic GFF V3.2 writer/reader is structurally DONE: 19 focused tests, 3 private seams, 278 workspace tests, clippy/fmt/diff and final independent code review P1=0/P2=0 pass. Ordered typed schemas are locked; generated gameplay preset, MOD assembly and live Toolset/game acceptance remain open."
+    status_reason: "Owner scope correction: the product creates the model package, not gameplay classes or a complete module. M6A GFF infrastructure remains complete but typed UTC/IFO/ARE/GIT/GIC generation is deferred. Active M6 work is a real model/texture/2DA/HAK proof in a known-good Toolset/game scaffold."
     owner: "Mateusz + implementation agent"
     risk: "HIGH"
     dependencies: ["M5 DONE"]
     current_problems:
-      - "Generated Feat/Class/Equip values and a legal synthetic Tileset/Tile_ID preset are not locked."
-      - "No generated module proof packet exists."
+      - "No saved live proof packet yet demonstrates the generated model package in Toolset/game."
       - "Headless visual proof is not available; final live Toolset/game proof is required."
     bugs: []
-    next_actions: ["Use Aurora First evidence to lock non-caster Feat/Class/Equip defaults and a legal synthetic area tile preset; then implement typed UTC/IFO/ARE/GIT/GIC builders on the closed GFF core."]
+    next_actions: ["Generate the model package from owned/synthetic source, attach its HAK to a known-good test module, set a Toolset-created test creature to the appended appearance row, and capture Toolset/game/animation evidence."]
     evidence: ["documentation/evidence/M6-evidence.md: M6A GFF core DONE; 19 integration / 3 private / 278 workspace PASS, frozen 96-byte GFF sha256:954af919e592c1abc0a92edef52a0c2855c8940c48199db3c0bd01a62601e5f1, Docker no-cache sha256:60ea3d147de1e2f14452fd4459b9f2580978a6be113a84b66f2acdd3fffc0793, final contract and code rereviews P1=0/P2=0"]
     documentation: ["documentation/m6-gff-module-kontrakt-suplement-codex.md", "documentation/m6-typed-resource-manifests-codex.md", "documentation/evidence/M6-evidence.md"]
-    expected_artifacts: ["Generated creature UTC", "Generated GIT instance", "Toolset screenshots", "Game screenshot", "Animation proof", "HAK hash and resource manifest"]
+    expected_artifacts: ["Generated binary MDL with appended MDX", "Generated TGA", "Appended appearance.2da", "Generated HAK and resource manifest", "Toolset screenshots", "Game screenshot", "Animation proof"]
     changed_files:
       - "crates/m2a-core/src/gff.rs"
       - "crates/m2a-core/src/lib.rs"
