@@ -5,6 +5,7 @@ pub mod glb;
 pub mod mdl;
 pub mod profile_a;
 pub mod reference_proof;
+pub mod tga;
 
 pub use mdl::{
     BinaryMdlArtifactV1, InspectionReport, MdlFormatProfileV1, MdlMaterialTextureBindingV1,

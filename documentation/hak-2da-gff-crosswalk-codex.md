@@ -95,6 +95,11 @@ appearance_reference:
   first_index: 0
   last_index: 15218
   tabs: 0
+  displayed_row_label_anomaly:
+    physical_rows: 15219
+    duplicate_label: 15152
+    missing_label: 15153
+    policy: "warning only; engine index is physical row order"
   observed_direct_row_15216:
     LABEL: "(HD-ANIMAL) Squirrel - Brown"
     NAME: "Squirrel"
@@ -113,7 +118,7 @@ appearance_append:
   input: "jawnie wybrany appearance.2da albo HAK zawierajacy appearance/type 2017"
   parse: "preserve header order, DEFAULT value, rows and exact **** semantics"
   validation:
-    - "existing physical row count and displayed indices are internally consistent"
+    - "existing row labels are decimal u32; mismatch with physical row order is reported as a warning, not fatal"
     - "new physical index <= 65535 because UTC Appearance_Type is uint16"
     - "required columns LABEL, NAME, RACE, MODELTYPE and MOVERATE exist"
   new_row_index: "existing physical row count; append only"
@@ -122,7 +127,15 @@ appearance_append:
   manifest: "record source hash, output hash, appended index and changed cells"
 ```
 
-Nie wybieramy dziury po `****` i nie hard-code'ujemy `9000`. Jezeli base table ma niespojny index albo append przekracza 65535, konwersja zatrzymuje sie z diagnostyka.
+Nie wybieramy dziury po `****` i nie hard-code'ujemy `9000`. Indeks uzywany
+przez engine oraz przyszle UTC `Appearance_Type` jest zero-based physical row
+order, nie wartoscia wydrukowanego row labelu. Oficjalny PDF jawnie opisuje
+label jako pomoc dla czlowieka i potwierdza, ze bledna numeracja nie zmienia
+indeksu uzywanego przez game/tools. Lokalny read-only `lc_2da.hak` ma `15219`
+fizycznych rows, duplikat displayed label `15152` i brak `15153`; payload jest
+czytany wedlug physical order. Taki mismatch jest warningiem/reportem. Append
+zatrzymuje sie dopiero, gdy nowy physical index przekracza `65535` albo row
+label nie jest poprawnym decimal `u32`.
 
 ## 5. GFF V3.2 oraz modul proof
 
