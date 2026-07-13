@@ -1,5 +1,9 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::fmt;
+use std::ops::Range;
+
+#[cfg(test)]
+use std::cell::Cell;
 
 use serde::Serialize;
 
@@ -19,6 +23,24 @@ pub const RESOURCE_ID_INVALID: &str = "M2A-ERF-RESOURCE-ID-INVALID";
 pub const RESREF_INVALID: &str = "M2A-ERF-RESREF-INVALID";
 pub const RESOURCE_MISSING: &str = "M2A-ERF-RESOURCE-MISSING";
 pub const LIMIT_EXCEEDED: &str = "M2A-ERF-LIMIT-EXCEEDED";
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+struct NormalizedResourceKey {
+    resref: [u8; 16],
+    resource_type: u16,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct IndexedPayloadRange {
+    range: Range<usize>,
+    resource_index: usize,
+    descriptor_offset: usize,
+}
+
+#[cfg(test)]
+thread_local! {
+    static FAIL_NEXT_PARSER_ALLOCATION: Cell<bool> = const { Cell::new(false) };
+}
 
 /// Project safety limits applied before parser-owned collections are allocated.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -113,6 +135,7 @@ pub struct ErfArchive<'a> {
     bytes: &'a [u8],
     file_type: ErfFileType,
     resources: Vec<ErfResource>,
+    lookup: HashMap<NormalizedResourceKey, usize>,
 }
 
 impl<'a> ErfArchive<'a> {
@@ -256,14 +279,24 @@ impl<'a> ErfArchive<'a> {
             ));
         }
 
-        let mut metadata_ranges = vec![0..HEADER_SIZE, key_range, resource_range];
-        if let Some(localized_range) = localized_range {
-            metadata_ranges.push(localized_range);
-        }
+        let metadata_ranges = [0..HEADER_SIZE, key_range, resource_range];
 
-        let mut seen_keys = HashSet::with_capacity(entry_count_usize);
-        let mut seen_payload_ranges = Vec::with_capacity(entry_count_usize);
-        let mut resources = Vec::with_capacity(entry_count_usize);
+        let mut lookup = HashMap::new();
+        try_reserve_lookup(&mut lookup, entry_count_usize)?;
+        let mut seen_payload_ranges = Vec::new();
+        try_reserve_vec(
+            &mut seen_payload_ranges,
+            entry_count_usize,
+            16,
+            "payload range table",
+        )?;
+        let mut resources = Vec::new();
+        try_reserve_vec(
+            &mut resources,
+            entry_count_usize,
+            16,
+            "resource metadata table",
+        )?;
 
         for index in 0..entry_count_usize {
             let key_relative_offset = index * KEY_ENTRY_SIZE;
@@ -282,8 +315,8 @@ impl<'a> ErfArchive<'a> {
                 ));
             }
 
-            let normalized_key = (resref.to_ascii_lowercase(), resource_type);
-            if !seen_keys.insert(normalized_key) {
+            let normalized_key = normalize_resource_key(&key[..16], resource_type);
+            if lookup.insert(normalized_key, index).is_some() {
                 return Err(ErfError::new(
                     DUPLICATE_KEY,
                     key_offset,
@@ -324,9 +357,12 @@ impl<'a> ErfArchive<'a> {
             )?;
             let payload_range = payload_offset..payload_offset + payload_size;
             if payload_size != 0
-                && metadata_ranges
+                && (metadata_ranges
                     .iter()
                     .any(|metadata| ranges_overlap(&payload_range, metadata))
+                    || localized_range
+                        .as_ref()
+                        .is_some_and(|localized| ranges_overlap(&payload_range, localized)))
             {
                 return Err(ErfError::new(
                     PAYLOAD_OOB,
@@ -334,19 +370,12 @@ impl<'a> ErfArchive<'a> {
                     "resource payload overlaps archive metadata",
                 ));
             }
-            if payload_size != 0
-                && seen_payload_ranges
-                    .iter()
-                    .any(|previous| ranges_overlap(&payload_range, previous))
-            {
-                return Err(ErfError::new(
-                    PAYLOAD_OOB,
-                    resource_offset,
-                    "resource payload overlaps another resource payload",
-                ));
-            }
             if payload_size != 0 {
-                seen_payload_ranges.push(payload_range);
+                seen_payload_ranges.push(IndexedPayloadRange {
+                    range: payload_range,
+                    resource_index: index,
+                    descriptor_offset: resource_offset,
+                });
             }
 
             resources.push(ErfResource {
@@ -358,10 +387,33 @@ impl<'a> ErfArchive<'a> {
             });
         }
 
+        seen_payload_ranges.sort_unstable_by(|left, right| {
+            left.range
+                .start
+                .cmp(&right.range.start)
+                .then_with(|| left.range.end.cmp(&right.range.end))
+        });
+        if let Some(pair) = seen_payload_ranges
+            .windows(2)
+            .find(|pair| ranges_overlap(&pair[0].range, &pair[1].range))
+        {
+            let offending = if pair[0].resource_index > pair[1].resource_index {
+                &pair[0]
+            } else {
+                &pair[1]
+            };
+            return Err(ErfError::new(
+                PAYLOAD_OOB,
+                offending.descriptor_offset,
+                "resource payload overlaps another resource payload",
+            ));
+        }
+
         Ok(Self {
             bytes,
             file_type,
             resources,
+            lookup,
         })
     }
 
@@ -379,13 +431,11 @@ impl<'a> ErfArchive<'a> {
     /// The returned slice borrows the original input buffer; payload bytes are not copied.
     pub fn find(&self, resref: &str, resource_type: u16) -> Result<&'a [u8], ErfError> {
         validate_query_resref(resref)?;
+        let normalized_key = normalize_resource_key(resref.as_bytes(), resource_type);
         let resource = self
-            .resources
-            .iter()
-            .find(|resource| {
-                resource.resource_type == resource_type
-                    && resource.resref.eq_ignore_ascii_case(resref)
-            })
+            .lookup
+            .get(&normalized_key)
+            .and_then(|index| self.resources.get(*index))
             .ok_or_else(|| {
                 ErfError::new(
                     RESOURCE_MISSING,
@@ -436,8 +486,83 @@ fn parse_resref(bytes: &[u8], offset: usize) -> Result<String, ErfError> {
         ));
     }
 
-    String::from_utf8(bytes[..end].to_vec())
-        .map_err(|_| ErfError::new(RESREF_INVALID, offset, "resource resref is not valid ASCII"))
+    let mut resref = String::new();
+    try_reserve_string(&mut resref, end, offset, "resource resref")?;
+    for byte in &bytes[..end] {
+        resref.push(char::from(*byte));
+    }
+    Ok(resref)
+}
+
+fn normalize_resource_key(bytes: &[u8], resource_type: u16) -> NormalizedResourceKey {
+    let mut resref = [0; 16];
+    for (output, input) in resref.iter_mut().zip(bytes.iter().copied()) {
+        *output = input.to_ascii_lowercase();
+    }
+    NormalizedResourceKey {
+        resref,
+        resource_type,
+    }
+}
+
+fn try_reserve_lookup(
+    lookup: &mut HashMap<NormalizedResourceKey, usize>,
+    additional: usize,
+) -> Result<(), ErfError> {
+    if additional == 0 {
+        return Ok(());
+    }
+    allocation_gate(16, "duplicate-key set")?;
+    lookup
+        .try_reserve(additional)
+        .map_err(|_| allocation_error(16, "duplicate-key set"))
+}
+
+fn try_reserve_vec<T>(
+    values: &mut Vec<T>,
+    additional: usize,
+    offset: usize,
+    context: &str,
+) -> Result<(), ErfError> {
+    if additional == 0 {
+        return Ok(());
+    }
+    allocation_gate(offset, context)?;
+    values
+        .try_reserve_exact(additional)
+        .map_err(|_| allocation_error(offset, context))
+}
+
+fn try_reserve_string(
+    value: &mut String,
+    additional: usize,
+    offset: usize,
+    context: &str,
+) -> Result<(), ErfError> {
+    if additional == 0 {
+        return Ok(());
+    }
+    allocation_gate(offset, context)?;
+    value
+        .try_reserve_exact(additional)
+        .map_err(|_| allocation_error(offset, context))
+}
+
+fn allocation_gate(_offset: usize, _context: &str) -> Result<(), ErfError> {
+    #[cfg(test)]
+    if FAIL_NEXT_PARSER_ALLOCATION.with(|flag| flag.replace(false)) {
+        return Err(allocation_error(_offset, _context));
+    }
+
+    Ok(())
+}
+
+fn allocation_error(offset: usize, context: &str) -> ErfError {
+    ErfError::new(
+        LIMIT_EXCEEDED,
+        offset,
+        format!("unable to allocate parser-owned {context}"),
+    )
 }
 
 fn is_stored_resref_byte(byte: u8) -> bool {
@@ -497,4 +622,92 @@ fn read_u32(bytes: &[u8], offset: usize, code: &str, context: &str) -> Result<u3
 
 fn ranges_overlap(left: &std::ops::Range<usize>, right: &std::ops::Range<usize>) -> bool {
     !left.is_empty() && !right.is_empty() && left.start < right.end && right.start < left.end
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn one_empty_resource_hak() -> Vec<u8> {
+        let mut bytes = vec![0; HEADER_SIZE + KEY_ENTRY_SIZE + RESOURCE_ENTRY_SIZE];
+        bytes[0..4].copy_from_slice(b"HAK ");
+        bytes[4..8].copy_from_slice(b"V1.0");
+        bytes[16..20].copy_from_slice(&1_u32.to_le_bytes());
+        bytes[24..28].copy_from_slice(&(HEADER_SIZE as u32).to_le_bytes());
+        bytes[28..32].copy_from_slice(&((HEADER_SIZE + KEY_ENTRY_SIZE) as u32).to_le_bytes());
+        bytes[HEADER_SIZE] = b'x';
+        bytes[HEADER_SIZE + 20..HEADER_SIZE + 22].copy_from_slice(&3_u16.to_le_bytes());
+        let resource_offset = HEADER_SIZE + KEY_ENTRY_SIZE;
+        let byte_length = bytes.len() as u32;
+        bytes[resource_offset..resource_offset + 4].copy_from_slice(&byte_length.to_le_bytes());
+        bytes
+    }
+
+    fn many_resource_hak(entry_count: usize, overlap_last: bool) -> Vec<u8> {
+        let key_table_offset = HEADER_SIZE;
+        let resource_table_offset = key_table_offset + entry_count * KEY_ENTRY_SIZE;
+        let payload_offset = resource_table_offset + entry_count * RESOURCE_ENTRY_SIZE;
+        let mut bytes = vec![0; payload_offset + entry_count];
+        bytes[0..4].copy_from_slice(b"HAK ");
+        bytes[4..8].copy_from_slice(b"V1.0");
+        bytes[16..20].copy_from_slice(&(entry_count as u32).to_le_bytes());
+        bytes[24..28].copy_from_slice(&(key_table_offset as u32).to_le_bytes());
+        bytes[28..32].copy_from_slice(&(resource_table_offset as u32).to_le_bytes());
+
+        for index in 0..entry_count {
+            let key_offset = key_table_offset + index * KEY_ENTRY_SIZE;
+            let resref = format!("r{index:015x}");
+            bytes[key_offset..key_offset + 16].copy_from_slice(resref.as_bytes());
+            bytes[key_offset + 16..key_offset + 20].copy_from_slice(&(index as u32).to_le_bytes());
+            bytes[key_offset + 20..key_offset + 22].copy_from_slice(&3_u16.to_le_bytes());
+
+            let descriptor_offset = resource_table_offset + index * RESOURCE_ENTRY_SIZE;
+            let stored_payload_index = if overlap_last && index + 1 == entry_count {
+                index - 1
+            } else {
+                index
+            };
+            bytes[descriptor_offset..descriptor_offset + 4]
+                .copy_from_slice(&((payload_offset + stored_payload_index) as u32).to_le_bytes());
+            bytes[descriptor_offset + 4..descriptor_offset + 8]
+                .copy_from_slice(&1_u32.to_le_bytes());
+            bytes[payload_offset + index] = (index & 0xff) as u8;
+        }
+        bytes
+    }
+
+    #[test]
+    fn deterministic_parser_allocation_failure_is_reported_without_panicking() {
+        let bytes = one_empty_resource_hak();
+        let result = std::panic::catch_unwind(|| {
+            FAIL_NEXT_PARSER_ALLOCATION.with(|flag| flag.set(true));
+            ErfArchive::parse(&bytes)
+        });
+
+        let error = result
+            .expect("allocation failure seam panicked")
+            .unwrap_err();
+        assert_eq!(error.code, LIMIT_EXCEEDED);
+        assert_eq!(error.offset, 16);
+        assert!(error.context.contains("duplicate-key set"));
+        assert!(ErfArchive::parse(&bytes).is_ok());
+    }
+
+    #[test]
+    fn indexed_lookup_and_sorted_ranges_scale_to_large_synthetic_archives() {
+        const ENTRY_COUNT: usize = 4_096;
+        let bytes = many_resource_hak(ENTRY_COUNT, false);
+        let archive = ErfArchive::parse(&bytes).unwrap();
+        assert_eq!(archive.resources().len(), ENTRY_COUNT);
+        assert_eq!(archive.lookup.len(), ENTRY_COUNT);
+        assert_eq!(archive.find("R000000000000fff", 3).unwrap(), &[0xff]);
+
+        let overlap = many_resource_hak(ENTRY_COUNT, true);
+        let error = ErfArchive::parse(&overlap).unwrap_err();
+        assert_eq!(error.code, PAYLOAD_OOB);
+        assert_eq!(
+            error.offset,
+            HEADER_SIZE + ENTRY_COUNT * KEY_ENTRY_SIZE + (ENTRY_COUNT - 1) * RESOURCE_ENTRY_SIZE
+        );
+    }
 }

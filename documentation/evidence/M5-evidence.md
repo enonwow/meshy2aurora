@@ -105,3 +105,39 @@ independent_final_rereview: "P1=0; P2=0; new regressions=0"
 Slice B jest strukturalnie zamkniety. M5 pozostaje `IN_PROGRESS`; nastepny jest
 deterministic HAK V1.0 Slice C. Faktyczny 35-column 2DA -> HAK writer handoff jest
 bramka integracyjna Slice C, poniewaz writer HAK nie istnial podczas Slice B.
+
+## 6. Slice C - deterministic HAK V1.0
+
+Zaimplementowano strict `write_hak_v1`: walidacje w stable precedence,
+deterministyczny sort `(resref bytes, resource type)`, checked/fallible planner,
+exact 160-byte header, key/resource tables, contiguous payloady, reporty i SHA.
+Private exact-layout verifier oraz `ErfArchive` semantic readback sa wywolywane
+przed zwrotem artifactu.
+
+Podczas reviews zamknieto:
+
+- wszystkie success-path allocations zalezne od inputu sa fallible;
+- per-resource count/offset/size `u32` sa planowane przed output allocation;
+- header/reserved/key/unused/descriptor/gap/overlap/trailing/truncation mutation
+  matrix rozroznia `READBACK_FAILED` od parseable `SEMANTIC_DIFF`;
+- `ErfArchive` uzywa fallible indeksu O(1) dla `find` i O(N log N) overlap
+  validation zamiast O(N^2) przy hard cap 262 144;
+- non-empty report JSON, public invalid no-panic matrix i allocation/planner seams;
+- public 35-column 2DA append -> appearance/2017 -> HAK -> `ErfArchive::find`
+  zwraca exact te same bytes, offset, size i SHA.
+
+```yaml
+hak_integration: "12/12 PASS"
+hak_private: "7/7 PASS"
+erf_private: "2/2 PASS"
+erf_integration: "18/18 PASS"
+workspace_tests: "242/242 PASS"
+workspace_clippy_all_targets_deny_warnings: PASS
+cargo_fmt_check: PASS
+scoped_diff_check: PASS
+independent_final_rereview: "P1=0; P2=0"
+```
+
+Slice C jest strukturalnie zamkniety. M5 nadal pozostaje `IN_PROGRESS`, poniewaz
+publiczne adaptery WASM i finalny resource/package manifest proof sa jeszcze
+otwarte. Runtime Toolset/game pozostaje zgodnie z kontraktem `OPEN_M6`.

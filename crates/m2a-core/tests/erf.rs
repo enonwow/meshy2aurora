@@ -217,7 +217,7 @@ fn rejects_duplicate_keys_case_insensitively() {
                 payload: b"one",
             },
             FixtureEntry {
-                resref: "model",
+                resref: "MODEL",
                 resource_type: 2002,
                 payload: b"two",
             },

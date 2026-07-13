@@ -21,7 +21,7 @@ status_vocabulary:
 orchestration:
   active_stage: "M5"
   next_ready_stage: "NONE"
-  next_action: "Implement M5 Slice C test-first: deterministic HAK V1.0 writer with exact private layout verifier, ErfArchive semantic readback and 35-column 2DA handoff."
+  next_action: "Implement M5 public WASM adapters and final resource/package manifest proof for the closed TGA, 2DA and HAK core writers."
   one_active_stage_only: true
   current_attempt_id: "M5-20260713-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
@@ -367,26 +367,31 @@ stages:
 
   M5:
     status: "IN_PROGRESS"
-    status_reason: "Slice A deterministic TGA and Slice B preserve-and-append 2DA are structurally complete with own readback, full gates and final independent P1=0/P2=0 reviews. Slice C HAK remains; TXI and typed GFF/UTC/GIT are deferred pending their own contracts."
+    status_reason: "Core Slice A TGA, Slice B 2DA and Slice C HAK are structurally complete with exact layout/own readback, full gates and final independent P1=0/P2=0 reviews. Public WASM adapters and final resource/package manifest proof remain; TXI and typed GFF/UTC/GIT are deferred pending their own contracts."
     owner: "Codex orchestrator + implementation/review subagents"
     risk: "HIGH"
     dependencies: ["M4A DONE", "GB-004 direction defined"]
     current_problems:
-      - "No own HAK writer exists yet."
+      - "Public WASM adapters and final resource/package manifest proof are not implemented yet."
       - "GB-004 runtime proof is open; append-only writer direction is defined."
     bugs: []
-    next_actions: ["Implement deterministic HAK Slice C with exact layout verifier, ErfArchive semantic readback and 35-column 2DA handoff."]
+    next_actions: ["Implement public WASM adapters for TGA, 2DA and HAK plus final deterministic resource/package manifest proof."]
     evidence:
       - "documentation/evidence/M5-evidence.md: TGA Slice A 7/7 targeted, private readback PASS, clippy/fmt/diff PASS, independent final rereview P1=0/P2=0"
       - "documentation/evidence/M5-evidence.md: 2DA Slice B 15 integration / 19 private / 221 workspace PASS, final independent rereview P1=0/P2=0"
+      - "documentation/evidence/M5-evidence.md: HAK Slice C 12 integration / 7 private, ERF 2 private / 18 integration, 242 workspace PASS, final independent rereview P1=0/P2=0"
     documentation: ["documentation/m5-native-package-kontrakt-suplement-codex.md", "documentation/evidence/M5-evidence.md"]
     expected_artifacts: ["Generated TGA", "Generated 2DA", "Generated HAK", "Resource manifest"]
     changed_files:
       - "crates/m2a-core/src/lib.rs"
       - "crates/m2a-core/src/tga.rs"
       - "crates/m2a-core/src/two_da.rs"
+      - "crates/m2a-core/src/hak.rs"
+      - "crates/m2a-core/src/erf.rs"
       - "crates/m2a-core/tests/tga_writer.rs"
       - "crates/m2a-core/tests/two_da.rs"
+      - "crates/m2a-core/tests/hak_writer.rs"
+      - "crates/m2a-core/tests/erf.rs"
       - "documentation/m5-native-package-kontrakt-suplement-codex.md"
       - "documentation/evidence/M5-evidence.md"
       - "documentation/orchestrator-state.yaml"
