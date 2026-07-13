@@ -73,3 +73,35 @@ frozen_rgba_output_sha256: "ab5365a3...360c79"
 
 Slice A jest strukturalnie zamkniety. Caly M5 pozostaje `IN_PROGRESS`; nastepny
 jest preserve-and-append 2DA Slice B, a potem deterministic HAK Slice C.
+
+## 5. Slice B - preserve-and-append 2DA V2.0
+
+Zaimplementowano strict `inspect_two_da_v2` i `append_two_da_row_v1` z fizycznym
+indeksem wiersza, zachowaniem wszystkich source bytes jako exact prefix,
+deterministycznym canonical suffixem, limitami i fallible allocation, stabilna
+taksonomia, SHA-256 reportem oraz stage-private own readbackiem.
+
+Najwazniejsze regresje zamkniete podczas niezaleznych reviews:
+
+- delimiter-dense line/token collections sa bounded i fallible;
+- `DEFAULT:` raportuje fizyczny column i empty value nie panikuje;
+- rows i odroczony `maxRows` maja precedence przed case-fold collision;
+- own readback sprawdza exact canonical suffix, nie tylko semantyczne tokens;
+- lokalny pattern 15 219 rows / duplicate 15152 / missing 15153 appenduje pod
+  physical index 15219 i mismatch pozostaje warningiem;
+- `N=65535` append PASS, `N=65536` stable overflow fatal;
+- owned full-width 35-column artifact jest gotowy do handoffu w Slice C.
+
+```yaml
+two_da_integration: "15/15 PASS"
+two_da_private: "19/19 PASS"
+workspace_tests: "221/221 PASS"
+workspace_clippy_all_targets_deny_warnings: PASS
+cargo_fmt_check: PASS
+scoped_diff_check: PASS
+independent_final_rereview: "P1=0; P2=0; new regressions=0"
+```
+
+Slice B jest strukturalnie zamkniety. M5 pozostaje `IN_PROGRESS`; nastepny jest
+deterministic HAK V1.0 Slice C. Faktyczny 35-column 2DA -> HAK writer handoff jest
+bramka integracyjna Slice C, poniewaz writer HAK nie istnial podczas Slice B.

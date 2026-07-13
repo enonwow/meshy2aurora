@@ -21,7 +21,7 @@ status_vocabulary:
 orchestration:
   active_stage: "M5"
   next_ready_stage: "NONE"
-  next_action: "Implement M5 Slice B test-first: strict 2DA V2.0 inspection plus preserve-source-bytes append-only row writer with physical-row indexing and own readback."
+  next_action: "Implement M5 Slice C test-first: deterministic HAK V1.0 writer with exact private layout verifier, ErfArchive semantic readback and 35-column 2DA handoff."
   one_active_stage_only: true
   current_attempt_id: "M5-20260713-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
@@ -367,22 +367,26 @@ stages:
 
   M5:
     status: "IN_PROGRESS"
-    status_reason: "Slice A deterministic TGA type 2 is structurally complete: exact bytes, own readback, stable errors, inclusive boundaries, frozen JSON and independent P1=0 review gates pass. Slice B 2DA and Slice C HAK remain; TXI and typed GFF/UTC/GIT are deferred pending their own contracts."
+    status_reason: "Slice A deterministic TGA and Slice B preserve-and-append 2DA are structurally complete with own readback, full gates and final independent P1=0/P2=0 reviews. Slice C HAK remains; TXI and typed GFF/UTC/GIT are deferred pending their own contracts."
     owner: "Codex orchestrator + implementation/review subagents"
     risk: "HIGH"
     dependencies: ["M4A DONE", "GB-004 direction defined"]
     current_problems:
-      - "No own 2DA append writer or HAK writer exists yet."
+      - "No own HAK writer exists yet."
       - "GB-004 runtime proof is open; append-only writer direction is defined."
     bugs: []
-    next_actions: ["Implement preserve-and-append 2DA Slice B, then deterministic HAK Slice C with own readback."]
-    evidence: ["documentation/evidence/M5-evidence.md: TGA Slice A 7/7 targeted, private readback PASS, clippy/fmt/diff PASS, independent final rereview P1=0/P2=0"]
+    next_actions: ["Implement deterministic HAK Slice C with exact layout verifier, ErfArchive semantic readback and 35-column 2DA handoff."]
+    evidence:
+      - "documentation/evidence/M5-evidence.md: TGA Slice A 7/7 targeted, private readback PASS, clippy/fmt/diff PASS, independent final rereview P1=0/P2=0"
+      - "documentation/evidence/M5-evidence.md: 2DA Slice B 15 integration / 19 private / 221 workspace PASS, final independent rereview P1=0/P2=0"
     documentation: ["documentation/m5-native-package-kontrakt-suplement-codex.md", "documentation/evidence/M5-evidence.md"]
     expected_artifacts: ["Generated TGA", "Generated 2DA", "Generated HAK", "Resource manifest"]
     changed_files:
       - "crates/m2a-core/src/lib.rs"
       - "crates/m2a-core/src/tga.rs"
+      - "crates/m2a-core/src/two_da.rs"
       - "crates/m2a-core/tests/tga_writer.rs"
+      - "crates/m2a-core/tests/two_da.rs"
       - "documentation/m5-native-package-kontrakt-suplement-codex.md"
       - "documentation/evidence/M5-evidence.md"
       - "documentation/orchestrator-state.yaml"

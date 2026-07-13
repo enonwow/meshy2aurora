@@ -291,6 +291,23 @@ pub fn append_two_da_row_v1(
 ) -> Result<TwoDaAppendArtifactV1, TwoDaError>;
 ```
 
+Project caps sa zamrozone i jednoczesnie sa wartosciami `Default`:
+
+```text
+maxInputBytes   = 16_777_216   (16 MiB)
+maxColumns      = 4_096
+maxRows         = 65_536
+maxTokenBytes   = 1_048_576    (1 MiB)
+maxDiagnostics  = 2_048
+```
+
+`16 MiB` ma zapas nad najwiekszym lokalnie zinwentaryzowanym read-only 2DA
+(`9_260_475` bytes). `65_536` jest celowe: reader musi przyjac tyle istniejacych
+rows, aby append zwrocil precyzyjny `M5-2DA-APPEND-U16-OVERFLOW`. Kazdy limit
+rowny zero albo wiekszy od odpowiedniego project cap jest odrzucany jako
+`M5-2DA-SCHEMA-INVALID`; wartosci nie sa clampowane. Caller moze podac wartosc
+`1..=cap`.
+
 Wszystkie input structs sa `camelCase`, `deny_unknown_fields`. Enum newline ma
 JSON `CR_LF | LF`; cell ma jawne `{"kind":"NULL"}` albo
 `{"kind":"TEXT","value":"..."}`. Dzieki temu `****`, `"****"` i pusty
@@ -367,15 +384,17 @@ column order, a wszystkie niepodane cells sa NULL.
 
 Kolejnosc jest identyczna native/wasm32:
 
-1. hard input byte limit i bezpieczna konwersja dlugosci;
-2. encoding/control/EOL scan;
-3. version, DEFAULT i columns;
-4. streaming validation wszystkich rows, arity, quotes, row labels i limits;
-5. request schema, column case-fold uniqueness i assignments;
-6. physical append index `u16` boundary;
-7. checked suffix/output length oraz fallible allocation;
-8. append-only emission;
-9. stage-private own-readback.
+1. limits sa niezerowe i `<=` hard project caps; dla append takze request
+   `schemaVersion == 1`;
+2. hard/configured input byte limit i bezpieczna konwersja dlugosci;
+3. encoding/control/EOL scan;
+4. version, DEFAULT i columns;
+5. streaming validation wszystkich rows, arity, quotes, row labels i limits;
+6. column case-fold uniqueness i assignments;
+7. physical append index `u16` boundary;
+8. checked suffix/output length oraz fallible allocation;
+9. append-only emission;
+10. stage-private own-readback.
 
 Own-readback reparsuje output i sprawdza exact source prefix, identyczne
 columns/default/existing rows, `N+1` physical rows, printed/physical index `N`,
@@ -432,7 +451,10 @@ Happy/compatibility:
 - unspecified columns sa NULL, output row ma full width;
 - `N=65535` success i `N=65536` fatal;
 - deterministic output/report, source/output SHA i own-readback;
-- synthetic owned 35-column appearance handoff do HAK writera.
+- synthetic owned 35-column appearance artifact gotowy do handoffu; Slice B
+  sprawdza full-width 2DA i own readback, a faktyczne przekazanie jego payloadu
+  do HAK writera jest bramka integracyjna Slice C (writer HAK jeszcze nie istnieje
+  podczas zamykania Slice B).
 
 Negative/mutation/no-panic:
 
@@ -459,9 +481,87 @@ identycznego report JSON; source `Uint8Array` pozostaje niemutowany.
 
 ## 5. Slice C - deterministic HAK V1.0
 
+### 5.1 Publiczne API i JSON
+
+```rust
+pub struct HakResourceInputV1 {
+    pub resref: String,
+    pub resource_type: u16,
+    pub payload: Vec<u8>,
+}
+
+pub struct HakWriterLimitsV1 {
+    pub max_entry_count: u64,
+    pub max_output_bytes: u64,
+}
+
+pub struct HakWriterOptionsV1 {
+    pub schema_version: u32,
+    pub limits: HakWriterLimitsV1,
+}
+
+pub struct HakResourceReportV1 {
+    pub resref: String,
+    pub resource_id: u32,
+    pub resource_type: u16,
+    pub payload_offset: u32,
+    pub payload_size: u32,
+    pub payload_sha256: String,
+}
+
+pub struct HakWriterReportV1 {
+    pub schema_version: u32,
+    pub entry_count: u32,
+    pub key_table_offset: u32,
+    pub resource_table_offset: u32,
+    pub payload_offset: u32,
+    pub byte_length: u64,
+    pub archive_sha256: String,
+    pub resources: Vec<HakResourceReportV1>,
+}
+
+pub struct HakArtifactV1 {
+    pub payload: Vec<u8>,
+    pub report: HakWriterReportV1,
+}
+
+pub struct HakWriteError {
+    pub schema_version: u32,
+    pub code: String,
+    pub severity: String,
+    pub path: String,
+    pub message: String,
+}
+
+pub fn write_hak_v1(
+    resources: &[HakResourceInputV1],
+    options: &HakWriterOptionsV1,
+) -> Result<HakArtifactV1, HakWriteError>;
+```
+
+`HakResourceInputV1`, limits i options sa strict `camelCase`,
+`deny_unknown_fields`, `Serialize + Deserialize`. Reporty i blad sa
+`camelCase`, `Serialize`; artifact jest binarnym carrierem i nie jest
+serializowany do JSON. `severity` bledu jest exact `FATAL`.
+
+Schema options wynosi `1`. Default i hard `maxEntryCount` wynosi `262144`;
+caller moze ustawic `0..=262144`, gdzie zero dopuszcza tylko pusty HAK. Default
+i hard `maxOutputBytes` wynosi `256 MiB`; caller moze ustawic
+`160..=256 MiB`. Inna schema lub limit daje `M5-HAK-OPTIONS-INVALID`.
+
 Publiczny resource ma lowercase resref `[a-z0-9_]{1,16}`, dowolny `u16`
-resource type i owned payload bytes. Writer sortuje po `(resref bytes, type)`,
-odrzuca duplicate key i nadaje `resource_id` po sortowaniu.
+resource type i owned payload bytes. Writer niczego nie normalizuje. Ten sam
+resref z roznymi typami jest legalny; duplicate oznacza dokladnie ten sam
+`(resref, resource_type)`. Pusty payload jest legalny. Pusta lista resources
+jest legalna i emituje exact 160-byte HAK.
+
+### 5.2 Deterministyczna kolejnosc i exact layout
+
+Po walidacji writer sortuje rosnaco po `(resref.as_bytes(), resource_type)`,
+gdzie type jest porownywany numerycznie jako `u16`. Input order nie trafia do
+raportu. `resource_id` jest nadawany 0-based dopiero po finalnym sortowaniu;
+key, resource descriptor, raport i payload maja te sama kolejnosc. Wszystkie
+permutacje tego samego zbioru resources daja byte-identyczny artifact i report.
 
 ```text
 keyOffset      = 0xA0
@@ -470,30 +570,130 @@ payloadOffset  = 0xA0 + 32*N
 fileSize       = payloadOffset + sum(payload sizes)
 ```
 
-Header ma `HAK `, `V1.0`, zero language/localized size, localized/key offset
-`0xA0`, build year/day `0`, description strref `0xffffffff` i reserved zero.
-Key ma NUL-padded resref, final id, type i unused zero. Resource ma `u32`
-offset/size. Payloady sa contiguous, bez kompresji, alignmentu i paddingu.
+Wszystkie liczby sa little-endian. Exact 160-byte header ma:
 
-Hard limits: `262144` entries i `256 MiB` output; caller moze je tylko obnizyc.
-Kazda arytmetyka i konwersja do `u32` jest checked przed alokacja.
+| Offset | Wartosc |
+|---:|---|
+| `0x00` | `HAK ` |
+| `0x04` | `V1.0` |
+| `0x08` | language count `u32 = 0` |
+| `0x0c` | localized string size `u32 = 0` |
+| `0x10` | entry count `u32 = N` |
+| `0x14` | localized string offset `u32 = 0xA0` |
+| `0x18` | key offset `u32 = 0xA0` |
+| `0x1c` | resource offset `u32` z planu |
+| `0x20` | build year `u32 = 0` |
+| `0x24` | build day `u32 = 0` |
+| `0x28` | description strref `u32 = 0xffffffff` |
+| `0x2c..0xa0` | 116 reserved zero bytes |
 
-Stable taxonomy:
+Key ma 24 bytes: NUL-padded `resref[16]` (pelne 16 bytes nie ma terminatora),
+final `resource_id u32`, `resource_type u16`, `unused u16 = 0`. Resource entry
+ma `payload_offset u32`, `payload_size u32`. Payloady sa contiguous w sorted
+order, bez kompresji, alignmentu, gaps, paddingu, footera i trailing bytes.
+Zero-length payload ma offset rowny biezacemu cursorowi i nie przesuwa cursora;
+kilka pustych payloadow moze miec ten sam offset. Dla pustego HAK localized,
+key, resource i EOF sa rowne `0xA0`.
 
-- `M5-HAK-OPTIONS-INVALID`;
-- `M5-HAK-RESREF-INVALID`;
-- `M5-HAK-DUPLICATE-KEY`;
-- `M5-HAK-ENTRY-LIMIT-EXCEEDED`;
-- `M5-HAK-OUTPUT-LIMIT-EXCEEDED`;
-- `M5-HAK-U32-OVERFLOW`;
-- `M5-HAK-ALLOCATION-FAILED`;
-- `M5-HAK-READBACK-FAILED`;
-- `M5-HAK-SEMANTIC-DIFF`.
+### 5.3 Kolejnosc walidacji i arytmetyka
 
-Po emisji writer zawsze uruchamia `ErfArchive::parse_with_limits` i porownuje
-file type, kolejnosc, IDs, types, resrefs, offsets, sizes, exact payload bytes,
-SHA-256 per payload, exact EOF i archive SHA. Retail/CEP pozostaja in-place i
-nie sa fixture writera.
+Native i wasm32 uzywaja tej samej kolejnosci:
+
+1. options schema oraz zakresy obu limits;
+2. input entry count wzgledem configured/hard `maxEntryCount`;
+3. resref kazdego inputu w original input order;
+4. duplicate `(resref,type)` w original input order;
+5. final sort i length-only layout plan w `u64`;
+6. checked key/resource/payload/file sizes i configured `maxOutputBytes`;
+7. checked konwersje finalnego count, offsetow i sizes do `u32`;
+8. checked konwersja output length do `usize` i fallible allocation;
+9. emisja, private exact-layout verification i `ErfArchive` semantic readback.
+
+Przekroczenie configured/hard output limit zawsze wygrywa z pozniejsza
+konwersja do `u32`. Przy obecnym hard `256 MiB` publiczny input nie osiaga
+`u32` overflow; `M5-HAK-U32-OVERFLOW` pozostaje defense-in-depth dla checked
+plannera i jest testowany przez private length-only planner seam bez alokowania
+gigabajtowych payloadow. Writer nie wykonuje infallible allocation zaleznej od
+inputu.
+
+### 5.4 Private exact verifier i own-reader gate
+
+`ErfArchive` pozostaje publicznym, szerszym read-only readerem i nie jest
+zaostrzany pod generated-only policy. Writer po emisji uruchamia dwa gate'y:
+
+1. stage-private exact-layout verifier sprawdza wszystkie header fields,
+   reserved zero, table offsets/sizes, NUL padding, key unused zero, sequential
+   IDs, sorted order, contiguous descriptors/payloady, zero-payload cursor,
+   brak gaps/footera/trailing bytes i exact EOF;
+2. `ErfArchive::parse_with_limits` sprawdza `Hak`, liczbe i kolejnosc metadata,
+   IDs/types/resrefs/offsets/sizes, po czym `find` porownuje exact payload bytes
+   i SHA-256 kazdego payloadu.
+
+Writer dodatkowo liczy SHA-256 calego artifactu i porownuje report byte length
+z exact EOF. Blad private layout albo `ErfArchive` parse mapuje sie na
+`M5-HAK-READBACK-FAILED`; poprawny parse z roznica metadata, bytes lub hash
+mapuje sie na `M5-HAK-SEMANTIC-DIFF`. Verifier jest private/`pub(crate)` i nie
+rozszerza publicznego API.
+
+### 5.5 Stable taxonomy, paths i JSON
+
+| Code | Stable path |
+|---|---|
+| `M5-HAK-OPTIONS-INVALID` | `options.schemaVersion`, `options.limits.maxEntryCount` albo `options.limits.maxOutputBytes` |
+| `M5-HAK-RESREF-INVALID` | `resources[i].resref` |
+| `M5-HAK-DUPLICATE-KEY` | `resources[i]` drugiego input entry |
+| `M5-HAK-ENTRY-LIMIT-EXCEEDED` | `resources` |
+| `M5-HAK-OUTPUT-LIMIT-EXCEEDED` | `options.limits.maxOutputBytes` |
+| `M5-HAK-U32-OVERFLOW` | `layout` |
+| `M5-HAK-ALLOCATION-FAILED` | `output` |
+| `M5-HAK-READBACK-FAILED` | `output` |
+| `M5-HAK-SEMANTIC-DIFF` | `output` |
+
+Error JSON ma exact field order `schemaVersion`, `code`, `severity`, `path`,
+`message`. Report JSON ma field order zgodny z deklaracja typow w 5.1, a
+resources sa w final sorted order. Zmiana code/path/order jest zmiana
+publicznego kontraktu.
+
+### 5.6 Obowiazkowa test matrix
+
+Happy i determinism:
+
+- empty HAK: exact 160 bytes, header/offsets/EOF i frozen SHA;
+- minimum one resource oraz trzy shuffled resources: `appearance/2017`,
+  model/2002 i texture/3;
+- wszystkie permutacje tego samego zbioru daja exact bytes/report;
+- bytewise resref sort, numeric type sort, sequential IDs oraz payload order;
+- ten sam resref z roznymi typami jest legalny; duplicate exact key jest fatal;
+- resref length 1 i 16, exact NUL padding i brak terminatora dla length 16;
+- jeden i kilka zero-length payloadow, w tym finalny empty payload na EOF;
+- configured entry/output limit dokladnie na granicy jest inclusive; `+1` jest
+  fatal, testowane niskimi configured limits bez wielkich alokacji;
+- repeated run, input immutability, exact per-payload/archive SHA i frozen
+  report JSON;
+- strict input/options JSON, exact enum/field names, unknown field rejection i
+  frozen representative error JSON.
+
+Negative, planner i mutation:
+
+- options schema, limits ponizej/dozwolone/powyzej hard oraz validation
+  precedence z jednoczesnie niepoprawnym inputem;
+- entry limit przed resref/duplicate/layout allocation;
+- empty, uppercase, hyphen, whitespace, punctuation, control, non-ASCII i
+  over-16 resref;
+- duplicate key przy roznych input positions; same resref/different type pass;
+- checked add/multiply oraz `u32` overflow przez private length-only planner;
+- deterministic test-only allocation failure seam daje `ALLOCATION-FAILED`;
+- mutacja kazdego identity/header field, reserved byte, count/offset, key resref
+  padding/ID/type/unused, resource offset/size, payload byte i SHA;
+- key/resource overlap, payload gap/overlap, metadata overlap, footer/trailing
+  byte oraz kazdy truncated prefix;
+- parse mutation daje `READBACK-FAILED`, poprawny parse z payload/hash roznica
+  daje `SEMANTIC-DIFF`; wszystkie public invalid cases sa no-panic.
+
+Testy writera uzywaja wylacznie synthetic/owned bytes. Retail/CEP pozostaja
+env-selected i read-only in-place; nie sa fixture source, expected payload ani
+golden archive writera. Evidence zapisuje tylko layout, counts, hashes i
+logiczne labels, bez payloadow i prywatnych host paths.
 
 ## 6. Jawne odroczenia
 
