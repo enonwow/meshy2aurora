@@ -9,10 +9,11 @@ Shared wave 2026-07-14:
 
 - `cargo fmt --all -- --check`: PASS.
 - `cargo clippy --workspace --all-targets -- -D warnings`: PASS.
-- `cargo test --workspace`: PASS, 302 testy.
+- `cargo test --workspace`: PASS, 311 testow.
 - `wasm-pack test --node crates/m2a-wasm`: PASS, 20 testow, w tym publiczny
   Studio model-package boundary z exact core parity.
 - `npm test`: PASS, 4 pliki / 8 testow Studio.
+- `npm run test:worker-integration`: PASS, 1 realny test browserowy Chrome.
 - `npm run build`: PASS; static Vite bundle zawiera osobny Worker i WASM.
 - Build sam generuje swiezy `wasm-pack --target web`, a CI wykonuje ten sam flow.
 - Niezalezne review po poprawkach: P1=0, P2=0.
@@ -38,6 +39,12 @@ Shared wave 2026-07-14:
 - Worker zwraca jawna provenance `M2A_WASM_WORKER`, dlugosc i SHA-256.
 - Blad WASM jest propagowany do stanu sesji bez mock outputu.
 - TypeScript i Rust przechodza wspolny kontrakt typow podczas test wave.
+- Realna bramka integracyjna tworzy lokalne obiekty `File` z repo-owned
+  synthetic fixture, wywoluje produkcyjny `StudioWorkerClient`, realny module
+  Worker i web-WASM, a nastepnie porownuje HAK byte-for-byte z canonical native
+  outputem oraz sprawdza report, manifest, readback i transferable buffers.
+- Test nie korzysta z fake Workera, backendu, zewnetrznej sieci, Aurory/NWN ani
+  konfiguracji uzytkownika; synthetic fixture nie jest Meshy acceptance evidence.
 
 ## S1-V3 source viewport
 
@@ -71,6 +78,7 @@ Shared wave 2026-07-14:
 
 ## Nadal odroczone
 
+- Realny browser Worker/WASM E2E na repo-owned synthetic fixture jest PASS.
 - Realny Meshy browser E2E nalezy do pozniejszej bramki wejsc.
 - Source/Aurora/readback viewport oraz download UX sa S1-V3--S1-V5.
 - Finalny real browser E2E zaczyna sie po dostarczeniu zatwierdzonego inputu.

@@ -10,11 +10,11 @@ Shared wave 2026-07-14:
 
 - `cargo fmt --all -- --check`: PASS.
 - `cargo clippy --workspace --all-targets -- -D warnings`: PASS.
-- `cargo test --workspace`: PASS, 302 testy.
-- M7: 6 testow integracyjnych oraz 2 prywatne testy source-binding/replay.
+- `cargo test --workspace`: PASS, 311 testow.
+- M7: 13 testow integracyjnych oraz 3 prywatne testy source-binding/readback/replay.
 - Manifest JSON ma przetestowane camelCase, strict unknown-field rejection,
   deferred intake/batch i deterministyczne packety.
-- Niezalezne rereview po poprawkach: P1=0, P2=0.
+- Niezalezne finalne rereview po poprawkach: P1=0, P2=0.
 - Ten PASS nie otwiera M7-V5 i nie jest real Meshy acceptance evidence.
 
 ## M7-V1 corpus contract
@@ -38,6 +38,9 @@ Shared wave 2026-07-14:
 - Trzy poprawne role otwieraja tylko `READY_FOR_M7_V5`; nadal nie pozwalaja
   oglosic M7 DONE.
 - Raport jest stabilnie uporzadkowany wedlug roli.
+- Bezposrednie regresje obejmuja undeclared i case-insensitive duplicate payload,
+  brak wymaganego klipu, rigged source w obu rolach statycznych oraz unsafe path
+  z drive, backslash, `.` i `..`.
 
 ## Pozniejsze granice
 
@@ -70,6 +73,9 @@ Shared wave 2026-07-14:
   identyczne HAK bytes, writer report i package manifest.
 - Conversion report musi byc canonical JSON zgodnym z typed reportem i ma
   wlasna byte identity.
+- Bezposrednie regresje odrzucaja unknown/duplicate canonical artifact, wspolna
+  mutacje resource metadata po HAK readback oraz wspolna mutacje writer report
+  i package manifest podczas exact replay.
 
 ## M7-V4 per-profile proof packets
 
