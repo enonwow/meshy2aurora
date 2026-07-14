@@ -4,8 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "predev": "npm run build:wasm",
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build:wasm": "wasm-pack build ../../crates/m2a-wasm --target web --out-dir pkg",
+    "build": "npm run build:wasm && tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run"
   },

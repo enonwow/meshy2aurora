@@ -4,7 +4,12 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { SceneViewport } from "./SceneViewport";
 import type { ModelPartRef, SourcePreviewInput } from "./types";
 
-export function SourceViewport({ input }: { input: SourcePreviewInput }) {
+interface Props {
+  input: SourcePreviewInput;
+  onError?: (message: string) => void;
+}
+
+export function SourceViewport({ input, onError }: Props) {
   const buildRoot = useCallback(async () => {
     const manager = new THREE.LoadingManager();
     manager.setURLModifier((url) => {
@@ -32,6 +37,7 @@ export function SourceViewport({ input }: { input: SourcePreviewInput }) {
       detail="Original local GLB — viewport only, never proof of Aurora output"
       dependency={`${input.file.name}:${input.sourceSha256}`}
       buildRoot={buildRoot}
+      onError={onError}
     />
   );
 }

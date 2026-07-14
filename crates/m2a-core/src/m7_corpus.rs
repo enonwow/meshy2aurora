@@ -15,7 +15,11 @@ use sha2::{Digest, Sha256};
 use crate::{
     erf::{ErfArchive, ErfFileType},
     glb::{GlbLimits, ingest_glb},
-    package::{ModelPackageArtifactV1, PackageManifestV1, PackageResourceRoleV1},
+    hak::{HakResourceInputV1, HakWriterOptionsV1},
+    model_pipeline::{
+        M6ByteIdentityV1, M6ModelPackageArtifactV1, M6PipelineErrorV1, build_m6_model_package_v1,
+    },
+    package::{PackageManifestV1, PackageResourceRoleV1, write_model_package_v1},
 };
 
 pub const M7_CORPUS_SCHEMA_VERSION: u32 = 1;
@@ -190,14 +194,61 @@ pub struct M7CorpusIntakeReportV1 {
     pub diagnostics: Vec<M7IntakeDiagnosticV1>,
 }
 
-/// Canonical package output accepted by the M7 batch runner. The runner never
-/// owns an alternative converter: callers must provide the existing core
-/// `ModelPackageArtifactV1` and bind it to the exact intake source identity.
-pub struct M7CanonicalPipelineArtifactV1<'a> {
-    pub sample_id: &'a str,
-    pub source_identity: &'a M7ByteIdentityV1,
-    pub package: &'a ModelPackageArtifactV1,
-    pub conversion_report_json: &'a [u8],
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum M7CanonicalRouteV1 {
+    RiggedHumanoidM6,
+    NonHumanoidReferenceSupermodelDeferredM7V5,
+    StaticPlaceableOrItemDeferredM7V5,
+}
+
+/// Canonical output accepted by the M7 batch runner.
+///
+/// Fields are deliberately private. The only public constructor runs the
+/// existing canonical M6 core pipeline, so callers cannot attach an unrelated
+/// package to a separately asserted source identity. The remaining two routes
+/// stay explicit deferred M7-V5 routes until their canonical pipelines exist.
+pub struct M7CanonicalPipelineArtifactV1 {
+    sample_id: String,
+    route: M7MaterializedRouteArtifactV1,
+}
+
+enum M7MaterializedRouteArtifactV1 {
+    RiggedHumanoidM6(M6ModelPackageArtifactV1),
+}
+
+impl M7CanonicalPipelineArtifactV1 {
+    pub fn build_rigged_humanoid_m6(
+        sample_id: impl Into<String>,
+        source_glb: &[u8],
+        appearance_two_da: &[u8],
+    ) -> Result<Self, M6PipelineErrorV1> {
+        Ok(Self {
+            sample_id: sample_id.into(),
+            route: M7MaterializedRouteArtifactV1::RiggedHumanoidM6(build_m6_model_package_v1(
+                source_glb,
+                appearance_two_da,
+            )?),
+        })
+    }
+
+    pub fn sample_id(&self) -> &str {
+        &self.sample_id
+    }
+
+    pub fn route(&self) -> M7CanonicalRouteV1 {
+        match &self.route {
+            M7MaterializedRouteArtifactV1::RiggedHumanoidM6(_) => {
+                M7CanonicalRouteV1::RiggedHumanoidM6
+            }
+        }
+    }
+
+    fn humanoid_pipeline(&self) -> &M6ModelPackageArtifactV1 {
+        match &self.route {
+            M7MaterializedRouteArtifactV1::RiggedHumanoidM6(artifact) => artifact,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -233,6 +284,7 @@ pub struct M7PerProfileProofPacketV1 {
     pub corpus_id: String,
     pub sample_id: String,
     pub role: M7CorpusRoleV1,
+    pub canonical_route: M7CanonicalRouteV1,
     pub status: M7ProofPacketStatusV1,
     pub source_identity: Option<M7ByteIdentityV1>,
     pub canonical_outputs: Vec<M7ProofOutputV1>,
@@ -706,7 +758,7 @@ pub fn inspect_m7_corpus_intake_v1(
 pub fn build_m7_corpus_batch_v1(
     manifest: &M7CorpusManifestV1,
     payloads: &[M7SourcePayloadV1<'_>],
-    canonical_artifacts: &[M7CanonicalPipelineArtifactV1<'_>],
+    canonical_artifacts: &[M7CanonicalPipelineArtifactV1],
 ) -> Result<M7CorpusBatchArtifactV1, M7BatchErrorV1> {
     let intake = inspect_m7_corpus_intake_v1(manifest, payloads).map_err(map_contract_error)?;
 
@@ -715,19 +767,19 @@ pub fn build_m7_corpus_batch_v1(
         if !manifest
             .samples
             .iter()
-            .any(|entry| entry.sample_id() == artifact.sample_id)
+            .any(|entry| entry.sample_id() == artifact.sample_id())
         {
             return Err(batch_error(
                 "M7-BATCH-ARTIFACT-SAMPLE-UNKNOWN",
                 format!("canonicalArtifacts[{index}].sampleId"),
                 format!(
                     "canonical artifact names undeclared sample {:?}",
-                    artifact.sample_id
+                    artifact.sample_id()
                 ),
             ));
         }
         if artifacts_by_sample
-            .insert(artifact.sample_id, artifact)
+            .insert(artifact.sample_id(), artifact)
             .is_some()
         {
             return Err(batch_error(
@@ -760,11 +812,21 @@ pub fn build_m7_corpus_batch_v1(
             })?;
         let canonical_artifact = artifacts_by_sample.get(entry.sample_id()).copied();
 
-        if canonical_artifact.is_some() && intake_sample.status != M7IntakeStatusV1::ReadyForM7V5 {
+        if let Some(artifact) = canonical_artifact
+            && artifact.route() != canonical_route_for_entry(entry)
+        {
+            return Err(batch_error(
+                "M7-BATCH-ARTIFACT-ROUTE-MISMATCH",
+                format!("canonicalArtifacts[{}].route", entry.sample_id()),
+                "canonical artifact route does not match the declared corpus role",
+            ));
+        }
+
+        if canonical_artifact.is_some() && intake.status != M7IntakeStatusV1::ReadyForM7V5 {
             return Err(batch_error(
                 "M7-BATCH-ARTIFACT-WITHOUT-READY-SOURCE",
                 format!("canonicalArtifacts[{}]", entry.sample_id()),
-                "canonical output cannot be attached before its source passes intake",
+                "canonical output cannot be attached before the complete corpus and art direction pass intake",
             ));
         }
 
@@ -799,14 +861,19 @@ pub fn build_m7_corpus_batch_v1(
                                 "ready intake sample has no observed source identity",
                             )
                         })?;
-                    if artifact.source_identity != source_identity {
+                    let pipeline = artifact.humanoid_pipeline();
+                    let artifact_source_identity = byte_identity(&pipeline.source_glb);
+                    if artifact_source_identity != *source_identity {
                         return Err(batch_error(
                             "M7-BATCH-ARTIFACT-SOURCE-MISMATCH",
-                            format!("canonicalArtifacts[{}].sourceIdentity", entry.sample_id()),
-                            "canonical artifact is not bound to the intake source bytes",
+                            format!(
+                                "canonicalArtifacts[{}].artifact.sourceGlb",
+                                entry.sample_id()
+                            ),
+                            "canonical pipeline artifact was built from different source bytes",
                         ));
                     }
-                    let verified = verify_canonical_package_v1(artifact)?;
+                    let verified = verify_canonical_package_v1(entry.sample_id(), pipeline)?;
                     canonical_outputs = verified.outputs;
                     package_manifest = Some(verified.manifest);
                     canonical_package_readback = "OWN_ERF_READBACK_PASS".to_owned();
@@ -814,12 +881,17 @@ pub fn build_m7_corpus_batch_v1(
                     M7ProofPacketStatusV1::CanonicalPackageMaterialized
                 } else {
                     deferred_packet_count += 1;
+                    let route = canonical_route_for_entry(entry);
+                    let (code, message) = deferred_route_diagnostic(route);
+                    if route != M7CanonicalRouteV1::RiggedHumanoidM6 {
+                        canonical_package_readback = "ROUTE_DEFERRED_M7_V5".to_owned();
+                    }
                     packet_diagnostics.push(diagnostic(
-                        "M7-CANONICAL-EXECUTION-DEFERRED-M7V5",
+                        code,
                         M7IntakeSeverityV1::Deferred,
                         format!("samples[{}].canonicalOutput", entry.sample_id()),
                         Some(entry.sample_id()),
-                        "canonical per-profile execution remains deferred to M7-V5",
+                        message,
                     ));
                     M7ProofPacketStatusV1::InputDeferred
                 }
@@ -832,6 +904,7 @@ pub fn build_m7_corpus_batch_v1(
             corpus_id: manifest.corpus_id.clone(),
             sample_id: entry.sample_id().to_owned(),
             role: entry.role(),
+            canonical_route: canonical_route_for_entry(entry),
             status,
             source_identity: intake_sample
                 .observed_identity
@@ -894,67 +967,128 @@ struct VerifiedCanonicalPackageV1 {
 }
 
 fn verify_canonical_package_v1(
-    artifact: &M7CanonicalPipelineArtifactV1<'_>,
+    sample_id: &str,
+    pipeline: &M6ModelPackageArtifactV1,
 ) -> Result<VerifiedCanonicalPackageV1, M7BatchErrorV1> {
-    serde_json::from_slice::<serde_json::Value>(artifact.conversion_report_json).map_err(
-        |error| {
-            batch_error(
-                "M7-CANONICAL-CONVERSION-REPORT-INVALID",
-                format!(
-                    "canonicalArtifacts[{}].conversionReportJson",
-                    artifact.sample_id
-                ),
-                format!("canonical conversion report is not valid JSON: {error}"),
-            )
-        },
+    serde_json::from_slice::<serde_json::Value>(&pipeline.report_json).map_err(|error| {
+        batch_error(
+            "M7-CANONICAL-CONVERSION-REPORT-INVALID",
+            format!("canonicalArtifacts[{sample_id}].artifact.reportJson"),
+            format!("canonical conversion report is not valid JSON: {error}"),
+        )
+    })?;
+
+    verify_pipeline_json_v1(
+        sample_id,
+        "reportJson",
+        &pipeline.report,
+        &pipeline.report_json,
+    )?;
+    verify_pipeline_json_v1(
+        sample_id,
+        "summaryJson",
+        &pipeline.summary,
+        &pipeline.summary_json,
+    )?;
+    verify_pipeline_json_v1(
+        sample_id,
+        "manifestJson",
+        &pipeline.manifest,
+        &pipeline.manifest_json,
     )?;
 
-    let package = artifact.package;
-    let hak_identity = byte_identity(&package.hak.payload);
-    if package.manifest.package_sha256 != hak_identity.sha256
-        || package.hak.report.archive_sha256 != hak_identity.sha256
-        || package.hak.report.byte_length != hak_identity.byte_length
+    let source_identity = byte_identity(&pipeline.source_glb);
+    if !m6_identity_matches(&pipeline.manifest.input_glb, &source_identity)
+        || !m6_identity_matches(&pipeline.summary.input_glb, &source_identity)
+        || pipeline.report.ingest.input.byte_length as u64 != source_identity.byte_length
+        || pipeline.report.ingest.input.sha256 != source_identity.sha256
+        || pipeline.report.conversion.source.byte_length != source_identity.byte_length
+        || pipeline.report.conversion.source.sha256 != source_identity.sha256
+        || !pipeline.report.ingest.conversion_eligible
+        || !pipeline.report.conversion.conversion_eligible
+        || pipeline.manifest.package_manifest != pipeline.package_manifest
+    {
+        return Err(batch_error(
+            "M7-CANONICAL-PIPELINE-METADATA-MISMATCH",
+            format!("canonicalArtifacts[{sample_id}].artifact"),
+            "canonical pipeline source, manifest, summary or package metadata disagree",
+        ));
+    }
+
+    let output_identities = [
+        (&pipeline.summary.outputs.model, pipeline.model.as_slice()),
+        (
+            &pipeline.summary.outputs.texture,
+            pipeline.texture.as_slice(),
+        ),
+        (
+            &pipeline.summary.outputs.appearance_two_da,
+            pipeline.appearance_two_da.as_slice(),
+        ),
+        (&pipeline.summary.outputs.hak, pipeline.hak.as_slice()),
+        (
+            &pipeline.summary.outputs.report,
+            pipeline.report_json.as_slice(),
+        ),
+    ];
+    if output_identities
+        .iter()
+        .any(|(identity, bytes)| !m6_identity_matches(identity, &byte_identity(bytes)))
+    {
+        return Err(batch_error(
+            "M7-CANONICAL-PIPELINE-OUTPUT-MISMATCH",
+            format!("canonicalArtifacts[{sample_id}].artifact"),
+            "canonical pipeline output bytes differ from its summary identities",
+        ));
+    }
+
+    let manifest = &pipeline.package_manifest;
+    let writer_report = &pipeline.report.hak;
+    let hak_identity = byte_identity(&pipeline.hak);
+    if manifest.package_sha256 != hak_identity.sha256
+        || writer_report.archive_sha256 != hak_identity.sha256
+        || writer_report.byte_length != hak_identity.byte_length
     {
         return Err(batch_error(
             "M7-CANONICAL-HAK-IDENTITY-MISMATCH",
-            format!("canonicalArtifacts[{}].package", artifact.sample_id),
+            format!("canonicalArtifacts[{sample_id}].artifact.hak"),
             "canonical HAK bytes, writer report and package manifest disagree",
         ));
     }
-    if package.manifest.resources.len() != package.hak.report.resources.len() {
+    if manifest.resources.len() != writer_report.resources.len() {
         return Err(batch_error(
             "M7-CANONICAL-PACKAGE-RESOURCE-COUNT-MISMATCH",
             format!(
-                "canonicalArtifacts[{}].package.manifest.resources",
-                artifact.sample_id
+                "canonicalArtifacts[{}].artifact.packageManifest.resources",
+                sample_id
             ),
             "package manifest and HAK writer report resource counts disagree",
         ));
     }
 
-    let archive = ErfArchive::parse(&package.hak.payload).map_err(|error| {
+    let archive = ErfArchive::parse(&pipeline.hak).map_err(|error| {
         batch_error(
             "M7-CANONICAL-HAK-READBACK-FAILED",
-            format!("canonicalArtifacts[{}].package.hak", artifact.sample_id),
+            format!("canonicalArtifacts[{sample_id}].artifact.hak"),
             error.to_string(),
         )
     })?;
     if archive.file_type() != ErfFileType::Hak {
         return Err(batch_error(
             "M7-CANONICAL-PACKAGE-NOT-HAK",
-            format!("canonicalArtifacts[{}].package.hak", artifact.sample_id),
+            format!("canonicalArtifacts[{sample_id}].artifact.hak"),
             "canonical package payload is not HAK V1.0",
         ));
     }
-    if archive.resources().len() != package.manifest.resources.len() {
+    if archive.resources().len() != manifest.resources.len() {
         return Err(batch_error(
             "M7-CANONICAL-HAK-READBACK-COUNT-MISMATCH",
-            format!("canonicalArtifacts[{}].package.hak", artifact.sample_id),
+            format!("canonicalArtifacts[{sample_id}].artifact.hak"),
             "own ERF readback resource count differs from package manifest",
         ));
     }
 
-    let mut outputs = Vec::with_capacity(package.manifest.resources.len() + 2);
+    let mut outputs = Vec::with_capacity(manifest.resources.len() + 2);
     outputs.push(M7ProofOutputV1 {
         role: "HAK".to_owned(),
         resref: None,
@@ -965,14 +1099,14 @@ fn verify_canonical_package_v1(
         role: "CONVERSION_REPORT".to_owned(),
         resref: None,
         resource_type: None,
-        identity: byte_identity(artifact.conversion_report_json),
+        identity: byte_identity(&pipeline.report_json),
     });
 
-    for (index, (manifest_resource, writer_resource)) in package
-        .manifest
+    let mut replay_resources = Vec::with_capacity(manifest.resources.len());
+    for (index, (manifest_resource, writer_resource)) in manifest
         .resources
         .iter()
-        .zip(&package.hak.report.resources)
+        .zip(&writer_report.resources)
         .enumerate()
     {
         if manifest_resource.resref != writer_resource.resref
@@ -985,8 +1119,8 @@ fn verify_canonical_package_v1(
             return Err(batch_error(
                 "M7-CANONICAL-PACKAGE-MANIFEST-MISMATCH",
                 format!(
-                    "canonicalArtifacts[{}].package.manifest.resources[{index}]",
-                    artifact.sample_id
+                    "canonicalArtifacts[{}].artifact.packageManifest.resources[{index}]",
+                    sample_id
                 ),
                 "package manifest resource differs from canonical HAK writer report",
             ));
@@ -997,12 +1131,27 @@ fn verify_canonical_package_v1(
                 batch_error(
                     "M7-CANONICAL-HAK-RESOURCE-READBACK-FAILED",
                     format!(
-                        "canonicalArtifacts[{}].package.manifest.resources[{index}]",
-                        artifact.sample_id
+                        "canonicalArtifacts[{}].artifact.packageManifest.resources[{index}]",
+                        sample_id
                     ),
                     error.to_string(),
                 )
             })?;
+        let pipeline_payload = match manifest_resource.role {
+            PackageResourceRoleV1::Model => pipeline.model.as_slice(),
+            PackageResourceRoleV1::Texture => pipeline.texture.as_slice(),
+            PackageResourceRoleV1::AppearanceTable => pipeline.appearance_two_da.as_slice(),
+        };
+        if payload != pipeline_payload {
+            return Err(batch_error(
+                "M7-CANONICAL-PIPELINE-RESOURCE-MISMATCH",
+                format!(
+                    "canonicalArtifacts[{}].artifact.packageManifest.resources[{index}]",
+                    sample_id
+                ),
+                "canonical pipeline output field differs from its HAK resource payload",
+            ));
+        }
         let observed = byte_identity(payload);
         if observed.byte_length != manifest_resource.byte_length
             || observed.sha256 != manifest_resource.sha256
@@ -1010,12 +1159,51 @@ fn verify_canonical_package_v1(
             return Err(batch_error(
                 "M7-CANONICAL-HAK-RESOURCE-IDENTITY-MISMATCH",
                 format!(
-                    "canonicalArtifacts[{}].package.manifest.resources[{index}]",
-                    artifact.sample_id
+                    "canonicalArtifacts[{}].artifact.packageManifest.resources[{index}]",
+                    sample_id
                 ),
                 "own-readback resource differs from package manifest identity",
             ));
         }
+        let archive_resource = archive
+            .resources()
+            .iter()
+            .find(|resource| {
+                resource
+                    .resref
+                    .eq_ignore_ascii_case(&manifest_resource.resref)
+                    && resource.resource_type == manifest_resource.resource_type
+            })
+            .ok_or_else(|| {
+                batch_error(
+                    "M7-CANONICAL-HAK-RESOURCE-READBACK-FAILED",
+                    format!(
+                        "canonicalArtifacts[{}].artifact.packageManifest.resources[{index}]",
+                        sample_id
+                    ),
+                    "resource metadata is absent from own ERF readback",
+                )
+            })?;
+        if archive_resource.resource_id != manifest_resource.hak_resource_id
+            || archive_resource.offset
+                != usize::try_from(manifest_resource.hak_payload_offset).unwrap_or(usize::MAX)
+            || archive_resource.size
+                != usize::try_from(manifest_resource.byte_length).unwrap_or(usize::MAX)
+        {
+            return Err(batch_error(
+                "M7-CANONICAL-HAK-RESOURCE-METADATA-MISMATCH",
+                format!(
+                    "canonicalArtifacts[{}].artifact.packageManifest.resources[{index}]",
+                    sample_id
+                ),
+                "own ERF readback resource id, offset or size differs from package manifest",
+            ));
+        }
+        replay_resources.push(HakResourceInputV1 {
+            resref: manifest_resource.resref.clone(),
+            resource_type: manifest_resource.resource_type,
+            payload: payload.to_vec(),
+        });
         outputs.push(M7ProofOutputV1 {
             role: package_resource_role_name(manifest_resource.role).to_owned(),
             resref: Some(manifest_resource.resref.clone()),
@@ -1024,10 +1212,86 @@ fn verify_canonical_package_v1(
         });
     }
 
+    let replayed = write_model_package_v1(&replay_resources, &HakWriterOptionsV1::default())
+        .map_err(|error| {
+            batch_error(
+                "M7-CANONICAL-PACKAGE-REPLAY-FAILED",
+                format!("canonicalArtifacts[{sample_id}].artifact"),
+                error.to_string(),
+            )
+        })?;
+    if replayed.hak.payload != pipeline.hak
+        || replayed.hak.report != *writer_report
+        || replayed.manifest != *manifest
+    {
+        return Err(batch_error(
+            "M7-CANONICAL-PACKAGE-REPLAY-MISMATCH",
+            format!("canonicalArtifacts[{sample_id}].artifact"),
+            "canonical writer replay differs from supplied HAK bytes, report or manifest",
+        ));
+    }
+
     Ok(VerifiedCanonicalPackageV1 {
-        manifest: package.manifest.clone(),
+        manifest: manifest.clone(),
         outputs,
     })
+}
+
+fn verify_pipeline_json_v1<T: Serialize>(
+    sample_id: &str,
+    field: &str,
+    value: &T,
+    bytes: &[u8],
+) -> Result<(), M7BatchErrorV1> {
+    let mut canonical = serde_json::to_vec_pretty(value).map_err(|error| {
+        batch_error(
+            "M7-CANONICAL-PIPELINE-JSON-INVALID",
+            format!("canonicalArtifacts[{sample_id}].artifact.{field}"),
+            error.to_string(),
+        )
+    })?;
+    canonical.push(b'\n');
+    if canonical != bytes {
+        return Err(batch_error(
+            "M7-CANONICAL-PIPELINE-JSON-MISMATCH",
+            format!("canonicalArtifacts[{sample_id}].artifact.{field}"),
+            "serialized typed pipeline report differs from its canonical JSON bytes",
+        ));
+    }
+    Ok(())
+}
+
+fn m6_identity_matches(expected: &M6ByteIdentityV1, actual: &M7ByteIdentityV1) -> bool {
+    expected.byte_length == actual.byte_length && expected.sha256 == actual.sha256
+}
+
+fn canonical_route_for_entry(entry: &M7CorpusEntryV1) -> M7CanonicalRouteV1 {
+    match entry {
+        M7CorpusEntryV1::RiggedHumanoidSourceClips { .. } => M7CanonicalRouteV1::RiggedHumanoidM6,
+        M7CorpusEntryV1::NonHumanoidReferenceSupermodel { .. } => {
+            M7CanonicalRouteV1::NonHumanoidReferenceSupermodelDeferredM7V5
+        }
+        M7CorpusEntryV1::StaticPlaceableOrItem { .. } => {
+            M7CanonicalRouteV1::StaticPlaceableOrItemDeferredM7V5
+        }
+    }
+}
+
+fn deferred_route_diagnostic(route: M7CanonicalRouteV1) -> (&'static str, &'static str) {
+    match route {
+        M7CanonicalRouteV1::RiggedHumanoidM6 => (
+            "M7-CANONICAL-EXECUTION-DEFERRED-M7V5",
+            "canonical humanoid execution remains deferred to M7-V5",
+        ),
+        M7CanonicalRouteV1::NonHumanoidReferenceSupermodelDeferredM7V5 => (
+            "M7-NON-HUMANOID-CANONICAL-ROUTE-DEFERRED-M7V5",
+            "the reference-supermodel canonical pipeline is not implemented in first pass and remains an explicit M7-V5 route",
+        ),
+        M7CanonicalRouteV1::StaticPlaceableOrItemDeferredM7V5 => (
+            "M7-STATIC-CANONICAL-ROUTE-DEFERRED-M7V5",
+            "the static placeable/item canonical pipeline is not implemented in first pass and remains an explicit M7-V5 route",
+        ),
+    }
 }
 
 fn package_resource_role_name(role: PackageResourceRoleV1) -> &'static str {
@@ -1243,4 +1507,68 @@ fn is_lower_hex_sha256(value: &str) -> bool {
 
 fn hex_sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const APPEARANCE_TWO_DA: &[u8] = b"2DA V2.0\r\n\r\nLABEL MOVERATE MODELTYPE RACE PORTRAIT ENVMAP DefaultPhenoType BLOODCOLR WEAPONSCALE SIZECATEGORY\r\n0 Existing NORM P existing **** **** 0 R 1.0 4\r\n";
+
+    fn canonical_json<T: Serialize>(value: &T) -> Vec<u8> {
+        let mut bytes = serde_json::to_vec_pretty(value).unwrap();
+        bytes.push(b'\n');
+        bytes
+    }
+
+    #[test]
+    fn mutating_private_source_bytes_breaks_canonical_conversion_evidence() {
+        let source = crate::owned_fixture::synthetic_owned_m6_glb_v1().unwrap();
+        let mut canonical = M7CanonicalPipelineArtifactV1::build_rigged_humanoid_m6(
+            "humanoid",
+            &source,
+            APPEARANCE_TWO_DA,
+        )
+        .unwrap();
+
+        let sample_id = canonical.sample_id().to_owned();
+        let M7MaterializedRouteArtifactV1::RiggedHumanoidM6(pipeline) = &mut canonical.route;
+        pipeline.source_glb = b"mutated-after-canonical-conversion".to_vec();
+
+        let error = match verify_canonical_package_v1(&sample_id, pipeline) {
+            Ok(_) => panic!("mutated source bytes must invalidate canonical evidence"),
+            Err(error) => error,
+        };
+        assert_eq!(error.code, "M7-CANONICAL-PIPELINE-METADATA-MISMATCH");
+        assert_ne!(
+            byte_identity(&pipeline.source_glb).sha256,
+            pipeline.report.conversion.source.sha256
+        );
+    }
+
+    #[test]
+    fn replay_rejects_mutated_writer_evidence_even_when_json_is_rebound() {
+        let source = crate::owned_fixture::synthetic_owned_m6_glb_v1().unwrap();
+        let mut canonical = M7CanonicalPipelineArtifactV1::build_rigged_humanoid_m6(
+            "humanoid",
+            &source,
+            APPEARANCE_TWO_DA,
+        )
+        .unwrap();
+
+        let sample_id = canonical.sample_id().to_owned();
+        let M7MaterializedRouteArtifactV1::RiggedHumanoidM6(pipeline) = &mut canonical.route;
+        pipeline.report.hak.schema_version += 1;
+        pipeline.report_json = canonical_json(&pipeline.report);
+        let report_identity = byte_identity(&pipeline.report_json);
+        pipeline.summary.outputs.report.byte_length = report_identity.byte_length;
+        pipeline.summary.outputs.report.sha256 = report_identity.sha256;
+        pipeline.summary_json = canonical_json(&pipeline.summary);
+
+        let error = match verify_canonical_package_v1(&sample_id, pipeline) {
+            Ok(_) => panic!("writer replay must reject rebound but mutated evidence"),
+            Err(error) => error,
+        };
+        assert_eq!(error.code, "M7-CANONICAL-PACKAGE-REPLAY-MISMATCH");
+    }
 }

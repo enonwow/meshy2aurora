@@ -1,18 +1,20 @@
-# M7-V1/V2 deferred test ledger
+# M7-V1--V4 test ledger
 
-Status: `SHARED_TEST_WAVE_PASS`
+Status: `CODE_WAVE_PASS_REVIEW_CLEAN_M7_V5_DEFERRED`
 
 Ten ledger opisuje testy odroczone zgodnie z aktywnym suplementem
-implementation-first. Nie jest evidence PASS i nie pozwala oznaczyc M7 jako
-DONE.
+implementation-first. Status PASS dotyczy wspolnej fali testow kodu; nie jest
+real Meshy acceptance evidence i nie pozwala oznaczyc M7 jako DONE.
 
 Shared wave 2026-07-14:
 
 - `cargo fmt --all -- --check`: PASS.
 - `cargo clippy --workspace --all-targets -- -D warnings`: PASS.
-- `cargo test --workspace`: PASS, 298 testow, w tym 3 nowe testy M7.
+- `cargo test --workspace`: PASS, 302 testy.
+- M7: 6 testow integracyjnych oraz 2 prywatne testy source-binding/replay.
 - Manifest JSON ma przetestowane camelCase, strict unknown-field rejection,
   deferred intake/batch i deterministyczne packety.
+- Niezalezne rereview po poprawkach: P1=0, P2=0.
 - Ten PASS nie otwiera M7-V5 i nie jest real Meshy acceptance evidence.
 
 ## M7-V1 corpus contract
@@ -52,22 +54,32 @@ Shared wave 2026-07-14:
 - Artifact dla nieznanego sample, duplikat artifactu i artifact dolaczony do
   niegotowego source maja stabilne bledy.
 - Source identity artifactu musi byc identyczne z observed intake identity.
-- Runner przyjmuje `ModelPackageArtifactV1`; nie ma callbacka ani drugiego
-  konwertera.
+- Materializowany route humanoid powstaje tylko przez prywatny wrapper, ktorego
+  constructor sam uruchamia canonical `build_m6_model_package_v1`; nie ma
+  callbacka, alternatywnego konwertera ani publicznych pol do podmiany artifactu.
+- Source bytes sa zwiazane z typed ingest/conversion evidence, summary,
+  manifestem i ich canonical JSON; mutacja `source_glb` uniewaznia artifact.
+- Humanoidowego M6 artifactu nie mozna przypisac do non-humanoid ani static.
+- Non-humanoid reference-supermodel i static placeable/item maja jawne route
+  `DEFERRED_M7_V5` oraz stabilne diagnostyki; ich canonical pipeline nie jest
+  falszowany w first pass.
 - Canonical HAK bytes, writer report i `PackageManifestV1` musza miec ten sam
   hash, dlugosc, zasoby, offsety i resource ids.
 - Own `ErfArchive` readback potwierdza dokladnie wszystkie manifest resources.
-- Conversion report musi byc poprawnym JSON i ma wlasna byte identity.
+- Canonical writer replay z payloadow odczytanych z realnego HAK musi odtworzyc
+  identyczne HAK bytes, writer report i package manifest.
+- Conversion report musi byc canonical JSON zgodnym z typed reportem i ma
+  wlasna byte identity.
 
 ## M7-V4 per-profile proof packets
 
 - Zawsze powstaja dokladnie trzy packety w stabilnej kolejnosci rol.
-- Kazdy packet ma source identity, output inventory, package manifest,
-  diagnostyki i status bramek.
+- Kazdy packet ma jawny canonical route, source identity, output inventory,
+  package manifest, diagnostyki i status bramek.
 - Packet bez modelu ma `INPUT_DEFERRED`, puste canonical outputs i
   `m7DoneClaimAllowed=false`.
-- Gotowy canonical package ma `CANONICAL_PACKAGE_MATERIALIZED` dopiero po own
-  HAK readback.
+- Gotowy humanoid canonical package ma `CANONICAL_PACKAGE_MATERIALIZED`
+  dopiero po own HAK readback i exact writer replay.
 - Hash packet JSON jest zapisany w batch report i jest deterministyczny.
 - Batch z trzema canonical packets nadal ma `m7DoneClaimAllowed=false`;
   M7-V5, real E2E i external acceptance pozostaja odroczone.

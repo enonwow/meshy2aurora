@@ -19,14 +19,14 @@ status_vocabulary:
   - "SUPERSEDED"
 
 orchestration:
-  active_stage: "M7_S1_IMPLEMENTATION_WAVE"
-  next_ready_stage: "SHARED_TEST_WAVE"
+  active_stage: "M7_V5_S1_REAL_E2E_INPUT_GATE"
+  next_ready_stage: "REAL_MESHY_EXECUTION_AFTER_OWNER_INPUT"
   next_ready_slices: []
   goal_stages: ["M6", "M7", "S1"]
   goal_sequence: "Implementation-first wave: build the first pass of most M7/S1 vertical slices, then run the shared test/review phase; real Meshy execution and external acceptance remain later gates."
   goal_exclusions: ["S2", "F1-F10", "gameplay classes", "full generated module pipeline"]
   goal_terminal_condition: "M6, M7 and S1 are DONE with their required code, artifacts, independent reviews and live/e2e evidence."
-  next_action: "Complete independent M7 and S1 reviews, fix every P1/P2 finding, then rerun affected gates and record the checkpoint."
+  next_action: "Preserve the clean M7-V1--V4 and S1-V1--V5 checkpoint; after owner-approved original Meshy inputs, implement/execute M7-V5 routes and real browser E2E without touching Aurora configuration."
   one_active_stage_only: false
   current_attempt_id: "M7-S1-FIRST-PASS-20260714-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
@@ -38,8 +38,8 @@ orchestration:
     first_pass_complete: 9
     first_pass_completed_slices: ["M7-V1", "M7-V2", "M7-V3", "M7-V4", "S1-V1", "S1-V2", "S1-V3", "S1-V4", "S1-V5"]
     test_phase_threshold: 6
-    full_test_phase: "PASS_298_NATIVE_20_WASM_3_STUDIO_STATIC_BUILD"
-    review_phase: "IN_PROGRESS_TWO_INDEPENDENT_REVIEWERS"
+    full_test_phase: "PASS_302_NATIVE_20_WASM_8_STUDIO_FRESH_WASM_STATIC_BUILD"
+    review_phase: "PASS_P1_0_P2_0_AFTER_FIXES"
     implementation_blockers: []
     ready_first_pass_slices: []
     real_meshy_execution: "DEFERRED_INPUT_GATE"
@@ -453,7 +453,7 @@ stages:
 
   M7:
     status: "IN_PROGRESS"
-    status_reason: "M7-V1 through M7-V4 first-pass implementation is complete and minimally compile-checked. Original Meshy files remain a deferred input gate for M7-V5 and final acceptance, so M7 is not DONE."
+    status_reason: "M7-V1 through M7-V4 implementation, 302-test shared wave and independent P1=0/P2=0 rereview pass. Humanoid materialization is source-bound; non-humanoid/static routes are explicit M7-V5 deferred outcomes. Original Meshy files remain the input gate, so M7 is not DONE."
     owner: "Mateusz + implementation agent"
     risk: "HIGH"
     dependencies: ["M5 structural native package path", "documentation/suplement-implementation-first-m7-s1-codex.md"]
@@ -462,8 +462,8 @@ stages:
       - "Three owner-approved original Meshy GLB files for M7-V5."
       - "Approved art direction before real corpus execution."
     bugs: []
-    next_actions: ["After the shared code test/review wave and owner-provided original inputs, execute M7-V5 and final acceptance."]
-    evidence: ["documentation/evidence/M7-deferred-test-ledger.md: M7-V1 through M7-V4 test cases recorded for the shared test wave; this is not PASS or M7 DONE evidence"]
+    next_actions: ["After owner-provided original inputs, implement/execute the canonical non-humanoid reference-supermodel and static routes in M7-V5, then complete real proof packets and final acceptance."]
+    evidence: ["documentation/evidence/M7-deferred-test-ledger.md: M7-V1 through M7-V4 code wave PASS, 6 integration + 2 private M7 tests, independent P1=0/P2=0; real M7-V5 remains deferred"]
     documentation: ["documentation/suplement-implementation-first-m7-s1-codex.md", "documentation/evidence/M7-evidence.md"]
     expected_artifacts: ["Three full source-to-game proof packets"]
     changed_files:
@@ -474,7 +474,7 @@ stages:
 
   S1:
     status: "IN_PROGRESS"
-    status_reason: "S1-V1 through S1-V5 first pass is implemented and minimally type/compile-checked. Full browser/Rust tests and independent review are now required before S1 can be DONE."
+    status_reason: "S1-V1 through S1-V5 code wave passes typecheck, 8 Studio tests, fresh web-WASM static build, shared Rust/WASM gates and independent P1=0/P2=0 review. Real browser E2E on owner-approved Meshy input remains deferred, so S1 is not DONE."
     owner: "product/UI implementation agent"
     risk: "MEDIUM"
     dependencies: ["Existing canonical m2a-wasm public API", "documentation/suplement-implementation-first-m7-s1-codex.md"]
@@ -482,8 +482,8 @@ stages:
     deferred_inputs:
       - "Three owner-approved original Meshy GLB files for final browser E2E after first pass."
     bugs: []
-    next_actions: ["Run shared browser/Rust tests, fix findings, and complete independent review."]
-    evidence: ["documentation/evidence/S1-deferred-test-ledger.md: S1-V1/V2 shared-wave tests recorded; this is not PASS or S1 DONE evidence"]
+    next_actions: ["After owner-approved original Meshy input, run real local-file browser E2E and record visible/downloaded artifact proof."]
+    evidence: ["documentation/evidence/S1-deferred-test-ledger.md: S1-V1--V5 code wave PASS, 8 Studio tests, fresh web-WASM build and independent P1=0/P2=0; real Meshy browser E2E remains deferred"]
     documentation: ["documentation/suplement-implementation-first-m7-s1-codex.md", "documentation/evidence/S1-evidence.md"]
     expected_artifacts: ["Canonical preview and validation UI proof"]
     changed_files:
@@ -493,6 +493,7 @@ stages:
       - "apps/studio-web/tsconfig.json"
       - "apps/studio-web/vite.config.ts"
       - "apps/studio-web/src/App.tsx"
+      - "apps/studio-web/src/App.test.tsx"
       - "apps/studio-web/src/main.tsx"
       - "apps/studio-web/src/styles.css"
       - "apps/studio-web/src/vite-env.d.ts"
@@ -500,11 +501,13 @@ stages:
       - "apps/studio-web/src/worker/m2a.worker.ts"
       - "apps/studio-web/src/worker/types.ts"
       - "apps/studio-web/src/features/preview/SceneViewport.tsx"
+      - "apps/studio-web/src/features/preview/SceneViewport.test.ts"
       - "apps/studio-web/src/features/preview/SourceViewport.tsx"
       - "apps/studio-web/src/features/preview/AuroraReadbackViewport.tsx"
       - "apps/studio-web/src/features/preview/ValidationPanel.tsx"
       - "apps/studio-web/src/features/preview/types.ts"
       - "apps/studio-web/src/features/downloads/ArtifactDownloads.tsx"
+      - "apps/studio-web/src/features/downloads/ArtifactDownloads.test.ts"
       - "crates/m2a-wasm/src/lib.rs"
       - "documentation/evidence/S1-deferred-test-ledger.md"
       - "documentation/orchestrator-state.yaml"

@@ -9,14 +9,23 @@ interface SceneViewportProps {
   buildRoot: () => Promise<THREE.Object3D>;
   dependency: unknown;
   onSelectPart?: (part?: ModelPartRef) => void;
+  onError?: (message: string) => void;
 }
 
-function disposeObject(root: THREE.Object3D) {
+function disposeMaterial(material: THREE.Material) {
+  Object.values(material).forEach((value) => {
+    if (value instanceof THREE.Texture) value.dispose();
+  });
+  material.dispose();
+}
+
+export function disposeObjectResources(root: THREE.Object3D) {
   root.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return;
     object.geometry.dispose();
     const materials = Array.isArray(object.material) ? object.material : [object.material];
-    materials.forEach((material) => material.dispose());
+    materials.forEach(disposeMaterial);
+    if (object instanceof THREE.SkinnedMesh) object.skeleton.dispose();
   });
 }
 
@@ -43,7 +52,7 @@ function fitCamera(camera: THREE.PerspectiveCamera, controls: OrbitControls, roo
   controls.update();
 }
 
-export function SceneViewport({ provenance, detail, buildRoot, dependency, onSelectPart }: SceneViewportProps) {
+export function SceneViewport({ provenance, detail, buildRoot, dependency, onSelectPart, onError }: SceneViewportProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -89,12 +98,16 @@ export function SceneViewport({ provenance, detail, buildRoot, dependency, onSel
     };
     canvas.addEventListener("pointerdown", select);
 
-    void buildRoot().then((value) => {
-      if (stopped) return disposeObject(value);
-      root = value;
-      scene.add(value);
-      fitCamera(camera, controls, value);
-    });
+    void buildRoot()
+      .then((value) => {
+        if (stopped) return disposeObjectResources(value);
+        root = value;
+        scene.add(value);
+        fitCamera(camera, controls, value);
+      })
+      .catch((error: unknown) => {
+        if (!stopped) onError?.(error instanceof Error ? error.message : String(error));
+      });
 
     const render = () => {
       controls.update();
@@ -109,10 +122,10 @@ export function SceneViewport({ provenance, detail, buildRoot, dependency, onSel
       canvas.removeEventListener("pointerdown", select);
       observer.disconnect();
       controls.dispose();
-      if (root) disposeObject(root);
+      if (root) disposeObjectResources(root);
       renderer.dispose();
     };
-  }, [buildRoot, dependency, onSelectPart]);
+  }, [buildRoot, dependency, onSelectPart, onError]);
 
   return (
     <section className="viewport" aria-label={`${provenance} model viewport`}>

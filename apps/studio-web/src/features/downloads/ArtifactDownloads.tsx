@@ -27,8 +27,18 @@ function validate(artifact: WorkerArtifact) {
   }
 }
 
-export function downloadWorkerArtifact(artifact: WorkerArtifact) {
+async function sha256(bytes: ArrayBuffer) {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+export async function downloadWorkerArtifact(artifact: WorkerArtifact) {
   validate(artifact);
+  if (await sha256(artifact.bytes) !== artifact.sha256) {
+    throw new Error(`SHA-256 mismatch for ${artifact.fileName}`);
+  }
   const url = URL.createObjectURL(new Blob([artifact.bytes], { type: artifact.mediaType }));
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -45,11 +55,9 @@ interface Props {
 
 export function ArtifactDownloads({ artifacts, onError }: Props) {
   const download = (artifact: WorkerArtifact) => {
-    try {
-      downloadWorkerArtifact(artifact);
-    } catch (error) {
+    void downloadWorkerArtifact(artifact).catch((error: unknown) => {
       onError(error instanceof Error ? error.message : String(error));
-    }
+    });
   };
   return (
     <section className="panel" aria-label="Canonical Worker artifact downloads">

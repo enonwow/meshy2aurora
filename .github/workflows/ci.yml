@@ -37,5 +37,19 @@ jobs:
         run: wasm-pack build crates/m2a-wasm --target nodejs --out-dir pkg
       - name: Test generated Node package boundary
         run: node crates/m2a-wasm/tests/node_boundary.cjs crates/m2a-wasm/pkg/m2a_wasm.js
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/studio-web/package-lock.json
+      - name: Install Studio dependencies
+        working-directory: apps/studio-web
+        run: npm ci
+      - name: Build static Studio with fresh web WASM
+        working-directory: apps/studio-web
+        run: npm run build
+      - name: Test Studio
+        working-directory: apps/studio-web
+        run: npm test
       - name: Hygiene
         run: git diff --check

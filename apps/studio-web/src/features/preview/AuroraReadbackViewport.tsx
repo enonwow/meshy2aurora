@@ -68,9 +68,10 @@ interface Props {
   report: BinaryMdlInspectionReport;
   selectedPart?: ModelPartRef;
   onSelectPart: (part?: ModelPartRef) => void;
+  onError?: (message: string) => void;
 }
 
-export function AuroraReadbackViewport({ report, selectedPart, onSelectPart }: Props) {
+export function AuroraReadbackViewport({ report, selectedPart, onSelectPart, onError }: Props) {
   const buildRoot = useCallback(async () => {
     const root = new THREE.Group();
     report.nodeTree.roots.forEach((node) => root.add(nodeFromReadback(node, selectedPart)));
@@ -84,6 +85,7 @@ export function AuroraReadbackViewport({ report, selectedPart, onSelectPart }: P
       dependency={`${report.format}:${report.schemaVersion}:${selectedPart?.kind}:${selectedPart?.id}`}
       buildRoot={buildRoot}
       onSelectPart={onSelectPart}
+      onError={onError}
     />
   );
 }
