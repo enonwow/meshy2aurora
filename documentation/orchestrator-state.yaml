@@ -20,8 +20,8 @@ status_vocabulary:
 
 orchestration:
   active_stage: "M7_S1_IMPLEMENTATION_WAVE"
-  next_ready_stage: "S1_V4"
-  next_ready_slices: ["S1-V4", "S1-V5"]
+  next_ready_stage: "S1_V5"
+  next_ready_slices: ["S1-V5"]
   goal_stages: ["M6", "M7", "S1"]
   goal_sequence: "Implementation-first wave: build the first pass of most M7/S1 vertical slices, then run the shared test/review phase; real Meshy execution and external acceptance remain later gates."
   goal_exclusions: ["S2", "F1-F10", "gameplay classes", "full generated module pipeline"]
@@ -35,13 +35,13 @@ orchestration:
   implementation_supplement: "documentation/suplement-implementation-first-m7-s1-codex.md"
   implementation_wave:
     inventory_total: 10
-    first_pass_complete: 7
-    first_pass_completed_slices: ["M7-V1", "M7-V2", "M7-V3", "M7-V4", "S1-V1", "S1-V2", "S1-V3"]
+    first_pass_complete: 8
+    first_pass_completed_slices: ["M7-V1", "M7-V2", "M7-V3", "M7-V4", "S1-V1", "S1-V2", "S1-V3", "S1-V4"]
     test_phase_threshold: 6
     full_test_phase: "READY_AFTER_S1_V1_V2_COMMIT"
     review_phase: "DEFERRED"
     implementation_blockers: []
-    ready_first_pass_slices: ["S1-V4", "S1-V5"]
+    ready_first_pass_slices: ["S1-V5"]
     real_meshy_execution: "DEFERRED_INPUT_GATE"
     deferred_input_gate: "Three owner-approved original Meshy GLB files after first-pass implementation, shared code tests and S1 local-file flow."
     deferred_input_gate_applies_to: ["M7-V5", "M7_REAL_E2E", "M7_FINAL_ACCEPTANCE", "S1_FINAL_BROWSER_E2E"]
@@ -474,7 +474,7 @@ stages:
 
   S1:
     status: "IN_PROGRESS"
-    status_reason: "S1-V1 through S1-V3 first pass is implemented and minimally type/compile-checked, including an explicitly labelled local source viewport. S1-V4/V5 remain ready."
+    status_reason: "S1-V1 through S1-V4 first pass is implemented and minimally type/compile-checked, including source and canonical binary-MDL readback views with selection-linked diagnostics. S1-V5 remains ready."
     owner: "product/UI implementation agent"
     risk: "MEDIUM"
     dependencies: ["Existing canonical m2a-wasm public API", "documentation/suplement-implementation-first-m7-s1-codex.md"]
@@ -482,7 +482,7 @@ stages:
     deferred_inputs:
       - "Three owner-approved original Meshy GLB files for final browser E2E after first pass."
     bugs: []
-    next_actions: ["Implement S1-V4 and S1-V5, then run shared browser/Rust tests and independent review."]
+    next_actions: ["Implement S1-V5, then run shared browser/Rust tests and independent review."]
     evidence: ["documentation/evidence/S1-deferred-test-ledger.md: S1-V1/V2 shared-wave tests recorded; this is not PASS or S1 DONE evidence"]
     documentation: ["documentation/suplement-implementation-first-m7-s1-codex.md", "documentation/evidence/S1-evidence.md"]
     expected_artifacts: ["Canonical preview and validation UI proof"]
@@ -501,6 +501,8 @@ stages:
       - "apps/studio-web/src/worker/types.ts"
       - "apps/studio-web/src/features/preview/SceneViewport.tsx"
       - "apps/studio-web/src/features/preview/SourceViewport.tsx"
+      - "apps/studio-web/src/features/preview/AuroraReadbackViewport.tsx"
+      - "apps/studio-web/src/features/preview/ValidationPanel.tsx"
       - "apps/studio-web/src/features/preview/types.ts"
       - "crates/m2a-wasm/src/lib.rs"
       - "documentation/evidence/S1-deferred-test-ledger.md"

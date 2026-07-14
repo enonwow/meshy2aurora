@@ -33,6 +33,16 @@ fazy po pierwszej implementacji vertical slices.
 - SHA-256 provenance pochodzi z canonical `ingestGlbJson`, nie z mocka UI.
 - Zmiana pliku niszczy poprzednia scene i zwalnia geometrie/materialy.
 
+## S1-V4 Aurora/readback and validation
+
+- Output viewport ma jawna provenance `READBACK` i przyjmuje tylko raport
+  `inspectBinaryMdl` zwrocony przez canonical Rust/WASM pipeline.
+- Geometria, indeksy, hierarchia i bind controllers pochodza z raportu parsera.
+- Diagnostyka jest mapowana do noda tylko przez raportowany offset.
+- Klikniecie noda filtruje diagnostyke, a wybor diagnostyki podswietla ten sam
+  node w readback viewport.
+- UI nie czyta naglowkow MDL, offsetow tabel ani bajtow MDX samodzielnie.
+
 ## Nadal odroczone
 
 - Realny Meshy browser E2E nalezy do pozniejszej bramki wejsc.

@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { SourceViewport } from "./features/preview/SourceViewport";
+import { AuroraReadbackViewport } from "./features/preview/AuroraReadbackViewport";
+import { ValidationPanel } from "./features/preview/ValidationPanel";
+import { mapReadbackDiagnostics } from "./features/preview/types";
+import type { BinaryMdlInspectionReport, ModelPartRef } from "./features/preview/types";
 import { StudioWorkerClient } from "./worker/client";
 import type { StudioWorkerResponse, WorkerArtifact } from "./worker/types";
 
@@ -15,10 +19,14 @@ export function App() {
   const [message, setMessage] = useState("Select local files to begin.");
   const [artifacts, setArtifacts] = useState<WorkerArtifact[]>([]);
   const [sourceSha256, setSourceSha256] = useState<string>();
+  const [readback, setReadback] = useState<BinaryMdlInspectionReport>();
+  const [selectedPart, setSelectedPart] = useState<ModelPartRef>();
 
   useEffect(() => () => worker.dispose(), [worker]);
   useEffect(() => {
     setArtifacts([]);
+    setReadback(undefined);
+    setSelectedPart(undefined);
     setStatus(source && appearance ? "READY" : "EMPTY");
     setMessage(source && appearance ? "Local files ready; no upload occurred." : "Select local files to begin.");
   }, [source, appearance]);
@@ -60,6 +68,7 @@ export function App() {
         throw new Error("Unexpected Worker response");
       }
       setArtifacts(response.artifacts);
+      setReadback(JSON.parse(response.readbackJson) as BinaryMdlInspectionReport);
       setStatus("COMPLETE");
       setMessage("Canonical Worker returned model-package bytes and reports.");
     } catch (error) {
@@ -90,6 +99,13 @@ export function App() {
 
       {source && sourceSha256 && (
         <SourceViewport input={{ provenance: "SOURCE", file: source, sourceSha256 }} />
+      )}
+
+      {readback && (
+        <>
+          <AuroraReadbackViewport report={readback} selectedPart={selectedPart} onSelectPart={setSelectedPart} />
+          <ValidationPanel diagnostics={mapReadbackDiagnostics(readback)} selectedPart={selectedPart} onSelectPart={setSelectedPart} />
+        </>
       )}
 
       <section className="panel" aria-label="Worker artifact inventory">
