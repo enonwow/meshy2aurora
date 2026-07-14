@@ -12,8 +12,9 @@ Shared wave 2026-07-14:
 - `cargo test --workspace`: PASS, 319 testow.
 - `wasm-pack test --node crates/m2a-wasm`: PASS, 20 testow, w tym publiczny
   Studio model-package boundary z exact core parity.
-- `npm test`: PASS, 5 plikow / 16 testow Studio.
-- `npm run test:worker-integration`: PASS, 3 realne testy browserowe Chrome.
+- `npm test`: PASS, 7 plikow / 55 testow Studio.
+- `npm run test:worker-integration`: PASS, 4 realne testy Chrome, w tym
+  produkcyjny App -> Worker -> web-WASM -> widoczny canonical result.
 - `npm run build`: PASS; static Vite bundle zawiera osobny Worker i WASM.
 - Build sam generuje swiezy `wasm-pack --target web`, a CI wykonuje ten sam flow.
 - Niezalezne review po poprawkach: P1=0, P2=0.
@@ -81,6 +82,25 @@ Shared wave 2026-07-14:
 - Filename, extension, byte length i lowercase SHA-256 sa walidowane przed
   utworzeniem obiektu `Blob`; SHA-256 jest ponownie liczony z realnych bajtow.
 - Object URL jest zwalniany po zainicjowaniu downloadu.
+
+## S1-V5R canonical result workspace
+
+- Produkcyjny App po realnym `MODEL_PACKAGE_BUILT` pokazuje strict snapshot
+  exact `reportJson`, `summaryJson`, `manifestJson`, `readbackJson` i artifacts.
+- Widoczne sa realne KPI geometrii, animation mapping/duration/motion,
+  tekstura, resrefy, appended 2DA row, HAK size/resource inventory i byte hashes.
+- Projectory wymagaja schemaVersion 1, exact materialized status i reconciled
+  identities miedzy reportem, summary, manifestem, readbackiem i artefaktami.
+- Snapshot/readback/artifacts sa commitowane atomowo; malformed lub identity
+  mismatch daje ERROR bez czesciowego wyniku i bez crash renderu.
+- Source inspection oraz build maja osobne revision guards; late response nie
+  nadpisuje WORKING/COMPLETE, a zmiana inputu usuwa wynik i downloady.
+- Karta wyniku jest przed viewportami i panelem M7 oraz jawnie pokazuje
+  `Canonical structural output` i `Runtime acceptance: OPEN_M6`.
+- Real Chrome test montuje produkcyjny App, wybiera lokalne pliki, uruchamia
+  realny module Worker/public WASM i sprawdza exact widoczne KPI, kolejnosc,
+  brak runtime PASS oraz reset po zmianie source.
+- Finalne niezalezne review: P1=0, P2=0.
 
 ## Nadal odroczone
 

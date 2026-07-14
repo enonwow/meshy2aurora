@@ -20,10 +20,14 @@ button:disabled { opacity: .35; cursor: not-allowed; }
 .m7-panel fieldset { border: 1px solid #334155; border-radius: .5rem; margin: .75rem 0; padding: .75rem; }
 .m7-panel legend { font-weight: 700; padding: 0 .35rem; }
 .button-row { display: flex; flex-wrap: wrap; gap: .6rem; }
+.result-workspace h2, .result-workspace h3 { margin: .2rem 0 .7rem; }
+.result-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.result-grid article { min-width: 0; padding: 1rem; border: 1px solid #294357; border-radius: 12px; background: #09131c; }
+.result-workspace code { overflow-wrap: anywhere; }
 ul { display: grid; gap: .7rem; margin: 0; padding: 0; list-style: none; }
 code { overflow: hidden; text-overflow: ellipsis; color: #9eb5c7; }
 .viewport { margin: 1rem 0; overflow: hidden; border: 1px solid #294357; border-radius: 18px; background: #0c1721db; }
 .viewport header { display: flex; gap: 1rem; align-items: baseline; padding: .9rem 1.1rem; color: #9eb5c7; }
 .viewport header strong { color: #62d6b2; }
 .viewport canvas { display: block; width: 100%; min-height: 430px; }
-@media (max-width: 680px) { dl div, li { grid-template-columns: 1fr; gap: .2rem; } main { padding-top: 2rem; } }
+@media (max-width: 680px) { dl div, li, .result-grid { grid-template-columns: 1fr; gap: .2rem; } main { padding-top: 2rem; } }

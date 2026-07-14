@@ -6,24 +6,34 @@ import { mapReadbackDiagnostics } from "./features/preview/types";
 import type { BinaryMdlInspectionReport, ModelPartRef } from "./features/preview/types";
 import { ArtifactDownloads } from "./features/downloads/ArtifactDownloads";
 import { M7CorpusPanel } from "./features/m7/M7CorpusPanel";
+import { CanonicalResultSummary } from "./features/results/CanonicalResultSummary";
+import { projectCanonicalResult, type CanonicalResultSnapshot } from "./features/results/projectCanonicalResult";
+import { projectCanonicalReadback } from "./features/results/projectReadback";
 import { StudioWorkerClient } from "./worker/client";
-import type { StudioWorkerRequest, StudioWorkerResponse, WorkerArtifact } from "./worker/types";
+import type { StudioWorkerRequest, StudioWorkerResponse } from "./worker/types";
 
 type SessionStatus = "EMPTY" | "READY" | "WORKING" | "COMPLETE" | "ERROR";
+interface BuiltResult { snapshot: CanonicalResultSnapshot; readback: BinaryMdlInspectionReport }
 
 const requestId = () => crypto.randomUUID();
 
 export function App() {
   const workerRef = useRef<StudioWorkerClient | undefined>(undefined);
   const sessionRevision = useRef(0);
+  const sourceRevision = useRef(0);
+  const statusRef = useRef<SessionStatus>("EMPTY");
   const [source, setSource] = useState<File>();
   const [appearance, setAppearance] = useState<File>();
   const [status, setStatus] = useState<SessionStatus>("EMPTY");
   const [message, setMessage] = useState("Select local files to begin.");
-  const [artifacts, setArtifacts] = useState<WorkerArtifact[]>([]);
   const [sourceSha256, setSourceSha256] = useState<string>();
-  const [readback, setReadback] = useState<BinaryMdlInspectionReport>();
+  const [result, setResult] = useState<BuiltResult>();
   const [selectedPart, setSelectedPart] = useState<ModelPartRef>();
+
+  const updateStatus = useCallback((next: SessionStatus) => {
+    statusRef.current = next;
+    setStatus(next);
+  }, []);
 
   useEffect(() => {
     const worker = new StudioWorkerClient();
@@ -35,39 +45,42 @@ export function App() {
     };
   }, []);
   useEffect(() => {
-    setArtifacts([]);
-    setReadback(undefined);
+    setResult(undefined);
     setSelectedPart(undefined);
-    setStatus(source && appearance ? "READY" : "EMPTY");
+    updateStatus(source && appearance ? "READY" : "EMPTY");
     setMessage(source && appearance ? "Local files ready; no upload occurred." : "Select local files to begin.");
-  }, [source, appearance]);
+  }, [source, appearance, updateStatus]);
 
   useEffect(() => {
     setSourceSha256(undefined);
     if (!source) return;
     const worker = workerRef.current;
     if (!worker) return;
+    const inspectRevision = sourceRevision.current;
     let cancelled = false;
-    void source.arrayBuffer().then((sourceGlb) =>
-      worker.request(
+    void source.arrayBuffer().then((sourceGlb) => {
+      if (cancelled || inspectRevision !== sourceRevision.current) return undefined;
+      return worker.request(
         { requestId: requestId(), type: "INSPECT_SOURCE", sourceGlb },
         [sourceGlb],
-      ),
-    ).then((response) => {
-      if (cancelled || !response.ok || response.type !== "SOURCE_INSPECTED") return;
+      );
+    }).then((response) => {
+      if (!response || cancelled || inspectRevision !== sourceRevision.current) return;
+      if (!response.ok || response.type !== "SOURCE_INSPECTED") throw new Error("Unexpected source inspection response");
       const ingest = JSON.parse(response.ingestJson) as { ir?: { source?: { sha256?: string } } };
       setSourceSha256(ingest.ir?.source?.sha256);
     }).catch((error: unknown) => {
-      if (!cancelled) {
-        setStatus("ERROR");
+      if (!cancelled && inspectRevision === sourceRevision.current && statusRef.current !== "WORKING" && statusRef.current !== "COMPLETE") {
+        updateStatus("ERROR");
         setMessage(error instanceof Error ? error.message : String(error));
       }
     });
     return () => { cancelled = true; };
-  }, [source]);
+  }, [source, updateStatus]);
 
   const replaceSource = useCallback((file?: File) => {
     sessionRevision.current += 1;
+    sourceRevision.current += 1;
     setSource(file);
   }, []);
 
@@ -77,9 +90,9 @@ export function App() {
   }, []);
 
   const reportUiError = useCallback((error: string) => {
-    setStatus("ERROR");
+    updateStatus("ERROR");
     setMessage(error);
-  }, []);
+  }, [updateStatus]);
 
   const requestFromWorker = useCallback((request: StudioWorkerRequest, transfer: Transferable[] = []) => {
     const worker = workerRef.current;
@@ -96,7 +109,9 @@ export function App() {
       return;
     }
     const buildRevision = sessionRevision.current;
-    setStatus("WORKING");
+    setResult(undefined);
+    setSelectedPart(undefined);
+    updateStatus("WORKING");
     setMessage("Canonical Rust/WASM pipeline is running in a Worker.");
     try {
       const sourceGlb = await source.arrayBuffer();
@@ -110,13 +125,21 @@ export function App() {
         throw new Error("Unexpected Worker response");
       }
       if (buildRevision !== sessionRevision.current) return;
-      setArtifacts(response.artifacts);
-      setReadback(JSON.parse(response.readbackJson) as BinaryMdlInspectionReport);
-      setStatus("COMPLETE");
+      const snapshot = projectCanonicalResult(
+        response.reportJson,
+        response.summaryJson,
+        response.manifestJson,
+        response.artifacts,
+      );
+      const readback = projectCanonicalReadback(response.readbackJson);
+      if (buildRevision !== sessionRevision.current) return;
+      setResult({ snapshot, readback });
+      updateStatus("COMPLETE");
       setMessage("Canonical Worker returned model-package bytes and reports.");
     } catch (error) {
       if (buildRevision !== sessionRevision.current) return;
-      setStatus("ERROR");
+      setResult(undefined);
+      updateStatus("ERROR");
       setMessage(error instanceof Error ? error.message : String(error));
     }
   };
@@ -141,20 +164,22 @@ export function App() {
         <button type="button" disabled={status !== "READY"} onClick={() => void build()}>Build model package</button>
       </section>
 
-      <M7CorpusPanel request={requestFromWorker} />
+      {result && <CanonicalResultSummary result={result.snapshot} />}
 
       {source && sourceSha256 && (
         <SourceViewport input={{ provenance: "SOURCE", file: source, sourceSha256 }} onError={reportUiError} />
       )}
 
-      {readback && (
+      {result && (
         <>
-          <AuroraReadbackViewport report={readback} selectedPart={selectedPart} onSelectPart={setSelectedPart} onError={reportUiError} />
-          <ValidationPanel diagnostics={mapReadbackDiagnostics(readback)} selectedPart={selectedPart} onSelectPart={setSelectedPart} />
+          <AuroraReadbackViewport report={result.readback} selectedPart={selectedPart} onSelectPart={setSelectedPart} onError={reportUiError} />
+          <ValidationPanel diagnostics={mapReadbackDiagnostics(result.readback)} selectedPart={selectedPart} onSelectPart={setSelectedPart} />
         </>
       )}
 
-      <ArtifactDownloads artifacts={artifacts} onError={reportUiError} />
+      {result && <ArtifactDownloads artifacts={result.snapshot.artifacts} onError={reportUiError} />}
+
+      <M7CorpusPanel request={requestFromWorker} />
     </main>
   );
 }

@@ -104,6 +104,36 @@ oraz 3/3 real Chrome Worker/web-WASM, w tym READY 1+2, deferred, invalid,
 determinizm, stale-response guards i izolacje statusu M6. Dwa niezalezne
 finalne review zakonczyly sie P1=0/P2=0.
 
+### 3.4 S1-V5R - canonical result workspace
+
+`S1-V5R` jest completion sub-slice'em S1-V5. Pokazuje czlowiekowi realny wynik
+istniejacego pipeline'u bez zmiany konwertera, inventory ani gate M7-V5.
+
+Definition of Done:
+
+- po `MODEL_PACKAGE_BUILT` UI pokazuje exact presentation fields z
+  `reportJson`, `summaryJson` i `manifestJson` zwroconych przez Worker;
+- widoczne sa co najmniej: canonical status, geometria, animacja, tekstura,
+  resrefy, appended 2DA row oraz rozmiary/inventory artefaktow;
+- brak lub zly typ wymaganego pola jest jawnym bledem; UI nie wstawia
+  fikcyjnego zera, `UNKNOWN` ani inferred PASS;
+- `WORKING` jest indeterminate, bo Worker nie raportuje etapow ani procentow;
+- zmiana inputu usuwa snapshot, readback i artefakty, a stale inspect/build
+  response nie moze odtworzyc starego wyniku;
+- glowny wynik pojedynczego modelu jest widoczny przed zaawansowanym panelem
+  korpusu M7;
+- etykieta rozroznia canonical structural output od pozniejszego Aurora/NWN
+  runtime acceptance;
+- testy uzywaja tylko realnych JSON-ow/bytes zwracanych przez Worker; fixture
+  synthetic-owned pozostaje wylacznie testem kodu.
+
+Wynik 2026-07-14: `DONE_REVIEW_CLEAN`. Produkcyjny App pokazuje strict,
+atomowy snapshot exact Worker/WASM outputu: geometrie, animacje, teksture,
+resrefy, appended 2DA row, HAK resources i byte identities. Widok jawnie
+utrzymuje `OPEN_M6`, wynik jest przed viewportami i M7, a zmiana inputu usuwa
+snapshot oraz downloady. Testy obejmuja 55/55 unit/App oraz 4/4 real Chrome
+App+Worker/web-WASM. Dwa niezalezne finalne review: P1=0/P2=0.
+
 ### 3.1 Odroczony input gate modeli Meshy
 
 Modele Meshy nie sa teraz wymagane do rozpoczecia ani kontynuowania kodu.

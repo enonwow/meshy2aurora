@@ -1,11 +1,17 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import sourceUrl from "../.generated/owned-package/generated/source-owned.glb?url";
 import expectedHakUrl from "../.generated/owned-package/generated/m2a_m6p01.hak?url";
 import appearanceUrl from "../fixtures/appearance.2da?url";
 import { buildM7PayloadEnvelope } from "../../src/features/m7/envelope";
+import { projectCanonicalResult } from "../../src/features/results/projectCanonicalResult";
+import { projectCanonicalReadback } from "../../src/features/results/projectReadback";
 import { StudioWorkerClient } from "../../src/worker/client";
+import { App } from "../../src/App";
 
 const clients: StudioWorkerClient[] = [];
+const roots: Root[] = [];
 
 async function fetchBytes(url: string): Promise<ArrayBuffer> {
   const response = await fetch(url);
@@ -91,8 +97,13 @@ const provenance = (providerTaskId: string) => ({
   notSyntheticFixtureAttested: true,
 });
 
-afterEach(() => {
+afterEach(async () => {
   while (clients.length) clients.pop()?.dispose();
+  while (roots.length) {
+    const root = roots.pop();
+    root?.unmount();
+  }
+  document.body.replaceChildren();
 });
 
 describe("local file to canonical web-WASM Worker integration", () => {
@@ -159,6 +170,27 @@ describe("local file to canonical web-WASM Worker integration", () => {
     expect(manifest.packageManifest?.resources).toHaveLength(3);
     expect(readback.nodeTree?.roots?.length).toBeGreaterThan(0);
     expect(new TextDecoder().decode(reportArtifact!.bytes)).toBe(response.reportJson);
+    const snapshot = projectCanonicalResult(
+      response.reportJson,
+      response.summaryJson,
+      response.manifestJson,
+      response.artifacts,
+    );
+    expect(snapshot).toMatchObject({
+      status: "M6_MODEL_PACKAGE_MATERIALIZED",
+      geometry: { vertices: 24, triangles: 12, joints: 2, deformation: "SKIN" },
+      animation: {
+        sourceName: "owned-linear-pause",
+        outputName: "cpause1",
+        durationSeconds: 1.25,
+        hasMotion: true,
+      },
+      texture: { width: 2, height: 2, pixelFormat: "RGBA8", byteLength: 60 },
+      resrefs: { model: "m2a_m6p01", texture: "m2a_m6t01" },
+      appearance: { appendedRow: 1, sourcePrefixPreserved: true },
+      hak: { entryCount: 3 },
+    });
+    expect(projectCanonicalReadback(response.readbackJson).nodeTree.roots.length).toBeGreaterThan(0);
   }, 30_000);
 
   it("returns deterministic deferred M7 JSON from local Files without claiming completion", async () => {
@@ -271,5 +303,59 @@ describe("local file to canonical web-WASM Worker integration", () => {
     expect(first.batchJson.toLowerCase()).not.toContain("base64");
     await expectExactJsonArtifact(first.artifacts, "m7-batch.json", first.batchJson);
     await expectExactJsonArtifact(second.artifacts, "m7-batch.json", second.batchJson);
+  }, 30_000);
+
+  it("renders and resets the production App canonical result from local files", async () => {
+    const source = await fixtureFile(sourceUrl, "source-owned.synthetic.glb", "model/gltf-binary");
+    const appearance = await fixtureFile(appearanceUrl, "appearance.2da", "text/plain");
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+    root.render(createElement(App));
+    await expect.poll(() => container.querySelector('[aria-label="Local file session"]')).toBeTruthy();
+    const m6Panel = container.querySelector<HTMLElement>('[aria-label="Local file session"]')!;
+    const [sourceInput, appearanceInput] = Array.from(m6Panel.querySelectorAll<HTMLInputElement>('input[type="file"]'));
+    const select = async (input: HTMLInputElement, file: File) => {
+      Object.defineProperty(input, "files", { configurable: true, value: [file] });
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    };
+    await select(sourceInput, source);
+    await select(appearanceInput, appearance);
+    const build = Array.from(m6Panel.querySelectorAll("button")).find(({ textContent }) => textContent === "Build model package")!;
+    expect(build.disabled).toBe(false);
+    build.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await expect.poll(() => m6Panel.querySelector(".status strong")?.textContent, { timeout: 20_000 }).toBe("COMPLETE");
+
+    const workspace = container.querySelector<HTMLElement>('[aria-label="Canonical model result"]')!;
+    expect(workspace.textContent).toContain("M6_MODEL_PACKAGE_MATERIALIZED");
+    expect(workspace.textContent).toContain("24");
+    expect(workspace.textContent).toContain("12");
+    expect(workspace.textContent).toContain("owned-linear-pause → cpause1");
+    expect(workspace.textContent).toContain("2 × 2 · RGBA8");
+    expect(workspace.textContent).toContain("m2a_m6p01");
+    expect(workspace.textContent).toContain("OPEN_M6");
+    expect(workspace.textContent).not.toContain("Runtime acceptance: PASS");
+    const detail = (label: string) => Array.from(workspace.querySelectorAll("dl div"))
+      .find((row) => row.querySelector("dt")?.textContent === label)
+      ?.querySelector("dd")?.textContent;
+    expect(detail("Appended row")).toBe("1");
+    expect(detail("Texture resref")).toBe("m2a_m6t01");
+    expect(detail("HAK")).toBe("4335 bytes · 3 resources");
+    expect(Array.from(workspace.querySelectorAll("ul")[0].querySelectorAll("li strong"), ({ textContent }) => textContent)).toEqual([
+      "APPEARANCE_TABLE", "MODEL", "TEXTURE",
+    ]);
+    const m7 = container.querySelector<HTMLElement>('[aria-label="M7 corpus session"]')!;
+    expect(workspace.compareDocumentPosition(m7) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const sourceViewport = container.querySelector<HTMLElement>('[aria-label="SOURCE viewport"]');
+    if (sourceViewport) {
+      expect(workspace.compareDocumentPosition(sourceViewport) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+    expect(container.textContent).toContain("meshy2aurora.hak");
+
+    await select(sourceInput, new File([await fetchBytes(sourceUrl)], "replacement.glb", { type: "model/gltf-binary" }));
+    await expect.poll(() => container.querySelector('[aria-label="Canonical model result"]')).toBeNull();
+    expect(container.textContent).not.toContain("meshy2aurora.hak");
   }, 30_000);
 });

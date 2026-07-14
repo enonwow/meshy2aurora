@@ -10,6 +10,10 @@ import type {
   WorkerArtifact,
 } from "./worker/types";
 
+vi.mock("./features/preview/SceneViewport", () => ({
+  SceneViewport: ({ provenance }: { provenance: string }) => <div data-testid={`viewport-${provenance}`} />,
+}));
+
 type WorkerEventListener = (event: MessageEvent<StudioWorkerResponse>) => void;
 
 class FakeWorker {
@@ -82,6 +86,87 @@ function jsonArtifact(fileName: string, json: string): WorkerArtifact {
     sha256: "0".repeat(64),
     bytes,
     provenance: "M2A_WASM_WORKER",
+  };
+}
+
+function builtResponse(requestId: string, malformed?: "report" | "summary" | "manifest" | "readback" | "readback-shape"): StudioWorkerResponse {
+  const report = {
+    schemaVersion: 1,
+    geometry: { vertexCount: 24, triangleCount: 12, activeJointCount: 2, outputSegmentDeformation: "SKIN" },
+    model: { payloadSha256: "b".repeat(64), layout: { fileLength: 2 } },
+    texture: { width: 2, height: 2, pixelFormat: "RGBA8", byteLength: 60, outputSha256: "d".repeat(64) },
+    appearance: { appendedRowIndex: 1, sourcePrefixPreserved: true, outputByteLength: 7, outputSha256: "e".repeat(64) },
+    hak: { byteLength: 3, archiveSha256: "a".repeat(64), entryCount: 3 },
+  };
+  let reportJson = JSON.stringify(report);
+  const summary = {
+    schemaVersion: 1,
+    status: "M6_MODEL_PACKAGE_MATERIALIZED",
+    outputs: {
+      model: { byteLength: 2, sha256: "b".repeat(64) },
+      texture: { byteLength: 60, sha256: "d".repeat(64) },
+      appearanceTwoDa: { byteLength: 7, sha256: "e".repeat(64) },
+      hak: { byteLength: 3, sha256: "a".repeat(64) },
+      report: { byteLength: new TextEncoder().encode(reportJson).byteLength, sha256: "c".repeat(64) },
+    },
+    appendedPhysicalRow: 1,
+    modelResref: "m2a_model",
+    textureResref: "m2a_texture",
+    animation: { sourceName: "walk", outputName: "cwalk", durationSeconds: 1.25, hasMotion: true },
+    appearancePayloadPolicy: "PRESERVED_AND_APPENDED",
+  };
+  const manifest = {
+    schemaVersion: 1,
+    status: "M6_MODEL_PACKAGE_MATERIALIZED",
+    appendedPhysicalRow: 1,
+    appearancePayloadPolicy: "PRESERVED_AND_APPENDED",
+    packageManifest: {
+      packageSha256: "a".repeat(64),
+      resources: [
+        { role: "APPEARANCE_TABLE", resref: "appearance", type: 2017, byteLength: 7, sha256: "e".repeat(64) },
+        { role: "MODEL", resref: "m2a_model", type: 2002, byteLength: 2, sha256: "b".repeat(64) },
+        { role: "TEXTURE", resref: "m2a_texture", type: 3, byteLength: 60, sha256: "d".repeat(64) },
+      ],
+    },
+  };
+  let summaryJson = JSON.stringify(summary);
+  let manifestJson = JSON.stringify(manifest);
+  let readbackJson = JSON.stringify({ schemaVersion: 1, format: "BINARY_MDL", nodeTree: { roots: [] }, diagnostics: [] });
+  if (malformed === "report") reportJson = "{}";
+  if (malformed === "summary") summaryJson = "{}";
+  if (malformed === "manifest") manifestJson = "{}";
+  if (malformed === "readback") readbackJson = "{";
+  if (malformed === "readback-shape") readbackJson = "{}";
+  const artifact = (
+    artifactId: string,
+    kind: WorkerArtifact["kind"],
+    content: ArrayBuffer,
+    sha256: string,
+  ): WorkerArtifact => ({
+    artifactId,
+    kind,
+    fileName: `${artifactId}.bin`,
+    mediaType: kind === "JSON_REPORT" ? "application/json" : "application/octet-stream",
+    byteLength: content.byteLength,
+    sha256,
+    bytes: content,
+    provenance: "M2A_WASM_WORKER",
+  });
+  return {
+    requestId,
+    ok: true,
+    type: "MODEL_PACKAGE_BUILT",
+    reportJson,
+    summaryJson,
+    manifestJson,
+    readbackJson,
+    artifacts: [
+      artifact("package-hak", "HAK", new Uint8Array([1, 2, 3]).buffer, "a".repeat(64)),
+      artifact("model-mdl", "MODEL", new Uint8Array([1, 2]).buffer, "b".repeat(64)),
+      artifact("report-json", "JSON_REPORT", new TextEncoder().encode(reportJson).buffer, "c".repeat(64)),
+      artifact("manifest-json", "JSON_REPORT", new TextEncoder().encode(manifestJson).buffer, "f".repeat(64)),
+      artifact("summary-json", "JSON_REPORT", new TextEncoder().encode(summaryJson).buffer, "9".repeat(64)),
+    ],
   };
 }
 
@@ -178,6 +263,153 @@ describe("Studio session lifecycle", () => {
 
     expect(container.textContent).not.toContain("stale.hak");
     expect(container.querySelector(".status strong")?.textContent).toBe("READY");
+  });
+
+  it("commits an exact canonical result atomically, labels OPEN_M6, and resets it on input change", async () => {
+    const container = await renderApp();
+    const m6Panel = container.querySelector<HTMLElement>('[aria-label="Local file session"]')!;
+    const [sourceInput, appearanceInput] = Array.from(m6Panel.querySelectorAll<HTMLInputElement>('input[type="file"]'));
+    await selectFile(sourceInput, localFile("source.glb", 1));
+    await selectFile(appearanceInput, localFile("appearance.2da", 2));
+    await act(async () => {
+      panelButton(m6Panel, "Build model package")?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+    const worker = FakeWorker.instances[0];
+    const build = worker.requests.find((request) => request.type === "BUILD_MODEL_PACKAGE")!;
+    await act(async () => {
+      worker.emit(builtResponse(build.requestId));
+      await Promise.resolve();
+    });
+
+    const workspace = container.querySelector<HTMLElement>('[aria-label="Canonical model result"]')!;
+    expect(workspace.textContent).toContain("M6_MODEL_PACKAGE_MATERIALIZED");
+    expect(workspace.textContent).toContain("24");
+    expect(workspace.textContent).toContain("12");
+    expect(workspace.textContent).toContain("walk → cwalk");
+    expect(workspace.textContent).toContain("2 × 2 · RGBA8");
+    expect(workspace.textContent).toContain("m2a_model");
+    expect(workspace.textContent).toContain("OPEN_M6");
+    expect(workspace.textContent).not.toContain("Runtime acceptance: PASS");
+    expect(m6Panel.querySelector(".status strong")?.textContent).toBe("COMPLETE");
+    const m7 = container.querySelector<HTMLElement>('[aria-label="M7 corpus session"]')!;
+    expect(workspace.compareDocumentPosition(m7) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(container.textContent).toContain("report-json.bin");
+
+    await selectFile(sourceInput, localFile("replacement.glb", 3));
+    expect(container.querySelector('[aria-label="Canonical model result"]')).toBeNull();
+    expect(container.textContent).not.toContain("report-json.bin");
+    expect(m6Panel.querySelector(".status strong")?.textContent).toBe("READY");
+  });
+
+  it.each(["summary", "readback", "readback-shape"] as const)("turns malformed %s into ERROR with zero partial workspace or downloads", async (malformed) => {
+    const container = await renderApp();
+    const m6Panel = container.querySelector<HTMLElement>('[aria-label="Local file session"]')!;
+    const [sourceInput, appearanceInput] = Array.from(m6Panel.querySelectorAll<HTMLInputElement>('input[type="file"]'));
+    await selectFile(sourceInput, localFile("source.glb", 1));
+    await selectFile(appearanceInput, localFile("appearance.2da", 2));
+    await act(async () => {
+      panelButton(m6Panel, "Build model package")?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+    const worker = FakeWorker.instances[0];
+    const build = worker.requests.find((request) => request.type === "BUILD_MODEL_PACKAGE")!;
+    await act(async () => {
+      worker.emit(builtResponse(build.requestId, malformed));
+      await Promise.resolve();
+    });
+    expect(m6Panel.querySelector(".status strong")?.textContent).toBe("ERROR");
+    expect(m6Panel.textContent).toMatch(/Canonical (result|readback) field/);
+    expect(container.querySelector('[aria-label="Canonical model result"]')).toBeNull();
+    expect(container.textContent).not.toContain("package-hak.bin");
+  });
+
+  it("does not let a late source inspection overwrite WORKING or COMPLETE", async () => {
+    const container = await renderApp();
+    const m6Panel = container.querySelector<HTMLElement>('[aria-label="Local file session"]')!;
+    const [sourceInput, appearanceInput] = Array.from(m6Panel.querySelectorAll<HTMLInputElement>('input[type="file"]'));
+    await selectFile(sourceInput, localFile("source.glb", 1));
+    await selectFile(appearanceInput, localFile("appearance.2da", 2));
+    await act(async () => {
+      panelButton(m6Panel, "Build model package")?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+    const worker = FakeWorker.instances[0];
+    const inspect = worker.requests.find((request) => request.type === "INSPECT_SOURCE")!;
+    const build = worker.requests.find((request) => request.type === "BUILD_MODEL_PACKAGE")!;
+    expect(m6Panel.querySelector(".status strong")?.textContent).toBe("WORKING");
+    await act(async () => {
+      worker.emit(builtResponse(build.requestId));
+      await Promise.resolve();
+    });
+    expect(m6Panel.querySelector(".status strong")?.textContent).toBe("COMPLETE");
+    await act(async () => {
+      worker.emit({ requestId: inspect.requestId, ok: true, type: "SOURCE_INSPECTED", ingestJson: "{" });
+      await Promise.resolve();
+    });
+    expect(m6Panel.querySelector(".status strong")?.textContent).toBe("COMPLETE");
+    expect(container.querySelector('[aria-label="Canonical model result"]')).not.toBeNull();
+  });
+
+  it("keeps a pending source inspection valid when only appearance changes", async () => {
+    const container = await renderApp();
+    const m6Panel = container.querySelector<HTMLElement>('[aria-label="Local file session"]')!;
+    const [sourceInput, appearanceInput] = Array.from(m6Panel.querySelectorAll<HTMLInputElement>('input[type="file"]'));
+    await selectFile(sourceInput, localFile("source.glb", 1));
+    const worker = FakeWorker.instances[0];
+    const inspect = worker.requests.find((request) => request.type === "INSPECT_SOURCE")!;
+    await selectFile(appearanceInput, localFile("appearance.2da", 2));
+    await act(async () => {
+      worker.emit({
+        requestId: inspect.requestId,
+        ok: true,
+        type: "SOURCE_INSPECTED",
+        ingestJson: JSON.stringify({ ir: { source: { sha256: "a".repeat(64) } } }),
+      });
+      await Promise.resolve();
+    });
+    expect(m6Panel.querySelector(".status strong")?.textContent).toBe("READY");
+    expect(container.querySelector('[data-testid="viewport-SOURCE"]')).not.toBeNull();
+  });
+
+  it.each([
+    ["FAILED", { ok: false, type: "FAILED", message: "SOURCE-INSPECT-FAILED" }],
+    ["unexpected", { ok: true, type: "INITIALIZED" }],
+  ] as const)("reports a guarded %s source inspection error", async (_label, outcome) => {
+    const container = await renderApp();
+    const m6Panel = container.querySelector<HTMLElement>('[aria-label="Local file session"]')!;
+    const sourceInput = m6Panel.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await selectFile(sourceInput, localFile("source.glb", 1));
+    const worker = FakeWorker.instances[0];
+    const inspect = worker.requests.find((request) => request.type === "INSPECT_SOURCE")!;
+    await act(async () => {
+      worker.emit({ requestId: inspect.requestId, ...outcome } as StudioWorkerResponse);
+      await Promise.resolve();
+    });
+    expect(m6Panel.querySelector(".status strong")?.textContent).toBe("ERROR");
+    expect(m6Panel.textContent).toContain(
+      outcome.type === "FAILED" ? "SOURCE-INSPECT-FAILED" : "Unexpected source inspection response",
+    );
+  });
+
+  it("does not let a source inspection failure overwrite WORKING", async () => {
+    const container = await renderApp();
+    const m6Panel = container.querySelector<HTMLElement>('[aria-label="Local file session"]')!;
+    const [sourceInput, appearanceInput] = Array.from(m6Panel.querySelectorAll<HTMLInputElement>('input[type="file"]'));
+    await selectFile(sourceInput, localFile("source.glb", 1));
+    await selectFile(appearanceInput, localFile("appearance.2da", 2));
+    await act(async () => {
+      panelButton(m6Panel, "Build model package")?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+    const worker = FakeWorker.instances[0];
+    const inspect = worker.requests.find((request) => request.type === "INSPECT_SOURCE")!;
+    await act(async () => {
+      worker.emit({ requestId: inspect.requestId, ok: false, type: "FAILED", message: "LATE-INSPECT" });
+      await Promise.resolve();
+    });
+    expect(m6Panel.querySelector(".status strong")?.textContent).toBe("WORKING");
+    expect(m6Panel.textContent).not.toContain("LATE-INSPECT");
   });
 
   it("maps explicit M7 paths into one deterministic Worker envelope and renders deferred", async () => {
@@ -414,5 +646,48 @@ describe("Studio session lifecycle", () => {
     expect(m6Panel.querySelector(".status strong")?.textContent).toBe("READY");
     expect(m6Panel.textContent).not.toContain("M7-EXACT-WORKER-FAILURE");
     expect(panelButton(m6Panel, "Build model package")?.disabled).toBe(false);
+  });
+
+  it("keeps a completed M7 report isolated from a later M6 result error", async () => {
+    const container = await renderApp();
+    const worker = FakeWorker.instances[0];
+    const m7Panel = container.querySelector<HTMLElement>('[aria-label="M7 corpus session"]')!;
+    const manifest = { schemaVersion: 1, corpusId: "isolated-m7", samples: [] };
+    await selectFile(m7Panel.querySelector<HTMLInputElement>('input[type="file"]')!, jsonFile("m7.json", manifest));
+    await act(async () => {
+      panelButton(m7Panel, "Validate manifest")?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+    const validation = worker.requests.find((request) => request.type === "VALIDATE_M7_CORPUS")!;
+    const manifestJson = JSON.stringify(manifest);
+    await act(async () => {
+      worker.emit({
+        requestId: validation.requestId,
+        ok: true,
+        type: "M7_CORPUS_VALIDATED",
+        manifestJson,
+        artifacts: [jsonArtifact("m7-isolated.json", manifestJson)],
+      });
+      await Promise.resolve();
+    });
+    expect(m7Panel.textContent).toContain("VALID manifest: isolated-m7");
+    expect(m7Panel.textContent).toContain("m7-isolated.json");
+
+    const m6Panel = container.querySelector<HTMLElement>('[aria-label="Local file session"]')!;
+    const [sourceInput, appearanceInput] = Array.from(m6Panel.querySelectorAll<HTMLInputElement>('input[type="file"]'));
+    await selectFile(sourceInput, localFile("source.glb", 1));
+    await selectFile(appearanceInput, localFile("appearance.2da", 2));
+    await act(async () => {
+      panelButton(m6Panel, "Build model package")?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+    const build = worker.requests.find((request) => request.type === "BUILD_MODEL_PACKAGE")!;
+    await act(async () => {
+      worker.emit(builtResponse(build.requestId, "manifest"));
+      await Promise.resolve();
+    });
+    expect(m6Panel.querySelector(".status strong")?.textContent).toBe("ERROR");
+    expect(m7Panel.textContent).toContain("VALID manifest: isolated-m7");
+    expect(m7Panel.textContent).toContain("m7-isolated.json");
   });
 });
