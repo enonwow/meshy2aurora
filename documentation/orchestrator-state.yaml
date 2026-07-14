@@ -1,5 +1,5 @@
 schema_version: 1
-last_updated: "2026-07-13"
+last_updated: "2026-07-14"
 project:
   canonical_repo: "C:\\Projects\\meshy2aurora"
   documentation_root: "C:\\Projects\\meshy2aurora\\documentation"
@@ -19,18 +19,26 @@ status_vocabulary:
   - "SUPERSEDED"
 
 orchestration:
-  active_stage: "M6"
-  next_ready_stage: "NONE"
+  active_stage: "M7_S1_IMPLEMENTATION_WAVE"
+  next_ready_stage: "M7_V1"
   goal_stages: ["M6", "M7", "S1"]
-  goal_sequence: "Complete M6, then M7, then S1; preserve one active implementation stage at a time."
+  goal_sequence: "Implementation-first wave: build the first pass of most M7/S1 vertical slices, then run the shared test/review phase; real Meshy execution and external acceptance remain later gates."
   goal_exclusions: ["S2", "F1-F10", "gameplay classes", "full generated module pipeline"]
   goal_terminal_condition: "M6, M7 and S1 are DONE with their required code, artifacts, independent reviews and live/e2e evidence."
-  next_action: "Use the materialized M6 model packet in the separate m2a_m6_proof.mod scaffold and capture Toolset/game/cpause1 evidence; do not build gameplay classes or a full generated module."
-  one_active_stage_only: true
-  current_attempt_id: "M6-20260713-02"
+  next_action: "Implement M7-V1/M7-V3 and S1-V1/S1-V2/S1-V5 plus one preview slice before the shared full-test wave; do not run or modify Aurora/NWN."
+  one_active_stage_only: false
+  current_attempt_id: "M7-S1-FIRST-PASS-20260714-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
   done_rule: "A stage may be DONE only when every definition_of_done item has evidence."
   stop_rule: "Stop and mark BLOCKED when a needed Aurora fact, decision, local tool state, or proof artifact is missing. Do not guess."
+  implementation_supplement: "documentation/suplement-implementation-first-m7-s1-codex.md"
+  implementation_wave:
+    inventory_total: 10
+    first_pass_complete: 0
+    test_phase_threshold: 6
+    full_test_phase: "DEFERRED"
+    review_phase: "DEFERRED"
+    real_meshy_execution: "BLOCKED_ON_INPUT"
 
 global_blockers:
   - id: "GB-001"

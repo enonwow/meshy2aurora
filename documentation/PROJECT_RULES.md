@@ -44,6 +44,12 @@ Kazdy faktycznie uruchomiony model referencyjny wymaga packetu `P-REF`: hash wej
 
 Implementujemy zgodnie z zasada TDD. Najpierw powstaje test lub gate opisujacy oczekiwane zachowanie, potem minimalna implementacja, potem refactor i proof. Dla modeli, animacji, parserow i konwersji assetow test musi byc oparty na realnym zasobie albo na minimalnej fixture opisanej wprost jako fixture.
 
+Wyjatek harmonogramowy zatwierdzony przez wlasciciela dla aktywnej fali M7/S1
+jest opisany w `documentation/suplement-implementation-first-m7-s1-codex.md`:
+najpierw pierwsza implementacja wiekszosci vertical slices, potem wspolna faza
+testow, review i proof gates. Wyjatek zmienia kolejnosc, nie koncowe wymagania
+jakosci ani Definition of Done.
+
 ## 4. Pliki `*-cloud.md`
 
 Jezeli w dokumentacji pojawia sie plik w formacie `[nazwa]-cloud.md`, oznacza to, ze trzeba dostarczyc suplement cloud do tresci bazowej dokumentacji. Taki plik nie zastepuje dokumentu glownego; dopisuje wymagania, ograniczenia, decyzje, instrukcje lub roznice potrzebne dla pracy w chmurze/Codex Cloud.

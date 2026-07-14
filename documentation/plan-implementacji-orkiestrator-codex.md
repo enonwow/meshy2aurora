@@ -2,6 +2,11 @@
 
 Data: 2026-07-10 | Autor: Codex | Status: AKTYWNY PLAN WYKONAWCZY
 
+Aktywny suplement sekwencji pracy: `documentation/suplement-implementation-first-m7-s1-codex.md`.
+Dla fali M7/S1 najpierw powstaje pierwsza implementacja wiekszosci vertical
+slices, a pelne testy, review i proof gates sa wykonywane wspolnie po
+osiagnieciu progu opisanego w suplemencie.
+
 ## 1. Cel
 
 Ten dokument opisuje kolejnosc implementacji standalone `meshy2aurora`:
@@ -61,14 +66,14 @@ stage_contract:
 ```yaml
 orchestrator_rules:
   source_of_truth: "documentation/orchestrator-state.yaml"
-  one_active_stage: true
+  one_active_stage: "default true; active M7/S1 implementation-first wave is the scoped exception defined by its supplement"
   start_rule: "etap mozna zaczac tylko gdy dependencies sa DONE albo jawnie oznaczone jako non-blocking assumption"
   done_rule: "DONE tylko po przejsciu wszystkich definition_of_done i zapisaniu evidence"
   blocked_rule: "BLOCKED gdy brak decyzji, Aurora anchor albo zewnetrzny stan uniemozliwia kolejny bezpieczny krok"
   bug_rule: "bug wymaga repro, expected, actual, severity, owner i nastepnej akcji"
   problem_rule: "brak implementacji lub brak danych zapisuj jako current_problem, nie jako bug"
   no_guessing: "nie odblokowuj etapu przez hipotetyczne offsety, limity albo formaty"
-  scope_rule: "nie promuj future Studio features przed M6 proof"
+  scope_rule: "S1 foundation may be implemented in the active M7/S1 first-pass wave; S2 and F1-F10 remain forbidden before later proof gates"
   documentation_rule: "kazda zmiana statusu ma aktualizowac YAML; kazdy wazny proof dopisuje evidence"
   proof_rule: "NWN EE Toolset/game jest koncowym proofem native output; preview nigdy go nie zastepuje"
   git_checkpoint_rule: "po kazdej wiekszej funkcjonalnosci, ktora przeszla swoje gate'y, wykonaj osobny spojny commit i push z opisem zakresu, testow i evidence; nie lacz kilku duzych funkcji w jeden commit"
