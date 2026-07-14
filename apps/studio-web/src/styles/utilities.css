@@ -1,0 +1,3 @@
+.eyebrow { margin-bottom: 5px; color: var(--accent); font-size: .7rem; font-weight: 750; letter-spacing: .14em; text-transform: uppercase; }
+:where(button, input, label, [tabindex]):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }

@@ -537,3 +537,19 @@ Frontend V1 jest gotowy dopiero, gdy:
 ## 19. Wniosek wykonawczy
 
 Mockupy sa wystarczajace do rozpoczecia FE-V1--FE-V3 oraz statycznego ukladu dalszych ekranow. Pelne dane FE-V4--FE-V9 wymagaja jawnych rozszerzen Worker/WASM wymienionych w sekcji 10. Nie sa one powodem do zatrzymania powloki, ale sa twardym zakazem zastapienia brakow atrapami.
+
+## 20. Ledger implementacji
+
+### FE-V1 - 2026-07-14 - DONE_FIRST_PASS
+
+- dodano `StudioShell`, semantyczny stepper pieciu krokow i blokowanie niedostepnych przejsc,
+- dodano reducer sesji z revision-based invalidation wynikow po zmianie inputu,
+- dodano `InputsPanel` oraz stany Source: empty, partial, ready i error,
+- wybor GLB uruchamia realne `INSPECT_SOURCE` przez istniejacego Workera; UI nie tworzy fikcyjnych metryk,
+- SHA-256 pliku `appearance.2da` jest liczony lokalnie, a nazwy obu wymaganych plikow sa walidowane,
+- ekran Source zostal sprawdzony w przegladarce na `127.0.0.1:4173`; brak bledow i ostrzezen konsoli,
+- targeted verification: 19/19 testow oraz typecheck przechodza,
+- dotychczasowy ekran po przejsciu do Inspect jest tylko jawnym rusztowaniem `FE-V2 next`; nie jest zaliczony jako FE-V2,
+- pelna aktualizacja dawnych testow `App` i cala fala integracyjna pozostaja odroczone zgodnie z trybem implementation-first.
+
+Nastepny batch: FE-V2 - realny Inspect, source projection, Source Model i validation bez fikcyjnych danych.
