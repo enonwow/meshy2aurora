@@ -20,8 +20,9 @@ Definition of Done. Zmienia tylko moment tworzenia i uruchamiania testow.
   `C:\Projects\meshy2aurora`.
 - `C:\Projects\aurora-web`, Aurora/NWN EE, konfiguracje, katalogi uzytkownika,
   Toolset i gra sa w tej fali read-only i nie sa uruchamiane ani modyfikowane.
-- Brak trzech oryginalnych modeli Meshy nie blokuje implementacji kontraktu,
-  runnera i interfejsu, ale blokuje wykonanie korpusu oraz finalny claim M7.
+- Brak trzech oryginalnych modeli Meshy jest odroczonym input gate, a nie
+  biezacym blockerem implementacji. Nie blokuje M7-V1--M7-V4, S1-V1--S1-V5,
+  wspolnej fazy testow kodu ani pierwszego checkpointu implementacyjnego.
 - Syntetyczne fixture nie moga zostac przedstawione jako trzy profile Meshy.
 - Nie implementujemy klas gameplay, pelnego generatora modulu, S2 ani F1-F10.
 
@@ -32,9 +33,9 @@ Pierwsza fala obejmuje dziesiec slice'ow:
 | ID | Slice | Pierwsza implementacja oznacza |
 |---|---|---|
 | M7-V1 | Corpus contract | wersjonowany manifest trzech profili, provenance, hash i wymagane role |
-| M7-V2 | Corpus intake | bezpieczne rozwiazanie lokalnych plikow, kompletne wejscia i diagnostyka brakow |
-| M7-V3 | Canonical batch runner | wywolanie istniejacego Rust pipeline dla kazdego wpisu bez alternatywnego konwertera |
-| M7-V4 | Per-profile proof packet | deterministyczny raport, output inventory, hash i status nieudowodnionego live proofu |
+| M7-V2 | Corpus intake | resolver lokalnych plikow, walidacja kompletności i diagnostyka odroczonych wejsc; realna kompletnosc nalezy do M7-V5 |
+| M7-V3 | Canonical batch runner | runner i kanoniczne wywolania API bez alternatywnego konwertera; trzy realne wykonania naleza do M7-V5 |
+| M7-V4 | Per-profile proof packet | builder i schema deterministycznego packetu ze statusem `INPUT_DEFERRED`; trzy realne packety naleza do M7-V5 |
 | M7-V5 | Real three-profile execution | humanoid animated, non-humanoid oraz static model na oryginalnych eksportach Meshy |
 | S1-V1 | Studio shell and local files | React/TypeScript shell, lokalny file picker i jawny stan sesji bez uploadu |
 | S1-V2 | Canonical WASM Worker | Worker laduje publiczny adapter `m2a-wasm`; brak drugiego parsera lub mock convertera |
@@ -42,9 +43,42 @@ Pierwsza fala obejmuje dziesiec slice'ow:
 | S1-V4 | Aurora/readback and validation | podglad output/readback, diagnostyka i powiazanie zaznaczenia z czescia modelu |
 | S1-V5 | Artifact downloads | pobranie wygenerowanego HAK i raportow z bajtow zwroconych przez Worker |
 
-`M7-V5` pozostaje wejściowo zablokowany do czasu dostarczenia trzech
-oryginalnych modeli Meshy. Nie zmniejsza to inventory i nie pozwala oznaczyc
-M7 jako DONE.
+`M7-V5` jest odroczony do fazy po pierwszej implementacji i integracji. Zaczyna
+sie dopiero po dostarczeniu trzech oryginalnych modeli Meshy. Nie zmniejsza to
+inventory i nie pozwala oznaczyc M7 jako DONE, ale nie nadaje aktywnej fali
+statusu BLOCKED.
+
+### 3.1 Odroczony input gate modeli Meshy
+
+Modele Meshy nie sa teraz wymagane do rozpoczecia ani kontynuowania kodu.
+Orkiestrator nie szuka ich, nie generuje, nie pobiera i nie zastepuje
+syntetykami podczas first pass. Gate zostaje otwarty dopiero po:
+
+1. pierwszej implementacji aktualnie implementowalnych slice'ow M7/S1;
+2. wspolnej fazie testow i stabilizacji ich kontraktow;
+3. gotowym interfejsie local-file -> Worker -> canonical WASM -> artifact;
+4. jawnym dostarczeniu i zatwierdzeniu przez wlasciciela trzech oryginalnych
+   eksportow Meshy.
+
+Po otwarciu gate modele sluza do M7-V5, realnego browser E2E i finalnego
+acceptance. Do tego czasu ich brak raportujemy jako `DEFERRED_INPUT_GATE`, nie jako
+`BLOCKED`, `current_problem` ani powod do zatrzymania implementacji.
+
+```yaml
+ready_first_pass_slices:
+  - M7-V1
+  - M7-V2
+  - M7-V3
+  - M7-V4
+  - S1-V1
+  - S1-V2
+  - S1-V3
+  - S1-V4
+  - S1-V5
+deferred_input_gate:
+  applies_to: [M7-V5, M7_REAL_E2E, M7_FINAL_ACCEPTANCE]
+  requires: [three_original_meshy_glbs, approved_art_direction]
+```
 
 ## 4. Prog rozpoczecia fazy testowej
 
@@ -107,7 +141,7 @@ artefaktow.
   wspolnej fazy testowej.
 - Review jest odroczone razem z pelna bramka testowa, aby oceniac polaczone
   pionowe przeplywy zamiast izolowanych fragmentow.
-- Koncowy commit i push wymagaja zielonych bramek dla calego objętego zakresu.
+- Koncowy commit i push wymagaja zielonych bramek dla calego objetego zakresu.
 
 ## 8. Raportowanie stanu
 
@@ -120,7 +154,7 @@ implementation_wave:
   test_phase_threshold: 6
   full_test_phase: DEFERRED
   review_phase: DEFERRED
-  real_meshy_execution: BLOCKED_ON_INPUT
+  real_meshy_execution: DEFERRED_INPUT_GATE
 ```
 
 Status `first_pass_complete` oznacza tylko obecna implementacje w worktree.

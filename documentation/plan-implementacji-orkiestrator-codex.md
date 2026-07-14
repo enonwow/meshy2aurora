@@ -464,10 +464,14 @@ documentation:
 
 ```yaml
 id: "M7"
-initial_status: "NOT_STARTED"
+initial_status: "READY"
 goal: "przeprowadzic reprezentatywny korpus oryginalnych modeli Meshy przez caly pipeline i proof"
 owner: "Mateusz + implementation agent"
-dependencies: ["M6 DONE", "approved source GLB corpus and art direction"]
+first_pass_dependencies: ["canonical Rust pipeline APIs available", "implementation-first supplement"]
+first_pass_ready_slices: ["M7-V1", "M7-V2", "M7-V3", "M7-V4"]
+deferred_input_gates:
+  - applies_to: ["M7-V5", "real M7 E2E", "M7 final acceptance"]
+    requires: ["three approved original Meshy GLB files", "approved art direction"]
 scope:
   - "minimum three original Meshy GLB samples"
   - "rigged humanoid creature with source clips"
@@ -482,23 +486,28 @@ definition_of_done:
   - "every sample has a complete source -> IR -> MDL/2DA/HAK -> Toolset/game packet"
   - "orientation, scale, texture and required animation route are acceptable for every sample"
   - "all changes are reproducible from manifest"
-current_problems_initial:
-  - "no first real GLB supplied"
-  - "art direction and Meshy credit budget are pending"
+current_problems_initial: []
+deferred_inputs:
+  - "three original Meshy GLB files for M7-V5"
+  - "art direction and Meshy credit budget before real corpus execution"
+first_pass_rule: "M7-V1 through M7-V4 proceed without Meshy files; missing models are not an implementation blocker"
 bugs_initial: []
 documentation:
   - "documentation/meshy-przygotowanie-modelu-cloud.md"
   - "documentation/evidence/M7-evidence.md"
 ```
 
-### S1. Studio foundation after E2E proof
+### S1. Studio foundation first pass
 
 ```yaml
 id: "S1"
-initial_status: "NOT_STARTED"
+initial_status: "READY"
 goal: "zbudowac viewport i diagnostyke jako klienta dzialajacego canonical pipeline"
 owner: "product/UI implementation agent"
-dependencies: ["M6 DONE"]
+first_pass_dependencies: ["canonical Rust/WASM public API available", "implementation-first supplement"]
+deferred_input_gates:
+  - applies_to: ["real browser E2E", "S1 final acceptance"]
+    requires: ["approved original M7 Meshy corpus"]
 scope:
   - "Source, Aurora Preview and Readback modes"
   - "validation panel"
@@ -511,8 +520,8 @@ definition_of_done:
   - "viewport uses canonical IR or parser readback, never separate fake model"
   - "validation links to selected model part"
   - "all data shown has source/provenance status"
-current_problems_initial:
-  - "must not start before native pipeline proof"
+current_problems_initial: []
+first_pass_rule: "S1-V1 through S1-V5 proceed without real Meshy files; the UI must use canonical Rust/WASM and no parallel converter"
 bugs_initial: []
 documentation:
   - "documentation/viewport-walidacja-animacje-plan-codex.md"
