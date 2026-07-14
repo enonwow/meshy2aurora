@@ -31,6 +31,7 @@ Aktualny kierunek po audycie 2026-07-09:
 - [engine-mdl-odpowiedz-codex.md](engine-mdl-odpowiedz-codex.md) - aktualny stan odpowiedzi o binary writerze, polityce MDX i bind pose.
 - [status-dokumentacji-web-2026-07-10-codex.md](status-dokumentacji-web-2026-07-10-codex.md) - klasyfikacja wszystkich dokumentow po decyzji D12.
 - [plan-implementacji-orkiestrator-codex.md](plan-implementacji-orkiestrator-codex.md) - aktywny plan etapow, Definition of Done i kontrakt dla orkiestratora.
+- [studio-v1-debug-implementation-suplement-codex.md](studio-v1-debug-implementation-suplement-codex.md) - aktywny kontrakt Studio V1: uproszczona powloka, Debug Drawer, Binary Inspector, `Generate Report`, Replay i First Difference.
 - [orchestrator-state.yaml](orchestrator-state.yaml) - maszynowy aktualny stan etapow, blockerow, problemow, bledow i evidence.
 - [evidence/README.md](evidence/README.md) - append-only szablon dowodow dla jednego etapu.
 - [prompt-dla-claude-prototyp-parsera.md](prompt-dla-claude-prototyp-parsera.md) - gotowy prompt dla Claude: prototype M1a parsera binary MDL.
