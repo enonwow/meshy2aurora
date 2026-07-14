@@ -1,10 +1,19 @@
 # M7-V1/V2 deferred test ledger
 
-Status: `DEFERRED_UNTIL_SHARED_TEST_WAVE`
+Status: `SHARED_TEST_WAVE_PASS`
 
 Ten ledger opisuje testy odroczone zgodnie z aktywnym suplementem
 implementation-first. Nie jest evidence PASS i nie pozwala oznaczyc M7 jako
 DONE.
+
+Shared wave 2026-07-14:
+
+- `cargo fmt --all -- --check`: PASS.
+- `cargo clippy --workspace --all-targets -- -D warnings`: PASS.
+- `cargo test --workspace`: PASS, 298 testow, w tym 3 nowe testy M7.
+- Manifest JSON ma przetestowane camelCase, strict unknown-field rejection,
+  deferred intake/batch i deterministyczne packety.
+- Ten PASS nie otwiera M7-V5 i nie jest real Meshy acceptance evidence.
 
 ## M7-V1 corpus contract
 

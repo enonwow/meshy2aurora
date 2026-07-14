@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "typecheck": "tsc -b --pretty false"
+    "typecheck": "tsc -b --pretty false",
+    "test": "vitest run"
   },
   "dependencies": {
     "react": "latest",
@@ -19,7 +20,9 @@
     "@types/react-dom": "latest",
     "@types/three": "latest",
     "@vitejs/plugin-react": "latest",
+    "jsdom": "latest",
     "typescript": "latest",
-    "vite": "latest"
+    "vite": "latest",
+    "vitest": "latest"
   }
 }

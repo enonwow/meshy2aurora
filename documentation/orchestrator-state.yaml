@@ -26,7 +26,7 @@ orchestration:
   goal_sequence: "Implementation-first wave: build the first pass of most M7/S1 vertical slices, then run the shared test/review phase; real Meshy execution and external acceptance remain later gates."
   goal_exclusions: ["S2", "F1-F10", "gameplay classes", "full generated module pipeline"]
   goal_terminal_condition: "M6, M7 and S1 are DONE with their required code, artifacts, independent reviews and live/e2e evidence."
-  next_action: "Run the shared full-test wave for M7-V1--V4 and S1-V1--V5, fix findings, then request independent review."
+  next_action: "Complete independent M7 and S1 reviews, fix every P1/P2 finding, then rerun affected gates and record the checkpoint."
   one_active_stage_only: false
   current_attempt_id: "M7-S1-FIRST-PASS-20260714-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
@@ -38,8 +38,8 @@ orchestration:
     first_pass_complete: 9
     first_pass_completed_slices: ["M7-V1", "M7-V2", "M7-V3", "M7-V4", "S1-V1", "S1-V2", "S1-V3", "S1-V4", "S1-V5"]
     test_phase_threshold: 6
-    full_test_phase: "READY"
-    review_phase: "DEFERRED"
+    full_test_phase: "PASS_298_NATIVE_20_WASM_3_STUDIO_STATIC_BUILD"
+    review_phase: "IN_PROGRESS_TWO_INDEPENDENT_REVIEWERS"
     implementation_blockers: []
     ready_first_pass_slices: []
     real_meshy_execution: "DEFERRED_INPUT_GATE"

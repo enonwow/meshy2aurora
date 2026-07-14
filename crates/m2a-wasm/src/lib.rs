@@ -800,10 +800,10 @@ pub fn build_m6_model_package_v1(
 mod m5_native_tests {
     use super::{
         HakResourceDescriptorV1, HakResourceDescriptorsV1, append_two_da_row_artifact_json,
-        append_two_da_row_v1, append_two_da_row_v1_report_json, inspect_two_da_v2_json,
-        inspect_two_da_v2_json_inner, materialize_hak_resources, serialize_json,
-        write_hak_artifact_json, write_hak_v1, write_hak_v1_report_json, write_model_package_v1,
-        write_model_package_v1_inner, write_package_manifest_v1_json,
+        append_two_da_row_v1, append_two_da_row_v1_report_json, build_m6_model_package_v1,
+        inspect_two_da_v2_json, inspect_two_da_v2_json_inner, materialize_hak_resources,
+        serialize_json, write_hak_artifact_json, write_hak_v1, write_hak_v1_report_json,
+        write_model_package_v1, write_model_package_v1_inner, write_package_manifest_v1_json,
         write_package_manifest_v1_json_inner, write_tga_artifact_json, write_tga_v1,
         write_tga_v1_report_json,
     };
@@ -1117,6 +1117,36 @@ mod m5_native_tests {
         assert_eq!(public.manifest_json(), wasm.manifest_json());
         assert_eq!(public.take_hak_bytes(), core.hak.payload);
         assert!(public.take_hak_bytes().is_empty());
+    }
+
+    #[test]
+    fn studio_model_package_adapter_is_exact_core_and_transfers_each_binary_once() {
+        let source = m2a_core::owned_fixture::synthetic_owned_m6_glb_v1().unwrap();
+        let appearance = b"2DA V2.0\r\n\r\nLABEL MOVERATE MODELTYPE RACE PORTRAIT ENVMAP DefaultPhenoType BLOODCOLR WEAPONSCALE SIZECATEGORY\r\n0 Existing NORM P existing **** **** 0 R 1.0 4\r\n";
+        let core =
+            m2a_core::model_pipeline::build_m6_model_package_v1(&source, appearance).unwrap();
+        let mut studio = build_m6_model_package_v1(&source, appearance).unwrap();
+
+        assert_eq!(
+            studio.report_json(),
+            String::from_utf8(core.report_json.clone()).unwrap()
+        );
+        assert_eq!(
+            studio.manifest_json(),
+            String::from_utf8(core.manifest_json.clone()).unwrap()
+        );
+        assert_eq!(
+            studio.summary_json(),
+            String::from_utf8(core.summary_json.clone()).unwrap()
+        );
+        assert_eq!(
+            studio.readback_json(),
+            serialize_json(&m2a_core::inspect_binary_mdl(&core.model).unwrap())
+        );
+        assert_eq!(studio.take_hak_bytes(), core.hak);
+        assert!(studio.take_hak_bytes().is_empty());
+        assert_eq!(studio.take_model_bytes(), core.model);
+        assert!(studio.take_model_bytes().is_empty());
     }
 
     #[test]
@@ -1773,9 +1803,9 @@ mod profile_a_native_tests {
 mod wasm_tests {
     use super::{
         HakResourceDescriptorV1, HakResourceDescriptorsV1, append_two_da_row_v1,
-        append_two_da_row_v1_report_json, convert_profile_a_glb_json, convert_profile_a_json,
-        convert_profile_a_with_animations_glb_json, ingest_glb, ingest_glb_json,
-        inspect_binary_mdl, inspect_glb, inspect_glb_json, inspect_two_da_v2_json,
+        append_two_da_row_v1_report_json, build_m6_model_package_v1, convert_profile_a_glb_json,
+        convert_profile_a_json, convert_profile_a_with_animations_glb_json, ingest_glb,
+        ingest_glb_json, inspect_binary_mdl, inspect_glb, inspect_glb_json, inspect_two_da_v2_json,
         profile_a_test_support as profile_support,
         write_binary_mdl_with_animations as write_mdl_bytes,
         write_binary_mdl_with_animations_report_json as write_mdl_report_json, write_hak_v1,
@@ -1973,6 +2003,32 @@ mod wasm_tests {
             r#"{"schemaVersion":1,"code":"M5-HAK-RESOURCES-JSON-INVALID","severity":"FATAL","path":"resourcesJson","message":"HAK resources JSON does not match the strict public schema"}"#
         );
         assert!(!error.to_ascii_lowercase().contains("base64"));
+    }
+
+    #[wasm_bindgen_test]
+    fn studio_model_package_public_wasm_boundary_matches_core() {
+        let source = m2a_core::owned_fixture::synthetic_owned_m6_glb_v1().unwrap();
+        let appearance = b"2DA V2.0\r\n\r\nLABEL MOVERATE MODELTYPE RACE PORTRAIT ENVMAP DefaultPhenoType BLOODCOLR WEAPONSCALE SIZECATEGORY\r\n0 Existing NORM P existing **** **** 0 R 1.0 4\r\n";
+        let core =
+            m2a_core::model_pipeline::build_m6_model_package_v1(&source, appearance).unwrap();
+        let mut studio = build_m6_model_package_v1(&source, appearance).unwrap();
+
+        assert_eq!(studio.take_hak_bytes(), core.hak);
+        assert!(studio.take_hak_bytes().is_empty());
+        assert_eq!(studio.take_model_bytes(), core.model);
+        assert!(studio.take_model_bytes().is_empty());
+        assert_eq!(
+            studio.report_json(),
+            String::from_utf8(core.report_json).unwrap()
+        );
+        assert_eq!(
+            studio.manifest_json(),
+            String::from_utf8(core.manifest_json).unwrap()
+        );
+        assert_eq!(
+            studio.summary_json(),
+            String::from_utf8(core.summary_json).unwrap()
+        );
     }
 
     #[wasm_bindgen_test]

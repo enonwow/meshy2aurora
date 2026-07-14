@@ -1,9 +1,21 @@
 # S1 deferred test ledger
 
-Status: `THRESHOLD_REACHED_TEST_WAVE_PENDING`
+Status: `SHARED_TEST_WAVE_PASS_REVIEW_PENDING`
 
 Ten ledger nie jest evidence PASS ani S1 DONE. Rejestruje testy dla wspolnej
 fazy po pierwszej implementacji vertical slices.
+
+Shared wave 2026-07-14:
+
+- `cargo fmt --all -- --check`: PASS.
+- `cargo clippy --workspace --all-targets -- -D warnings`: PASS.
+- `cargo test --workspace`: PASS, 298 testow.
+- `wasm-pack test --node crates/m2a-wasm`: PASS, 20 testow, w tym publiczny
+  Studio model-package boundary z exact core parity.
+- `npm test`: PASS, 3 testy Studio.
+- `npm run build`: PASS; static Vite bundle zawiera osobny Worker i WASM.
+- Build raportuje nieblokujace ostrzezenie o glownym chunku JS 821.87 kB;
+  code-splitting pozostaje optymalizacja przed publikacja, nie blad outputu.
 
 ## S1-V1 shell and local files
 

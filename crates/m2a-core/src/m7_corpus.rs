@@ -67,7 +67,12 @@ pub struct M7SourceDescriptorV1 {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "role", rename_all = "SCREAMING_SNAKE_CASE", deny_unknown_fields)]
+#[serde(
+    tag = "role",
+    rename_all = "SCREAMING_SNAKE_CASE",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
 pub enum M7CorpusEntryV1 {
     RiggedHumanoidSourceClips {
         sample_id: String,
@@ -346,17 +351,16 @@ pub fn validate_m7_corpus_manifest_v1(
         ));
     }
     validate_slug(&manifest.corpus_id, "manifest.corpusId")?;
-    if let Some(approval_id) = &manifest.art_direction_approval_id {
-        if approval_id.trim().is_empty()
+    if let Some(approval_id) = &manifest.art_direction_approval_id
+        && (approval_id.trim().is_empty()
             || approval_id.len() > 128
-            || approval_id.chars().any(char::is_control)
-        {
-            return Err(contract_error(
-                "M7-ART-DIRECTION-APPROVAL-ID-INVALID",
-                "manifest.artDirectionApprovalId",
-                "approval id must be 1..128 non-control characters when present",
-            ));
-        }
+            || approval_id.chars().any(char::is_control))
+    {
+        return Err(contract_error(
+            "M7-ART-DIRECTION-APPROVAL-ID-INVALID",
+            "manifest.artDirectionApprovalId",
+            "approval id must be 1..128 non-control characters when present",
+        ));
     }
     if manifest.samples.len() != 3 {
         return Err(contract_error(
