@@ -18,4 +18,8 @@ button { justify-self: start; padding: .8rem 1.1rem; border: 0; border-radius: 1
 button:disabled { opacity: .35; cursor: not-allowed; }
 ul { display: grid; gap: .7rem; margin: 0; padding: 0; list-style: none; }
 code { overflow: hidden; text-overflow: ellipsis; color: #9eb5c7; }
+.viewport { margin: 1rem 0; overflow: hidden; border: 1px solid #294357; border-radius: 18px; background: #0c1721db; }
+.viewport header { display: flex; gap: 1rem; align-items: baseline; padding: .9rem 1.1rem; color: #9eb5c7; }
+.viewport header strong { color: #62d6b2; }
+.viewport canvas { display: block; width: 100%; min-height: 430px; }
 @media (max-width: 680px) { dl div, li { grid-template-columns: 1fr; gap: .2rem; } main { padding-top: 2rem; } }

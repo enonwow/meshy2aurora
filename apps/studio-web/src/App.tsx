@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { SourceViewport } from "./features/preview/SourceViewport";
 import { StudioWorkerClient } from "./worker/client";
 import type { StudioWorkerResponse, WorkerArtifact } from "./worker/types";
 
@@ -13,6 +14,7 @@ export function App() {
   const [status, setStatus] = useState<SessionStatus>("EMPTY");
   const [message, setMessage] = useState("Select local files to begin.");
   const [artifacts, setArtifacts] = useState<WorkerArtifact[]>([]);
+  const [sourceSha256, setSourceSha256] = useState<string>();
 
   useEffect(() => () => worker.dispose(), [worker]);
   useEffect(() => {
@@ -20,6 +22,28 @@ export function App() {
     setStatus(source && appearance ? "READY" : "EMPTY");
     setMessage(source && appearance ? "Local files ready; no upload occurred." : "Select local files to begin.");
   }, [source, appearance]);
+
+  useEffect(() => {
+    setSourceSha256(undefined);
+    if (!source) return;
+    let cancelled = false;
+    void source.arrayBuffer().then((sourceGlb) =>
+      worker.request(
+        { requestId: requestId(), type: "INSPECT_SOURCE", sourceGlb },
+        [sourceGlb],
+      ),
+    ).then((response) => {
+      if (cancelled || !response.ok || response.type !== "SOURCE_INSPECTED") return;
+      const ingest = JSON.parse(response.ingestJson) as { ir?: { source?: { sha256?: string } } };
+      setSourceSha256(ingest.ir?.source?.sha256);
+    }).catch((error: unknown) => {
+      if (!cancelled) {
+        setStatus("ERROR");
+        setMessage(error instanceof Error ? error.message : String(error));
+      }
+    });
+    return () => { cancelled = true; };
+  }, [source, worker]);
 
   const build = async () => {
     if (!source || !appearance) return;
@@ -63,6 +87,10 @@ export function App() {
         </dl>
         <button type="button" disabled={status !== "READY"} onClick={() => void build()}>Build model package</button>
       </section>
+
+      {source && sourceSha256 && (
+        <SourceViewport input={{ provenance: "SOURCE", file: source, sourceSha256 }} />
+      )}
 
       <section className="panel" aria-label="Worker artifact inventory">
         <h2>Canonical artifacts</h2>

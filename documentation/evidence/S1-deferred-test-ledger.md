@@ -24,6 +24,15 @@ fazy po pierwszej implementacji vertical slices.
 - Blad WASM jest propagowany do stanu sesji bez mock outputu.
 - TypeScript i Rust przechodza wspolny kontrakt typow podczas test wave.
 
+## S1-V3 source viewport
+
+- Widok ma jawna provenance `SOURCE` oraz ostrzezenie, ze nie jest proofem
+  outputu Aurory.
+- Renderuje tylko lokalny GLB wybrany przez uzytkownika.
+- External resource URLs sa odrzucane; preview nie pobiera zaleznosci sieciowych.
+- SHA-256 provenance pochodzi z canonical `ingestGlbJson`, nie z mocka UI.
+- Zmiana pliku niszczy poprzednia scene i zwalnia geometrie/materialy.
+
 ## Nadal odroczone
 
 - Realny Meshy browser E2E nalezy do pozniejszej bramki wejsc.
