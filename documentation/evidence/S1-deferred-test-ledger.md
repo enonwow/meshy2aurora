@@ -43,6 +43,15 @@ fazy po pierwszej implementacji vertical slices.
   node w readback viewport.
 - UI nie czyta naglowkow MDL, offsetow tabel ani bajtow MDX samodzielnie.
 
+## S1-V5 artifact downloads
+
+- Download przyjmuje tylko provenance `M2A_WASM_WORKER`.
+- HAK, MDL i JSON sa pobierane z dokladnych `ArrayBuffer` zwroconych przez
+  Worker; UI nie buduje ani nie serializuje artefaktow ponownie.
+- Filename, extension, byte length i lowercase SHA-256 sa walidowane przed
+  utworzeniem obiektu `Blob`.
+- Object URL jest zwalniany po zainicjowaniu downloadu.
+
 ## Nadal odroczone
 
 - Realny Meshy browser E2E nalezy do pozniejszej bramki wejsc.

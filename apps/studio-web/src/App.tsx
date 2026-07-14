@@ -4,6 +4,7 @@ import { AuroraReadbackViewport } from "./features/preview/AuroraReadbackViewpor
 import { ValidationPanel } from "./features/preview/ValidationPanel";
 import { mapReadbackDiagnostics } from "./features/preview/types";
 import type { BinaryMdlInspectionReport, ModelPartRef } from "./features/preview/types";
+import { ArtifactDownloads } from "./features/downloads/ArtifactDownloads";
 import { StudioWorkerClient } from "./worker/client";
 import type { StudioWorkerResponse, WorkerArtifact } from "./worker/types";
 
@@ -108,10 +109,7 @@ export function App() {
         </>
       )}
 
-      <section className="panel" aria-label="Worker artifact inventory">
-        <h2>Canonical artifacts</h2>
-        {artifacts.length === 0 ? <p>No output bytes yet.</p> : <ul>{artifacts.map((item) => <li key={item.artifactId}><span>{item.fileName}</span><code>{item.sha256}</code><span>{item.byteLength} bytes</span></li>)}</ul>}
-      </section>
+      <ArtifactDownloads artifacts={artifacts} onError={(error) => { setStatus("ERROR"); setMessage(error); }} />
     </main>
   );
 }
