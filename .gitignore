@@ -1,6 +1,7 @@
 /target/
 **/pkg/
 node_modules/
+*.tsbuildinfo
 *.tmp
 *.log
 

@@ -20,13 +20,13 @@ status_vocabulary:
 
 orchestration:
   active_stage: "M7_S1_IMPLEMENTATION_WAVE"
-  next_ready_stage: "S1_V1"
-  next_ready_slices: ["S1-V1", "S1-V2", "S1-V3", "S1-V4", "S1-V5"]
+  next_ready_stage: "S1_V3"
+  next_ready_slices: ["S1-V3", "S1-V4", "S1-V5"]
   goal_stages: ["M6", "M7", "S1"]
   goal_sequence: "Implementation-first wave: build the first pass of most M7/S1 vertical slices, then run the shared test/review phase; real Meshy execution and external acceptance remain later gates."
   goal_exclusions: ["S2", "F1-F10", "gameplay classes", "full generated module pipeline"]
   goal_terminal_condition: "M6, M7 and S1 are DONE with their required code, artifacts, independent reviews and live/e2e evidence."
-  next_action: "Implement S1-V1/S1-V2 and continue through S1-V5; begin the shared full-test wave once at least six first-pass slices are integrated."
+  next_action: "Implement and commit S1-V3 through S1-V5, then run the shared full-test and independent-review wave now that the six-slice threshold is reached."
   one_active_stage_only: false
   current_attempt_id: "M7-S1-FIRST-PASS-20260714-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
@@ -35,13 +35,13 @@ orchestration:
   implementation_supplement: "documentation/suplement-implementation-first-m7-s1-codex.md"
   implementation_wave:
     inventory_total: 10
-    first_pass_complete: 4
-    first_pass_completed_slices: ["M7-V1", "M7-V2", "M7-V3", "M7-V4"]
+    first_pass_complete: 6
+    first_pass_completed_slices: ["M7-V1", "M7-V2", "M7-V3", "M7-V4", "S1-V1", "S1-V2"]
     test_phase_threshold: 6
-    full_test_phase: "DEFERRED"
+    full_test_phase: "READY_AFTER_S1_V1_V2_COMMIT"
     review_phase: "DEFERRED"
     implementation_blockers: []
-    ready_first_pass_slices: ["S1-V1", "S1-V2", "S1-V3", "S1-V4", "S1-V5"]
+    ready_first_pass_slices: ["S1-V3", "S1-V4", "S1-V5"]
     real_meshy_execution: "DEFERRED_INPUT_GATE"
     deferred_input_gate: "Three owner-approved original Meshy GLB files after first-pass implementation, shared code tests and S1 local-file flow."
     deferred_input_gate_applies_to: ["M7-V5", "M7_REAL_E2E", "M7_FINAL_ACCEPTANCE", "S1_FINAL_BROWSER_E2E"]
@@ -474,7 +474,7 @@ stages:
 
   S1:
     status: "IN_PROGRESS"
-    status_reason: "S1 first pass may consume the existing canonical Rust/WASM boundary now. Real Meshy E2E and external acceptance are deferred gates, not current implementation blockers."
+    status_reason: "S1-V1/V2 first-pass shell, local-file session, canonical Worker and Studio WASM package boundary are implemented and minimally type/compile-checked. S1-V3 through S1-V5 remain ready."
     owner: "product/UI implementation agent"
     risk: "MEDIUM"
     dependencies: ["Existing canonical m2a-wasm public API", "documentation/suplement-implementation-first-m7-s1-codex.md"]
@@ -482,11 +482,26 @@ stages:
     deferred_inputs:
       - "Three owner-approved original Meshy GLB files for final browser E2E after first pass."
     bugs: []
-    next_actions: ["Implement S1-V1 through S1-V5 against canonical Rust/WASM without a parallel converter or real Meshy dependency."]
-    evidence: []
+    next_actions: ["Implement S1-V3 through S1-V5, then run shared browser/Rust tests and independent review."]
+    evidence: ["documentation/evidence/S1-deferred-test-ledger.md: S1-V1/V2 shared-wave tests recorded; this is not PASS or S1 DONE evidence"]
     documentation: ["documentation/suplement-implementation-first-m7-s1-codex.md", "documentation/evidence/S1-evidence.md"]
     expected_artifacts: ["Canonical preview and validation UI proof"]
-    changed_files: []
+    changed_files:
+      - "apps/studio-web/package.json"
+      - "apps/studio-web/package-lock.json"
+      - "apps/studio-web/index.html"
+      - "apps/studio-web/tsconfig.json"
+      - "apps/studio-web/vite.config.ts"
+      - "apps/studio-web/src/App.tsx"
+      - "apps/studio-web/src/main.tsx"
+      - "apps/studio-web/src/styles.css"
+      - "apps/studio-web/src/vite-env.d.ts"
+      - "apps/studio-web/src/worker/client.ts"
+      - "apps/studio-web/src/worker/m2a.worker.ts"
+      - "apps/studio-web/src/worker/types.ts"
+      - "crates/m2a-wasm/src/lib.rs"
+      - "documentation/evidence/S1-deferred-test-ledger.md"
+      - "documentation/orchestrator-state.yaml"
 
   S2:
     status: "NOT_STARTED"

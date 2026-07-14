@@ -724,6 +724,78 @@ pub fn write_package_manifest_v1_json(
         .map_err(|error| JsValue::from_str(&error))
 }
 
+/// Browser Studio result from the existing canonical model-only pipeline.
+/// Binary buffers cross the boundary separately and can each be taken once.
+#[wasm_bindgen]
+pub struct StudioModelPackageArtifactV1 {
+    hak_bytes: Vec<u8>,
+    model_bytes: Vec<u8>,
+    report_json: String,
+    manifest_json: String,
+    summary_json: String,
+    readback_json: String,
+}
+
+#[wasm_bindgen]
+impl StudioModelPackageArtifactV1 {
+    #[wasm_bindgen(js_name = takeHakBytes)]
+    pub fn take_hak_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.hak_bytes)
+    }
+
+    #[wasm_bindgen(js_name = takeModelBytes)]
+    pub fn take_model_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.model_bytes)
+    }
+
+    #[wasm_bindgen(getter, js_name = reportJson)]
+    pub fn report_json(&self) -> String {
+        self.report_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = manifestJson)]
+    pub fn manifest_json(&self) -> String {
+        self.manifest_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = summaryJson)]
+    pub fn summary_json(&self) -> String {
+        self.summary_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = readbackJson)]
+    pub fn readback_json(&self) -> String {
+        self.readback_json.clone()
+    }
+}
+
+/// Executes the canonical Rust model-only GLB -> MDL/TGA/2DA/HAK pipeline for
+/// browser-selected bytes. No filesystem, DOM or alternate conversion path is
+/// involved at this boundary.
+#[wasm_bindgen(js_name = buildM6ModelPackageV1)]
+pub fn build_m6_model_package_v1(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+) -> Result<StudioModelPackageArtifactV1, JsValue> {
+    let artifact =
+        m2a_core::model_pipeline::build_m6_model_package_v1(source_glb, appearance_two_da)
+            .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+    let readback = m2a_core::inspect_binary_mdl(&artifact.model)
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+
+    Ok(StudioModelPackageArtifactV1 {
+        hak_bytes: artifact.hak,
+        model_bytes: artifact.model,
+        report_json: String::from_utf8(artifact.report_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?,
+        manifest_json: String::from_utf8(artifact.manifest_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?,
+        summary_json: String::from_utf8(artifact.summary_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?,
+        readback_json: serialize_json(&readback),
+    })
+}
+
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod m5_native_tests {
     use super::{
