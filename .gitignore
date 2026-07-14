@@ -3,6 +3,9 @@
 node_modules/
 dist/
 *.tsbuildinfo
+apps/studio-web/tests/.generated/
+apps/studio-web/tests/browser/__screenshots__/
+apps/studio-web/.vitest-attachments/
 *.tmp
 *.log
 

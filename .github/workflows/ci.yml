@@ -51,5 +51,8 @@ jobs:
       - name: Test Studio
         working-directory: apps/studio-web
         run: npm test
+      - name: Test real Studio Worker and web WASM integration
+        working-directory: apps/studio-web
+        run: npm run test:worker-integration
       - name: Hygiene
         run: git diff --check

@@ -9,7 +9,8 @@
     "build:wasm": "wasm-pack build ../../crates/m2a-wasm --target web --out-dir pkg",
     "build": "npm run build:wasm && tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:worker-integration": "npm run build:wasm && node tests/prepare-worker-fixture.mjs && vitest run --config vitest.worker-integration.config.ts"
   },
   "dependencies": {
     "react": "latest",
@@ -17,12 +18,14 @@
     "three": "latest"
   },
   "devDependencies": {
+    "@vitest/browser-playwright": "4.1.10",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@types/three": "latest",
     "@vitejs/plugin-react": "latest",
     "jsdom": "latest",
+    "playwright": "1.61.1",
     "typescript": "latest",
     "vite": "latest",
     "vitest": "latest"
