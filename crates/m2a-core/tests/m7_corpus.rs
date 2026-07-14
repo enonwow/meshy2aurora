@@ -143,23 +143,136 @@ fn appearance_two_da() -> &'static [u8] {
     b"2DA V2.0\r\n\r\nLABEL MOVERATE MODELTYPE RACE PORTRAIT ENVMAP DefaultPhenoType BLOODCOLR WEAPONSCALE SIZECATEGORY\r\n0 Existing NORM P existing **** **** 0 R 1.0 4\r\n"
 }
 
+fn ready_payloads<'a>(humanoid: &'a [u8], static_glb: &'a [u8]) -> [M7SourcePayloadV1<'a>; 3] {
+    [
+        M7SourcePayloadV1 {
+            relative_path: "models/humanoid.glb",
+            bytes: humanoid,
+        },
+        M7SourcePayloadV1 {
+            relative_path: "models/creature.glb",
+            bytes: static_glb,
+        },
+        M7SourcePayloadV1 {
+            relative_path: "models/static.glb",
+            bytes: static_glb,
+        },
+    ]
+}
+
 #[test]
-fn canonical_artifact_is_bound_to_its_real_source_and_exact_writer_replay() {
+fn undeclared_payload_is_invalid_even_when_all_declared_sources_are_ready() {
     let (manifest, humanoid, static_glb) = ready_corpus();
+    let extra = m2a_core::owned_fixture::synthetic_owned_m6_glb_v1().unwrap();
+    let mut payloads = ready_payloads(&humanoid, &static_glb).to_vec();
+    payloads.push(M7SourcePayloadV1 {
+        relative_path: "models/undeclared.glb",
+        bytes: &extra,
+    });
+
+    let report = inspect_m7_corpus_intake_v1(&manifest, &payloads).unwrap();
+
+    assert_eq!(report.status, M7IntakeStatusV1::InputInvalid);
+    assert!(!report.real_execution_ready);
+    assert!(!report.m7_done_claim_allowed);
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|item| item.code == "M7-INTAKE-UNDECLARED-PAYLOAD")
+    );
+}
+
+#[test]
+fn case_insensitive_duplicate_payload_path_is_rejected() {
+    let (manifest, humanoid, _) = ready_corpus();
     let payloads = [
         M7SourcePayloadV1 {
             relative_path: "models/humanoid.glb",
             bytes: &humanoid,
         },
         M7SourcePayloadV1 {
-            relative_path: "models/creature.glb",
-            bytes: &static_glb,
-        },
-        M7SourcePayloadV1 {
-            relative_path: "models/static.glb",
-            bytes: &static_glb,
+            relative_path: "MODELS/HUMANOID.GLB",
+            bytes: &humanoid,
         },
     ];
+
+    let error = inspect_m7_corpus_intake_v1(&manifest, &payloads).unwrap_err();
+
+    assert_eq!(error.code, "M7-INTAKE-PAYLOAD-DUPLICATE");
+    assert_eq!(error.path, "payloads[1].relativePath");
+}
+
+#[test]
+fn missing_required_humanoid_clip_is_invalid_with_stable_diagnostic() {
+    let (mut manifest, humanoid, static_glb) = ready_corpus();
+    let M7CorpusEntryV1::RiggedHumanoidSourceClips {
+        required_source_clip_names,
+        ..
+    } = &mut manifest.samples[0]
+    else {
+        panic!("ready corpus must keep the humanoid sample first")
+    };
+    *required_source_clip_names = vec!["missing-owned-clip".to_owned()];
+
+    let report =
+        inspect_m7_corpus_intake_v1(&manifest, &ready_payloads(&humanoid, &static_glb)).unwrap();
+
+    assert_eq!(report.status, M7IntakeStatusV1::InputInvalid);
+    assert_eq!(report.ready_source_count, 2);
+    assert!(report.diagnostics.iter().any(|item| {
+        item.code == "M7-HUMANOID-REQUIRED-CLIP-MISSING"
+            && item.sample_id.as_deref() == Some("humanoid")
+    }));
+    let humanoid_report = report
+        .samples
+        .iter()
+        .find(|sample| sample.sample_id == "humanoid")
+        .unwrap();
+    assert_eq!(humanoid_report.status, M7IntakeStatusV1::InputInvalid);
+}
+
+#[test]
+fn every_original_meshy_provenance_attestation_is_required() {
+    let (manifest, _, _) = ready_corpus();
+
+    for missing_field in [
+        "providerTaskId",
+        "originalExportAttested",
+        "rightsConfirmed",
+        "notSyntheticFixtureAttested",
+    ] {
+        let mut candidate = manifest.clone();
+        let M7CorpusEntryV1::RiggedHumanoidSourceClips {
+            source: Some(source),
+            ..
+        } = &mut candidate.samples[0]
+        else {
+            panic!("ready corpus must contain a humanoid source descriptor")
+        };
+        match missing_field {
+            "providerTaskId" => source.provenance.provider_task_id.clear(),
+            "originalExportAttested" => source.provenance.original_export_attested = false,
+            "rightsConfirmed" => source.provenance.rights_confirmed = false,
+            "notSyntheticFixtureAttested" => {
+                source.provenance.not_synthetic_fixture_attested = false
+            }
+            _ => unreachable!(),
+        }
+
+        let error = validate_m7_corpus_manifest_v1(&candidate).unwrap_err();
+        assert_eq!(error.code, "M7-ORIGINAL-MESHY-PROVENANCE-MISSING");
+        assert_eq!(
+            error.path, "manifest.samples[0].source.provenance",
+            "unexpected path while removing {missing_field}"
+        );
+    }
+}
+
+#[test]
+fn canonical_artifact_is_bound_to_its_real_source_and_exact_writer_replay() {
+    let (manifest, humanoid, static_glb) = ready_corpus();
+    let payloads = ready_payloads(&humanoid, &static_glb);
     let canonical = [M7CanonicalPipelineArtifactV1::build_rigged_humanoid_m6(
         "humanoid",
         &humanoid,
@@ -213,20 +326,7 @@ fn canonical_artifact_is_bound_to_its_real_source_and_exact_writer_replay() {
 #[test]
 fn approval_and_exact_resource_metadata_gate_canonical_materialization() {
     let (mut manifest, humanoid, static_glb) = ready_corpus();
-    let payloads = [
-        M7SourcePayloadV1 {
-            relative_path: "models/humanoid.glb",
-            bytes: &humanoid,
-        },
-        M7SourcePayloadV1 {
-            relative_path: "models/creature.glb",
-            bytes: &static_glb,
-        },
-        M7SourcePayloadV1 {
-            relative_path: "models/static.glb",
-            bytes: &static_glb,
-        },
-    ];
+    let payloads = ready_payloads(&humanoid, &static_glb);
     manifest.art_direction_approval_id = None;
     let canonical = [M7CanonicalPipelineArtifactV1::build_rigged_humanoid_m6(
         "humanoid",
@@ -308,6 +408,128 @@ fn unsafe_paths_identity_drift_and_truncated_glb_are_rejected() {
             .iter()
             .any(|item| item.code == "M7-SOURCE-IDENTITY-MISMATCH")
     );
+}
+
+#[test]
+fn drive_backslash_and_dot_segment_source_paths_are_rejected() {
+    for unsafe_path in [
+        "C:/models/static.glb",
+        r"models\static.glb",
+        "models/./static.glb",
+    ] {
+        let (mut manifest, _, _) = ready_corpus();
+        let M7CorpusEntryV1::StaticPlaceableOrItem {
+            source: Some(source),
+            ..
+        } = &mut manifest.samples[2]
+        else {
+            panic!("ready corpus must keep the static sample last")
+        };
+        source.relative_path = unsafe_path.to_owned();
+
+        let error = validate_m7_corpus_manifest_v1(&manifest).unwrap_err();
+        assert_eq!(
+            error.code, "M7-SOURCE-PATH-INVALID",
+            "unexpected code for {unsafe_path:?}"
+        );
+        assert_eq!(error.path, "manifest.samples[2].source.relativePath");
+    }
+}
+
+#[test]
+fn rigged_source_is_rejected_for_non_humanoid_and_static_roles() {
+    let (manifest, humanoid, static_glb) = ready_corpus();
+
+    for (sample_index, source_path, task_id, diagnostic_code) in [
+        (
+            1,
+            "models/creature.glb",
+            "task-c",
+            "M7-REFERENCE-SUPERMODEL-SOURCE-NOT-STATIC",
+        ),
+        (
+            2,
+            "models/static.glb",
+            "task-s",
+            "M7-STATIC-SOURCE-HAS-SKELETON-OR-ANIMATION",
+        ),
+    ] {
+        let mut candidate = manifest.clone();
+        match &mut candidate.samples[sample_index] {
+            M7CorpusEntryV1::NonHumanoidReferenceSupermodel { source, .. }
+            | M7CorpusEntryV1::StaticPlaceableOrItem { source, .. } => {
+                *source = Some(descriptor(source_path, &humanoid, task_id));
+            }
+            M7CorpusEntryV1::RiggedHumanoidSourceClips { .. } => {
+                panic!("negative role case must not select the humanoid sample")
+            }
+        }
+        let payloads = [
+            M7SourcePayloadV1 {
+                relative_path: "models/humanoid.glb",
+                bytes: &humanoid,
+            },
+            M7SourcePayloadV1 {
+                relative_path: "models/creature.glb",
+                bytes: if sample_index == 1 {
+                    &humanoid
+                } else {
+                    &static_glb
+                },
+            },
+            M7SourcePayloadV1 {
+                relative_path: "models/static.glb",
+                bytes: if sample_index == 2 {
+                    &humanoid
+                } else {
+                    &static_glb
+                },
+            },
+        ];
+
+        let report = inspect_m7_corpus_intake_v1(&candidate, &payloads).unwrap();
+
+        assert_eq!(report.status, M7IntakeStatusV1::InputInvalid);
+        assert!(report.diagnostics.iter().any(|item| {
+            item.code == diagnostic_code
+                && item.sample_id.as_deref() == Some(candidate.samples[sample_index].sample_id())
+        }));
+    }
+}
+
+#[test]
+fn unknown_and_duplicate_canonical_artifacts_are_rejected() {
+    let (manifest, humanoid, static_glb) = ready_corpus();
+    let payloads = ready_payloads(&humanoid, &static_glb);
+    let unknown = [M7CanonicalPipelineArtifactV1::build_rigged_humanoid_m6(
+        "undeclared-sample",
+        &humanoid,
+        appearance_two_da(),
+    )
+    .unwrap()];
+
+    let error = build_m7_corpus_batch_v1(&manifest, &payloads, &unknown).unwrap_err();
+    assert_eq!(error.code, "M7-BATCH-ARTIFACT-SAMPLE-UNKNOWN");
+    assert_eq!(error.path, "canonicalArtifacts[0].sampleId");
+
+    let duplicate = [
+        M7CanonicalPipelineArtifactV1::build_rigged_humanoid_m6(
+            "humanoid",
+            &humanoid,
+            appearance_two_da(),
+        )
+        .unwrap(),
+        M7CanonicalPipelineArtifactV1::build_rigged_humanoid_m6(
+            "humanoid",
+            &humanoid,
+            appearance_two_da(),
+        )
+        .unwrap(),
+    ];
+
+    let error = build_m7_corpus_batch_v1(&manifest, &payloads, &duplicate).unwrap_err();
+    assert_eq!(error.code, "M7-BATCH-ARTIFACT-DUPLICATE");
+    assert_eq!(error.path, "canonicalArtifacts[1].sampleId");
 }
 
 #[test]

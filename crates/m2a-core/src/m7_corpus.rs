@@ -1547,7 +1547,37 @@ mod tests {
     }
 
     #[test]
-    fn replay_rejects_mutated_writer_evidence_even_when_json_is_rebound() {
+    fn readback_rejects_jointly_mutated_resource_metadata() {
+        let source = crate::owned_fixture::synthetic_owned_m6_glb_v1().unwrap();
+        let mut canonical = M7CanonicalPipelineArtifactV1::build_rigged_humanoid_m6(
+            "humanoid",
+            &source,
+            APPEARANCE_TWO_DA,
+        )
+        .unwrap();
+
+        let sample_id = canonical.sample_id().to_owned();
+        let M7MaterializedRouteArtifactV1::RiggedHumanoidM6(pipeline) = &mut canonical.route;
+        let forged_resource_id = pipeline.package_manifest.resources[0].hak_resource_id + 1;
+        pipeline.package_manifest.resources[0].hak_resource_id = forged_resource_id;
+        pipeline.manifest.package_manifest.resources[0].hak_resource_id = forged_resource_id;
+        pipeline.report.hak.resources[0].resource_id = forged_resource_id;
+        pipeline.manifest_json = canonical_json(&pipeline.manifest);
+        pipeline.report_json = canonical_json(&pipeline.report);
+        let report_identity = byte_identity(&pipeline.report_json);
+        pipeline.summary.outputs.report.byte_length = report_identity.byte_length;
+        pipeline.summary.outputs.report.sha256 = report_identity.sha256;
+        pipeline.summary_json = canonical_json(&pipeline.summary);
+
+        let error = match verify_canonical_package_v1(&sample_id, pipeline) {
+            Ok(_) => panic!("own HAK readback must reject jointly forged resource metadata"),
+            Err(error) => error,
+        };
+        assert_eq!(error.code, "M7-CANONICAL-HAK-RESOURCE-METADATA-MISMATCH");
+    }
+
+    #[test]
+    fn replay_rejects_jointly_mutated_writer_and_manifest_evidence() {
         let source = crate::owned_fixture::synthetic_owned_m6_glb_v1().unwrap();
         let mut canonical = M7CanonicalPipelineArtifactV1::build_rigged_humanoid_m6(
             "humanoid",
@@ -1559,6 +1589,9 @@ mod tests {
         let sample_id = canonical.sample_id().to_owned();
         let M7MaterializedRouteArtifactV1::RiggedHumanoidM6(pipeline) = &mut canonical.route;
         pipeline.report.hak.schema_version += 1;
+        pipeline.package_manifest.schema_version += 1;
+        pipeline.manifest.package_manifest.schema_version += 1;
+        pipeline.manifest_json = canonical_json(&pipeline.manifest);
         pipeline.report_json = canonical_json(&pipeline.report);
         let report_identity = byte_identity(&pipeline.report_json);
         pipeline.summary.outputs.report.byte_length = report_identity.byte_length;
