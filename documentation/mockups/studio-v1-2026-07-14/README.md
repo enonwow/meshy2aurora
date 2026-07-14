@@ -4,6 +4,8 @@ Status: `AKTYWNY KONTRAKT WIZUALNY Z OZNACZONYMI POPRAWKAMI`
 
 Ten katalog zachowuje pierwsza pelna serie ekranow Studio V1. Obrazy sa referencja ukladu i przeplywu, ale nie wszystkie sa gotowe do implementacji 1:1. Status w tabeli ponizej ma pierwszenstwo przed wygladem pojedynczego obrazu.
 
+Szczegolowy sposob implementacji komponentow, maszyny stanu i kontraktow danych opisuje [studio-v1-frontend-implementation-suplement-codex.md](../../studio-v1-frontend-implementation-suplement-codex.md).
+
 ## 1. Zamrozony przeplyw V1
 
 `Source -> Inspect -> Build -> Review Output -> Download`

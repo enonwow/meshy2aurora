@@ -11,7 +11,8 @@ Ten dokument zapisuje decyzje wlasciciela dotyczace pierwszej widocznej wersji a
 
 - [suplement-implementation-first-m7-s1-codex.md](suplement-implementation-first-m7-s1-codex.md),
 - [plan-implementacji-orkiestrator-codex.md](plan-implementacji-orkiestrator-codex.md),
-- [przyszle-featurey-studio-codex.md](przyszle-featurey-studio-codex.md).
+- [przyszle-featurey-studio-codex.md](przyszle-featurey-studio-codex.md),
+- [studio-v1-frontend-implementation-suplement-codex.md](studio-v1-frontend-implementation-suplement-codex.md).
 
 Suplement doprecyzowuje S1 i nie otwiera automatycznie pelnego S2 ani backlogu F1-F10. Zaawansowane funkcje autorskie pozostaja odlozone, ale diagnostyka potrzebna do implementacji i zglaszania bledow wchodzi do V1.
 

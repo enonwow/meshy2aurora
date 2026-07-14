@@ -32,6 +32,7 @@ Aktualny kierunek po audycie 2026-07-09:
 - [status-dokumentacji-web-2026-07-10-codex.md](status-dokumentacji-web-2026-07-10-codex.md) - klasyfikacja wszystkich dokumentow po decyzji D12.
 - [plan-implementacji-orkiestrator-codex.md](plan-implementacji-orkiestrator-codex.md) - aktywny plan etapow, Definition of Done i kontrakt dla orkiestratora.
 - [studio-v1-debug-implementation-suplement-codex.md](studio-v1-debug-implementation-suplement-codex.md) - aktywny kontrakt Studio V1: uproszczona powloka, Debug Drawer, Binary Inspector, `Generate Report`, Replay i First Difference.
+- [studio-v1-frontend-implementation-suplement-codex.md](studio-v1-frontend-implementation-suplement-codex.md) - aktywny kontrakt implementacji frontendu na bazie mockupow: state machine, komponenty, dane Workera, vertical slices i DoD.
 - [mockups/studio-v1-2026-07-14/README.md](mockups/studio-v1-2026-07-14/README.md) - wersjonowany pakiet ekranow Studio V1 z macierza widokow zaakceptowanych, wymagajacych poprawy i odrzuconych.
 - [orchestrator-state.yaml](orchestrator-state.yaml) - maszynowy aktualny stan etapow, blockerow, problemow, bledow i evidence.
 - [evidence/README.md](evidence/README.md) - append-only szablon dowodow dla jednego etapu.
