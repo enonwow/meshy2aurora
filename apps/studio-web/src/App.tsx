@@ -5,8 +5,9 @@ import { ValidationPanel } from "./features/preview/ValidationPanel";
 import { mapReadbackDiagnostics } from "./features/preview/types";
 import type { BinaryMdlInspectionReport, ModelPartRef } from "./features/preview/types";
 import { ArtifactDownloads } from "./features/downloads/ArtifactDownloads";
+import { M7CorpusPanel } from "./features/m7/M7CorpusPanel";
 import { StudioWorkerClient } from "./worker/client";
-import type { StudioWorkerResponse, WorkerArtifact } from "./worker/types";
+import type { StudioWorkerRequest, StudioWorkerResponse, WorkerArtifact } from "./worker/types";
 
 type SessionStatus = "EMPTY" | "READY" | "WORKING" | "COMPLETE" | "ERROR";
 
@@ -80,6 +81,13 @@ export function App() {
     setMessage(error);
   }, []);
 
+  const requestFromWorker = useCallback((request: StudioWorkerRequest, transfer: Transferable[] = []) => {
+    const worker = workerRef.current;
+    return worker
+      ? worker.request(request, transfer)
+      : Promise.reject(new Error("Studio Worker is not ready"));
+  }, []);
+
   const build = async () => {
     if (!source || !appearance) return;
     const worker = workerRef.current;
@@ -132,6 +140,8 @@ export function App() {
         </dl>
         <button type="button" disabled={status !== "READY"} onClick={() => void build()}>Build model package</button>
       </section>
+
+      <M7CorpusPanel request={requestFromWorker} />
 
       {source && sourceSha256 && (
         <SourceViewport input={{ provenance: "SOURCE", file: source, sourceSha256 }} onError={reportUiError} />

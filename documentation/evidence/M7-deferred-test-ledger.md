@@ -67,6 +67,21 @@ Shared wave 2026-07-14:
 - Trzy oryginalne Meshy GLB, full pipeline i proof packety pozostaja
   `DEFERRED_INPUT_GATE`.
 
+## M7-V4S Studio Worker flow
+
+- Completion sub-slice ma status `PASS_REVIEW_CLEAN`.
+- Lokalny manifest jest kanonicznie walidowany przez publiczny WASM przed
+  udostepnieniem intake/build; TypeScript nie implementuje drugiego walidatora.
+- Jawnie wybrane payloady sa skladane po preflight do jednego transferable
+  `ArrayBuffer` ze strict deskryptorami i exact binding do `relativePath`.
+- Validate/intake/batch zwracaja exact hash-verified `JSON_REPORT` artifacts.
+- Real Chrome Worker/web-WASM: 3/3 PASS, w tym deferred oraz owned-synthetic
+  READY z 1 materialized humanoid i 2 jawnymi deferred routes.
+- Revision guards odrzucaja stale manifest reads i Worker responses; zmiana
+  inputu usuwa poprzednie artefakty, a status M7 jest odseparowany od M6.
+- Dwa niezalezne finalne review: P1=0, P2=0.
+- Nadal nie jest to real Meshy acceptance ani M7 DONE.
+
 ## M7-V3 canonical batch runner
 
 - Runner zawsze zaczyna od `inspect_m7_corpus_intake_v1`.

@@ -26,7 +26,7 @@ orchestration:
   goal_sequence: "Implementation-first wave: build the first pass of most M7/S1 vertical slices, then run the shared test/review phase; real Meshy execution and external acceptance remain later gates."
   goal_exclusions: ["S2", "F1-F10", "gameplay classes", "full generated module pipeline"]
   goal_terminal_condition: "M6, M7 and S1 are DONE with their required code, artifacts, independent reviews and live/e2e evidence."
-  next_action: "Preserve the review-clean M7-V4W public WASM bridge; after owner-approved original Meshy inputs, implement/execute M7-V5 routes and real browser E2E without touching Aurora configuration."
+  next_action: "Preserve the review-clean M7-V4W and M7-V4S browser bridges; after owner-approved original Meshy inputs, implement/execute M7-V5 routes and final real browser E2E without touching Aurora configuration."
   one_active_stage_only: false
   current_attempt_id: "M7-S1-FIRST-PASS-20260714-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
@@ -38,7 +38,7 @@ orchestration:
     first_pass_complete: 9
     first_pass_completed_slices: ["M7-V1", "M7-V2", "M7-V3", "M7-V4", "S1-V1", "S1-V2", "S1-V3", "S1-V4", "S1-V5"]
     test_phase_threshold: 6
-    full_test_phase: "PASS_319_NATIVE_20_WASM_8_STUDIO_1_REAL_WORKER_WASM_FRESH_STATIC_BUILD_M7_NODE_READY"
+    full_test_phase: "PASS_319_NATIVE_20_WASM_16_STUDIO_3_REAL_WORKER_WASM_FRESH_STATIC_BUILD_M7_NODE_READY"
     review_phase: "PASS_P1_0_P2_0_AFTER_FINAL_REREVIEW"
     implementation_blockers: []
     ready_first_pass_slices: []
@@ -52,6 +52,12 @@ orchestration:
         implementation_blockers: []
         evidence: "8/8 native M7 adapter tests, real generated Node/WASM READY and deferred flows, shared frozen full-batch JSON SHA ee04ebfcdbb3e1265913de8f88d3c05f9277d18c7d0c75bdbcecc8139046c808, independent P1=0/P2=0 reviews."
         exclusions: ["new MDL profile", "non-humanoid canonical pipeline", "static canonical pipeline", "real Meshy execution", "Aurora/NWN"]
+      M7-V4S:
+        status: "DONE"
+        scope: "Local Studio manifest/payload envelope and typed Worker calls to the public M7 validate, intake and batch WASM APIs."
+        implementation_blockers: []
+        evidence: "16/16 Studio unit/App tests, 3/3 real Chrome Worker/web-WASM tests, READY 1+2 and deferred/invalid flows, exact hash-verified JSON artifacts, independent P1=0/P2=0 reviews."
+        exclusions: ["new converter", "new MDL profile", "real Meshy execution", "M7 DONE claim", "Aurora/NWN", "configuration", "gameplay classes"]
 
 global_blockers:
   - id: "GB-001"
@@ -460,7 +466,7 @@ stages:
 
   M7:
     status: "IN_PROGRESS"
-    status_reason: "M7-V1 through M7-V4 plus completion sub-slice M7-V4W pass the 319-test shared wave, real Node/WASM READY boundary and independent P1=0/P2=0 final rereviews. Humanoid materialization is source-bound; non-humanoid/static routes are explicit M7-V5 deferred outcomes. Original Meshy files remain the input gate, so M7 is not DONE."
+    status_reason: "M7-V1 through M7-V4 plus completion sub-slices M7-V4W and M7-V4S pass the 319-test shared wave, public Node/WASM parity, real Chrome Studio Worker M7 flow and independent P1=0/P2=0 final rereviews. Humanoid materialization is source-bound; non-humanoid/static routes are explicit M7-V5 deferred outcomes. Original Meshy files remain the input gate, so M7 is not DONE."
     owner: "Mateusz + implementation agent"
     risk: "HIGH"
     dependencies: ["M5 structural native package path", "documentation/suplement-implementation-first-m7-s1-codex.md"]
@@ -470,7 +476,7 @@ stages:
       - "Approved art direction before real corpus execution."
     bugs: []
     next_actions: ["After owner-provided original inputs, implement/execute the canonical non-humanoid reference-supermodel and static routes in M7-V5, then complete real proof packets and final acceptance."]
-    evidence: ["documentation/evidence/M7-deferred-test-ledger.md: M7-V1 through M7-V4 plus M7-V4W PASS, 13 core integration + 3 private core + 8 native adapter M7 tests, 319 workspace tests, real Node/WASM READY parity and independent P1=0/P2=0; real M7-V5 remains deferred"]
+    evidence: ["documentation/evidence/M7-deferred-test-ledger.md: M7-V1 through M7-V4 plus M7-V4W/M7-V4S PASS, 319 workspace tests, real Node/WASM parity, 3 real Chrome Worker flows and independent P1=0/P2=0; real M7-V5 remains deferred"]
     documentation: ["documentation/suplement-implementation-first-m7-s1-codex.md", "documentation/evidence/M7-deferred-test-ledger.md"]
     expected_artifacts: ["Three full source-to-game proof packets"]
     changed_files:
@@ -479,12 +485,16 @@ stages:
       - "crates/m2a-core/tests/m7_corpus.rs"
       - "crates/m2a-wasm/src/lib.rs"
       - "crates/m2a-wasm/tests/node_boundary.cjs"
+      - "apps/studio-web/src/features/m7/M7CorpusPanel.tsx"
+      - "apps/studio-web/src/features/m7/envelope.ts"
+      - "apps/studio-web/src/worker/m2a.worker.ts"
+      - "apps/studio-web/src/worker/types.ts"
       - "documentation/evidence/M7-deferred-test-ledger.md"
       - "documentation/orchestrator-state.yaml"
 
   S1:
     status: "IN_PROGRESS"
-    status_reason: "S1-V1 through S1-V5 code wave passes typecheck, 8 Studio tests, a real Chrome Worker/web-WASM integration test, fresh static build, shared Rust/WASM gates and independent P1=0/P2=0 review. Real browser E2E on owner-approved Meshy input remains deferred, so S1 is not DONE."
+    status_reason: "S1-V1 through S1-V5 plus the M7-V4S completion flow pass typecheck, 16 Studio tests, 3 real Chrome Worker/web-WASM integration tests, fresh static build, shared Rust/WASM gates and independent P1=0/P2=0 review. Real browser E2E on owner-approved Meshy input remains deferred, so S1 is not DONE."
     owner: "product/UI implementation agent"
     risk: "MEDIUM"
     dependencies: ["Existing canonical m2a-wasm public API", "documentation/suplement-implementation-first-m7-s1-codex.md"]
@@ -493,7 +503,7 @@ stages:
       - "Three owner-approved original Meshy GLB files for final browser E2E after first pass."
     bugs: []
     next_actions: ["After owner-approved original Meshy input, run real local-file browser E2E and record visible/downloaded artifact proof."]
-    evidence: ["documentation/evidence/S1-deferred-test-ledger.md: S1-V1--V5 code wave PASS, 8 Studio tests, 1 real Chrome Worker/web-WASM integration test, fresh build and independent P1=0/P2=0; real Meshy browser E2E remains deferred"]
+    evidence: ["documentation/evidence/S1-deferred-test-ledger.md: S1-V1--V5 plus M7-V4S PASS, 16 Studio tests, 3 real Chrome Worker/web-WASM integration tests, fresh build and independent P1=0/P2=0; real Meshy browser E2E remains deferred"]
     documentation: ["documentation/suplement-implementation-first-m7-s1-codex.md", "documentation/evidence/S1-deferred-test-ledger.md"]
     expected_artifacts: ["Canonical preview and validation UI proof"]
     changed_files:

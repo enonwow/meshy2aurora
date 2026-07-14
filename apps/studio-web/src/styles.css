@@ -16,6 +16,10 @@ dl div, li { display: grid; grid-template-columns: 9rem 1fr auto; gap: 1rem; ali
 dt { color: #7f9cb1; } dd { margin: 0; }
 button { justify-self: start; padding: .8rem 1.1rem; border: 0; border-radius: 10px; background: #62d6b2; color: #06120f; font-weight: 800; cursor: pointer; }
 button:disabled { opacity: .35; cursor: not-allowed; }
+.m7-panel h2 { margin-top: 0; }
+.m7-panel fieldset { border: 1px solid #334155; border-radius: .5rem; margin: .75rem 0; padding: .75rem; }
+.m7-panel legend { font-weight: 700; padding: 0 .35rem; }
+.button-row { display: flex; flex-wrap: wrap; gap: .6rem; }
 ul { display: grid; gap: .7rem; margin: 0; padding: 0; list-style: none; }
 code { overflow: hidden; text-overflow: ellipsis; color: #9eb5c7; }
 .viewport { margin: 1rem 0; overflow: hidden; border: 1px solid #294357; border-radius: 18px; background: #0c1721db; }

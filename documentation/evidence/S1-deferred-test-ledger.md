@@ -9,11 +9,11 @@ Shared wave 2026-07-14:
 
 - `cargo fmt --all -- --check`: PASS.
 - `cargo clippy --workspace --all-targets -- -D warnings`: PASS.
-- `cargo test --workspace`: PASS, 311 testow.
+- `cargo test --workspace`: PASS, 319 testow.
 - `wasm-pack test --node crates/m2a-wasm`: PASS, 20 testow, w tym publiczny
   Studio model-package boundary z exact core parity.
-- `npm test`: PASS, 4 pliki / 8 testow Studio.
-- `npm run test:worker-integration`: PASS, 1 realny test browserowy Chrome.
+- `npm test`: PASS, 5 plikow / 16 testow Studio.
+- `npm run test:worker-integration`: PASS, 3 realne testy browserowe Chrome.
 - `npm run build`: PASS; static Vite bundle zawiera osobny Worker i WASM.
 - Build sam generuje swiezy `wasm-pack --target web`, a CI wykonuje ten sam flow.
 - Niezalezne review po poprawkach: P1=0, P2=0.
@@ -45,6 +45,12 @@ Shared wave 2026-07-14:
   outputem oraz sprawdza report, manifest, readback i transferable buffers.
 - Test nie korzysta z fake Workera, backendu, zewnetrznej sieci, Aurory/NWN ani
   konfiguracji uzytkownika; synthetic fixture nie jest Meshy acceptance evidence.
+- Completion flow `M7-V4S` dodaje typed validate/intake/batch przez ten sam
+  realny Worker i publiczny M7 WASM. Manifest jest canonical validation gate,
+  payloady tworza jeden transferable blob, a exact JSON artifacts maja
+  zweryfikowane bajty, dlugosc, SHA-256 i provenance.
+- M7 revision guards uniewazniaja stale odczyty/odpowiedzi i czyszcza artefakty
+  po zmianie inputu; bledy panelu M7 nie zmieniaja statusu sesji M6.
 
 ## S1-V3 source viewport
 

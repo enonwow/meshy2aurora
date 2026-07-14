@@ -6,6 +6,21 @@ export type StudioWorkerRequest =
       type: "BUILD_MODEL_PACKAGE";
       sourceGlb: ArrayBuffer;
       appearanceTwoDa: ArrayBuffer;
+    }
+  | { requestId: string; type: "VALIDATE_M7_CORPUS"; manifestJson: string }
+  | {
+      requestId: string;
+      type: "INSPECT_M7_CORPUS_INTAKE";
+      manifestJson: string;
+      payloadBlob: ArrayBuffer;
+      descriptorsJson: string;
+    }
+  | {
+      requestId: string;
+      type: "BUILD_M7_CORPUS_BATCH";
+      manifestJson: string;
+      payloadBlob: ArrayBuffer;
+      descriptorsJson: string;
     };
 
 export interface WorkerArtifact {
@@ -31,6 +46,27 @@ export type StudioWorkerSuccess =
       manifestJson: string;
       summaryJson: string;
       readbackJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "M7_CORPUS_VALIDATED";
+      manifestJson: string;
+      artifacts: WorkerArtifact[];
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "M7_CORPUS_INTAKE_INSPECTED";
+      intakeJson: string;
+      artifacts: WorkerArtifact[];
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "M7_CORPUS_BATCH_BUILT";
+      batchJson: string;
+      artifacts: WorkerArtifact[];
     };
 
 export interface StudioWorkerFailure {

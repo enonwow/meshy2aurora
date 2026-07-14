@@ -74,6 +74,36 @@ potwierdzaja ten sam frozen hash pelnego batch JSON. Dwa niezalezne finalne
 review zakonczyly sie P1=0/P2=0. To domyka tylko granice core -> browser;
 oryginalne modele Meshy i M7-V5 pozostaja odroczonym input gate.
 
+### 3.3 M7-V4S - Studio M7 corpus Worker flow
+
+`M7-V4S` jest completion sub-slice'em M7-V4/S1-V2. Laczy publiczny most
+`M7-V4W` z istniejacym lokalnym Studio Workerem, nie zmienia inventory i nie
+otwiera M7-V5.
+
+Definition of Done:
+
+- manifest JSON i payloady sa wybierane lokalnie; nie ma uploadu ani network;
+- Studio Worker wywoluje publiczne M7 validate/intake/batch API bez drugiego
+  walidatora lub konwertera w TypeScript;
+- payloady sa skladane w jeden transferable `ArrayBuffer` z strict,
+  wersjonowanymi deskryptorami offset/size;
+- UI pokazuje jawne role i zadeklarowane `source.relativePath`, nie zgaduje
+  plikow ani provenance;
+- intake i batch pozostaja exact JSON z WASM i sa dostepne jako lokalne
+  `JSON_REPORT` artifacts;
+- deferred/invalid sa jawnymi wynikami, non-humanoid/static pozostaja
+  `DEFERRED_M7_V5`, a UI nie oglasza M7 DONE;
+- realny browser Worker test obejmuje local File -> Worker -> public web-WASM
+  -> M7 JSON, transfer, deterministycznosc i brak base64;
+- synthetic-owned fixture jest tylko testem kodu, nie Meshy acceptance.
+
+Wynik 2026-07-14: `DONE_REVIEW_CLEAN`. Studio ma typowane validate/intake/batch,
+kanoniczny WASM validation gate, jeden transferable blob, exact hash-verified
+JSON artifacts i lokalny panel bez M7 DONE claim. Testy obejmuja 16/16 unit/App
+oraz 3/3 real Chrome Worker/web-WASM, w tym READY 1+2, deferred, invalid,
+determinizm, stale-response guards i izolacje statusu M6. Dwa niezalezne
+finalne review zakonczyly sie P1=0/P2=0.
+
 ### 3.1 Odroczony input gate modeli Meshy
 
 Modele Meshy nie sa teraz wymagane do rozpoczecia ani kontynuowania kodu.

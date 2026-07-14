@@ -1,8 +1,11 @@
 /// <reference lib="webworker" />
 
 import init, {
+  buildM7CorpusBatchV1,
   buildM6ModelPackageV1,
   ingestGlbJson,
+  inspectM7CorpusIntakeV1Json,
+  validateM7CorpusManifestV1Json,
 } from "@m2a-wasm";
 import type {
   StudioWorkerRequest,
@@ -57,6 +60,62 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
       ingestJson: ingestGlbJson(new Uint8Array(request.sourceGlb)),
     };
   }
+  if (request.type === "VALIDATE_M7_CORPUS") {
+    const manifestJson = validateM7CorpusManifestV1Json(request.manifestJson);
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "M7_CORPUS_VALIDATED",
+      manifestJson,
+      artifacts: [await artifact(
+        "m7-manifest-validation-json",
+        "JSON_REPORT",
+        "m7-manifest-validation.json",
+        "application/json",
+        encoder.encode(manifestJson).buffer,
+      )],
+    };
+  }
+  if (request.type === "INSPECT_M7_CORPUS_INTAKE") {
+    const intakeJson = inspectM7CorpusIntakeV1Json(
+      request.manifestJson,
+      new Uint8Array(request.payloadBlob),
+      request.descriptorsJson,
+    );
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "M7_CORPUS_INTAKE_INSPECTED",
+      intakeJson,
+      artifacts: [await artifact(
+        "m7-intake-json",
+        "JSON_REPORT",
+        "m7-intake.json",
+        "application/json",
+        encoder.encode(intakeJson).buffer,
+      )],
+    };
+  }
+  if (request.type === "BUILD_M7_CORPUS_BATCH") {
+    const batchJson = buildM7CorpusBatchV1(
+      request.manifestJson,
+      new Uint8Array(request.payloadBlob),
+      request.descriptorsJson,
+    );
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "M7_CORPUS_BATCH_BUILT",
+      batchJson,
+      artifacts: [await artifact(
+        "m7-batch-json",
+        "JSON_REPORT",
+        "m7-batch.json",
+        "application/json",
+        encoder.encode(batchJson).buffer,
+      )],
+    };
+  }
 
   const result = buildM6ModelPackageV1(
     new Uint8Array(request.sourceGlb),
@@ -93,7 +152,7 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
 self.addEventListener("message", (event: MessageEvent<StudioWorkerRequest>) => {
   void handle(event.data)
     .then((response) => {
-      const transfer = response.ok && response.type === "MODEL_PACKAGE_BUILT"
+      const transfer = response.ok && "artifacts" in response
         ? response.artifacts.map((item) => item.bytes)
         : [];
       self.postMessage(response, { transfer });
