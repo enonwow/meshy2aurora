@@ -20,13 +20,13 @@ status_vocabulary:
 
 orchestration:
   active_stage: "M7_S1_IMPLEMENTATION_WAVE"
-  next_ready_stage: "M7_V1"
-  next_ready_slices: ["M7-V1", "M7-V2", "M7-V3", "M7-V4", "S1-V1", "S1-V2", "S1-V3", "S1-V4", "S1-V5"]
+  next_ready_stage: "M7_V3"
+  next_ready_slices: ["M7-V3", "M7-V4", "S1-V1", "S1-V2", "S1-V3", "S1-V4", "S1-V5"]
   goal_stages: ["M6", "M7", "S1"]
   goal_sequence: "Implementation-first wave: build the first pass of most M7/S1 vertical slices, then run the shared test/review phase; real Meshy execution and external acceptance remain later gates."
   goal_exclusions: ["S2", "F1-F10", "gameplay classes", "full generated module pipeline"]
   goal_terminal_condition: "M6, M7 and S1 are DONE with their required code, artifacts, independent reviews and live/e2e evidence."
-  next_action: "Implement M7-V1/M7-V3 and S1-V1/S1-V2/S1-V5 plus one preview slice before the shared full-test wave; do not run or modify Aurora/NWN."
+  next_action: "Implement M7-V3/M7-V4 and S1-V1/S1-V2, then continue to six first-pass slices before the shared full-test wave; do not run or modify Aurora/NWN."
   one_active_stage_only: false
   current_attempt_id: "M7-S1-FIRST-PASS-20260714-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
@@ -35,12 +35,13 @@ orchestration:
   implementation_supplement: "documentation/suplement-implementation-first-m7-s1-codex.md"
   implementation_wave:
     inventory_total: 10
-    first_pass_complete: 0
+    first_pass_complete: 2
+    first_pass_completed_slices: ["M7-V1", "M7-V2"]
     test_phase_threshold: 6
     full_test_phase: "DEFERRED"
     review_phase: "DEFERRED"
     implementation_blockers: []
-    ready_first_pass_slices: ["M7-V1", "M7-V2", "M7-V3", "M7-V4", "S1-V1", "S1-V2", "S1-V3", "S1-V4", "S1-V5"]
+    ready_first_pass_slices: ["M7-V3", "M7-V4", "S1-V1", "S1-V2", "S1-V3", "S1-V4", "S1-V5"]
     real_meshy_execution: "DEFERRED_INPUT_GATE"
     deferred_input_gate: "Three owner-approved original Meshy GLB files after first-pass implementation, shared code tests and S1 local-file flow."
     deferred_input_gate_applies_to: ["M7-V5", "M7_REAL_E2E", "M7_FINAL_ACCEPTANCE", "S1_FINAL_BROWSER_E2E"]
@@ -452,7 +453,7 @@ stages:
 
   M7:
     status: "IN_PROGRESS"
-    status_reason: "The implementation-first supplement makes M7-V1 through M7-V4 ready now. Original Meshy files are a deferred input gate for M7-V5 and final acceptance, not a current implementation blocker."
+    status_reason: "M7-V1/V2 first-pass implementation is complete and minimally compile-checked. M7-V3/V4 are ready now. Original Meshy files remain a deferred input gate for M7-V5 and final acceptance."
     owner: "Mateusz + implementation agent"
     risk: "HIGH"
     dependencies: ["M5 structural native package path", "documentation/suplement-implementation-first-m7-s1-codex.md"]
@@ -461,11 +462,15 @@ stages:
       - "Three owner-approved original Meshy GLB files for M7-V5."
       - "Approved art direction before real corpus execution."
     bugs: []
-    next_actions: ["Implement M7-V1 through M7-V4 without searching for, generating or substituting real Meshy inputs."]
-    evidence: []
+    next_actions: ["Implement M7-V3 and M7-V4 without searching for, generating or substituting real Meshy inputs."]
+    evidence: ["documentation/evidence/M7-deferred-test-ledger.md: M7-V1/V2 test cases recorded for the shared test wave; this is not PASS or M7 DONE evidence"]
     documentation: ["documentation/suplement-implementation-first-m7-s1-codex.md", "documentation/evidence/M7-evidence.md"]
     expected_artifacts: ["Three full source-to-game proof packets"]
-    changed_files: []
+    changed_files:
+      - "crates/m2a-core/src/lib.rs"
+      - "crates/m2a-core/src/m7_corpus.rs"
+      - "documentation/evidence/M7-deferred-test-ledger.md"
+      - "documentation/orchestrator-state.yaml"
 
   S1:
     status: "IN_PROGRESS"

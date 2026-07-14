@@ -5,6 +5,7 @@ pub mod gff;
 pub mod glb;
 pub mod hak;
 pub mod mdl;
+pub mod m7_corpus;
 pub mod model_pipeline;
 pub mod owned_fixture;
 pub mod package;
