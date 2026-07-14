@@ -3,6 +3,7 @@
 declare module "@m2a-wasm" {
   export default function init(): Promise<unknown>;
   export function ingestGlbJson(bytes: Uint8Array): string;
+  export function inspectTwoDaV2Json(bytes: Uint8Array, limitsJson: string): string;
   export function validateM7CorpusManifestV1Json(manifestJson: string): string;
   export function inspectM7CorpusIntakeV1Json(
     manifestJson: string,

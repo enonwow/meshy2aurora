@@ -17,7 +17,7 @@ export function SourceViewport({ input, onError }: Props) {
       throw new Error("Source preview forbids external GLB resource URLs");
     });
     const bytes = await input.file.arrayBuffer();
-    return new Promise<THREE.Object3D>((resolve, reject) => {
+    return new Promise<{ root: THREE.Object3D; animations: readonly THREE.AnimationClip[] }>((resolve, reject) => {
       new GLTFLoader(manager).parse(bytes, "", (gltf) => {
         gltf.scene.traverse((object) => {
           object.userData.modelPart = {
@@ -26,7 +26,7 @@ export function SourceViewport({ input, onError }: Props) {
             label: object.name || object.type,
           } satisfies ModelPartRef;
         });
-        resolve(gltf.scene);
+        resolve({ root: gltf.scene, animations: gltf.animations });
       }, reject);
     });
   }, [input.file]);
@@ -37,6 +37,7 @@ export function SourceViewport({ input, onError }: Props) {
       detail="Original local GLB — viewport only, never proof of Aurora output"
       dependency={`${input.file.name}:${input.sourceSha256}`}
       buildRoot={buildRoot}
+      tools={{ animationPlayback: true, overlays: true }}
       onError={onError}
     />
   );

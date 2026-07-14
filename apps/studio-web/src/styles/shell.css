@@ -79,6 +79,7 @@
 .studio-shell__aside { min-width: 0; }
 
 .studio-shell__primary { display: grid; }
+.studio-shell__workspace--wide-primary .studio-shell__primary { grid-column: 2 / 4; }
 
 .debug-drawer-placeholder {
   min-height: 58px;
@@ -98,6 +99,7 @@
   .studio-shell__masthead { padding-bottom: 10px; }
   .workflow-stepper { position: static; overflow-x: auto; }
   .studio-shell__workspace { grid-template-columns: 240px minmax(0, 1fr); }
+  .studio-shell__workspace--wide-primary .studio-shell__primary { grid-column: auto; }
   .studio-shell__aside { grid-column: 1 / -1; }
 }
 

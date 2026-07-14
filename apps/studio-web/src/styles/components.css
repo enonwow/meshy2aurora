@@ -63,10 +63,21 @@
 .viewport header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: .8rem 1rem; color: var(--text-muted); }
 .viewport header strong { color: var(--accent); }
 .viewport canvas { display: block; width: 100%; min-height: 430px; }
+.viewport__overlays { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 0; padding: 10px 14px; border: 0; border-top: 1px solid var(--border); color: var(--text-muted); font-size: .74rem; }
+.viewport__overlays legend { float: left; margin-right: 8px; color: var(--text); font-weight: 650; }
+.viewport__overlays label, .viewport__loop { display: inline-flex; align-items: center; gap: 6px; }
+.viewport__animation { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto minmax(180px, 2fr) auto; align-items: end; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--border); background: #0b151e; }
+.viewport__animation > label { display: grid; gap: 5px; color: var(--text-muted); font-size: .72rem; }
+.viewport__animation select { min-height: 36px; padding: 6px 9px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: #101c26; color: var(--text); }
+.viewport__animation p { grid-column: 1 / -1; margin: 0; color: var(--text-muted); font-size: .8rem; }
+.viewport__animation output { align-self: center; color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: .76rem; }
+.viewport__timeline input { width: 100%; accent-color: var(--accent); }
 
 @media (max-width: 980px) {
   .source-step { padding: 24px; }
   .source-step__inputs { grid-template-columns: 1fr; }
   .source-step__actions { grid-template-columns: 1fr; }
   .source-step__actions .button { width: 100%; }
+  .viewport__animation { grid-template-columns: 1fr auto auto; }
+  .viewport__timeline { grid-column: 1 / -1; }
 }

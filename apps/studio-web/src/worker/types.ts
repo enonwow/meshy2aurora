@@ -1,6 +1,7 @@
 export type StudioWorkerRequest =
   | { requestId: string; type: "INITIALIZE" }
   | { requestId: string; type: "INSPECT_SOURCE"; sourceGlb: ArrayBuffer }
+  | { requestId: string; type: "INSPECT_APPEARANCE"; appearanceTwoDa: ArrayBuffer }
   | {
       requestId: string;
       type: "BUILD_MODEL_PACKAGE";
@@ -37,6 +38,7 @@ export interface WorkerArtifact {
 export type StudioWorkerSuccess =
   | { requestId: string; ok: true; type: "INITIALIZED" }
   | { requestId: string; ok: true; type: "SOURCE_INSPECTED"; ingestJson: string }
+  | { requestId: string; ok: true; type: "APPEARANCE_INSPECTED"; inspectionJson: string }
   | {
       requestId: string;
       ok: true;

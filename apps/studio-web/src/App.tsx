@@ -10,6 +10,16 @@ import {
 } from "./app/studioSession";
 import { WORKFLOW_STEPS } from "./app/workflow";
 import { WorkflowStepper } from "./app/WorkflowStepper";
+import {
+  projectAppearanceInspection,
+  type AppearanceInspectionSnapshot,
+} from "./features/inspect/appearanceInspection";
+import { InspectStep } from "./features/inspect/InspectStep";
+import {
+  projectSourceInspection,
+  type SourceInspectionSnapshot,
+} from "./features/inspect/sourceInspection";
+import type { InspectValidationCheck } from "./features/inspect/ValidationPanel";
 import { SourceViewport } from "./features/preview/SourceViewport";
 import { InputsPanel } from "./features/source/InputsPanel";
 import { SourceStep } from "./features/source/SourceStep";
@@ -17,18 +27,13 @@ import { StudioWorkerClient } from "./worker/client";
 
 const requestId = () => crypto.randomUUID();
 
-function reduceSession(state: StudioSessionState, event: StudioSessionEvent) {
+type StudioState = StudioSessionState<SourceInspectionSnapshot, unknown, AppearanceInspectionSnapshot>;
+
+function reduceSession(
+  state: StudioState,
+  event: StudioSessionEvent<SourceInspectionSnapshot, AppearanceInspectionSnapshot>,
+) {
   return studioSessionReducer(state, event);
-}
-
-function bytesToHex(bytes: ArrayBuffer) {
-  return [...new Uint8Array(bytes)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function fileSha256(file: File) {
-  return bytesToHex(await crypto.subtle.digest("SHA-256", await file.arrayBuffer()));
 }
 
 function isGlb(file: File) {
@@ -39,9 +44,94 @@ function isAppearanceTwoDa(file: File) {
   return file.name.toLowerCase() === "appearance.2da";
 }
 
+function sourceValidationChecks(snapshot?: SourceInspectionSnapshot): InspectValidationCheck[] {
+  if (!snapshot) {
+    return [{
+      id: "source-inspection-pending",
+      label: "Source inspection",
+      status: "UNAVAILABLE",
+    }];
+  }
+
+  const eligibility: InspectValidationCheck = {
+    id: "conversion-eligibility",
+    label: "Conversion eligibility",
+    status: snapshot.conversionEligible ? "PASS" : "ERROR",
+    evidence: {
+      code: "report.conversionEligible",
+      path: "report.conversionEligible",
+      message: snapshot.conversionEligible
+        ? "The source inspection reports this model as conversion eligible."
+        : "One or more blocking source gates prevent conversion.",
+    },
+  };
+  const gates: InspectValidationCheck[] = snapshot.gates.map((gate, index) => ({
+    id: `gate-${gate.code}-${index}`,
+    label: gate.code,
+    status: gate.severity === "BLOCKING" ? "ERROR" : "WARNING",
+    evidence: {
+      code: gate.code,
+      path: gate.path,
+      message: gate.message,
+    },
+  }));
+  const diagnostics: InspectValidationCheck[] = snapshot.diagnostics.map((diagnostic, index) => ({
+    id: `diagnostic-${diagnostic.code}-${index}`,
+    label: diagnostic.code,
+    status: diagnostic.severity === "ERROR" || diagnostic.severity === "BLOCKING" || diagnostic.severity === "FATAL"
+      ? "ERROR"
+      : diagnostic.severity === "WARNING"
+        ? "WARNING"
+        : "INFO",
+    evidence: {
+      code: diagnostic.code,
+      path: diagnostic.jsonPath ?? (diagnostic.byteOffset === null ? undefined : `byteOffset:${diagnostic.byteOffset}`),
+      message: diagnostic.message,
+    },
+  }));
+  return [eligibility, ...gates, ...diagnostics];
+}
+
+function appearanceValidationChecks(snapshot?: AppearanceInspectionSnapshot): InspectValidationCheck[] {
+  if (!snapshot) {
+    return [{
+      id: "appearance-inspection-pending",
+      label: "Base appearance.2da schema",
+      status: "UNAVAILABLE",
+    }];
+  }
+  const schema: InspectValidationCheck = {
+    id: "appearance-schema",
+    label: "Base appearance.2da schema",
+    status: "PASS",
+    evidence: {
+      code: `${snapshot.format} ${snapshot.version}`,
+      path: "appearance.2da",
+      message: `${snapshot.columns.length} columns and ${snapshot.physicalRowCount} physical rows parsed by WASM.`,
+    },
+  };
+  const diagnostics: InspectValidationCheck[] = snapshot.diagnostics.map((diagnostic, index) => ({
+    id: `appearance-diagnostic-${diagnostic.code}-${index}`,
+    label: diagnostic.code,
+    status: diagnostic.severity === "ERROR" || diagnostic.severity === "BLOCKING" || diagnostic.severity === "FATAL"
+      ? "ERROR"
+      : diagnostic.severity === "WARNING"
+        ? "WARNING"
+        : "INFO",
+    evidence: {
+      code: diagnostic.code,
+      path: diagnostic.path,
+      message: diagnostic.message,
+    },
+  }));
+  return [schema, ...diagnostics];
+}
+
 export function App() {
   const workerRef = useRef<StudioWorkerClient | undefined>(undefined);
-  const sessionRef = useRef<StudioSessionState>(createInitialStudioSession());
+  const sessionRef = useRef<StudioState>(
+    createInitialStudioSession<SourceInspectionSnapshot, unknown, AppearanceInspectionSnapshot>(),
+  );
   const [session, dispatch] = useReducer(reduceSession, sessionRef.current);
   const [sourceError, setSourceError] = useState<string>();
   const [appearanceError, setAppearanceError] = useState<string>();
@@ -63,6 +153,14 @@ export function App() {
     const worker = workerRef.current;
     if (!worker) return;
     let cancelled = false;
+    const inspectionRevision = session.revision;
+
+    dispatch({
+      type: "INPUT_METADATA_UPDATED",
+      input: "SOURCE",
+      revision: inspectionRevision,
+      parse: { kind: "PARSING" },
+    });
 
     void sourceFile.arrayBuffer()
       .then((sourceGlb) => worker.request(
@@ -70,57 +168,102 @@ export function App() {
         [sourceGlb],
       ))
       .then((response) => {
-        if (cancelled || sessionRef.current.source?.file !== sourceFile) return;
-        if (!response.ok || response.type !== "SOURCE_INSPECTED") {
+        if (
+          cancelled
+          || sessionRef.current.revision !== inspectionRevision
+          || sessionRef.current.source?.file !== sourceFile
+        ) return;
+        if (!response.ok) throw new Error(response.message);
+        if (response.type !== "SOURCE_INSPECTED") {
           throw new Error("Unexpected source inspection response");
         }
-        const ingest = JSON.parse(response.ingestJson) as { ir?: { source?: { sha256?: string } } };
-        const sha256 = ingest.ir?.source?.sha256;
-        if (!sha256) throw new Error("Source inspection did not return SHA-256");
+        const projection = projectSourceInspection(response.ingestJson);
+        if (projection.kind === "FAILED") {
+          throw new Error(`${projection.failure.code}: ${projection.failure.message}`);
+        }
+        setSourceError(undefined);
         dispatch({
-          type: "INPUT_METADATA_UPDATED",
-          input: "SOURCE",
-          revision: sessionRef.current.revision,
-          sha256,
-          parse: { kind: "VALID" },
+          type: "SOURCE_INSPECTION_SUCCEEDED",
+          revision: inspectionRevision,
+          sha256: projection.snapshot.source.sha256,
+          inspection: projection.snapshot,
         });
       })
       .catch((error: unknown) => {
-        if (cancelled || sessionRef.current.source?.file !== sourceFile) return;
+        if (
+          cancelled
+          || sessionRef.current.revision !== inspectionRevision
+          || sessionRef.current.source?.file !== sourceFile
+        ) return;
         const message = error instanceof Error ? error.message : String(error);
         setSourceError(message);
         dispatch({
           type: "INPUT_METADATA_UPDATED",
           input: "SOURCE",
-          revision: sessionRef.current.revision,
+          revision: inspectionRevision,
           parse: { kind: "INVALID", message },
         });
       });
 
     return () => { cancelled = true; };
-  }, [sourceFile]);
+  }, [session.revision, sourceFile]);
 
   const appearanceFile = session.appearance?.file;
   useEffect(() => {
     if (!appearanceFile) return;
+    const worker = workerRef.current;
+    if (!worker) return;
     let cancelled = false;
-    void fileSha256(appearanceFile)
-      .then((sha256) => {
-        if (cancelled || sessionRef.current.appearance?.file !== appearanceFile) return;
+    const inspectionRevision = session.revision;
+
+    dispatch({
+      type: "INPUT_METADATA_UPDATED",
+      input: "APPEARANCE",
+      revision: inspectionRevision,
+      parse: { kind: "PARSING" },
+    });
+
+    void appearanceFile.arrayBuffer()
+      .then((appearanceTwoDa) => worker.request(
+        { requestId: requestId(), type: "INSPECT_APPEARANCE", appearanceTwoDa },
+        [appearanceTwoDa],
+      ))
+      .then((response) => {
+        if (
+          cancelled
+          || sessionRef.current.revision !== inspectionRevision
+          || sessionRef.current.appearance?.file !== appearanceFile
+        ) return;
+        if (!response.ok) throw new Error(response.message);
+        if (response.type !== "APPEARANCE_INSPECTED") {
+          throw new Error("Unexpected appearance inspection response");
+        }
+        const inspection = projectAppearanceInspection(response.inspectionJson);
+        setAppearanceError(undefined);
         dispatch({
-          type: "INPUT_METADATA_UPDATED",
-          input: "APPEARANCE",
-          revision: sessionRef.current.revision,
-          sha256,
-          parse: { kind: "NOT_STARTED" },
+          type: "APPEARANCE_INSPECTION_SUCCEEDED",
+          revision: inspectionRevision,
+          sha256: inspection.sourceSha256,
+          inspection,
         });
       })
       .catch((error: unknown) => {
-        if (cancelled || sessionRef.current.appearance?.file !== appearanceFile) return;
-        setAppearanceError(error instanceof Error ? error.message : String(error));
+        if (
+          cancelled
+          || sessionRef.current.revision !== inspectionRevision
+          || sessionRef.current.appearance?.file !== appearanceFile
+        ) return;
+        const message = error instanceof Error ? error.message : String(error);
+        setAppearanceError(message);
+        dispatch({
+          type: "INPUT_METADATA_UPDATED",
+          input: "APPEARANCE",
+          revision: inspectionRevision,
+          parse: { kind: "INVALID", message },
+        });
       });
     return () => { cancelled = true; };
-  }, [appearanceFile]);
+  }, [appearanceFile, session.revision]);
 
   const selectSource = (file: File) => {
     if (!isGlb(file)) {
@@ -165,6 +308,21 @@ export function App() {
   );
   const sourceIdentity = session.source?.sha256 ? { sha256: session.source.sha256 } : undefined;
   const appearanceIdentity = session.appearance?.sha256 ? { sha256: session.appearance.sha256 } : undefined;
+  const sourceInspection = session.sourceInspection?.revision === session.revision
+    ? session.sourceInspection.value
+    : undefined;
+  const appearanceInspection = session.appearanceInspection?.revision === session.revision
+    ? session.appearanceInspection.value
+    : undefined;
+  const sourceMetrics = sourceInspection ? {
+    meshCount: sourceInspection.inventory.meshCount,
+    vertexCount: sourceInspection.statistics.vertexCount,
+    triangleCount: sourceInspection.statistics.triangleCount,
+    materialCount: sourceInspection.inventory.materialCount,
+    textureCount: sourceInspection.inventory.textureCount,
+    boneCount: sourceInspection.boneCount,
+    animationClipCount: sourceInspection.inventory.animationCount,
+  } : {};
 
   const inputs = (
     <InputsPanel
@@ -207,7 +365,7 @@ export function App() {
         />
       )}
       inputs={inputs}
-      aside={requirements}
+      aside={session.currentStep === "SOURCE" ? requirements : undefined}
       debugDrawer={(
         <section className="debug-drawer-placeholder" aria-label="Debug Drawer">
           <strong>Debug Drawer</strong>
@@ -230,18 +388,42 @@ export function App() {
           onClear={clearFiles}
           onContinue={() => dispatch({ type: "CONTINUE_TO_INSPECT" })}
         />
-      ) : (
-        <section className="inspect-scaffold" aria-labelledby="inspect-heading">
-          <header className="inspect-scaffold__header">
-            <div><p className="eyebrow">Step 2</p><h1 id="inspect-heading">Inspect source</h1></div>
-            <span className="status-badge status-badge--neutral">FE-V2 next</span>
-          </header>
-          {session.source && session.source.sha256 ? (
-            <SourceViewport input={{ provenance: "SOURCE", file: session.source.file, sourceSha256: session.source.sha256 }} onError={setSourceError} />
+      ) : session.currentStep === "INSPECT" ? (
+        <InspectStep
+          viewport={session.source && session.source.sha256 ? (
+            <SourceViewport
+              input={{
+                provenance: "SOURCE",
+                file: session.source.file,
+                sourceSha256: session.source.sha256,
+              }}
+              onError={setSourceError}
+            />
           ) : (
-            <div className="empty-state"><strong>Preparing local source inspection</strong><span>No upload occurs.</span></div>
+            <div className="empty-state">
+              <strong>Preparing local source inspection</strong>
+              <span>{sourceError ?? "No upload occurs."}</span>
+            </div>
           )}
-          <p className="inspect-scaffold__notice">The full inspection workspace, source metrics, validation and animation controls are implemented in FE-V2 and FE-V3.</p>
+          sourceMetrics={sourceMetrics}
+          validationChecks={[
+            ...sourceValidationChecks(sourceInspection),
+            ...appearanceValidationChecks(appearanceInspection),
+          ]}
+          canContinue={sourceInspection?.conversionEligible === true && Boolean(appearanceInspection)}
+          onBack={() => dispatch({ type: "NAVIGATE", step: "SOURCE" })}
+          onContinue={() => dispatch({ type: "CONTINUE_TO_BUILD" })}
+        />
+      ) : (
+        <section className="inspect-scaffold" aria-labelledby="build-placeholder-heading">
+          <header className="inspect-scaffold__header">
+            <div><p className="eyebrow">Step 3</p><h1 id="build-placeholder-heading">Build</h1></div>
+            <span className="status-badge status-badge--neutral">FE-V4 next</span>
+          </header>
+          <div className="empty-state">
+            <strong>Source inspection is complete.</strong>
+            <span>The real build workspace is the next implementation batch.</span>
+          </div>
         </section>
       )}
     </StudioShell>

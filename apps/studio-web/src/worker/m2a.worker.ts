@@ -4,6 +4,7 @@ import init, {
   buildM7CorpusBatchV1,
   buildM6ModelPackageV1,
   ingestGlbJson,
+  inspectTwoDaV2Json,
   inspectM7CorpusIntakeV1Json,
   validateM7CorpusManifestV1Json,
 } from "@m2a-wasm";
@@ -16,6 +17,13 @@ import type {
 let initialized: Promise<unknown> | undefined;
 const ensureInitialized = () => (initialized ??= init());
 const encoder = new TextEncoder();
+const twoDaInspectionLimitsJson = JSON.stringify({
+  maxInputBytes: 16_777_216,
+  maxColumns: 4_096,
+  maxRows: 65_536,
+  maxTokenBytes: 1_048_576,
+  maxDiagnostics: 2_048,
+});
 
 async function sha256(bytes: ArrayBuffer): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -58,6 +66,17 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
       ok: true,
       type: "SOURCE_INSPECTED",
       ingestJson: ingestGlbJson(new Uint8Array(request.sourceGlb)),
+    };
+  }
+  if (request.type === "INSPECT_APPEARANCE") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "APPEARANCE_INSPECTED",
+      inspectionJson: inspectTwoDaV2Json(
+        new Uint8Array(request.appearanceTwoDa),
+        twoDaInspectionLimitsJson,
+      ),
     };
   }
   if (request.type === "VALIDATE_M7_CORPUS") {

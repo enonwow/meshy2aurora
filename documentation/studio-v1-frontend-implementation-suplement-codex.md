@@ -553,3 +553,21 @@ Mockupy sa wystarczajace do rozpoczecia FE-V1--FE-V3 oraz statycznego ukladu dal
 - pelna aktualizacja dawnych testow `App` i cala fala integracyjna pozostaja odroczone zgodnie z trybem implementation-first.
 
 Nastepny batch: FE-V2 - realny Inspect, source projection, Source Model i validation bez fikcyjnych danych.
+
+### FE-V2 i FE-V3 - 2026-07-15 - DONE_FIRST_PASS
+
+- `SOURCE_INSPECTED.ingestJson` ma scisla, typowana projekcje wariantow `READY` i `FAILED`,
+- projekcja zachowuje realne identity, inventory, statistics, gates, diagnostics i clip inventory oraz odrzuca brakujace albo sprzeczne pola,
+- wynik inspekcji jest zwiazany z revision sesji; wymiana inputu nie pozwala spoznionej odpowiedzi odtworzyc danych,
+- `appearance.2da` przechodzi osobny preflight przez istniejacy `inspectTwoDaV2Json`; sama nazwa pliku i SHA nie odblokowuja Build,
+- Inspect pokazuje realne meshes, vertices, triangles, materials, textures, unikalne bone node IDs i animation clips,
+- Validation pokazuje `conversionEligible` oraz rzeczywiste gates; brak evidence ma jawny status `UNAVAILABLE`,
+- Source viewport przekazuje wylacznie `gltf.animations` i obsluguje prawdziwy `THREE.AnimationMixer`, clip select, play/pause, loop i timeline,
+- brak klipow ma jawny stan `No animation clips`; nie sa tworzone fikcyjne klipy,
+- realne overlays V1 to grid, axes, skeleton, bounds i wireframe, z dostepnoscia wyprowadzona ze sceny i pelnym dispose,
+- bone names, selected bone, skin weights i normals pozostaja niewdrozone zamiast byc symulowane,
+- targeted verification: 36/36 testow, typecheck i pelny production build z Worker/WASM przechodza,
+- Source zostal sprawdzony wizualnie w in-app browser; automatyczny lokalny file chooser nie jest wspierany przez ten browser, dlatego pelny browser Worker/WASM smoke Inspect pozostaje w odroczonej fali integracyjnej,
+- ekran Build po `Continue to Build` jest jawnym rusztowaniem `FE-V4 next`; nie jest zaliczony jako FE-V4.
+
+Nastepny batch: FE-V4 i FE-V5 - prawdziwy Build state oraz Review Model Details z kanonicznego readbacku.

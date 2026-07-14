@@ -1,16 +1,58 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import {
+  AnimationPlaybackRuntime,
+  inventoryAnimationClips,
+  type AnimationPlaybackSnapshot,
+} from "./animationPlayback";
+import {
+  availableSceneOverlays,
+  SceneOverlayRuntime,
+  type SceneOverlayKind,
+} from "./sceneOverlays";
 import type { ModelPartRef } from "./types";
+
+export interface SceneViewportAsset {
+  root: THREE.Object3D;
+  animations?: readonly THREE.AnimationClip[];
+}
 
 interface SceneViewportProps {
   provenance: "SOURCE" | "AURORA IR" | "READBACK";
   detail: string;
-  buildRoot: () => Promise<THREE.Object3D>;
+  buildRoot: () => Promise<THREE.Object3D | SceneViewportAsset>;
   dependency: unknown;
   onSelectPart?: (part?: ModelPartRef) => void;
   onError?: (message: string) => void;
+  tools?: {
+    animationPlayback?: boolean;
+    overlays?: boolean;
+  };
 }
+
+interface AnimationUiState extends AnimationPlaybackSnapshot {
+  inventory: ReturnType<typeof inventoryAnimationClips>;
+  loading: boolean;
+}
+
+const emptyAnimationUi: AnimationUiState = {
+  inventory: [],
+  loading: false,
+  selectedClipIndex: null,
+  playing: false,
+  loop: true,
+  timeSeconds: 0,
+  durationSeconds: 0,
+};
+
+const overlayLabels: Record<SceneOverlayKind, string> = {
+  grid: "Grid",
+  axes: "Axes",
+  skeleton: "Skeleton",
+  bounds: "Bounds",
+  wireframe: "Wireframe",
+};
 
 function disposeMaterial(material: THREE.Material) {
   Object.values(material).forEach((value) => {
@@ -52,15 +94,26 @@ function fitCamera(camera: THREE.PerspectiveCamera, controls: OrbitControls, roo
   controls.update();
 }
 
-export function SceneViewport({ provenance, detail, buildRoot, dependency, onSelectPart, onError }: SceneViewportProps) {
+export function SceneViewport({ provenance, detail, buildRoot, dependency, onSelectPart, onError, tools }: SceneViewportProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animationRuntimeRef = useRef<AnimationPlaybackRuntime | undefined>(undefined);
+  const overlayRuntimeRef = useRef<SceneOverlayRuntime | undefined>(undefined);
+  const [animationUi, setAnimationUi] = useState<AnimationUiState>(emptyAnimationUi);
+  const [availableOverlays, setAvailableOverlays] = useState<SceneOverlayKind[]>([]);
+  const [enabledOverlays, setEnabledOverlays] = useState<SceneOverlayKind[]>([]);
+  const animationPlaybackEnabled = tools?.animationPlayback === true;
+  const overlaysEnabled = tools?.overlays === true;
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     let stopped = false;
     let root: THREE.Object3D | undefined;
+    let animationRuntime: AnimationPlaybackRuntime | undefined;
+    let overlayRuntime: SceneOverlayRuntime | undefined;
+    let staticGrid: THREE.GridHelper | undefined;
     let frame = 0;
+    let lastAnimationUiUpdate = 0;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0a121a);
     const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 10_000);
@@ -72,7 +125,11 @@ export function SceneViewport({ provenance, detail, buildRoot, dependency, onSel
     scene.add(new THREE.HemisphereLight(0xffffff, 0x203044, 2));
     const key = new THREE.DirectionalLight(0xffffff, 2);
     key.position.set(4, 6, 3);
-    scene.add(key, new THREE.GridHelper(10, 20, 0x38536b, 0x1e3040));
+    scene.add(key);
+    if (!overlaysEnabled) {
+      staticGrid = new THREE.GridHelper(10, 20, 0x38536b, 0x1e3040);
+      scene.add(staticGrid);
+    }
 
     const resize = () => {
       const width = Math.max(canvas.clientWidth, 1);
@@ -98,19 +155,58 @@ export function SceneViewport({ provenance, detail, buildRoot, dependency, onSel
     };
     canvas.addEventListener("pointerdown", select);
 
+    if (animationPlaybackEnabled) setAnimationUi({ ...emptyAnimationUi, loading: true });
+    if (overlaysEnabled) {
+      setAvailableOverlays([]);
+      setEnabledOverlays([]);
+    }
+
     void buildRoot()
       .then((value) => {
-        if (stopped) return disposeObjectResources(value);
-        root = value;
-        scene.add(value);
-        fitCamera(camera, controls, value);
+        const asset = value instanceof THREE.Object3D ? { root: value, animations: [] } : value;
+        if (stopped) return disposeObjectResources(asset.root);
+        root = asset.root;
+        scene.add(asset.root);
+        fitCamera(camera, controls, asset.root);
+
+        if (animationPlaybackEnabled) {
+          const clips = asset.animations ?? [];
+          animationRuntime = new AnimationPlaybackRuntime(asset.root, clips);
+          animationRuntimeRef.current = animationRuntime;
+          const inventory = inventoryAnimationClips(clips);
+          const snapshot = inventory.length ? animationRuntime.selectClip(0) : animationRuntime.snapshot();
+          setAnimationUi({ inventory, loading: false, ...snapshot });
+        }
+
+        if (overlaysEnabled) {
+          overlayRuntime = new SceneOverlayRuntime(scene, asset.root);
+          overlayRuntimeRef.current = overlayRuntime;
+          const available = availableSceneOverlays(asset.root);
+          setAvailableOverlays(available);
+          const defaults = available.includes("grid") ? ["grid" as const] : [];
+          defaults.forEach((kind) => overlayRuntime?.set(kind, true));
+          setEnabledOverlays(defaults);
+        }
       })
       .catch((error: unknown) => {
-        if (!stopped) onError?.(error instanceof Error ? error.message : String(error));
+        if (!stopped) {
+          if (animationPlaybackEnabled) setAnimationUi({ ...emptyAnimationUi, loading: false });
+          onError?.(error instanceof Error ? error.message : String(error));
+        }
       });
 
-    const render = () => {
+    let previousFrameTime = performance.now();
+    const render = (frameTime = performance.now()) => {
+      const deltaSeconds = Math.max(frameTime - previousFrameTime, 0) / 1_000;
+      previousFrameTime = frameTime;
       controls.update();
+      if (animationRuntime) {
+        const snapshot = animationRuntime.update(deltaSeconds);
+        if (frameTime - lastAnimationUiUpdate >= 80) {
+          lastAnimationUiUpdate = frameTime;
+          setAnimationUi((current) => ({ ...current, ...snapshot }));
+        }
+      }
       renderer.render(scene, camera);
       frame = requestAnimationFrame(render);
     };
@@ -122,15 +218,121 @@ export function SceneViewport({ provenance, detail, buildRoot, dependency, onSel
       canvas.removeEventListener("pointerdown", select);
       observer.disconnect();
       controls.dispose();
+      animationRuntime?.dispose();
+      overlayRuntime?.dispose();
+      if (animationRuntimeRef.current === animationRuntime) animationRuntimeRef.current = undefined;
+      if (overlayRuntimeRef.current === overlayRuntime) overlayRuntimeRef.current = undefined;
       if (root) disposeObjectResources(root);
+      if (staticGrid) {
+        staticGrid.geometry.dispose();
+        const material = Array.isArray(staticGrid.material) ? staticGrid.material : [staticGrid.material];
+        material.forEach((entry) => entry.dispose());
+      }
       renderer.dispose();
     };
-  }, [buildRoot, dependency, onSelectPart, onError]);
+  }, [animationPlaybackEnabled, buildRoot, dependency, onSelectPart, onError, overlaysEnabled]);
+
+  const updateAnimation = (snapshot: AnimationPlaybackSnapshot) => {
+    setAnimationUi((current) => ({ ...current, ...snapshot }));
+  };
+
+  const selectClip = (index: number) => {
+    const runtime = animationRuntimeRef.current;
+    if (runtime) updateAnimation(runtime.selectClip(index));
+  };
+
+  const toggleOverlay = (kind: SceneOverlayKind) => {
+    setEnabledOverlays((current) => {
+      const enabled = !current.includes(kind);
+      overlayRuntimeRef.current?.set(kind, enabled);
+      return enabled ? [...current, kind] : current.filter((candidate) => candidate !== kind);
+    });
+  };
 
   return (
     <section className="viewport" aria-label={`${provenance} model viewport`}>
       <header><strong>{provenance}</strong><span>{detail}</span></header>
       <canvas ref={canvasRef} />
+      {overlaysEnabled && (
+        <fieldset className="viewport__overlays" aria-label="Debug overlays">
+          <legend>Debug overlays</legend>
+          {availableOverlays.length === 0
+            ? <span>Overlay inventory is available after the model loads.</span>
+            : availableOverlays.map((kind) => (
+              <label key={kind}>
+                <input
+                  type="checkbox"
+                  checked={enabledOverlays.includes(kind)}
+                  onChange={() => toggleOverlay(kind)}
+                />
+                {overlayLabels[kind]}
+              </label>
+            ))}
+        </fieldset>
+      )}
+      {animationPlaybackEnabled && (
+        <section className="viewport__animation" aria-label="Animation player">
+          {animationUi.loading ? (
+            <p>Reading animation clips from the GLB…</p>
+          ) : animationUi.inventory.length === 0 ? (
+            <p>No animation clips are present in this GLB.</p>
+          ) : (
+            <>
+              <label>
+                Clip
+                <select
+                  aria-label="Animation clip"
+                  value={animationUi.selectedClipIndex ?? 0}
+                  onChange={(event) => selectClip(Number(event.target.value))}
+                >
+                  {animationUi.inventory.map((clip) => (
+                    <option key={clip.index} value={clip.index}>
+                      {clip.name} ({clip.durationSeconds.toFixed(2)} s)
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={() => {
+                  const runtime = animationRuntimeRef.current;
+                  if (runtime) updateAnimation(runtime.setPlaying(!animationUi.playing));
+                }}
+              >
+                {animationUi.playing ? "Pause" : "Play"}
+              </button>
+              <label className="viewport__loop">
+                <input
+                  type="checkbox"
+                  checked={animationUi.loop}
+                  onChange={(event) => {
+                    const runtime = animationRuntimeRef.current;
+                    if (runtime) updateAnimation(runtime.setLoop(event.target.checked));
+                  }}
+                />
+                Loop
+              </label>
+              <label className="viewport__timeline">
+                Timeline
+                <input
+                  aria-label="Animation timeline"
+                  type="range"
+                  min={0}
+                  max={Math.max(animationUi.durationSeconds, 0)}
+                  step={0.01}
+                  value={Math.min(animationUi.timeSeconds, animationUi.durationSeconds)}
+                  onChange={(event) => {
+                    const runtime = animationRuntimeRef.current;
+                    if (runtime) updateAnimation(runtime.seek(Number(event.target.value)));
+                  }}
+                />
+              </label>
+              <output>{animationUi.timeSeconds.toFixed(2)} / {animationUi.durationSeconds.toFixed(2)} s</output>
+            </>
+          )}
+        </section>
+      )}
     </section>
   );
 }

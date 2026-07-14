@@ -25,6 +25,7 @@ describe("Studio session reducer", () => {
       source: null,
       appearance: null,
       sourceInspection: null,
+      appearanceInspection: null,
       build: { kind: "IDLE" },
       result: null,
       download: { kind: "LOCKED" },
@@ -79,6 +80,28 @@ describe("Studio session reducer", () => {
     });
   });
 
+  it("continues to Build only with current source inspection evidence", () => {
+    const ready = readySourceState();
+    const inspect = studioSessionReducer(ready, { type: "CONTINUE_TO_INSPECT" });
+    expect(studioSessionReducer(inspect, { type: "CONTINUE_TO_BUILD" })).toBe(inspect);
+
+    const inspected: StudioSessionState<{ eligible: boolean }> = {
+      ...inspect,
+      sourceInspection: {
+        revision: inspect.revision,
+        value: { eligible: true },
+      },
+      appearanceInspection: {
+        revision: inspect.revision,
+        value: { columns: 12 },
+      },
+    };
+    expect(studioSessionReducer(inspected, { type: "CONTINUE_TO_BUILD" })).toMatchObject({
+      currentStep: "BUILD",
+      lastAvailableStep: "BUILD",
+    });
+  });
+
   it("invalidates every downstream value when an input is replaced", () => {
     const base = readySourceState();
     const populated: StudioSessionState<{ nodes: number }, { artifactIds: string[] }> = {
@@ -86,6 +109,7 @@ describe("Studio session reducer", () => {
       currentStep: "DOWNLOAD",
       lastAvailableStep: "DOWNLOAD",
       sourceInspection: { revision: base.revision, value: { nodes: 4 } },
+      appearanceInspection: { revision: base.revision, value: { columns: 12 } },
       build: {
         kind: "SUCCEEDED",
         requestId: "request-1",
@@ -106,6 +130,7 @@ describe("Studio session reducer", () => {
       currentStep: "SOURCE",
       lastAvailableStep: "SOURCE",
       sourceInspection: null,
+      appearanceInspection: null,
       build: { kind: "IDLE" },
       result: null,
       download: { kind: "LOCKED" },
@@ -154,6 +179,66 @@ describe("Studio session reducer", () => {
       parse: { kind: "VALID" },
     });
     expect(current.source).toMatchObject({ sha256: "a".repeat(64), parse: { kind: "VALID" } });
+  });
+
+  it("stores source inspection only for the current revision", () => {
+    const selected = studioSessionReducer(createInitialStudioSession<{ nodes: number }>(), {
+      type: "SOURCE_SELECTED",
+      file: source(),
+    });
+
+    const stale = studioSessionReducer(selected, {
+      type: "SOURCE_INSPECTION_SUCCEEDED",
+      revision: selected.revision - 1,
+      sha256: "a".repeat(64),
+      inspection: { nodes: 4 },
+    });
+    expect(stale).toBe(selected);
+
+    const current = studioSessionReducer(selected, {
+      type: "SOURCE_INSPECTION_SUCCEEDED",
+      revision: selected.revision,
+      sha256: "b".repeat(64),
+      inspection: { nodes: 4 },
+    });
+    expect(current.source).toMatchObject({
+      sha256: "b".repeat(64),
+      parse: { kind: "VALID" },
+    });
+    expect(current.sourceInspection).toEqual({
+      revision: selected.revision,
+      value: { nodes: 4 },
+    });
+  });
+
+  it("stores appearance inspection only for the current revision", () => {
+    const selected = studioSessionReducer(
+      createInitialStudioSession<unknown, unknown, { columns: number }>(),
+      { type: "APPEARANCE_SELECTED", file: appearance() },
+    );
+
+    const stale = studioSessionReducer(selected, {
+      type: "APPEARANCE_INSPECTION_SUCCEEDED",
+      revision: selected.revision - 1,
+      sha256: "a".repeat(64),
+      inspection: { columns: 12 },
+    });
+    expect(stale).toBe(selected);
+
+    const current = studioSessionReducer(selected, {
+      type: "APPEARANCE_INSPECTION_SUCCEEDED",
+      revision: selected.revision,
+      sha256: "b".repeat(64),
+      inspection: { columns: 12 },
+    });
+    expect(current.appearance).toMatchObject({
+      sha256: "b".repeat(64),
+      parse: { kind: "VALID" },
+    });
+    expect(current.appearanceInspection).toEqual({
+      revision: selected.revision,
+      value: { columns: 12 },
+    });
   });
 
   it("starts a clean conversion with a newer revision", () => {
