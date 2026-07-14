@@ -1,4 +1,5 @@
 /target/
+.codex-tmp/
 **/pkg/
 node_modules/
 dist/
