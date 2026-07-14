@@ -60,6 +60,67 @@ struct HakResourceDescriptorsV1 {
     resources: Vec<HakResourceDescriptorV1>,
 }
 
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(
+    tag = "role",
+    rename_all = "SCREAMING_SNAKE_CASE",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+enum M7PayloadDescriptorV1 {
+    Source {
+        relative_path: String,
+        payload_offset: u32,
+        payload_size: u32,
+    },
+    #[serde(rename = "RIGGED_HUMANOID_APPEARANCE_2DA")]
+    RiggedHumanoidAppearance2da {
+        sample_id: String,
+        payload_offset: u32,
+        payload_size: u32,
+    },
+}
+
+impl M7PayloadDescriptorV1 {
+    fn offset(&self) -> u32 {
+        match self {
+            Self::Source { payload_offset, .. }
+            | Self::RiggedHumanoidAppearance2da { payload_offset, .. } => *payload_offset,
+        }
+    }
+
+    fn size(&self) -> u32 {
+        match self {
+            Self::Source { payload_size, .. }
+            | Self::RiggedHumanoidAppearance2da { payload_size, .. } => *payload_size,
+        }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct M7PayloadDescriptorsV1 {
+    schema_version: u32,
+    payloads: Vec<M7PayloadDescriptorV1>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct M7BoundaryErrorV1<'a> {
+    schema_version: u32,
+    code: &'a str,
+    path: String,
+    message: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct M7BatchBoundaryOutputV1 {
+    schema_version: u32,
+    report: m2a_core::m7_corpus::M7CorpusBatchReportV1,
+    packets: Vec<m2a_core::m7_corpus::M7PerProfileProofPacketV1>,
+}
+
 const SERIALIZATION_ERROR_JSON: &str = concat!(
     r#"{"schemaVersion":1,"code":"M2A-JSON-SERIALIZATION","severity":"error","offset":0,"context":""#,
     "WASM adapter JSON serialization",
@@ -794,6 +855,853 @@ pub fn build_m6_model_package_v1(
             .map_err(|error| JsValue::from_str(&error.to_string()))?,
         readback_json: serialize_json(&readback),
     })
+}
+
+/// Validates the strict, versioned M7 corpus manifest through `m2a-core`.
+#[wasm_bindgen(js_name = validateM7CorpusManifestV1Json)]
+pub fn validate_m7_corpus_manifest_v1_json(manifest_json: &str) -> String {
+    match m2a_core::m7_corpus::parse_m7_corpus_manifest_v1(manifest_json.as_bytes()) {
+        Ok(manifest) => serialize_json(&manifest),
+        Err(error) => serialize_json(&error),
+    }
+}
+
+/// Inspects M7 intake from borrowed slices of one browser-owned binary blob.
+#[wasm_bindgen(js_name = inspectM7CorpusIntakeV1Json)]
+pub fn inspect_m7_corpus_intake_v1_json(
+    manifest_json: &str,
+    payload_blob: &[u8],
+    descriptors_json: &str,
+) -> String {
+    match inspect_m7_corpus_intake_v1_inner(manifest_json, payload_blob, descriptors_json) {
+        Ok(report) => serialize_json(&report),
+        Err(error) => error,
+    }
+}
+
+/// Runs the existing canonical M7 batch and returns its report plus ordered
+/// proof packets. Ready humanoids are materialized only by the canonical M6
+/// constructor; the other routes remain explicit M7-V5 deferrals in core.
+#[wasm_bindgen(js_name = buildM7CorpusBatchV1)]
+pub fn build_m7_corpus_batch_v1(
+    manifest_json: &str,
+    payload_blob: &[u8],
+    descriptors_json: &str,
+) -> Result<String, JsValue> {
+    build_m7_corpus_batch_v1_inner(manifest_json, payload_blob, descriptors_json)
+        .map_err(|error| JsValue::from_str(&error))
+}
+
+fn parse_m7_boundary<'a>(
+    manifest_json: &str,
+    payload_blob: &'a [u8],
+    descriptors_json: &'a str,
+) -> Result<
+    (
+        m2a_core::m7_corpus::M7CorpusManifestV1,
+        M7PayloadDescriptorsV1,
+    ),
+    String,
+> {
+    let manifest = m2a_core::m7_corpus::parse_m7_corpus_manifest_v1(manifest_json.as_bytes())
+        .map_err(|error| serialize_json(&error))?;
+    let descriptors: M7PayloadDescriptorsV1 =
+        serde_json::from_str(descriptors_json).map_err(|_| {
+            m7_boundary_error(
+                "M7-WASM-DESCRIPTORS-JSON-INVALID",
+                "descriptorsJson",
+                "payload descriptors JSON does not match the public schema",
+            )
+        })?;
+    if descriptors.schema_version != 1 {
+        return Err(m7_boundary_error(
+            "M7-WASM-DESCRIPTORS-SCHEMA-UNSUPPORTED",
+            "descriptorsJson.schemaVersion",
+            format!("expected schema 1, got {}", descriptors.schema_version),
+        ));
+    }
+    validate_m7_blob_layout(payload_blob, &descriptors.payloads)?;
+    validate_m7_descriptor_semantics(&manifest, &descriptors.payloads)?;
+    Ok((manifest, descriptors))
+}
+
+fn inspect_m7_corpus_intake_v1_inner(
+    manifest_json: &str,
+    payload_blob: &[u8],
+    descriptors_json: &str,
+) -> Result<m2a_core::m7_corpus::M7CorpusIntakeReportV1, String> {
+    let (manifest, descriptors) = parse_m7_boundary(manifest_json, payload_blob, descriptors_json)?;
+    let payloads = m7_source_payloads(payload_blob, &descriptors.payloads)?;
+    m2a_core::m7_corpus::inspect_m7_corpus_intake_v1(&manifest, &payloads)
+        .map_err(|error| serialize_json(&error))
+}
+
+fn build_m7_corpus_batch_v1_inner(
+    manifest_json: &str,
+    payload_blob: &[u8],
+    descriptors_json: &str,
+) -> Result<String, String> {
+    use m2a_core::m7_corpus::{M7CorpusEntryV1, M7IntakeStatusV1};
+
+    let (manifest, descriptors) = parse_m7_boundary(manifest_json, payload_blob, descriptors_json)?;
+    let payloads = m7_source_payloads(payload_blob, &descriptors.payloads)?;
+    let intake = m2a_core::m7_corpus::inspect_m7_corpus_intake_v1(&manifest, &payloads)
+        .map_err(|error| serialize_json(&error))?;
+    let mut canonical_artifacts = Vec::new();
+    if intake.status == M7IntakeStatusV1::ReadyForM7V5 {
+        for entry in &manifest.samples {
+            let M7CorpusEntryV1::RiggedHumanoidSourceClips {
+                sample_id, source, ..
+            } = entry
+            else {
+                continue;
+            };
+            if intake
+                .samples
+                .iter()
+                .find(|sample| sample.sample_id == *sample_id)
+                .is_none_or(|sample| sample.status != M7IntakeStatusV1::ReadyForM7V5)
+            {
+                continue;
+            }
+            let Some(source) = source else { continue };
+            let source_bytes = payloads
+                .iter()
+                .find(|payload| {
+                    payload
+                        .relative_path
+                        .eq_ignore_ascii_case(&source.relative_path)
+                })
+                .map(|payload| payload.bytes)
+                .ok_or_else(|| {
+                    m7_boundary_error(
+                        "M7-WASM-SOURCE-PAYLOAD-MISSING",
+                        "descriptorsJson.payloads",
+                        format!("missing SOURCE descriptor for sample {sample_id:?}"),
+                    )
+                })?;
+            let appearance_bytes =
+                m7_appearance_payload(payload_blob, &descriptors.payloads, sample_id)?;
+            canonical_artifacts.push(
+                m2a_core::m7_corpus::M7CanonicalPipelineArtifactV1::build_rigged_humanoid_m6(
+                    sample_id,
+                    source_bytes,
+                    appearance_bytes,
+                )
+                .map_err(|error| serialize_json(&error))?,
+            );
+        }
+    }
+    let artifact =
+        m2a_core::m7_corpus::build_m7_corpus_batch_v1(&manifest, &payloads, &canonical_artifacts)
+            .map_err(|error| serialize_json(&error))?;
+    serialize_json_result(&M7BatchBoundaryOutputV1 {
+        schema_version: 1,
+        report: artifact.report,
+        packets: artifact
+            .packets
+            .into_iter()
+            .map(|packet| packet.packet)
+            .collect(),
+    })
+}
+
+fn validate_m7_blob_layout(
+    payload_blob: &[u8],
+    descriptors: &[M7PayloadDescriptorV1],
+) -> Result<(), String> {
+    let mut ranges = descriptors
+        .iter()
+        .enumerate()
+        .map(|(index, descriptor)| {
+            let start = usize::try_from(descriptor.offset()).map_err(|_| {
+                m7_boundary_error(
+                    "M7-WASM-PAYLOAD-RANGE-INVALID",
+                    format!("descriptorsJson.payloads[{index}].payloadOffset"),
+                    "payload offset does not fit this platform",
+                )
+            })?;
+            let size = usize::try_from(descriptor.size()).map_err(|_| {
+                m7_boundary_error(
+                    "M7-WASM-PAYLOAD-RANGE-INVALID",
+                    format!("descriptorsJson.payloads[{index}].payloadSize"),
+                    "payload size does not fit this platform",
+                )
+            })?;
+            if size == 0 {
+                return Err(m7_boundary_error(
+                    "M7-WASM-PAYLOAD-RANGE-EMPTY",
+                    format!("descriptorsJson.payloads[{index}].payloadSize"),
+                    "payload descriptors must cover at least one byte",
+                ));
+            }
+            let end = start.checked_add(size).ok_or_else(|| {
+                m7_boundary_error(
+                    "M7-WASM-PAYLOAD-RANGE-OVERFLOW",
+                    format!("descriptorsJson.payloads[{index}]"),
+                    "payload range overflows address space",
+                )
+            })?;
+            if end > payload_blob.len() {
+                return Err(m7_boundary_error(
+                    "M7-WASM-PAYLOAD-RANGE-OOB",
+                    format!("descriptorsJson.payloads[{index}]"),
+                    format!(
+                        "payload range ends at {end}, blob length is {}",
+                        payload_blob.len()
+                    ),
+                ));
+            }
+            Ok((start, end, index))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    ranges.sort_unstable();
+    let mut cursor = 0_usize;
+    for (start, end, index) in ranges {
+        if start != cursor {
+            let code = if start < cursor {
+                "M7-WASM-PAYLOAD-RANGE-OVERLAP"
+            } else {
+                "M7-WASM-PAYLOAD-RANGE-GAP"
+            };
+            return Err(m7_boundary_error(
+                code,
+                format!("descriptorsJson.payloads[{index}]"),
+                format!("expected next payload offset {cursor}, got {start}"),
+            ));
+        }
+        cursor = end;
+    }
+    if cursor != payload_blob.len() {
+        return Err(m7_boundary_error(
+            "M7-WASM-PAYLOAD-RANGE-GAP",
+            "descriptorsJson.payloads",
+            format!(
+                "descriptors cover {cursor} of {} blob bytes",
+                payload_blob.len()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_m7_descriptor_semantics(
+    manifest: &m2a_core::m7_corpus::M7CorpusManifestV1,
+    descriptors: &[M7PayloadDescriptorV1],
+) -> Result<(), String> {
+    use m2a_core::m7_corpus::M7CorpusEntryV1;
+
+    let humanoid_sample_ids = manifest
+        .samples
+        .iter()
+        .filter_map(|entry| match entry {
+            M7CorpusEntryV1::RiggedHumanoidSourceClips { sample_id, .. } => Some(sample_id),
+            _ => None,
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    let all_sample_ids = manifest
+        .samples
+        .iter()
+        .map(M7CorpusEntryV1::sample_id)
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut appearances = std::collections::BTreeSet::new();
+    for (index, descriptor) in descriptors.iter().enumerate() {
+        let M7PayloadDescriptorV1::RiggedHumanoidAppearance2da { sample_id, .. } = descriptor
+        else {
+            continue;
+        };
+        if !all_sample_ids.contains(sample_id.as_str()) {
+            return Err(m7_boundary_error(
+                "M7-WASM-APPEARANCE-2DA-SAMPLE-UNKNOWN",
+                format!("descriptorsJson.payloads[{index}].sampleId"),
+                format!("appearance descriptor names unknown sample {sample_id:?}"),
+            ));
+        }
+        if !humanoid_sample_ids.contains(sample_id) {
+            return Err(m7_boundary_error(
+                "M7-WASM-APPEARANCE-2DA-ROLE-MISMATCH",
+                format!("descriptorsJson.payloads[{index}].sampleId"),
+                format!("appearance descriptor targets non-humanoid sample {sample_id:?}"),
+            ));
+        }
+        if !appearances.insert(sample_id.to_ascii_lowercase()) {
+            return Err(m7_boundary_error(
+                "M7-WASM-APPEARANCE-2DA-DUPLICATE",
+                format!("descriptorsJson.payloads[{index}].sampleId"),
+                format!("duplicate appearance descriptor for sample {sample_id:?}"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn m7_source_payloads<'a>(
+    payload_blob: &'a [u8],
+    descriptors: &'a [M7PayloadDescriptorV1],
+) -> Result<Vec<m2a_core::m7_corpus::M7SourcePayloadV1<'a>>, String> {
+    let mut paths = std::collections::BTreeSet::new();
+    descriptors
+        .iter()
+        .enumerate()
+        .filter_map(|(index, descriptor)| match descriptor {
+            M7PayloadDescriptorV1::Source {
+                relative_path,
+                payload_offset,
+                payload_size,
+            } => Some((index, relative_path, *payload_offset, *payload_size)),
+            M7PayloadDescriptorV1::RiggedHumanoidAppearance2da { .. } => None,
+        })
+        .map(|(index, relative_path, offset, size)| {
+            if !paths.insert(relative_path.to_ascii_lowercase()) {
+                return Err(m7_boundary_error(
+                    "M7-WASM-SOURCE-DESCRIPTOR-DUPLICATE",
+                    format!("descriptorsJson.payloads[{index}].relativePath"),
+                    "SOURCE relative paths must be unique case-insensitively",
+                ));
+            }
+            let start = offset as usize;
+            let end = start + size as usize;
+            Ok(m2a_core::m7_corpus::M7SourcePayloadV1 {
+                relative_path,
+                bytes: &payload_blob[start..end],
+            })
+        })
+        .collect()
+}
+
+fn m7_appearance_payload<'a>(
+    payload_blob: &'a [u8],
+    descriptors: &'a [M7PayloadDescriptorV1],
+    sample_id: &str,
+) -> Result<&'a [u8], String> {
+    let matches = descriptors
+        .iter()
+        .filter_map(|descriptor| match descriptor {
+            M7PayloadDescriptorV1::RiggedHumanoidAppearance2da {
+                sample_id: candidate,
+                payload_offset,
+                payload_size,
+            } if candidate == sample_id => Some((*payload_offset, *payload_size)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if matches.len() != 1 {
+        return Err(m7_boundary_error(
+            "M7-WASM-APPEARANCE-2DA-CARDINALITY",
+            "descriptorsJson.payloads",
+            format!(
+                "ready humanoid sample {sample_id:?} requires exactly one RIGGED_HUMANOID_APPEARANCE_2DA descriptor, got {}",
+                matches.len()
+            ),
+        ));
+    }
+    let (offset, size) = matches[0];
+    let start = offset as usize;
+    Ok(&payload_blob[start..start + size as usize])
+}
+
+fn m7_boundary_error(
+    code: &'static str,
+    path: impl Into<String>,
+    message: impl Into<String>,
+) -> String {
+    serialize_json(&M7BoundaryErrorV1 {
+        schema_version: 1,
+        code,
+        path: path.into(),
+        message: message.into(),
+    })
+}
+
+fn serialize_json_result<T: serde::Serialize>(value: &T) -> Result<String, String> {
+    serde_json::to_string(value).map_err(|_| SERIALIZATION_ERROR_JSON.to_owned())
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod m7_native_tests {
+    use super::{
+        M7BatchBoundaryOutputV1, M7PayloadDescriptorV1, M7PayloadDescriptorsV1,
+        build_m7_corpus_batch_v1_inner, inspect_m7_corpus_intake_v1_inner, serialize_json,
+        serialize_json_result, validate_m7_corpus_manifest_v1_json,
+    };
+    use m2a_core::m7_corpus::{
+        M7ByteIdentityV1, M7CanonicalPipelineArtifactV1, M7CorpusEntryV1, M7CorpusManifestV1,
+        M7OriginalSourceProvenanceV1, M7SourceDescriptorV1, M7SourcePayloadV1, M7SourceProviderV1,
+        M7StaticResourceKindV1,
+    };
+    use sha2::{Digest, Sha256};
+
+    const DEFERRED_MANIFEST: &str = r#"{
+      "schemaVersion":1,
+      "corpusId":"browser_corpus",
+      "artDirectionApprovalId":null,
+      "samples":[
+        {"role":"RIGGED_HUMANOID_SOURCE_CLIPS","sampleId":"humanoid","source":null,"requiredSourceClipNames":["walk"]},
+        {"role":"NON_HUMANOID_REFERENCE_SUPERMODEL","sampleId":"creature","source":null,"referenceSupermodel":"c_dog"},
+        {"role":"STATIC_PLACEABLE_OR_ITEM","sampleId":"placeable","source":null,"resourceKind":"PLACEABLE"}
+      ]
+    }"#;
+    const EMPTY_DESCRIPTORS: &str = r#"{"schemaVersion":1,"payloads":[]}"#;
+    const READY_BATCH_JSON_SHA256: &str =
+        "ee04ebfcdbb3e1265913de8f88d3c05f9277d18c7d0c75bdbcecc8139046c808";
+    const APPEARANCE: &[u8] =
+        include_bytes!("../../../apps/studio-web/tests/fixtures/appearance.2da");
+
+    fn source_descriptor(path: &str, bytes: &[u8], task: &str) -> M7SourceDescriptorV1 {
+        M7SourceDescriptorV1 {
+            relative_path: path.to_owned(),
+            identity: M7ByteIdentityV1 {
+                byte_length: bytes.len() as u64,
+                sha256: format!("{:x}", Sha256::digest(bytes)),
+            },
+            provenance: M7OriginalSourceProvenanceV1 {
+                provider: M7SourceProviderV1::Meshy,
+                provider_task_id: task.to_owned(),
+                original_export_attested: true,
+                rights_confirmed: true,
+                not_synthetic_fixture_attested: true,
+            },
+        }
+    }
+
+    fn remove_rig_and_animations(glb: &[u8]) -> Vec<u8> {
+        fn normalize_js_integer_numbers(value: &mut serde_json::Value) {
+            match value {
+                serde_json::Value::Number(number) => {
+                    if number.is_f64()
+                        && let Some(float) = number.as_f64()
+                        && float.fract() == 0.0
+                    {
+                        if float >= 0.0 && float <= u64::MAX as f64 {
+                            *number = serde_json::Number::from(float as u64);
+                        } else if float >= i64::MIN as f64 && float <= i64::MAX as f64 {
+                            *number = serde_json::Number::from(float as i64);
+                        }
+                    }
+                }
+                serde_json::Value::Array(values) => {
+                    for value in values {
+                        normalize_js_integer_numbers(value);
+                    }
+                }
+                serde_json::Value::Object(values) => {
+                    for value in values.values_mut() {
+                        normalize_js_integer_numbers(value);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let json_len = u32::from_le_bytes(glb[12..16].try_into().unwrap()) as usize;
+        let json_end = 20 + json_len;
+        let mut json: serde_json::Value = serde_json::from_slice(&glb[20..json_end]).unwrap();
+        let root = json.as_object_mut().unwrap();
+        root.remove("skins");
+        root.remove("animations");
+        for node in root["nodes"].as_array_mut().unwrap() {
+            node.as_object_mut().unwrap().remove("skin");
+        }
+        normalize_js_integer_numbers(&mut json);
+        let mut json_bytes = serde_json::to_vec(&json).unwrap();
+        while !json_bytes.len().is_multiple_of(4) {
+            json_bytes.push(b' ');
+        }
+        let mut result = Vec::new();
+        result.extend_from_slice(b"glTF");
+        result.extend_from_slice(&2_u32.to_le_bytes());
+        result.extend_from_slice(&0_u32.to_le_bytes());
+        result.extend_from_slice(&(json_bytes.len() as u32).to_le_bytes());
+        result.extend_from_slice(b"JSON");
+        result.extend_from_slice(&json_bytes);
+        result.extend_from_slice(&glb[json_end..]);
+        let total_len = result.len() as u32;
+        result[8..12].copy_from_slice(&total_len.to_le_bytes());
+        result
+    }
+
+    fn ready_corpus() -> (M7CorpusManifestV1, Vec<u8>, Vec<u8>) {
+        let humanoid = m2a_core::owned_fixture::synthetic_owned_m6_glb_v1().unwrap();
+        let static_glb = remove_rig_and_animations(&humanoid);
+        let manifest = M7CorpusManifestV1 {
+            schema_version: 1,
+            corpus_id: "m7-wasm-ready-fixture".to_owned(),
+            art_direction_approval_id: Some("owned-test-approval".to_owned()),
+            samples: vec![
+                M7CorpusEntryV1::RiggedHumanoidSourceClips {
+                    sample_id: "humanoid".to_owned(),
+                    source: Some(source_descriptor(
+                        "models/humanoid.glb",
+                        &humanoid,
+                        "task-h",
+                    )),
+                    required_source_clip_names: vec!["owned-linear-pause".to_owned()],
+                },
+                M7CorpusEntryV1::NonHumanoidReferenceSupermodel {
+                    sample_id: "creature".to_owned(),
+                    source: Some(source_descriptor(
+                        "models/creature.glb",
+                        &static_glb,
+                        "task-c",
+                    )),
+                    reference_supermodel: "c_horror".to_owned(),
+                },
+                M7CorpusEntryV1::StaticPlaceableOrItem {
+                    sample_id: "static-prop".to_owned(),
+                    source: Some(source_descriptor(
+                        "models/static.glb",
+                        &static_glb,
+                        "task-s",
+                    )),
+                    resource_kind: M7StaticResourceKindV1::Placeable,
+                },
+            ],
+        };
+        (manifest, humanoid, static_glb)
+    }
+
+    fn append_payload(
+        blob: &mut Vec<u8>,
+        payloads: &mut Vec<M7PayloadDescriptorV1>,
+        role: impl FnOnce(u32, u32) -> M7PayloadDescriptorV1,
+        bytes: &[u8],
+    ) {
+        let offset = blob.len() as u32;
+        blob.extend_from_slice(bytes);
+        payloads.push(role(offset, bytes.len() as u32));
+    }
+
+    fn ready_boundary(
+        include_appearance: bool,
+    ) -> (M7CorpusManifestV1, Vec<u8>, Vec<u8>, Vec<u8>, String) {
+        let (manifest, humanoid, static_glb) = ready_corpus();
+        let mut blob = Vec::new();
+        let mut payloads = Vec::new();
+        for (path, bytes) in [
+            ("models/humanoid.glb", humanoid.as_slice()),
+            ("models/creature.glb", static_glb.as_slice()),
+            ("models/static.glb", static_glb.as_slice()),
+        ] {
+            append_payload(
+                &mut blob,
+                &mut payloads,
+                |payload_offset, payload_size| M7PayloadDescriptorV1::Source {
+                    relative_path: path.to_owned(),
+                    payload_offset,
+                    payload_size,
+                },
+                bytes,
+            );
+        }
+        if include_appearance {
+            append_payload(
+                &mut blob,
+                &mut payloads,
+                |payload_offset, payload_size| M7PayloadDescriptorV1::RiggedHumanoidAppearance2da {
+                    sample_id: "humanoid".to_owned(),
+                    payload_offset,
+                    payload_size,
+                },
+                APPEARANCE,
+            );
+        }
+        let descriptors = serde_json::to_string(&M7PayloadDescriptorsV1 {
+            schema_version: 1,
+            payloads,
+        })
+        .unwrap();
+        (manifest, humanoid, static_glb, blob, descriptors)
+    }
+
+    #[test]
+    fn m7_deferred_boundary_is_exact_core_json_and_deterministic() {
+        let manifest =
+            m2a_core::m7_corpus::parse_m7_corpus_manifest_v1(DEFERRED_MANIFEST.as_bytes()).unwrap();
+        assert_eq!(
+            validate_m7_corpus_manifest_v1_json(DEFERRED_MANIFEST),
+            serialize_json(&manifest)
+        );
+        let core = m2a_core::m7_corpus::inspect_m7_corpus_intake_v1(&manifest, &[]).unwrap();
+        let adapter =
+            inspect_m7_corpus_intake_v1_inner(DEFERRED_MANIFEST, &[], EMPTY_DESCRIPTORS).unwrap();
+        assert_eq!(serialize_json(&adapter), serialize_json(&core));
+
+        let first =
+            build_m7_corpus_batch_v1_inner(DEFERRED_MANIFEST, &[], EMPTY_DESCRIPTORS).unwrap();
+        let second =
+            build_m7_corpus_batch_v1_inner(DEFERRED_MANIFEST, &[], EMPTY_DESCRIPTORS).unwrap();
+        assert_eq!(first, second);
+        assert!(!first.to_ascii_lowercase().contains("base64"));
+        let value: serde_json::Value = serde_json::from_str(&first).unwrap();
+        assert_eq!(value["report"]["packetCount"], 3);
+        assert_eq!(value["packets"].as_array().unwrap().len(), 3);
+        assert_eq!(value["report"]["m7DoneClaimAllowed"], false);
+    }
+
+    #[test]
+    fn m7_blob_descriptors_are_strict_checked_and_exact_covering() {
+        let error = inspect_m7_corpus_intake_v1_inner(DEFERRED_MANIFEST, &[], "{").unwrap_err();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&error).unwrap()["code"],
+            "M7-WASM-DESCRIPTORS-JSON-INVALID"
+        );
+
+        let unknown = r#"{"schemaVersion":1,"payloads":[],"extra":true}"#;
+        let error = inspect_m7_corpus_intake_v1_inner(DEFERRED_MANIFEST, &[], unknown).unwrap_err();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&error).unwrap()["code"],
+            "M7-WASM-DESCRIPTORS-JSON-INVALID"
+        );
+
+        let oob = r#"{"schemaVersion":1,"payloads":[{"role":"SOURCE","relativePath":"source.glb","payloadOffset":0,"payloadSize":2}]}"#;
+        let error = inspect_m7_corpus_intake_v1_inner(DEFERRED_MANIFEST, &[0], oob).unwrap_err();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&error).unwrap()["code"],
+            "M7-WASM-PAYLOAD-RANGE-OOB"
+        );
+
+        let gap = r#"{"schemaVersion":1,"payloads":[{"role":"SOURCE","relativePath":"source.glb","payloadOffset":1,"payloadSize":1}]}"#;
+        let error = inspect_m7_corpus_intake_v1_inner(DEFERRED_MANIFEST, &[0, 1], gap).unwrap_err();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&error).unwrap()["code"],
+            "M7-WASM-PAYLOAD-RANGE-GAP"
+        );
+
+        let overlap = r#"{"schemaVersion":1,"payloads":[
+          {"role":"SOURCE","relativePath":"a.glb","payloadOffset":0,"payloadSize":2},
+          {"role":"SOURCE","relativePath":"b.glb","payloadOffset":1,"payloadSize":1}
+        ]}"#;
+        let error =
+            inspect_m7_corpus_intake_v1_inner(DEFERRED_MANIFEST, &[0, 1], overlap).unwrap_err();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&error).unwrap()["code"],
+            "M7-WASM-PAYLOAD-RANGE-OVERLAP"
+        );
+
+        let unsupported = r#"{"schemaVersion":2,"payloads":[]}"#;
+        let error =
+            inspect_m7_corpus_intake_v1_inner(DEFERRED_MANIFEST, &[], unsupported).unwrap_err();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&error).unwrap()["code"],
+            "M7-WASM-DESCRIPTORS-SCHEMA-UNSUPPORTED"
+        );
+
+        let zero = r#"{"schemaVersion":1,"payloads":[{"role":"SOURCE","relativePath":"source.glb","payloadOffset":0,"payloadSize":0}]}"#;
+        let error = inspect_m7_corpus_intake_v1_inner(DEFERRED_MANIFEST, &[], zero).unwrap_err();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&error).unwrap()["code"],
+            "M7-WASM-PAYLOAD-RANGE-EMPTY"
+        );
+
+        let duplicate_source = r#"{"schemaVersion":1,"payloads":[
+          {"role":"SOURCE","relativePath":"Models/Source.glb","payloadOffset":0,"payloadSize":1},
+          {"role":"SOURCE","relativePath":"models/source.GLB","payloadOffset":1,"payloadSize":1}
+        ]}"#;
+        let error = inspect_m7_corpus_intake_v1_inner(DEFERRED_MANIFEST, &[0, 1], duplicate_source)
+            .unwrap_err();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&error).unwrap()["code"],
+            "M7-WASM-SOURCE-DESCRIPTOR-DUPLICATE"
+        );
+    }
+
+    #[test]
+    fn appearance_descriptors_are_semantic_and_never_ignored() {
+        let descriptor = |sample_id: &str| {
+            format!(
+                r#"{{"schemaVersion":1,"payloads":[{{"role":"RIGGED_HUMANOID_APPEARANCE_2DA","sampleId":"{sample_id}","payloadOffset":0,"payloadSize":1}}]}}"#
+            )
+        };
+        for (sample_id, code) in [
+            ("missing", "M7-WASM-APPEARANCE-2DA-SAMPLE-UNKNOWN"),
+            ("creature", "M7-WASM-APPEARANCE-2DA-ROLE-MISMATCH"),
+        ] {
+            let error =
+                inspect_m7_corpus_intake_v1_inner(DEFERRED_MANIFEST, &[0], &descriptor(sample_id))
+                    .unwrap_err();
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&error).unwrap()["code"],
+                code
+            );
+        }
+
+        let duplicate = r#"{"schemaVersion":1,"payloads":[
+          {"role":"RIGGED_HUMANOID_APPEARANCE_2DA","sampleId":"humanoid","payloadOffset":0,"payloadSize":1},
+          {"role":"RIGGED_HUMANOID_APPEARANCE_2DA","sampleId":"humanoid","payloadOffset":1,"payloadSize":1}
+        ]}"#;
+        let error =
+            inspect_m7_corpus_intake_v1_inner(DEFERRED_MANIFEST, &[0, 1], duplicate).unwrap_err();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&error).unwrap()["code"],
+            "M7-WASM-APPEARANCE-2DA-DUPLICATE"
+        );
+
+        let intake =
+            inspect_m7_corpus_intake_v1_inner(DEFERRED_MANIFEST, &[0], &descriptor("humanoid"))
+                .unwrap();
+        assert_eq!(
+            intake.status,
+            m2a_core::m7_corpus::M7IntakeStatusV1::InputDeferred
+        );
+    }
+
+    #[test]
+    fn ready_owned_boundary_is_exact_native_batch_oracle_and_immutable() {
+        let (manifest, humanoid, static_glb, blob, descriptors) = ready_boundary(true);
+        let manifest_json = serialize_json(&manifest);
+        let blob_before = blob.clone();
+        let intake =
+            inspect_m7_corpus_intake_v1_inner(&manifest_json, &blob, &descriptors).unwrap();
+        assert_eq!(
+            intake.status,
+            m2a_core::m7_corpus::M7IntakeStatusV1::ReadyForM7V5
+        );
+        assert_eq!(blob, blob_before);
+
+        let adapter = build_m7_corpus_batch_v1_inner(&manifest_json, &blob, &descriptors).unwrap();
+        assert_eq!(blob, blob_before);
+        let payloads = [
+            M7SourcePayloadV1 {
+                relative_path: "models/humanoid.glb",
+                bytes: &humanoid,
+            },
+            M7SourcePayloadV1 {
+                relative_path: "models/creature.glb",
+                bytes: &static_glb,
+            },
+            M7SourcePayloadV1 {
+                relative_path: "models/static.glb",
+                bytes: &static_glb,
+            },
+        ];
+        let canonical = [M7CanonicalPipelineArtifactV1::build_rigged_humanoid_m6(
+            "humanoid", &humanoid, APPEARANCE,
+        )
+        .unwrap()];
+        let native =
+            m2a_core::m7_corpus::build_m7_corpus_batch_v1(&manifest, &payloads, &canonical)
+                .unwrap();
+        assert_eq!(native.report.materialized_packet_count, 1);
+        assert_eq!(native.report.deferred_packet_count, 2);
+        let expected = serialize_json_result(&M7BatchBoundaryOutputV1 {
+            schema_version: 1,
+            report: native.report,
+            packets: native
+                .packets
+                .into_iter()
+                .map(|packet| packet.packet)
+                .collect(),
+        })
+        .unwrap();
+        assert_eq!(adapter, expected);
+        assert_eq!(
+            format!("{:x}", Sha256::digest(adapter.as_bytes())),
+            READY_BATCH_JSON_SHA256
+        );
+        assert_eq!(
+            adapter,
+            build_m7_corpus_batch_v1_inner(&manifest_json, &blob, &descriptors).unwrap()
+        );
+    }
+
+    #[test]
+    fn global_intake_gate_prevents_mixed_readiness_materialization() {
+        let (manifest, humanoid, static_glb) = ready_corpus();
+        let mut blob = Vec::new();
+        let mut descriptors = Vec::new();
+        for (path, bytes) in [
+            ("models/humanoid.glb", humanoid.as_slice()),
+            ("models/creature.glb", static_glb.as_slice()),
+        ] {
+            append_payload(
+                &mut blob,
+                &mut descriptors,
+                |payload_offset, payload_size| M7PayloadDescriptorV1::Source {
+                    relative_path: path.to_owned(),
+                    payload_offset,
+                    payload_size,
+                },
+                bytes,
+            );
+        }
+        append_payload(
+            &mut blob,
+            &mut descriptors,
+            |payload_offset, payload_size| M7PayloadDescriptorV1::RiggedHumanoidAppearance2da {
+                sample_id: "humanoid".to_owned(),
+                payload_offset,
+                payload_size,
+            },
+            APPEARANCE,
+        );
+        let descriptors = serde_json::to_string(&M7PayloadDescriptorsV1 {
+            schema_version: 1,
+            payloads: descriptors,
+        })
+        .unwrap();
+        let output =
+            build_m7_corpus_batch_v1_inner(&serialize_json(&manifest), &blob, &descriptors)
+                .unwrap();
+        let value: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(value["report"]["materializedPacketCount"], 0);
+        assert_eq!(value["report"]["status"], "INPUT_DEFERRED");
+    }
+
+    #[test]
+    fn invalid_intake_with_valid_appearance_preserves_core_diagnostics() {
+        let (manifest, _, _, mut blob, descriptors) = ready_boundary(true);
+        blob[0] ^= 0xff;
+        let output =
+            build_m7_corpus_batch_v1_inner(&serialize_json(&manifest), &blob, &descriptors)
+                .unwrap();
+        let value: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(value["report"]["status"], "INPUT_INVALID");
+        assert_eq!(value["report"]["materializedPacketCount"], 0);
+        let humanoid = value["packets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|packet| packet["sampleId"] == "humanoid")
+            .unwrap();
+        assert_eq!(humanoid["status"], "INPUT_INVALID");
+        assert!(
+            humanoid["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|diagnostic| diagnostic["code"] == "M7-SOURCE-IDENTITY-MISMATCH")
+        );
+    }
+
+    #[test]
+    fn ready_humanoid_requires_exactly_one_appearance_descriptor() {
+        let (manifest, _, _, blob, descriptors) = ready_boundary(false);
+        let error = build_m7_corpus_batch_v1_inner(&serialize_json(&manifest), &blob, &descriptors)
+            .unwrap_err();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&error).unwrap()["code"],
+            "M7-WASM-APPEARANCE-2DA-CARDINALITY"
+        );
+    }
+
+    #[test]
+    fn public_manifest_api_reports_malformed_unknown_and_unsupported_json() {
+        for (manifest_json, code) in [
+            ("{", "M7-MANIFEST-JSON-INVALID"),
+            (
+                r#"{"schemaVersion":2,"corpusId":"x","artDirectionApprovalId":null,"samples":[]}"#,
+                "M7-MANIFEST-SCHEMA-UNSUPPORTED",
+            ),
+            (
+                r#"{"schemaVersion":1,"corpusId":"x","artDirectionApprovalId":null,"samples":[],"unknown":true}"#,
+                "M7-MANIFEST-JSON-INVALID",
+            ),
+        ] {
+            let value: serde_json::Value =
+                serde_json::from_str(&validate_m7_corpus_manifest_v1_json(manifest_json)).unwrap();
+            assert_eq!(value["code"], code);
+        }
+    }
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]

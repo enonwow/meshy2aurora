@@ -48,6 +48,32 @@ sie dopiero po dostarczeniu trzech oryginalnych modeli Meshy. Nie zmniejsza to
 inventory i nie pozwala oznaczyc M7 jako DONE, ale nie nadaje aktywnej fali
 statusu BLOCKED.
 
+### 3.2 M7-V4W - publiczny most WASM
+
+`M7-V4W` jest completion sub-slice'em M7-V4 i nie zmienia dziesiecioelementowego
+inventory. Domyka odroczona granice core -> browser bez otwierania M7-V5.
+
+Definition of Done:
+
+- publiczny adapter `m2a-wasm` przyjmuje strict manifest JSON oraz jeden blob
+  lokalnych payloadow z wersjonowanymi deskryptorami offset/length;
+- manifest validation, intake i batch deleguja do istniejacych API
+  `m2a-core`; adapter nie zawiera drugiego parsera ani konwertera;
+- obecna canonical humanoid route moze byc materializowana tylko przez
+  `M7CanonicalPipelineArtifactV1::build_rigged_humanoid_m6`;
+- non-humanoid i static pozostaja jawnymi `DEFERRED_M7_V5`, bez synthetic
+  substitution i bez `M7 DONE` claim;
+- payloady binarne nie sa kodowane jako base64 i adapter nie korzysta z
+  filesystemu, DOM, Aurory/NWN ani konfiguracji uzytkownika;
+- strict boundary errors, native/WASM JSON parity i deterministycznosc maja
+  bezposrednie testy.
+
+Wynik 2026-07-14: `DONE_REVIEW_CLEAN`. Native adapter ma 8/8 testow PASS,
+real generated Node/WASM przechodzi READY i deferred flow, a obie strony
+potwierdzaja ten sam frozen hash pelnego batch JSON. Dwa niezalezne finalne
+review zakonczyly sie P1=0/P2=0. To domyka tylko granice core -> browser;
+oryginalne modele Meshy i M7-V5 pozostaja odroczonym input gate.
+
 ### 3.1 Odroczony input gate modeli Meshy
 
 Modele Meshy nie sa teraz wymagane do rozpoczecia ani kontynuowania kodu.

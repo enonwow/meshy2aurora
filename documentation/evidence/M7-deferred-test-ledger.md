@@ -10,7 +10,7 @@ Shared wave 2026-07-14:
 
 - `cargo fmt --all -- --check`: PASS.
 - `cargo clippy --workspace --all-targets -- -D warnings`: PASS.
-- `cargo test --workspace`: PASS, 311 testow.
+- `cargo test --workspace`: PASS, 319 testow.
 - M7: 13 testow integracyjnych oraz 3 prywatne testy source-binding/readback/replay.
 - Manifest JSON ma przetestowane camelCase, strict unknown-field rejection,
   deferred intake/batch i deterministyczne packety.
@@ -42,9 +42,27 @@ Shared wave 2026-07-14:
   brak wymaganego klipu, rigged source w obu rolach statycznych oraz unsafe path
   z drive, backslash, `.` i `..`.
 
+## M7-V4W publiczny most WASM
+
+- Completion sub-slice ma status `PASS_REVIEW_CLEAN`.
+- Publiczne API `validateM7CorpusManifestV1Json`,
+  `inspectM7CorpusIntakeV1Json` i `buildM7CorpusBatchV1` deleguja do
+  kanonicznych API `m2a-core`.
+- Jeden blob payloadow ma strict, wersjonowane deskryptory, checked ranges,
+  exact coverage oraz stabilne bledy gap/overlap/OOB/overflow/cardinality.
+- Native M7 adapter: 8/8 testow PASS; real generated Node/WASM boundary: PASS.
+- READY fixture przechodzi przez publiczny WASM: 1 humanoid materialized i
+  2 jawne deferred routes. Native i Node potwierdzaja ten sam frozen hash
+  pelnego batch JSON `ee04ebfcdbb3e1265913de8f88d3c05f9277d18c7d0c75bdbcecc8139046c808`.
+- Determinizm, packet order/identities, immutable input, no-base64, deferred
+  flow i rzeczywisty wasm32 range overflow sa bezposrednio sprawdzone.
+- Dwa niezalezne finalne review: P1=0, P2=0.
+- Fixture jest repo-owned synthetic test input; nie jest Meshy acceptance
+  evidence i nie otwiera M7-V5.
+
 ## Pozniejsze granice
 
-- Publiczny WASM adapter i native/WASM parity naleza do pozniejszego slice.
+- Publiczny WASM adapter i native/WASM parity sa domkniete przez `M7-V4W`.
 - Syntetyczne unit fixtures nie sa korpusem ani acceptance evidence.
 - Trzy oryginalne Meshy GLB, full pipeline i proof packety pozostaja
   `DEFERRED_INPUT_GATE`.
