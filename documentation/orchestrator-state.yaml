@@ -1,7 +1,12 @@
+# WORKSPACE-INVARIANT: Canonical repo C:\Projects\meshy2aurora. Never use C:\Users\enonw\Documents\meshy2aurora for project work.
 schema_version: 1
 last_updated: "2026-07-14"
 project:
   canonical_repo: "C:\\Projects\\meshy2aurora"
+  canonical_workspace_enforcement: "HARD_STOP_BEFORE_FIRST_WRITE"
+  forbidden_workspace_roots:
+    - "C:\\Users\\enonw\\Documents\\meshy2aurora"
+  forbidden_workspace_policy: "Never create, edit, stage, copy, migrate, test, build, cache or store temporary project work there. Owner never authorized this path."
   documentation_root: "C:\\Projects\\meshy2aurora\\documentation"
   implementation_target: "local-first web application: Meshy -> native Aurora/NWN content"
   primary_proof: "NWN EE Toolset/game"
@@ -32,6 +37,7 @@ orchestration:
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
   done_rule: "A stage may be DONE only when every definition_of_done item has evidence."
   stop_rule: "Stop only when a dependency of the currently implemented slice is missing. Deferred Meshy inputs and external acceptance do not block M7-V1 through M7-V4 or S1 first pass."
+  workspace_stop_rule: "Before every write resolve repo root. If it is not exactly C:\\Projects\\meshy2aurora, stop without creating a fallback or staging directory and reopen the task in the canonical workspace."
   implementation_supplement: "documentation/suplement-implementation-first-m7-s1-codex.md"
   implementation_wave:
     inventory_total: 10

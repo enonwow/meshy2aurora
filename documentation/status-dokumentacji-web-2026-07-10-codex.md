@@ -4,7 +4,10 @@ Data: 2026-07-10 | Autor: Codex | Status: AKTYWNY INDEKS CALOSCI DOKUMENTACJI
 
 ## 1. Cel
 
-Ten indeks klasyfikuje wszystkie 69 plikow z `C:\Projects\meshy2aurora\documentation` po decyzjach D11-D14. Ma usunac rozjazd miedzy aktualnym produktem webowym a starszymi planami Node/TypeScript/CLI lub dawnym targetem `aurora-web`.
+Ten indeks klasyfikuje 102 dokumenty Markdown i pozostale artefakty z
+`C:\Projects\meshy2aurora\documentation` po decyzjach D11-D14. Ma usunac
+rozjazd miedzy aktualnym produktem webowym a starszymi planami
+Node/TypeScript/CLI lub dawnym targetem `aurora-web`.
 
 ```yaml
 active_product:
@@ -15,6 +18,7 @@ active_product:
   initial_hosting: "GitHub Pages static hosting"
   final_proof: "NWN EE Toolset/game"
 authority_order:
+  - "CANONICAL_WORKSPACE.md and repository AGENTS.md"
   - "PROJECT_RULES.md section 6"
   - "decyzje-i-zadania-cloud.md D11 through D14"
   - "architektura-meshy2aurora-codex.md"

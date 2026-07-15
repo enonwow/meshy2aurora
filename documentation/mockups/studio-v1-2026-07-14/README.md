@@ -2,6 +2,11 @@
 
 Status: `AKTYWNY KONTRAKT WIZUALNY Z OZNACZONYMI POPRAWKAMI`
 
+Workspace gate: mockupy i ich implementacja naleza wylacznie do
+`C:\Projects\meshy2aurora`; zakaz uzywania
+`C:\Users\enonw\Documents\meshy2aurora` obejmuje rowniez staging, eksporty i
+pliki tymczasowe.
+
 Ten katalog zachowuje pierwsza pelna serie ekranow Studio V1. Obrazy sa referencja ukladu i przeplywu, ale nie wszystkie sa gotowe do implementacji 1:1. Status w tabeli ponizej ma pierwszenstwo przed wygladem pojedynczego obrazu.
 
 Szczegolowy sposob implementacji komponentow, maszyny stanu i kontraktow danych opisuje [studio-v1-frontend-implementation-suplement-codex.md](../../studio-v1-frontend-implementation-suplement-codex.md).

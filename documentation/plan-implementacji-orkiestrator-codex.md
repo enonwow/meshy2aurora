@@ -2,6 +2,15 @@
 
 Data: 2026-07-10 | Autor: Codex | Status: AKTYWNY PLAN WYKONAWCZY
 
+## 0. Workspace gate - przed kazdym etapem
+
+Orkiestrator i kazdy subagent pracuja wylacznie w
+`C:\Projects\meshy2aurora`. Sciezka
+`C:\Users\enonw\Documents\meshy2aurora` jest zakazana rowniez dla stagingu,
+scratcha, testow, buildow i plikow tymczasowych. Niezgodny workspace oznacza
+natychmiastowy HARD STOP i wznowienie taska w repo kanonicznym; nie wolno
+przygotowywac zmian poza nim ani kopiowac ich pozniej.
+
 Aktywny suplement sekwencji pracy: `documentation/suplement-implementation-first-m7-s1-codex.md`.
 Dla fali M7/S1 najpierw powstaje pierwsza implementacja wiekszosci vertical
 slices, a pelne testy, review i proof gates sa wykonywane wspolnie po

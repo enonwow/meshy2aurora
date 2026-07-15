@@ -5,6 +5,11 @@ Autor: Codex
 Status: `AKTYWNY KONTRAKT ROBOCZY`
 Zakres: Studio V1, obserwowalnosc pipeline i paczka diagnostyczna
 
+Workspace gate: cala implementacja i diagnostyka repo-local powstaje wylacznie
+w `C:\Projects\meshy2aurora`. Nie wolno zapisywac projektu ani danych
+tymczasowych w `C:\Users\enonw\Documents\meshy2aurora`. Zly workspace oznacza
+HARD STOP, nie staging i pozniejsze kopiowanie.
+
 ## 1. Cel suplementu
 
 Ten dokument zapisuje decyzje wlasciciela dotyczace pierwszej widocznej wersji aplikacji oraz szczegolowego trybu debug. Jest uzupelnieniem, a nie zamiennikiem:

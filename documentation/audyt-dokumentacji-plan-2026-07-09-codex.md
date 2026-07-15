@@ -19,7 +19,8 @@ code_scaffold:
   tests_dir: false
 wrong_docs_path:
   path: "C:\\Users\\enonw\\Documents\\meshy2aurora\\documentation"
-  exists: false
+  classification_2026_07_15: "FORBIDDEN_NON_CANONICAL_SELF_CREATED_PATH"
+  rule: "Never use or recreate as repo, workspace, staging, scratch, backup, worktree, migration source or documentation target."
 ```
 
 Najwazniejszy wniosek: dokumentacja zawiera duzo wartosciowej wiedzy, ale nie ma jeszcze jednego obowiazujacego "source of truth" dla aktualnego kierunku. Stare dokumenty nadal opisuja `aurora-web` jako target/proof, a nowsze decyzje D6/D7 mowia juz o samodzielnym projekcie `meshy2aurora`.

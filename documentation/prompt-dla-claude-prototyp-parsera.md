@@ -13,7 +13,10 @@ Pracujesz nad samodzielnym projektem meshy2aurora. Zbuduj M1a: minimalny, bezpie
 
 KANONICZNY WORKSPACE
 - Pracuj tylko w C:\Projects\meshy2aurora.
-- Nie uzywaj C:\Users\enonw\Documents\meshy2aurora; to pusty, niekanoniczny klon.
+- Nigdy nie uzywaj ani nie odtwarzaj C:\Users\enonw\Documents\meshy2aurora;
+  to zabroniona, niekanoniczna sciezka utworzona omylkowo przez Codexa, a nie
+  klon lub workspace wskazany przez wlasciciela. Zakaz obejmuje staging,
+  scratch, backup, worktree, testy, buildy, cache i migracje.
 - Cala dokumentacja projektu nalezy do C:\Projects\meshy2aurora\documentation.
 
 NAJPIERW PRZECZYTAJ

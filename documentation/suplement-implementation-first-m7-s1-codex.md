@@ -18,6 +18,10 @@ Definition of Done. Zmienia tylko moment tworzenia i uruchamiania testow.
 
 - Implementacja i artefakty robocze powstaja tylko w
   `C:\Projects\meshy2aurora`.
+- `C:\Users\enonw\Documents\meshy2aurora` jest bezwzglednie zakazane dla
+  implementacji, stagingu, scratcha, testow, buildow, cache i plikow
+  tymczasowych. Wlasciciel nigdy nie wskazal tej sciezki. Agent uruchomiony z
+  takim workspace'em wykonuje HARD STOP bez zapisu i bez kopiowania pozniej.
 - `C:\Projects\aurora-web`, Aurora/NWN EE, konfiguracje, katalogi uzytkownika,
   Toolset i gra sa w tej fali read-only i nie sa uruchamiane ani modyfikowane.
 - Brak trzech oryginalnych modeli Meshy jest odroczonym input gate, a nie

@@ -5,6 +5,11 @@ Autor: Codex
 Status: `AKTYWNY KONTRAKT IMPLEMENTACYJNY`
 Zakres: `apps/studio-web`, piecioetapowy workflow Studio V1 i Debug Drawer
 
+Workspace gate: implementacja, testy, buildy, mockupy robocze i pliki
+tymczasowe powstaja wylacznie w `C:\Projects\meshy2aurora`.
+`C:\Users\enonw\Documents\meshy2aurora` jest zakazane nawet jako staging lub
+fallback. Niezgodny workspace oznacza HARD STOP bez zapisu.
+
 ## 1. Cel i pierwszenstwo
 
 Ten suplement przeklada zaakceptowany kierunek wizualny Studio V1 na konkretna implementacje React/TypeScript. Jest podporzadkowany:

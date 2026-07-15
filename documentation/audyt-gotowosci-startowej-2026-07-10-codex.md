@@ -47,8 +47,8 @@ canonical:
   documentation: "C:\\Projects\\meshy2aurora\\documentation"
 non_canonical:
   path: "C:\\Users\\enonw\\Documents\\meshy2aurora"
-  observed_state: "empty Git repository without commits"
-  rule: "do not implement or duplicate documentation here"
+  classification_2026_07_15: "FORBIDDEN_NON_CANONICAL_SELF_CREATED_PATH"
+  rule: "Never use or recreate for implementation, documentation, staging, scratch, tests, builds, cache, worktrees or migration."
 reference_only:
   aurora_decompilation: "C:\\Projects\\New Folder"
   aurora_web: "C:\\Projects\\aurora-web"

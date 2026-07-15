@@ -76,8 +76,8 @@ ryzyka:
     stan: "assety meshy wygasają ~3 dni od generacji"
     mitygacja: "pobieranie GLB natychmiast, zapis w sample-3d (wpisane w instrukcje)"
   R3_dwa_workspacy_codexa:
-    stan: "wcześniej Codex pisał do Documents/meshy2aurora; ryzyko nawrotu"
-    mitygacja: "Codex potwierdził czyszczenie; każda dostawa weryfikowana po ścieżce"
+    stan: "Codex utworzyl bez zgody niekanoniczny Documents/meshy2aurora; sciezka jest zabroniona i nie wolno jej odtwarzac"
+    mitygacja: "jedyny repo root C:\\Projects\\meshy2aurora; AGENTS.md, PROJECT_RULES i workspace preflight wymuszaja HARD STOP przed zapisem"
   R4_poza_meshy:
     stan: "dopasowanie pozy generowanego modelu do bind pose to najsłabsze ogniwo ścieżki A"
     mitygacja: "kontrakt obrazów 2D + checklist akceptacji + raport odchyleń s5 w konwerterze"

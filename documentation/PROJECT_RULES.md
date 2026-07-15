@@ -1,10 +1,32 @@
 # Project Rules
 
+## 0. Kanoniczny workspace — HARD STOP
+
+Jedynym repozytorium i zapisywalnym workspace projektu jest
+`C:\Projects\meshy2aurora`.
+
+`C:\Users\enonw\Documents\meshy2aurora` jest sciezka bezwzglednie zakazana.
+Nie wolno tam tworzyc, edytowac, stage'owac, kopiowac, migrowac, testowac,
+budowac ani przechowywac plikow tymczasowych projektu. Nie jest to klon,
+staging, scratch, mirror ani fallback. Wlasciciel nigdy nie wskazal ani nie
+autoryzowal tej sciezki.
+
+Kazdy agent i subagent przed pierwszym zapisem musi rozwiazac repo root. Jezeli
+nie jest nim dokladnie `C:\Projects\meshy2aurora`, ma wykonac HARD STOP bez
+tworzenia plikow i bez obchodzenia problemu przez drugi katalog. Task trzeba
+wznowic z repo kanonicznym jako workspace root. Pelny kontrakt znajduje sie w
+`documentation/CANONICAL_WORKSPACE.md` i root `AGENTS.md`.
+
+Obowiazkowy preflight:
+
+`powershell -NoProfile -ExecutionPolicy Bypass -File assert-canonical-workspace.ps1`
+
 ## 1. Dokumentacja
 
 Cala dokumentacja projektu znajduje sie w folderze `C:\Projects\meshy2aurora\documentation` i tam ma byc dopisywana. Nie tworzymy rozproszonych notatek poza tym folderem bez rownoczesnego wpisu lub przeniesienia do `documentation`.
 
-Foldery o podobnej nazwie poza `C:\Projects\meshy2aurora` nie sa kanoniczne dla tego projektu.
+Foldery o podobnej nazwie poza `C:\Projects\meshy2aurora` nie sa kanoniczne
+dla tego projektu i nie wolno uzywac ich nawet jako tymczasowego stagingu.
 
 ## 2. Aurora First
 

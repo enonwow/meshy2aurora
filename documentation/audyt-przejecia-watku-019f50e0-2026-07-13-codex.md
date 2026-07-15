@@ -7,15 +7,19 @@ Status: aktywna kontynuacja w repo kanonicznym
 
 Poprzedni watek pracowal zgodnie z kierunkiem projektu, ale byl uruchomiony z
 nieprawidlowym workspace root. Wskazany katalog roboczy
-`C:\Users\enonw\Documents\meshy2aurora` byl innym, pustym checkoutem, podczas
-gdy repo kanoniczne i faktyczny cel zmian to `C:\Projects\meshy2aurora`.
+`C:\Users\enonw\Documents\meshy2aurora` byl niekanonicznym katalogiem
+utworzonym przez automatyzacje Codexa, a nie checkoutem wskazanym przez
+wlasciciela. Repo kanoniczne i jedyny dozwolony cel zmian to
+`C:\Projects\meshy2aurora`.
 
 To nie byl problem zasad projektu ani potrzeba uzyskiwania zgody na sama
 implementacje. Przyczyna pytan o pozwolenia byla techniczna: repo kanoniczne
 lezalo poza zapisywalnymi rootami sandboxa poprzedniego watku. Kazdy test lub
 zapis wykonywany w `C:\Projects\meshy2aurora` mogl wiec wymagac osobnego
-podniesienia uprawnien. Biezacy watek ma nieograniczony profil filesystem i
-pracuje jawnie w repo kanonicznym, dlatego ten narzut nie wystepuje.
+podniesienia uprawnien. Wlasciwa reakcja to HARD STOP i wznowienie taska z
+`C:\Projects\meshy2aurora` jako workspace root. Nie wolno uzywac katalogu
+`Documents` jako stagingu ani przygotowywac tam zmian do pozniejszego
+kopiowania.
 
 ## Co bylo zle lub niepelne
 

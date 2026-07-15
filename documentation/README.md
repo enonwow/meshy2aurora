@@ -1,5 +1,10 @@
 # Documentation
 
+> **HARD STOP — workspace:** jedynym repo projektu jest
+> `C:\Projects\meshy2aurora`. Nigdy nie uzywaj
+> `C:\Users\enonw\Documents\meshy2aurora`, nawet jako stagingu, scratcha lub
+> miejsca tymczasowego. Szczegoly: [CANONICAL_WORKSPACE.md](CANONICAL_WORKSPACE.md).
+
 Ten folder jest jedynym miejscem dokumentacji projektu `meshy2aurora`.
 
 Przed uzyciem starszego dokumentu sprawdz jego klase w [status-dokumentacji-web-2026-07-10-codex.md](status-dokumentacji-web-2026-07-10-codex.md). D11-D14 i aktywne dokumenty webowe maja pierwszenstwo przed historycznymi rekomendacjami CLI/Node/aurora-web.
@@ -16,6 +21,7 @@ Aktualny kierunek po audycie 2026-07-09:
 
 ## Dokumenty
 
+- [CANONICAL_WORKSPACE.md](CANONICAL_WORKSPACE.md) - bezwzgledny invariant jednej kanonicznej lokalizacji oraz zakaz uzywania niekanonicznego folderu `Documents`.
 - [PROJECT_RULES.md](PROJECT_RULES.md) - zasady projektu i implementacji.
 - [audyt-gotowosci-startowej-2026-07-10-codex.md](audyt-gotowosci-startowej-2026-07-10-codex.md) - kanoniczny gate przed implementacja: stan repo, toolchain, bootstrap, CI, M1A DoD i otwarte decyzje.
 - [macierz-gotowosci-wiedzy-codex.md](macierz-gotowosci-wiedzy-codex.md) - centralny stan wiedzy dla calego pipeline; oddziela ustalony kierunek, otwarte evidence i runtime proof.

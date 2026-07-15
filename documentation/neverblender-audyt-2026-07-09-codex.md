@@ -496,8 +496,8 @@ local_state_2026_07_09:
     status: POTWIERDZONE
   wrong_shell_path:
     path: "C:\\Users\\enonw\\Documents\\meshy2aurora"
-    status: POTWIERDZONE
-    note: "nie ma documentation; nie uzywac do dokumentacji projektu"
+    status: FORBIDDEN_NON_CANONICAL_SELF_CREATED_PATH
+    note: "nie uzywac ani nie odtwarzac jako repo, workspace, staging, scratch, backup, worktree, migration source ani documentation target"
   blender:
     path: "C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe"
     version: "Blender 5.1.2"

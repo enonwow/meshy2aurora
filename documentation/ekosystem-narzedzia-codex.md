@@ -24,8 +24,8 @@ documentation:
   rule: "wszystkie dokumenty projektu sa tutaj"
 wrong_documents_path:
   path: "C:\\Users\\enonw\\Documents\\meshy2aurora"
-  status: "POTWIERDZONE istnieje jako pusty shell .git; nie uzywac na dokumentacje"
-  rule: "nie zapisywac dokumentow projektu tutaj"
+  status: "FORBIDDEN_NON_CANONICAL_SELF_CREATED_PATH"
+  rule: "nie uzywac ani nie odtwarzac jako repo, workspace, staging, scratch, backup, worktree, migration source ani documentation target"
 ```
 
 ## Repozytoria lokalne
