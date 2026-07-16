@@ -31,6 +31,8 @@ export interface BuildProgressSnapshot {
 export interface BuildFailureSnapshot {
   readonly message: string;
   readonly code?: string;
+  readonly stage?: string;
+  readonly path?: string;
 }
 
 export type BuildState<TResult = unknown> =
@@ -75,7 +77,11 @@ export interface StudioSessionState<
   readonly download: DownloadState;
 }
 
-export type StudioSessionEvent<TInspection = unknown, TAppearanceInspection = unknown> =
+export type StudioSessionEvent<
+  TInspection = unknown,
+  TAppearanceInspection = unknown,
+  TResult = unknown,
+> =
   | { readonly type: "SOURCE_SELECTED"; readonly file: File }
   | { readonly type: "APPEARANCE_SELECTED"; readonly file: File }
   | { readonly type: "SOURCE_REMOVED" }
@@ -101,6 +107,28 @@ export type StudioSessionEvent<TInspection = unknown, TAppearanceInspection = un
     }
   | { readonly type: "CONTINUE_TO_INSPECT" }
   | { readonly type: "CONTINUE_TO_BUILD" }
+  | {
+      readonly type: "BUILD_STARTED";
+      readonly requestId: string;
+      readonly revision: number;
+    }
+  | {
+      readonly type: "BUILD_SUCCEEDED";
+      readonly requestId: string;
+      readonly revision: number;
+      readonly result: TResult;
+    }
+  | {
+      readonly type: "BUILD_FAILED";
+      readonly requestId: string;
+      readonly revision: number;
+      readonly failure: BuildFailureSnapshot;
+    }
+  | {
+      readonly type: "BUILD_CANCELLED";
+      readonly requestId: string;
+      readonly revision: number;
+    }
   | { readonly type: "NAVIGATE"; readonly step: WorkflowStep }
   | { readonly type: "START_NEW_CONVERSION" };
 
@@ -177,7 +205,7 @@ function updateInputMetadata<TInspection, TResult, TAppearanceInspection>(
 
 export function studioSessionReducer<TInspection, TResult, TAppearanceInspection>(
   state: StudioSessionState<TInspection, TResult, TAppearanceInspection>,
-  event: StudioSessionEvent<TInspection, TAppearanceInspection>,
+  event: StudioSessionEvent<TInspection, TAppearanceInspection, TResult>,
 ): StudioSessionState<TInspection, TResult, TAppearanceInspection> {
   switch (event.type) {
     case "SOURCE_SELECTED":
@@ -249,7 +277,89 @@ export function studioSessionReducer<TInspection, TResult, TAppearanceInspection
           ? state.lastAvailableStep
           : "BUILD",
       };
+    case "BUILD_STARTED":
+      if (
+        event.revision !== state.revision
+        || state.currentStep !== "BUILD"
+        || state.build.kind === "RUNNING"
+        || !state.sourceInspection
+        || !state.appearanceInspection
+        || state.sourceInspection.revision !== state.revision
+        || state.appearanceInspection.revision !== state.revision
+      ) return state;
+      return {
+        ...state,
+        lastAvailableStep: "BUILD",
+        build: {
+          kind: "RUNNING",
+          requestId: event.requestId,
+          revision: event.revision,
+        },
+        result: null,
+        download: { kind: "LOCKED" },
+      };
+    case "BUILD_SUCCEEDED": {
+      if (
+        event.revision !== state.revision
+        || state.build.kind !== "RUNNING"
+        || state.build.requestId !== event.requestId
+        || state.build.revision !== event.revision
+      ) return state;
+      const result: RevisionBoundSnapshot<TResult> = {
+        revision: event.revision,
+        value: event.result,
+      };
+      return {
+        ...state,
+        currentStep: "REVIEW",
+        lastAvailableStep: "REVIEW",
+        build: {
+          kind: "SUCCEEDED",
+          requestId: event.requestId,
+          revision: event.revision,
+          result,
+        },
+        result,
+        download: { kind: "LOCKED" },
+      };
+    }
+    case "BUILD_FAILED":
+      if (
+        event.revision !== state.revision
+        || state.build.kind !== "RUNNING"
+        || state.build.requestId !== event.requestId
+        || state.build.revision !== event.revision
+      ) return state;
+      return {
+        ...state,
+        currentStep: "BUILD",
+        lastAvailableStep: "BUILD",
+        build: {
+          kind: "FAILED",
+          requestId: event.requestId,
+          revision: event.revision,
+          failure: event.failure,
+        },
+        result: null,
+        download: { kind: "LOCKED" },
+      };
+    case "BUILD_CANCELLED":
+      if (
+        event.revision !== state.revision
+        || state.build.kind !== "RUNNING"
+        || state.build.requestId !== event.requestId
+        || state.build.revision !== event.revision
+      ) return state;
+      return {
+        ...state,
+        currentStep: "BUILD",
+        lastAvailableStep: "BUILD",
+        build: { kind: "IDLE" },
+        result: null,
+        download: { kind: "LOCKED" },
+      };
     case "NAVIGATE":
+      if (state.build.kind === "RUNNING") return state;
       if (compareWorkflowSteps(event.step, state.lastAvailableStep) > 0) return state;
       if (event.step === state.currentStep) return state;
       return { ...state, currentStep: event.step };

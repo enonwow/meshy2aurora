@@ -68,7 +68,7 @@ orchestration:
         status: "DONE"
         scope: "Visible canonical model completion snapshot projected from exact Worker report, summary, manifest, readback and artifact metadata."
         implementation_blockers: []
-        evidence: "55/55 Studio unit/App tests, 4/4 real Chrome production App+Worker/web-WASM tests, strict atomic snapshot, visible KPI/OPEN_M6/order/reset proof, independent P1=0/P2=0 reviews."
+        evidence: "141/141 Studio unit/App tests, 4/4 real Chrome production App+Worker/web-WASM tests, strict atomic snapshot, visible KPI/OPEN_M6/order/reset proof and canonical Worker artifact-download controls in the main Review result, independent P1=0/P2=0 reviews."
         exclusions: ["synthetic product demo", "fake progress", "new converter", "Aurora/NWN runtime claim", "backend", "configuration", "gameplay classes"]
 
 global_blockers:
@@ -506,7 +506,7 @@ stages:
 
   S1:
     status: "IN_PROGRESS"
-    status_reason: "S1-V1 through S1-V5 plus M7-V4S and visible S1-V5R pass typecheck, 55 Studio tests, 4 real Chrome production App/Worker/web-WASM tests, fresh static build, shared Rust/WASM gates and independent P1=0/P2=0 review. The canonical result workspace visibly shows geometry, animation, texture, 2DA and HAK evidence while keeping runtime OPEN_M6. Real browser E2E on owner-approved Meshy input remains deferred, so S1 is not DONE."
+    status_reason: "S1-V1 through S1-V5 plus M7-V4S and visible S1-V5R pass typecheck, 141 Studio tests, 4 real Chrome production App/Worker/web-WASM tests, fresh static build, shared Rust/WASM gates and independent P1=0/P2=0 review. The canonical result workspace visibly shows geometry, animation, texture, 2DA and HAK evidence while keeping runtime OPEN_M6. Real browser E2E on owner-approved Meshy input remains deferred, so S1 is not DONE."
     owner: "product/UI implementation agent"
     risk: "MEDIUM"
     dependencies: ["Existing canonical m2a-wasm public API", "documentation/suplement-implementation-first-m7-s1-codex.md"]
@@ -515,7 +515,7 @@ stages:
       - "Three owner-approved original Meshy GLB files for final browser E2E after first pass."
     bugs: []
     next_actions: ["After owner-approved original Meshy input, run real local-file browser E2E and record visible/downloaded artifact proof."]
-    evidence: ["documentation/evidence/S1-deferred-test-ledger.md: S1-V1--V5 plus M7-V4S/S1-V5R PASS, 55 Studio tests, 4 real Chrome production App/Worker/web-WASM tests, visible canonical result snapshot, fresh build and independent P1=0/P2=0; real Meshy browser E2E remains deferred"]
+    evidence: ["documentation/evidence/S1-deferred-test-ledger.md: S1-V1--V5 plus M7-V4S/S1-V5R PASS, 141 Studio tests, 4 real Chrome production App/Worker/web-WASM tests, visible canonical result snapshot, fresh build and independent P1=0/P2=0; real Meshy browser E2E remains deferred"]
     documentation: ["documentation/suplement-implementation-first-m7-s1-codex.md", "documentation/evidence/S1-deferred-test-ledger.md"]
     expected_artifacts: ["Canonical preview and validation UI proof"]
     changed_files:

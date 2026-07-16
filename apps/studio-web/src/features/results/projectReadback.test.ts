@@ -3,7 +3,7 @@ import { projectCanonicalReadback } from "./projectReadback";
 
 const valid = () => ({
   schemaVersion: 1,
-  format: "BINARY_MDL",
+  format: "nwn1-binary-mdl",
   nodeTree: {
     roots: [{
       offset: 12,
@@ -25,7 +25,52 @@ const valid = () => ({
 
 describe("canonical readback projector", () => {
   it("projects every nested field consumed by preview and diagnostics", () => {
-    expect(projectCanonicalReadback(JSON.stringify(valid()))).toEqual(valid());
+    const projected = projectCanonicalReadback(JSON.stringify(valid()));
+    expect(projected).toMatchObject(valid());
+    expect(projected.validation).toEqual({
+      status: "PASS",
+      structure: {
+        schemaVersion: 1,
+        format: "nwn1-binary-mdl",
+        rootNodeCount: 1,
+        hasRootNodes: true,
+        structuralErrors: [],
+      },
+      diagnostics: { total: 1, warnings: 0, errors: 0, informational: 1, unrecognizedSeverity: 0 },
+    });
+  });
+
+  it.each([
+    ["PASS", "INFO"],
+    ["WARNING", "warning"],
+    ["ERROR", "FATAL"],
+  ] as const)("derives %s only from projected diagnostic severity", (expected, severity) => {
+    const value = valid();
+    value.diagnostics[0].severity = severity;
+    expect(projectCanonicalReadback(JSON.stringify(value)).validation?.status).toBe(expected);
+  });
+
+  it("fails closed for an unrecognized diagnostic severity", () => {
+    const value = valid();
+    value.diagnostics[0].severity = "CUSTOM";
+    expect(projectCanonicalReadback(JSON.stringify(value)).validation).toMatchObject({
+      status: "ERROR",
+      diagnostics: { unrecognizedSeverity: 1 },
+    });
+  });
+
+  it("reports an empty node tree as a structural ERROR", () => {
+    const value = valid();
+    value.nodeTree.roots = [];
+    value.diagnostics = [];
+    expect(projectCanonicalReadback(JSON.stringify(value)).validation).toMatchObject({
+      status: "ERROR",
+      structure: {
+        rootNodeCount: 0,
+        hasRootNodes: false,
+        structuralErrors: ["READBACK_NODE_TREE_EMPTY"],
+      },
+    });
   });
 
   it("normalizes serialized Rust Option nulls for non-mesh nodes and unnamed controllers", () => {
@@ -49,6 +94,7 @@ describe("canonical readback projector", () => {
     ["array root", "[]"],
     ["empty object", "{}"],
     ["wrong roots", JSON.stringify({ ...valid(), nodeTree: { roots: {} } })],
+    ["wrong format", JSON.stringify({ ...valid(), format: "OTHER" })],
     ["wrong nested controller", (() => {
       const value = valid();
       value.nodeTree.roots[0].controllers[0].values = [[0, "bad" as unknown as number, 2]];

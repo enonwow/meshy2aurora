@@ -2,6 +2,8 @@ import type { WorkerArtifact } from "../../worker/types";
 
 export interface CanonicalResultSnapshot {
   status: string;
+  sourceMetrics: CanonicalModelMetrics;
+  convertedMetrics: CanonicalModelMetrics;
   geometry: { vertices: number; triangles: number; joints: number; deformation: string };
   animation: { sourceName: string; outputName: string; durationSeconds: number; hasMotion: boolean };
   texture: { width: number; height: number; pixelFormat: string; byteLength: number };
@@ -10,10 +12,57 @@ export interface CanonicalResultSnapshot {
   hak: { byteLength: number; sha256: string; entryCount: number };
   outputs: Record<string, { byteLength: number; sha256: string }>;
   resources: Array<{ role: string; resref: string; type: number; byteLength: number; sha256: string }>;
+  semanticEvidence: {
+    semanticDiff: string[];
+    deviations: Array<{ code: string; path: string; message: string }>;
+  };
+  conversionEvidence: CanonicalConversionEvidence;
+  packageAssemblyEvidence: {
+    strictReconciled: true;
+    resourceCount: number;
+    artifactCount: number;
+  };
   artifacts: WorkerArtifact[];
   reportJson: string;
   summaryJson: string;
   manifestJson: string;
+}
+
+export interface CanonicalConversionGate {
+  schemaVersion: 1;
+  code: string;
+  severity: string;
+  path: string;
+  expected: string;
+  actual: string;
+  message: string;
+}
+
+export interface CanonicalConversionDiagnostic {
+  schemaVersion: 1;
+  code: string;
+  severity: string;
+  path: string;
+  message: string;
+}
+
+export interface CanonicalConversionEvidence {
+  schemaVersion: 1;
+  conversionEligible: boolean;
+  policies: {
+    engineFacingProof: string;
+    uvRuntimeProof: string;
+  };
+  gates: CanonicalConversionGate[];
+  diagnostics: CanonicalConversionDiagnostic[];
+}
+
+export interface CanonicalModelMetrics {
+  nodes: number;
+  meshes: number;
+  vertices: number;
+  triangles: number;
+  animations: number;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -25,6 +74,7 @@ const string = (value: unknown, path: string): string => typeof value === "strin
 const boolean = (value: unknown, path: string): boolean => typeof value === "boolean" ? value : fail(path);
 const number = (value: unknown, path: string): number => typeof value === "number" && Number.isFinite(value) ? value : fail(path);
 const integer = (value: unknown, path: string): number => Number.isSafeInteger(value) && (value as number) >= 0 ? value as number : fail(path);
+const stringArray = (value: unknown, path: string): string[] => array(value, path).map((entry, index) => string(entry, `${path}[${index}]`));
 const sha256 = (value: unknown, path: string): string => {
   const result = string(value, path);
   return /^[0-9a-f]{64}$/.test(result) ? result : fail(path);
@@ -43,6 +93,32 @@ function equal(actual: unknown, expected: unknown, path: string) {
   if (actual !== expected) throw new Error(`Canonical result identity mismatch at ${path}`);
 }
 
+function conversionGate(value: unknown, path: string): CanonicalConversionGate {
+  const item = record(value, path);
+  if (integer(item.schemaVersion, `${path}.schemaVersion`) !== 1) fail(`${path}.schemaVersion`);
+  return {
+    schemaVersion: 1,
+    code: string(item.code, `${path}.code`),
+    severity: string(item.severity, `${path}.severity`),
+    path: string(item.path, `${path}.path`),
+    expected: string(item.expected, `${path}.expected`),
+    actual: string(item.actual, `${path}.actual`),
+    message: string(item.message, `${path}.message`),
+  };
+}
+
+function conversionDiagnostic(value: unknown, path: string): CanonicalConversionDiagnostic {
+  const item = record(value, path);
+  if (integer(item.schemaVersion, `${path}.schemaVersion`) !== 1) fail(`${path}.schemaVersion`);
+  return {
+    schemaVersion: 1,
+    code: string(item.code, `${path}.code`),
+    severity: string(item.severity, `${path}.severity`),
+    path: string(item.path, `${path}.path`),
+    message: string(item.message, `${path}.message`),
+  };
+}
+
 export function projectCanonicalResult(
   reportJson: string,
   summaryJson: string,
@@ -58,6 +134,34 @@ export function projectCanonicalResult(
   const status = string(summary.status, "summary.status");
   if (status !== "M6_MODEL_PACKAGE_MATERIALIZED") fail("summary.status");
   equal(string(manifest.status, "manifest.status"), status, "manifest.status");
+
+  const ingest = record(report.ingest, "report.ingest");
+  if (integer(ingest.schemaVersion, "report.ingest.schemaVersion") !== 1) fail("report.ingest.schemaVersion");
+  const sourceInventory = record(ingest.inventory, "report.ingest.inventory");
+  const sourceStatistics = record(ingest.statistics, "report.ingest.statistics");
+  const sourceMetrics: CanonicalModelMetrics = {
+    nodes: integer(sourceInventory.nodeCount, "report.ingest.inventory.nodeCount"),
+    meshes: integer(sourceInventory.meshCount, "report.ingest.inventory.meshCount"),
+    vertices: integer(sourceStatistics.vertexCount, "report.ingest.statistics.vertexCount"),
+    triangles: integer(sourceStatistics.triangleCount, "report.ingest.statistics.triangleCount"),
+    animations: integer(sourceInventory.animationCount, "report.ingest.inventory.animationCount"),
+  };
+
+  const conversion = record(report.conversion, "report.conversion");
+  if (integer(conversion.schemaVersion, "report.conversion.schemaVersion") !== 1) fail("report.conversion.schemaVersion");
+  const conversionPolicies = record(conversion.policies, "report.conversion.policies");
+  const conversionEvidence: CanonicalConversionEvidence = {
+    schemaVersion: 1,
+    conversionEligible: boolean(conversion.conversionEligible, "report.conversion.conversionEligible"),
+    policies: {
+      engineFacingProof: string(conversionPolicies.engineFacingProof, "report.conversion.policies.engineFacingProof"),
+      uvRuntimeProof: string(conversionPolicies.uvRuntimeProof, "report.conversion.policies.uvRuntimeProof"),
+    },
+    gates: array(conversion.gates, "report.conversion.gates").map((value, index) =>
+      conversionGate(value, `report.conversion.gates[${index}]`)),
+    diagnostics: array(conversion.diagnostics, "report.conversion.diagnostics").map((value, index) =>
+      conversionDiagnostic(value, `report.conversion.diagnostics[${index}]`)),
+  };
 
   const geometryJson = record(report.geometry, "report.geometry");
   const geometry = {
@@ -100,6 +204,25 @@ export function projectCanonicalResult(
   equal(texture.byteLength, outputs.texture.byteLength, "report.texture.byteLength");
   equal(sha256(textureJson.outputSha256, "report.texture.outputSha256"), outputs.texture.sha256, "report.texture.outputSha256");
   const modelJson = record(report.model, "report.model");
+  const projection = record(modelJson.projection, "report.model.projection");
+  const convertedMetrics: CanonicalModelMetrics = {
+    nodes: integer(projection.rigNodeCount, "report.model.projection.rigNodeCount")
+      + integer(projection.meshNodeCount, "report.model.projection.meshNodeCount"),
+    meshes: integer(projection.meshNodeCount, "report.model.projection.meshNodeCount"),
+    vertices: geometry.vertices,
+    triangles: integer(projection.triangleCount, "report.model.projection.triangleCount"),
+    animations: integer(projection.animationCount, "report.model.projection.animationCount"),
+  };
+  equal(convertedMetrics.triangles, geometry.triangles, "report.model.projection.triangleCount");
+  const semanticDiff = stringArray(modelJson.semanticDiff, "report.model.semanticDiff");
+  const deviations = array(modelJson.deviations, "report.model.deviations").map((value, index) => {
+    const item = record(value, `report.model.deviations[${index}]`);
+    return {
+      code: string(item.code, `report.model.deviations[${index}].code`),
+      path: string(item.path, `report.model.deviations[${index}].path`),
+      message: string(item.message, `report.model.deviations[${index}].message`),
+    };
+  });
   equal(sha256(modelJson.payloadSha256, "report.model.payloadSha256"), outputs.model.sha256, "report.model.payloadSha256");
   equal(integer(record(modelJson.layout, "report.model.layout").fileLength, "report.model.layout.fileLength"), outputs.model.byteLength, "report.model.layout.fileLength");
   equal(integer(appearanceJson.outputByteLength, "report.appearance.outputByteLength"), outputs.appearanceTwoDa.byteLength, "report.appearance.outputByteLength");
@@ -133,6 +256,7 @@ export function projectCanonicalResult(
   reconcile(textureResource, outputs.texture, "manifest.packageManifest.resources.TEXTURE");
   reconcile(appearanceResource, outputs.appearanceTwoDa, "manifest.packageManifest.resources.APPEARANCE_TABLE");
   equal(modelResource.resref, string(summary.modelResref, "summary.modelResref"), "manifest.packageManifest.resources.MODEL.resref");
+  equal(string(projection.modelResourceResref, "report.model.projection.modelResourceResref"), modelResource.resref, "report.model.projection.modelResourceResref");
   equal(textureResource.resref, string(summary.textureResref, "summary.textureResref"), "manifest.packageManifest.resources.TEXTURE.resref");
   equal(appearanceResource.resref, "appearance", "manifest.packageManifest.resources.APPEARANCE_TABLE.resref");
 
@@ -173,6 +297,8 @@ export function projectCanonicalResult(
 
   return {
     status,
+    sourceMetrics,
+    convertedMetrics,
     geometry,
     animation,
     texture,
@@ -188,6 +314,13 @@ export function projectCanonicalResult(
     hak,
     outputs,
     resources,
+    semanticEvidence: { semanticDiff, deviations },
+    conversionEvidence,
+    packageAssemblyEvidence: {
+      strictReconciled: true,
+      resourceCount: resources.length,
+      artifactCount: artifacts.length,
+    },
     artifacts: [...artifacts],
     reportJson,
     summaryJson,

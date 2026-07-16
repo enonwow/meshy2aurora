@@ -43,11 +43,32 @@ export interface ReadbackDiagnostic {
   context: string;
 }
 
+export type BinaryReadbackValidationStatus = "PASS" | "WARNING" | "ERROR";
+
+export interface BinaryReadbackValidationEvidence {
+  status: BinaryReadbackValidationStatus;
+  structure: {
+    schemaVersion: 1;
+    format: string;
+    rootNodeCount: number;
+    hasRootNodes: boolean;
+    structuralErrors: string[];
+  };
+  diagnostics: {
+    total: number;
+    warnings: number;
+    errors: number;
+    informational: number;
+    unrecognizedSeverity: number;
+  };
+}
+
 export interface BinaryMdlInspectionReport {
   schemaVersion: number;
   format: string;
   nodeTree: { roots: ReadbackNode[] };
   diagnostics: ReadbackDiagnostic[];
+  validation?: BinaryReadbackValidationEvidence;
 }
 
 export interface StudioDiagnostic {

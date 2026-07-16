@@ -11,7 +11,27 @@ function fixture() {
   const report = {
     schemaVersion: 1,
     geometry: { vertexCount: 24, triangleCount: 12, activeJointCount: 2, outputSegmentDeformation: "SKIN" },
-    model: { payloadSha256: "b".repeat(64), layout: { fileLength: 2 } },
+    ingest: {
+      schemaVersion: 1,
+      inventory: { nodeCount: 8, meshCount: 2, jointReferenceCount: 4, animationCount: 1 },
+      statistics: { vertexCount: 24, triangleCount: 12 },
+    },
+    conversion: {
+      schemaVersion: 1,
+      conversionEligible: true,
+      policies: { engineFacingProof: "OPEN_M6", uvRuntimeProof: "OPEN_M6" },
+      gates: [] as Array<{ schemaVersion: number; code: string; severity: string; path: string; expected: string; actual: string; message: string }>,
+      diagnostics: [] as Array<{ schemaVersion: number; code: string; severity: string; path: string; message: string }>,
+    },
+    model: {
+      payloadSha256: "b".repeat(64),
+      layout: { fileLength: 2 },
+      projection: {
+        modelResourceResref: "m2a_model", animationCount: 1, rigNodeCount: 2, meshNodeCount: 2, triangleCount: 12,
+      },
+      semanticDiff: [],
+      deviations: [],
+    },
     texture: { width: 2, height: 2, pixelFormat: "RGBA8", byteLength: 60, outputSha256: "d".repeat(64) },
     appearance: { appendedRowIndex: 1, sourcePrefixPreserved: true, outputByteLength: 7, outputSha256: "e".repeat(64) },
     hak: { byteLength: 3, archiveSha256: "a".repeat(64), entryCount: 3 },
@@ -77,12 +97,23 @@ describe("canonical result projector", () => {
     const result = projectCanonicalResult(value.reportJson, value.summaryJson, value.manifestJson, value.artifacts);
     expect(result).toMatchObject({
       status: "M6_MODEL_PACKAGE_MATERIALIZED",
+      sourceMetrics: { nodes: 8, meshes: 2, vertices: 24, triangles: 12, animations: 1 },
+      convertedMetrics: { nodes: 4, meshes: 2, vertices: 24, triangles: 12, animations: 1 },
       geometry: { vertices: 24, triangles: 12, joints: 2, deformation: "SKIN" },
       animation: { sourceName: "walk", outputName: "cwalk", durationSeconds: 1.25, hasMotion: true },
       texture: { width: 2, height: 2, pixelFormat: "RGBA8", byteLength: 60 },
       resrefs: { model: "m2a_model", texture: "m2a_texture" },
       appearance: { appendedRow: 1, sourcePrefixPreserved: true, policy: "PRESERVED_AND_APPENDED" },
       hak: { byteLength: 3, sha256: "a".repeat(64), entryCount: 3 },
+      semanticEvidence: { semanticDiff: [], deviations: [] },
+      conversionEvidence: {
+        schemaVersion: 1,
+        conversionEligible: true,
+        policies: { engineFacingProof: "OPEN_M6", uvRuntimeProof: "OPEN_M6" },
+        gates: [],
+        diagnostics: [],
+      },
+      packageAssemblyEvidence: { strictReconciled: true, resourceCount: 3, artifactCount: 5 },
     });
     expect(result.resources.map(({ role, resref }) => [role, resref])).toEqual([
       ["APPEARANCE_TABLE", "appearance"], ["MODEL", "m2a_model"], ["TEXTURE", "m2a_texture"],
@@ -131,6 +162,23 @@ describe("canonical result projector", () => {
       value.manifestJson,
       value.artifacts,
     )).toThrow("Canonical result field report.geometry.vertexCount");
+  });
+
+  it.each([
+    ["schemaVersion", (value: ReturnType<typeof fixture>) => { value.report.conversion.schemaVersion = 2; }, "report.conversion.schemaVersion"],
+    ["conversionEligible", (value: ReturnType<typeof fixture>) => { value.report.conversion.conversionEligible = "yes" as unknown as boolean; }, "report.conversion.conversionEligible"],
+    ["engine policy", (value: ReturnType<typeof fixture>) => { value.report.conversion.policies.engineFacingProof = ""; }, "report.conversion.policies.engineFacingProof"],
+    ["gate", (value: ReturnType<typeof fixture>) => { value.report.conversion.gates = [{ schemaVersion: 1, code: "G", severity: "WARNING", path: "geometry", expected: "", actual: "bad", message: "warning" }]; }, "report.conversion.gates[0].expected"],
+    ["diagnostic", (value: ReturnType<typeof fixture>) => { value.report.conversion.diagnostics = [{ schemaVersion: 1, code: "D", severity: "", path: "materials", message: "diagnostic" }]; }, "report.conversion.diagnostics[0].severity"],
+  ] as const)("strictly rejects malformed conversion %s", (_label, mutate, path) => {
+    const value = fixture();
+    mutate(value);
+    expect(() => projectCanonicalResult(
+      JSON.stringify(value.report),
+      value.summaryJson,
+      value.manifestJson,
+      value.artifacts,
+    )).toThrow(`Canonical result field ${path}`);
   });
 
   it.each([

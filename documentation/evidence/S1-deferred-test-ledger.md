@@ -1,5 +1,13 @@
 # S1 deferred test ledger
 
+## Studio V1 refactor note - 2026-07-15
+
+- Aktualne `npm run test:worker-integration`: 4/4 PASS.
+- Prawdziwy native-owned Worker -> web-WASM model build, produkcyjny App oraz oba testy M7 przechodza.
+- Historyczny test zostal zmigrowany do flow Source -> Inspect -> Build -> Review i ponownie uruchomiony z prawdziwym Workerem/publicznym web-WASM.
+- Kontrakt readbacku jest jawny: Rust emituje `nwn1-binary-mdl`, a projektor Studio go waliduje jako jedyny akceptowany format.
+- S1-V5: wynik `MODEL_PACKAGE_BUILT` renderuje teraz canonical Worker artifact downloads w glownym ekranie Review, a nie tylko w panelu M7. App i realny Worker/web-WASM integration test potwierdzaja widocznosc kontroli pobierania.
+
 Status: `CODE_WAVE_PASS_REVIEW_CLEAN_REAL_E2E_DEFERRED`
 
 Ten ledger jest evidence PASS dla kodowej fali S1-V1--S1-V5. Nie jest jeszcze
@@ -12,7 +20,7 @@ Shared wave 2026-07-14:
 - `cargo test --workspace`: PASS, 319 testow.
 - `wasm-pack test --node crates/m2a-wasm`: PASS, 20 testow, w tym publiczny
   Studio model-package boundary z exact core parity.
-- `npm test`: PASS, 7 plikow / 55 testow Studio.
+- `npm test`: PASS, 23 pliki / 141 testow Studio.
 - `npm run test:worker-integration`: PASS, 4 realne testy Chrome, w tym
   produkcyjny App -> Worker -> web-WASM -> widoczny canonical result.
 - `npm run build`: PASS; static Vite bundle zawiera osobny Worker i WASM.

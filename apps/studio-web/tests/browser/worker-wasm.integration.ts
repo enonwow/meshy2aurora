@@ -313,9 +313,8 @@ describe("local file to canonical web-WASM Worker integration", () => {
     const root = createRoot(container);
     roots.push(root);
     root.render(createElement(App));
-    await expect.poll(() => container.querySelector('[aria-label="Local file session"]')).toBeTruthy();
-    const m6Panel = container.querySelector<HTMLElement>('[aria-label="Local file session"]')!;
-    const [sourceInput, appearanceInput] = Array.from(m6Panel.querySelectorAll<HTMLInputElement>('input[type="file"]'));
+    await expect.poll(() => container.querySelector(".inputs-panel")).toBeTruthy();
+    const [sourceInput, appearanceInput] = Array.from(container.querySelectorAll<HTMLInputElement>(".inputs-panel input[type=file]"));
     const select = async (input: HTMLInputElement, file: File) => {
       Object.defineProperty(input, "files", { configurable: true, value: [file] });
       input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -323,39 +322,27 @@ describe("local file to canonical web-WASM Worker integration", () => {
     };
     await select(sourceInput, source);
     await select(appearanceInput, appearance);
-    const build = Array.from(m6Panel.querySelectorAll("button")).find(({ textContent }) => textContent === "Build model package")!;
-    expect(build.disabled).toBe(false);
-    build.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await expect.poll(() => m6Panel.querySelector(".status strong")?.textContent, { timeout: 20_000 }).toBe("COMPLETE");
+    const findButton = (label: string) => Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find(({ textContent }) => textContent?.trim() === label);
+    await expect.poll(() => findButton("Continue to Inspect")?.disabled).toBe(false);
+    findButton("Continue to Inspect")?.click();
+    await expect.poll(() => findButton("Continue to Build")?.disabled).toBe(false);
+    findButton("Continue to Build")?.click();
+    await expect.poll(() => findButton("Build Package")?.disabled).toBe(false);
+    findButton("Build Package")!.click();
+    await expect.poll(() => container.querySelector("#review-model-heading")?.textContent, { timeout: 20_000 }).toBe("Model Details");
 
-    const workspace = container.querySelector<HTMLElement>('[aria-label="Canonical model result"]')!;
-    expect(workspace.textContent).toContain("M6_MODEL_PACKAGE_MATERIALIZED");
+    const workspace = container.querySelector<HTMLElement>(".review-model")!;
+    expect(workspace.textContent).toContain("Conversion Readiness");
     expect(workspace.textContent).toContain("24");
     expect(workspace.textContent).toContain("12");
-    expect(workspace.textContent).toContain("owned-linear-pause → cpause1");
-    expect(workspace.textContent).toContain("2 × 2 · RGBA8");
-    expect(workspace.textContent).toContain("m2a_m6p01");
     expect(workspace.textContent).toContain("OPEN_M6");
-    expect(workspace.textContent).not.toContain("Runtime acceptance: PASS");
-    const detail = (label: string) => Array.from(workspace.querySelectorAll("dl div"))
-      .find((row) => row.querySelector("dt")?.textContent === label)
-      ?.querySelector("dd")?.textContent;
-    expect(detail("Appended row")).toBe("1");
-    expect(detail("Texture resref")).toBe("m2a_m6t01");
-    expect(detail("HAK")).toBe("4335 bytes · 3 resources");
-    expect(Array.from(workspace.querySelectorAll("ul")[0].querySelectorAll("li strong"), ({ textContent }) => textContent)).toEqual([
-      "APPEARANCE_TABLE", "MODEL", "TEXTURE",
-    ]);
-    const m7 = container.querySelector<HTMLElement>('[aria-label="M7 corpus session"]')!;
-    expect(workspace.compareDocumentPosition(m7) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    const sourceViewport = container.querySelector<HTMLElement>('[aria-label="SOURCE viewport"]');
-    if (sourceViewport) {
-      expect(workspace.compareDocumentPosition(sourceViewport) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    }
-    expect(container.textContent).toContain("meshy2aurora.hak");
+    expect(workspace.textContent).toContain("Verified by binary readback");
+    expect(workspace.textContent).toContain("Metrics available in both canonical snapshots");
+    expect(container.querySelector('[aria-label="Canonical Worker artifact downloads"]')?.textContent)
+      .toContain("GENERATED ARTIFACTS");
 
     await select(sourceInput, new File([await fetchBytes(sourceUrl)], "replacement.glb", { type: "model/gltf-binary" }));
-    await expect.poll(() => container.querySelector('[aria-label="Canonical model result"]')).toBeNull();
-    expect(container.textContent).not.toContain("meshy2aurora.hak");
+    await expect.poll(() => container.querySelector("#review-model-heading")).toBeNull();
   }, 30_000);
 });

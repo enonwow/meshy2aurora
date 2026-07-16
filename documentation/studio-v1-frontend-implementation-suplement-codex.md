@@ -576,3 +576,22 @@ Nastepny batch: FE-V2 - realny Inspect, source projection, Source Model i valida
 - ekran Build po `Continue to Build` jest jawnym rusztowaniem `FE-V4 next`; nie jest zaliczony jako FE-V4.
 
 Nastepny batch: FE-V4 i FE-V5 - prawdziwy Build state oraz Review Model Details z kanonicznego readbacku.
+
+### FE-V4 i FE-V5 - 2026-07-15 - DONE_FIRST_PASS
+
+- Build uruchamia prawdziwe `BUILD_MODEL_PACKAGE` w istniejacym Workerze i zapisuje wynik dopiero po scislej projekcji report, summary, manifest, artifacts oraz binary readback,
+- ekran Build nie ma viewportu i pokazuje szesc docelowych etapow, ale dopoki Worker nie emituje FE-D1, stan RUNNING pozostaje jawnie indeterminate bez procentow, ETA ani wymyslonego aktywnego etapu,
+- IDLE pokazuje rzeczywiste nazwy, rozmiary, SHA-256 i stan inspekcji obu wejsc,
+- Cancel fizycznie konczy biezacego Workera i tworzy nowego; replace/remove/new conversion robi to samo przed invalidation,
+- revision, request ID i identity Workera blokuja spoznione requesty przed projekcja i przed zapisem stanu Review,
+- nawigacja steppera jest zablokowana podczas Build RUNNING, dlatego Cancel nie znika,
+- failure zachowuje prawdziwy code, stage, path i message z wersjonowanego bledu Workera, a nie zgaduje etapu; brak FE-D7 jest pokazany jako `Debug report package: Unavailable`,
+- Review ma kontrolowany toggle `Source Model | Converted Model`; Converted renderuje tylko `BinaryMdlInspectionReport`,
+- binary readback PASS/WARNING/ERROR wynika z rzeczywistej struktury i severity diagnostics; pusty node tree, nieznane severity lub brak evidence nie moga dac PASS,
+- Source vs Converted pokazuje tylko metryki obecne w obu kanonicznych snapshotach, a semantic diff/deviations pochodza z raportu writera,
+- Conversion Readiness nie uzywa score; kategorie bez kompletnego pozytywnego kontraktu reguly sa `NOT_CHECKED`, warning/fail maja odpowiadajacy wpis Validation, Package Assembly korzysta z reconciled identities, a Runtime Proof pochodzi z `report.conversion.policies`,
+- Converted udostepnia tylko overlays mozliwe do zbudowania z realnego readbacku; Animation Player jest jawnie disabled zgodnie z FE-D3, zamiast tworzyc fikcyjne klipy,
+- FE-D1, FE-D3 i FE-D7 pozostaja jawnymi lukami kontraktu, a nie blockerami kolejnych layoutow ani miejscami na atrapy,
+- realny Worker/WASM build w aktualnym smoke przechodzi; jeden stary test produkcyjnego App oczekuje usunietego przed pieciokrokowym workflow panelu i zostal zapisany w deferred-test ledger do fali integracyjnej.
+
+Nastepny batch: FE-V6 i FE-V7 - prawdziwy diff `appearance.2da`, Package Contents, staly Reference Trace Bar oraz Download z dostepnych artefaktow.

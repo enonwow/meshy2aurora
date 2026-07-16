@@ -86,6 +86,8 @@ export function AuroraReadbackViewport({ report, selectedPart, onSelectPart, onE
       buildRoot={buildRoot}
       onSelectPart={onSelectPart}
       onError={onError}
+      tools={{ overlays: true }}
+      animationUnavailableReason="Converted animation playback is unavailable because the canonical readback does not expose clip/controller mapping."
     />
   );
 }

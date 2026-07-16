@@ -29,6 +29,7 @@ interface SceneViewportProps {
     animationPlayback?: boolean;
     overlays?: boolean;
   };
+  animationUnavailableReason?: string;
 }
 
 interface AnimationUiState extends AnimationPlaybackSnapshot {
@@ -94,7 +95,16 @@ function fitCamera(camera: THREE.PerspectiveCamera, controls: OrbitControls, roo
   controls.update();
 }
 
-export function SceneViewport({ provenance, detail, buildRoot, dependency, onSelectPart, onError, tools }: SceneViewportProps) {
+export function SceneViewport({
+  provenance,
+  detail,
+  buildRoot,
+  dependency,
+  onSelectPart,
+  onError,
+  tools,
+  animationUnavailableReason,
+}: SceneViewportProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRuntimeRef = useRef<AnimationPlaybackRuntime | undefined>(undefined);
   const overlayRuntimeRef = useRef<SceneOverlayRuntime | undefined>(undefined);
@@ -270,9 +280,11 @@ export function SceneViewport({ provenance, detail, buildRoot, dependency, onSel
             ))}
         </fieldset>
       )}
-      {animationPlaybackEnabled && (
+      {(animationPlaybackEnabled || animationUnavailableReason) && (
         <section className="viewport__animation" aria-label="Animation player">
-          {animationUi.loading ? (
+          {animationUnavailableReason ? (
+            <p>{animationUnavailableReason}</p>
+          ) : animationUi.loading ? (
             <p>Reading animation clips from the GLB…</p>
           ) : animationUi.inventory.length === 0 ? (
             <p>No animation clips are present in this GLB.</p>

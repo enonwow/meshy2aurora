@@ -10,10 +10,21 @@ import {
 const source = () => new File(["glb"], "hero.glb", { type: "model/gltf-binary" });
 const appearance = () => new File(["2DA V2.0"], "appearance.2da", { type: "text/plain" });
 
-function readySourceState() {
-  let state = createInitialStudioSession();
+function readySourceState<TResult = unknown>() {
+  let state = createInitialStudioSession<unknown, TResult>();
   state = studioSessionReducer(state, { type: "SOURCE_SELECTED", file: source() });
   return studioSessionReducer(state, { type: "APPEARANCE_SELECTED", file: appearance() });
+}
+
+function readyBuildState<TResult = unknown>() {
+  const selected = readySourceState<TResult>();
+  const inspect = studioSessionReducer(selected, { type: "CONTINUE_TO_INSPECT" });
+  const inspected: StudioSessionState<{ nodes: number }, TResult, { columns: number }> = {
+    ...inspect,
+    sourceInspection: { revision: inspect.revision, value: { nodes: 4 } },
+    appearanceInspection: { revision: inspect.revision, value: { columns: 12 } },
+  };
+  return studioSessionReducer(inspected, { type: "CONTINUE_TO_BUILD" });
 }
 
 describe("Studio session reducer", () => {
@@ -137,6 +148,201 @@ describe("Studio session reducer", () => {
     });
     expect(next.source?.name).toBe("replacement.glb");
     expect(next.appearance?.name).toBe("appearance.2da");
+  });
+
+  it("starts Build only on the current revision with current inspection evidence", () => {
+    const ready = readyBuildState<{ artifactIds: string[] }>();
+    const stale = studioSessionReducer(ready, {
+      type: "BUILD_STARTED",
+      requestId: "build-stale",
+      revision: ready.revision - 1,
+    });
+    expect(stale).toBe(ready);
+
+    const running = studioSessionReducer(ready, {
+      type: "BUILD_STARTED",
+      requestId: "build-1",
+      revision: ready.revision,
+    });
+    expect(running).toMatchObject({
+      currentStep: "BUILD",
+      lastAvailableStep: "BUILD",
+      build: {
+        kind: "RUNNING",
+        requestId: "build-1",
+        revision: ready.revision,
+      },
+      result: null,
+      download: { kind: "LOCKED" },
+    });
+
+    expect(studioSessionReducer(running, {
+      type: "BUILD_STARTED",
+      requestId: "build-2",
+      revision: ready.revision,
+    })).toBe(running);
+  });
+
+  it("commits a matching Build success atomically and opens Review", () => {
+    const ready = readyBuildState<{ artifactIds: string[] }>();
+    const running = studioSessionReducer(ready, {
+      type: "BUILD_STARTED",
+      requestId: "build-1",
+      revision: ready.revision,
+    });
+    const succeeded = studioSessionReducer(running, {
+      type: "BUILD_SUCCEEDED",
+      requestId: "build-1",
+      revision: ready.revision,
+      result: { artifactIds: ["model-mdl", "package-hak"] },
+    });
+
+    expect(succeeded).toMatchObject({
+      currentStep: "REVIEW",
+      lastAvailableStep: "REVIEW",
+      build: {
+        kind: "SUCCEEDED",
+        requestId: "build-1",
+        revision: ready.revision,
+        result: {
+          revision: ready.revision,
+          value: { artifactIds: ["model-mdl", "package-hak"] },
+        },
+      },
+      result: {
+        revision: ready.revision,
+        value: { artifactIds: ["model-mdl", "package-hak"] },
+      },
+      download: { kind: "LOCKED" },
+    });
+    expect(succeeded.build.kind).toBe("SUCCEEDED");
+    if (succeeded.build.kind !== "SUCCEEDED") throw new Error("expected success");
+    expect(succeeded.build.result).toBe(succeeded.result);
+  });
+
+  it("ignores stale Build success responses by request and revision", () => {
+    const ready = readyBuildState<{ artifactIds: string[] }>();
+    const running = studioSessionReducer(ready, {
+      type: "BUILD_STARTED",
+      requestId: "build-current",
+      revision: ready.revision,
+    });
+
+    expect(studioSessionReducer(running, {
+      type: "BUILD_SUCCEEDED",
+      requestId: "build-old",
+      revision: ready.revision,
+      result: { artifactIds: ["stale"] },
+    })).toBe(running);
+    expect(studioSessionReducer(running, {
+      type: "BUILD_SUCCEEDED",
+      requestId: "build-current",
+      revision: ready.revision - 1,
+      result: { artifactIds: ["stale"] },
+    })).toBe(running);
+  });
+
+  it("keeps a matching Build failure on Build and ignores stale failures", () => {
+    const ready = readyBuildState();
+    const running = studioSessionReducer(ready, {
+      type: "BUILD_STARTED",
+      requestId: "build-current",
+      revision: ready.revision,
+    });
+    expect(studioSessionReducer(running, {
+      type: "BUILD_FAILED",
+      requestId: "build-old",
+      revision: ready.revision,
+      failure: { message: "stale" },
+    })).toBe(running);
+
+    const failed = studioSessionReducer(running, {
+      type: "BUILD_FAILED",
+      requestId: "build-current",
+      revision: ready.revision,
+      failure: { code: "M6-WRITER", message: "writer failed" },
+    });
+    expect(failed).toMatchObject({
+      currentStep: "BUILD",
+      lastAvailableStep: "BUILD",
+      build: {
+        kind: "FAILED",
+        requestId: "build-current",
+        revision: ready.revision,
+        failure: { code: "M6-WRITER", message: "writer failed" },
+      },
+      result: null,
+      download: { kind: "LOCKED" },
+    });
+  });
+
+  it("cancels only the matching running Build", () => {
+    const ready = readyBuildState();
+    const running = studioSessionReducer(ready, {
+      type: "BUILD_STARTED",
+      requestId: "build-current",
+      revision: ready.revision,
+    });
+    expect(studioSessionReducer(running, {
+      type: "BUILD_CANCELLED",
+      requestId: "build-old",
+      revision: ready.revision,
+    })).toBe(running);
+
+    expect(studioSessionReducer(running, {
+      type: "BUILD_CANCELLED",
+      requestId: "build-current",
+      revision: ready.revision,
+    })).toMatchObject({
+      currentStep: "BUILD",
+      lastAvailableStep: "BUILD",
+      build: { kind: "IDLE" },
+      result: null,
+      download: { kind: "LOCKED" },
+    });
+  });
+
+  it("blocks all workflow navigation while Build is running", () => {
+    const ready = readyBuildState();
+    const running = studioSessionReducer(ready, {
+      type: "BUILD_STARTED",
+      requestId: "build-current",
+      revision: ready.revision,
+    });
+
+    expect(studioSessionReducer(running, { type: "NAVIGATE", step: "SOURCE" })).toBe(running);
+    expect(studioSessionReducer(running, { type: "NAVIGATE", step: "INSPECT" })).toBe(running);
+    expect(studioSessionReducer(running, { type: "NAVIGATE", step: "BUILD" })).toBe(running);
+  });
+
+  it("invalidates a running Build and rejects its late response after input change", () => {
+    const ready = readyBuildState<{ artifactIds: string[] }>();
+    const running = studioSessionReducer(ready, {
+      type: "BUILD_STARTED",
+      requestId: "build-current",
+      revision: ready.revision,
+    });
+    const invalidated = studioSessionReducer(running, {
+      type: "APPEARANCE_SELECTED",
+      file: new File(["replacement"], "appearance.2da"),
+    });
+
+    expect(invalidated).toMatchObject({
+      revision: ready.revision + 1,
+      currentStep: "SOURCE",
+      lastAvailableStep: "SOURCE",
+      sourceInspection: null,
+      appearanceInspection: null,
+      build: { kind: "IDLE" },
+      result: null,
+      download: { kind: "LOCKED" },
+    });
+    expect(studioSessionReducer(invalidated, {
+      type: "BUILD_SUCCEEDED",
+      requestId: "build-current",
+      revision: ready.revision,
+      result: { artifactIds: ["stale"] },
+    })).toBe(invalidated);
   });
 
   it("invalidates downstream and increments revision when either input is removed", () => {

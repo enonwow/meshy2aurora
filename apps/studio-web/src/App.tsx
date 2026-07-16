@@ -10,6 +10,12 @@ import {
 } from "./app/studioSession";
 import { WORKFLOW_STEPS } from "./app/workflow";
 import { WorkflowStepper } from "./app/WorkflowStepper";
+import { BuildStep, type BuildStepState } from "./features/build/BuildStep";
+import { ArtifactDownloads } from "./features/downloads/ArtifactDownloads";
+import {
+  buildStageForPipelineStage,
+  projectBuildFailure,
+} from "./features/build/projectBuildFailure";
 import {
   projectAppearanceInspection,
   type AppearanceInspectionSnapshot,
@@ -20,18 +26,43 @@ import {
   type SourceInspectionSnapshot,
 } from "./features/inspect/sourceInspection";
 import type { InspectValidationCheck } from "./features/inspect/ValidationPanel";
+import { AuroraReadbackViewport } from "./features/preview/AuroraReadbackViewport";
 import { SourceViewport } from "./features/preview/SourceViewport";
+import type { BinaryMdlInspectionReport, ModelPartRef } from "./features/preview/types";
+import {
+  ReviewModelDetails,
+  type ReviewViewport,
+} from "./features/review/ReviewModelDetails";
+import {
+  projectCanonicalResult,
+  type CanonicalResultSnapshot,
+} from "./features/results/projectCanonicalResult";
+import { projectCanonicalReadback } from "./features/results/projectReadback";
 import { InputsPanel } from "./features/source/InputsPanel";
 import { SourceStep } from "./features/source/SourceStep";
 import { StudioWorkerClient } from "./worker/client";
 
 const requestId = () => crypto.randomUUID();
 
-type StudioState = StudioSessionState<SourceInspectionSnapshot, unknown, AppearanceInspectionSnapshot>;
+interface StudioBuildResult {
+  readonly canonical: CanonicalResultSnapshot;
+  readonly readback: BinaryMdlInspectionReport;
+  readonly readbackJson: string;
+}
+
+type StudioState = StudioSessionState<
+  SourceInspectionSnapshot,
+  StudioBuildResult,
+  AppearanceInspectionSnapshot
+>;
 
 function reduceSession(
   state: StudioState,
-  event: StudioSessionEvent<SourceInspectionSnapshot, AppearanceInspectionSnapshot>,
+  event: StudioSessionEvent<
+    SourceInspectionSnapshot,
+    AppearanceInspectionSnapshot,
+    StudioBuildResult
+  >,
 ) {
   return studioSessionReducer(state, event);
 }
@@ -130,11 +161,18 @@ function appearanceValidationChecks(snapshot?: AppearanceInspectionSnapshot): In
 export function App() {
   const workerRef = useRef<StudioWorkerClient | undefined>(undefined);
   const sessionRef = useRef<StudioState>(
-    createInitialStudioSession<SourceInspectionSnapshot, unknown, AppearanceInspectionSnapshot>(),
+    createInitialStudioSession<
+      SourceInspectionSnapshot,
+      StudioBuildResult,
+      AppearanceInspectionSnapshot
+    >(),
   );
   const [session, dispatch] = useReducer(reduceSession, sessionRef.current);
   const [sourceError, setSourceError] = useState<string>();
   const [appearanceError, setAppearanceError] = useState<string>();
+  const [reviewViewport, setReviewViewport] = useState<ReviewViewport>("CONVERTED");
+  const [selectedReadbackPart, setSelectedReadbackPart] = useState<ModelPartRef>();
+  const [debugDrawerMessage, setDebugDrawerMessage] = useState<string>();
 
   sessionRef.current = session;
 
@@ -142,10 +180,22 @@ export function App() {
     const worker = new StudioWorkerClient();
     workerRef.current = worker;
     return () => {
-      worker.dispose();
-      if (workerRef.current === worker) workerRef.current = undefined;
+      workerRef.current?.dispose();
+      workerRef.current = undefined;
     };
   }, []);
+
+  const replaceWorker = () => {
+    workerRef.current?.dispose();
+    workerRef.current = new StudioWorkerClient();
+  };
+
+  const invalidateRunningBuild = () => {
+    if (sessionRef.current.build.kind !== "RUNNING") return;
+    replaceWorker();
+    setReviewViewport("CONVERTED");
+    setSelectedReadbackPart(undefined);
+  };
 
   const sourceFile = session.source?.file;
   useEffect(() => {
@@ -270,6 +320,7 @@ export function App() {
       setSourceError("Select a Meshy model in .glb format.");
       return;
     }
+    invalidateRunningBuild();
     setSourceError(undefined);
     dispatch({ type: "SOURCE_SELECTED", file });
   };
@@ -279,24 +330,123 @@ export function App() {
       setAppearanceError("Select the base file named appearance.2da.");
       return;
     }
+    invalidateRunningBuild();
     setAppearanceError(undefined);
     dispatch({ type: "APPEARANCE_SELECTED", file });
   };
 
   const removeSource = () => {
+    invalidateRunningBuild();
     setSourceError(undefined);
     dispatch({ type: "SOURCE_REMOVED" });
   };
 
   const removeAppearance = () => {
+    invalidateRunningBuild();
     setAppearanceError(undefined);
     dispatch({ type: "APPEARANCE_REMOVED" });
   };
 
   const clearFiles = () => {
+    invalidateRunningBuild();
     setSourceError(undefined);
     setAppearanceError(undefined);
+    setSelectedReadbackPart(undefined);
+    setDebugDrawerMessage(undefined);
     dispatch({ type: "START_NEW_CONVERSION" });
+  };
+
+  const startBuild = () => {
+    const current = sessionRef.current;
+    const worker = workerRef.current;
+    if (
+      !worker
+      || current.currentStep !== "BUILD"
+      || !current.source
+      || !current.appearance
+      || !current.sourceInspection
+      || !current.appearanceInspection
+      || current.sourceInspection.revision !== current.revision
+      || current.appearanceInspection.revision !== current.revision
+    ) return;
+
+    const buildRequestId = requestId();
+    const buildRevision = current.revision;
+    const source = current.source.file;
+    const appearance = current.appearance.file;
+    setDebugDrawerMessage(undefined);
+    dispatch({ type: "BUILD_STARTED", requestId: buildRequestId, revision: buildRevision });
+
+    void Promise.all([source.arrayBuffer(), appearance.arrayBuffer()])
+      .then(([sourceGlb, appearanceTwoDa]) => {
+        if (workerRef.current !== worker) return undefined;
+        return worker.request(
+          {
+            requestId: buildRequestId,
+            type: "BUILD_MODEL_PACKAGE",
+            sourceGlb,
+            appearanceTwoDa,
+          },
+          [sourceGlb, appearanceTwoDa],
+        );
+      })
+      .then((response) => {
+        if (!response || workerRef.current !== worker) return;
+        const currentBuild = sessionRef.current.build;
+        if (
+          sessionRef.current.revision !== buildRevision
+          || currentBuild.kind !== "RUNNING"
+          || currentBuild.requestId !== buildRequestId
+          || currentBuild.revision !== buildRevision
+        ) return;
+        if (!response.ok) throw new Error(response.message);
+        if (response.type !== "MODEL_PACKAGE_BUILT") {
+          throw new Error("Unexpected model package build response");
+        }
+        const canonical = projectCanonicalResult(
+          response.reportJson,
+          response.summaryJson,
+          response.manifestJson,
+          response.artifacts,
+        );
+        const readback = projectCanonicalReadback(response.readbackJson);
+        setReviewViewport("CONVERTED");
+        setSelectedReadbackPart(undefined);
+        dispatch({
+          type: "BUILD_SUCCEEDED",
+          requestId: buildRequestId,
+          revision: buildRevision,
+          result: { canonical, readback, readbackJson: response.readbackJson },
+        });
+      })
+      .catch((error: unknown) => {
+        if (workerRef.current !== worker) return;
+        const currentBuild = sessionRef.current.build;
+        if (
+          sessionRef.current.revision !== buildRevision
+          || currentBuild.kind !== "RUNNING"
+          || currentBuild.requestId !== buildRequestId
+          || currentBuild.revision !== buildRevision
+        ) return;
+        const message = error instanceof Error ? error.message : String(error);
+        dispatch({
+          type: "BUILD_FAILED",
+          requestId: buildRequestId,
+          revision: buildRevision,
+          failure: projectBuildFailure(message),
+        });
+      });
+  };
+
+  const cancelBuild = () => {
+    const current = sessionRef.current;
+    if (current.build.kind !== "RUNNING") return;
+    dispatch({
+      type: "BUILD_CANCELLED",
+      requestId: current.build.requestId,
+      revision: current.build.revision,
+    });
+    replaceWorker();
   };
 
   const unlockedSteps = getUnlockedWorkflowSteps(session);
@@ -323,6 +473,46 @@ export function App() {
     boneCount: sourceInspection.boneCount,
     animationClipCount: sourceInspection.inventory.animationCount,
   } : {};
+  const buildInputs = session.source?.sha256 && session.appearance?.sha256
+    ? {
+        source: {
+          name: session.source.name,
+          byteLength: session.source.size,
+          sha256: session.source.sha256,
+          inspectionStatus: "INSPECTED" as const,
+        },
+        appearance: {
+          name: session.appearance.name,
+          byteLength: session.appearance.size,
+          sha256: session.appearance.sha256,
+          inspectionStatus: "INSPECTED" as const,
+        },
+      }
+    : undefined;
+  const buildFailure = session.build.kind === "FAILED" ? session.build.failure : undefined;
+  const buildStepState: BuildStepState = session.build.kind === "RUNNING"
+    ? {
+        kind: "RUNNING",
+        completedStages: [],
+        message: "The local Worker is executing the canonical pipeline. Per-stage progress is unavailable.",
+      }
+    : session.build.kind === "FAILED"
+      ? {
+          kind: "FAILED",
+          completedStages: [],
+          failedStage: buildStageForPipelineStage(session.build.failure.stage),
+          failure: session.build.failure,
+        }
+      : {
+          kind: "IDLE",
+          message: session.build.kind === "SUCCEEDED"
+            ? "The previous build completed. Rebuild will replace the current result."
+            : "Both inspected inputs are ready for the local canonical build.",
+          ...(buildInputs ? { inputs: buildInputs } : {}),
+        };
+  const currentResult = session.result?.revision === session.revision
+    ? session.result.value
+    : undefined;
 
   const inputs = (
     <InputsPanel
@@ -369,7 +559,7 @@ export function App() {
       debugDrawer={(
         <section className="debug-drawer-placeholder" aria-label="Debug Drawer">
           <strong>Debug Drawer</strong>
-          <span>{session.currentStep === "SOURCE" ? "Disabled until inspection begins" : "Collapsed"}</span>
+          <span>{debugDrawerMessage ?? (session.currentStep === "SOURCE" ? "Disabled until inspection begins" : "Collapsed")}</span>
         </section>
       )}
     >
@@ -414,16 +604,72 @@ export function App() {
           onBack={() => dispatch({ type: "NAVIGATE", step: "SOURCE" })}
           onContinue={() => dispatch({ type: "CONTINUE_TO_BUILD" })}
         />
+      ) : session.currentStep === "BUILD" ? (
+        <BuildStep
+          state={buildStepState}
+          canGoBack={session.build.kind !== "RUNNING"}
+          canBuild={session.build.kind !== "RUNNING" && Boolean(sourceInspection && appearanceInspection)}
+          canRetry={session.build.kind === "FAILED"}
+          canCancel={session.build.kind === "RUNNING"}
+          onBack={() => dispatch({ type: "NAVIGATE", step: "INSPECT" })}
+          onBuild={startBuild}
+          onRetry={startBuild}
+          onCancel={cancelBuild}
+          failureDiagnostics={buildFailure ? {
+            canOpen: true,
+            onOpen: () => setDebugDrawerMessage([
+              "Build failure",
+              buildFailure.code,
+              buildFailure.stage,
+              buildFailure.path,
+              buildFailure.message,
+            ].filter(Boolean).join(" · ")),
+            reportPackage: {
+              status: "UNAVAILABLE",
+              reason: "The FE-D7 canonical debug report contract has not produced a report package for this failure.",
+            },
+          } : undefined}
+        />
+      ) : session.currentStep === "REVIEW" && currentResult && session.source?.sha256 ? (
+        <>
+          <ReviewModelDetails
+            result={currentResult.canonical}
+            readback={currentResult.readback}
+            activeViewport={reviewViewport}
+            onViewportChange={setReviewViewport}
+            onInspectBinary={() => setDebugDrawerMessage(
+              `Binary Inspector is scheduled for FE-V8. Current readback evidence: ${currentResult.readback.validation?.status ?? "UNAVAILABLE"}.`,
+            )}
+            sourceViewport={(
+              <SourceViewport
+                input={{
+                  provenance: "SOURCE",
+                  file: session.source.file,
+                  sourceSha256: session.source.sha256,
+                }}
+                onError={setSourceError}
+              />
+            )}
+            convertedReadbackViewport={(
+              <AuroraReadbackViewport
+                report={currentResult.readback}
+                selectedPart={selectedReadbackPart}
+                onSelectPart={setSelectedReadbackPart}
+                onError={setSourceError}
+              />
+            )}
+          />
+          <ArtifactDownloads
+            artifacts={currentResult.canonical.artifacts}
+            onError={(message) => setDebugDrawerMessage(`Artifact download error: ${message}`)}
+          />
+        </>
       ) : (
-        <section className="inspect-scaffold" aria-labelledby="build-placeholder-heading">
+        <section className="inspect-scaffold" aria-labelledby="review-unavailable-heading">
           <header className="inspect-scaffold__header">
-            <div><p className="eyebrow">Step 3</p><h1 id="build-placeholder-heading">Build</h1></div>
-            <span className="status-badge status-badge--neutral">FE-V4 next</span>
+            <div><p className="eyebrow">Review output</p><h1 id="review-unavailable-heading">Result unavailable</h1></div>
           </header>
-          <div className="empty-state">
-            <strong>Source inspection is complete.</strong>
-            <span>The real build workspace is the next implementation batch.</span>
-          </div>
+          <div className="empty-state"><strong>No current canonical result.</strong><span>Return to Build and run the pipeline.</span></div>
         </section>
       )}
     </StudioShell>

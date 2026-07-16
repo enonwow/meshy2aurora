@@ -1,5 +1,6 @@
 import type {
   BinaryMdlInspectionReport,
+  BinaryReadbackValidationEvidence,
   ReadbackController,
   ReadbackDiagnostic,
   ReadbackMesh,
@@ -9,6 +10,7 @@ import type {
 } from "../preview/types";
 
 type JsonRecord = Record<string, unknown>;
+const NWN1_BINARY_MDL_FORMAT = "nwn1-binary-mdl";
 const fail = (path: string): never => { throw new Error(`Canonical readback field ${path} is missing or has the wrong type`); };
 const record = (value: unknown, path: string): JsonRecord => value !== null && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : fail(path);
 const array = (value: unknown, path: string): unknown[] => Array.isArray(value) ? value : fail(path);
@@ -84,18 +86,55 @@ function diagnostic(value: unknown, path: string): ReadbackDiagnostic {
   };
 }
 
+function validationEvidence(
+  roots: ReadbackNode[],
+  diagnostics: ReadbackDiagnostic[],
+): BinaryReadbackValidationEvidence {
+  const counts = diagnostics.reduce((current, item) => {
+    const severity = item.severity.trim().toUpperCase();
+    if (severity === "WARNING" || severity === "WARN") current.warnings += 1;
+    else if (severity === "ERROR" || severity === "FATAL" || severity === "BLOCKING") current.errors += 1;
+    else if (severity === "INFO" || severity === "INFORMATION" || severity === "NOTE") current.informational += 1;
+    else current.unrecognizedSeverity += 1;
+    return current;
+  }, { warnings: 0, errors: 0, informational: 0, unrecognizedSeverity: 0 });
+  const structuralErrors = roots.length === 0 ? ["READBACK_NODE_TREE_EMPTY"] : [];
+  const status = structuralErrors.length > 0 || counts.errors > 0 || counts.unrecognizedSeverity > 0
+    ? "ERROR"
+    : counts.warnings > 0
+      ? "WARNING"
+      : "PASS";
+  return {
+    status,
+    structure: {
+      schemaVersion: 1,
+      format: NWN1_BINARY_MDL_FORMAT,
+      rootNodeCount: roots.length,
+      hasRootNodes: roots.length > 0,
+      structuralErrors,
+    },
+    diagnostics: {
+      total: diagnostics.length,
+      ...counts,
+    },
+  };
+}
+
 export function projectCanonicalReadback(readbackJson: string): BinaryMdlInspectionReport {
   let parsed: unknown;
   try { parsed = JSON.parse(readbackJson); } catch { return fail("readbackJson"); }
   const report = record(parsed, "readbackJson");
   if (integer(report.schemaVersion, "readbackJson.schemaVersion") !== 1) fail("readbackJson.schemaVersion");
   const tree = record(report.nodeTree, "readbackJson.nodeTree");
+  const format = string(report.format, "readbackJson.format");
+  if (format !== NWN1_BINARY_MDL_FORMAT) fail("readbackJson.format");
+  const roots = array(tree.roots, "readbackJson.nodeTree.roots").map((entry, index) => node(entry, `readbackJson.nodeTree.roots[${index}]`));
+  const diagnostics = array(report.diagnostics, "readbackJson.diagnostics").map((entry, index) => diagnostic(entry, `readbackJson.diagnostics[${index}]`));
   return {
     schemaVersion: 1,
-    format: string(report.format, "readbackJson.format"),
-    nodeTree: {
-      roots: array(tree.roots, "readbackJson.nodeTree.roots").map((entry, index) => node(entry, `readbackJson.nodeTree.roots[${index}]`)),
-    },
-    diagnostics: array(report.diagnostics, "readbackJson.diagnostics").map((entry, index) => diagnostic(entry, `readbackJson.diagnostics[${index}]`)),
+    format,
+    nodeTree: { roots },
+    diagnostics,
+    validation: validationEvidence(roots, diagnostics),
   };
 }
