@@ -15,6 +15,7 @@ export interface ReadbackVec3 { x: number; y: number; z: number }
 
 export interface ReadbackController {
   controllerName?: string;
+  times: number[];
   values: number[][];
 }
 
@@ -26,13 +27,33 @@ export interface ReadbackMesh {
   faces: Array<{ vertexIndices: [number, number, number] }>;
 }
 
+/** Canonical skin data decoded by the Rust binary-MDL reader. */
+export interface ReadbackSkin {
+  nodeToBoneMap: number[];
+  inlineMapping: number[];
+  inverseBoneRotationsRaw: number[][];
+  inverseBoneTranslations: ReadbackVec3[];
+  vertexWeights: number[][];
+  boneReferences: number[][];
+}
+
 export interface ReadbackNode {
   offset: number;
   number: number;
   name: string;
   controllers: ReadbackController[];
   mesh?: ReadbackMesh;
+  skin?: ReadbackSkin;
   children: ReadbackNode[];
+}
+
+export interface ReadbackAnimation {
+  offset: number;
+  name: string;
+  length: number;
+  transition: number;
+  animationRoot: string;
+  nodeTree: { roots: ReadbackNode[] };
 }
 
 export interface ReadbackDiagnostic {
@@ -67,6 +88,7 @@ export interface BinaryMdlInspectionReport {
   schemaVersion: number;
   format: string;
   nodeTree: { roots: ReadbackNode[] };
+  animations: ReadbackAnimation[];
   diagnostics: ReadbackDiagnostic[];
   validation?: BinaryReadbackValidationEvidence;
 }

@@ -35,6 +35,7 @@ function fixture() {
     texture: { width: 2, height: 2, pixelFormat: "RGBA8", byteLength: 60, outputSha256: "d".repeat(64) },
     appearance: { appendedRowIndex: 1, sourcePrefixPreserved: true, outputByteLength: 7, outputSha256: "e".repeat(64) },
     hak: { byteLength: 3, archiveSha256: "a".repeat(64), entryCount: 3 },
+    proofModule: { byteLength: 4, sha256: "7".repeat(64), appearanceRow: 1, semanticReadbackStatus: "PASS" },
   };
   const reportJson = JSON.stringify(report);
   const summary = {
@@ -42,7 +43,7 @@ function fixture() {
     status: "M6_MODEL_PACKAGE_MATERIALIZED",
     outputs: {
       model: id(2, "b"), texture: id(60, "d"), appearanceTwoDa: id(7, "e"),
-      hak: id(3, "a"), report: id(bytes(reportJson).byteLength, "c"),
+      hak: id(3, "a"), proofModule: id(4, "7"), report: id(bytes(reportJson).byteLength, "c"),
     },
     appendedPhysicalRow: 1,
     modelResref: "m2a_model",
@@ -84,6 +85,7 @@ function fixture() {
   const artifacts = [
     artifact("package-hak", "HAK", new Uint8Array([1, 2, 3]).buffer, "a".repeat(64)),
     artifact("model-mdl", "MODEL", new Uint8Array([1, 2]).buffer, "b".repeat(64)),
+    artifact("proof-module", "MODULE", new Uint8Array([4, 5, 6, 7]).buffer, "7".repeat(64)),
     artifact("report-json", "JSON_REPORT", bytes(reportJson), "c".repeat(64)),
     artifact("manifest-json", "JSON_REPORT", bytes(manifestJson), "f".repeat(64)),
     artifact("summary-json", "JSON_REPORT", bytes(summaryJson), "9".repeat(64)),
@@ -113,7 +115,7 @@ describe("canonical result projector", () => {
         gates: [],
         diagnostics: [],
       },
-      packageAssemblyEvidence: { strictReconciled: true, resourceCount: 3, artifactCount: 5 },
+      packageAssemblyEvidence: { strictReconciled: true, resourceCount: 3, artifactCount: 6 },
     });
     expect(result.resources.map(({ role, resref }) => [role, resref])).toEqual([
       ["APPEARANCE_TABLE", "appearance"], ["MODEL", "m2a_model"], ["TEXTURE", "m2a_texture"],

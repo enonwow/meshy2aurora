@@ -44,6 +44,7 @@ const readbackFixture: BinaryMdlInspectionReport = {
   nodeTree: {
     roots: [{ offset: 0, number: 0, name: "root", controllers: [], children: [] }],
   },
+  animations: [],
   diagnostics: [],
   validation: {
     status: "PASS",

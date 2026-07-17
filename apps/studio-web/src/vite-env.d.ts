@@ -25,6 +25,20 @@ declare module "@m2a-wasm" {
     readonly readbackJson: string;
     takeHakBytes(): Uint8Array;
     takeModelBytes(): Uint8Array;
+    takeProofModuleBytes(): Uint8Array;
+    free(): void;
+  };
+  export function buildMeshyH1ModelPackageV1(
+    sourceGlb: Uint8Array,
+    appearanceTwoDa: Uint8Array,
+  ): {
+    readonly reportJson: string;
+    readonly manifestJson: string;
+    readonly summaryJson: string;
+    readonly readbackJson: string;
+    takeHakBytes(): Uint8Array;
+    takeModelBytes(): Uint8Array;
+    takeProofModuleBytes(): Uint8Array;
     free(): void;
   };
 }

@@ -58,6 +58,7 @@ function readbackFixture(status: BinaryReadbackValidationStatus = "PASS"): Binar
     schemaVersion: 1,
     format: "BINARY_MDL",
     nodeTree: { roots: [{ offset: 10, number: 1, name: "root", controllers: [], children: [] }] },
+    animations: [],
     diagnostics: status === "PASS" ? [] : [{
       schemaVersion: 1,
       code: status === "WARNING" ? "READBACK_WARN" : "READBACK_ERROR",

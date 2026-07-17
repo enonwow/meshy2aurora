@@ -24,7 +24,7 @@ const result = spawnSync(cargo, [
   "--example",
   "materialize_m6",
   "--",
-  "--synthetic-owned",
+  "--synthetic-owned-h1",
   "--appearance-2da",
   "tests/fixtures/appearance.2da",
   "--output-dir",

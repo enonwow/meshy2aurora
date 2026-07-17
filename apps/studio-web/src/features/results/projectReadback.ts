@@ -1,10 +1,12 @@
 import type {
   BinaryMdlInspectionReport,
   BinaryReadbackValidationEvidence,
+  ReadbackAnimation,
   ReadbackController,
   ReadbackDiagnostic,
   ReadbackMesh,
   ReadbackNode,
+  ReadbackSkin,
   ReadbackVec2,
   ReadbackVec3,
 } from "../preview/types";
@@ -32,9 +34,25 @@ function controller(value: unknown, path: string): ReadbackController {
   if (item.controllerName !== undefined && item.controllerName !== null && typeof item.controllerName !== "string") fail(`${path}.controllerName`);
   return {
     ...(item.controllerName === undefined || item.controllerName === null ? {} : { controllerName: item.controllerName as string }),
+    times: array(item.times, `${path}.times`).map((entry, index) => number(entry, `${path}.times[${index}]`)),
     values: array(item.values, `${path}.values`).map((row, rowIndex) =>
       array(row, `${path}.values[${rowIndex}]`).map((entry, index) =>
         number(entry, `${path}.values[${rowIndex}][${index}]`))),
+  };
+}
+
+function animation(value: unknown, path: string): ReadbackAnimation {
+  const item = record(value, path);
+  const tree = record(item.nodeTree, `${path}.nodeTree`);
+  return {
+    offset: integer(item.offset, `${path}.offset`),
+    name: string(item.name, `${path}.name`),
+    length: number(item.length, `${path}.length`),
+    transition: number(item.transition, `${path}.transition`),
+    animationRoot: string(item.animationRoot, `${path}.animationRoot`),
+    nodeTree: {
+      roots: array(tree.roots, `${path}.nodeTree.roots`).map((entry, index) => node(entry, `${path}.nodeTree.roots[${index}]`)),
+    },
   };
 }
 
@@ -62,6 +80,36 @@ function mesh(value: unknown, path: string): ReadbackMesh {
   };
 }
 
+function skin(value: unknown, path: string): ReadbackSkin {
+  const item = record(value, path);
+  const finiteRows = (field: string, width: number) => array(item[field], `${path}.${field}`).map((row, rowIndex) => {
+    const values = array(row, `${path}.${field}[${rowIndex}]`).map((entry, index) =>
+      number(entry, `${path}.${field}[${rowIndex}][${index}]`));
+    if (values.length !== width) fail(`${path}.${field}[${rowIndex}]`);
+    return values;
+  });
+  return {
+    nodeToBoneMap: array(item.nodeToBoneMap, `${path}.nodeToBoneMap`).map((entry, index) => {
+      if (!Number.isSafeInteger(entry) || (entry as number) < -1) fail(`${path}.nodeToBoneMap[${index}]`);
+      return entry as number;
+    }),
+    inlineMapping: array(item.inlineMapping, `${path}.inlineMapping`).map((entry, index) => {
+      if (!Number.isSafeInteger(entry) || (entry as number) < -1) fail(`${path}.inlineMapping[${index}]`);
+      return entry as number;
+    }),
+    inverseBoneRotationsRaw: finiteRows("inverseBoneRotationsRaw", 4),
+    inverseBoneTranslations: array(item.inverseBoneTranslations, `${path}.inverseBoneTranslations`).map((entry, index) =>
+      vec3(entry, `${path}.inverseBoneTranslations[${index}]`)),
+    vertexWeights: finiteRows("vertexWeights", 4),
+    boneReferences: array(item.boneReferences, `${path}.boneReferences`).map((row, rowIndex) => {
+      const values = array(row, `${path}.boneReferences[${rowIndex}]`).map((entry, index) =>
+        integer(entry, `${path}.boneReferences[${rowIndex}][${index}]`));
+      if (values.length !== 4) fail(`${path}.boneReferences[${rowIndex}]`);
+      return values;
+    }),
+  };
+}
+
 function node(value: unknown, path: string): ReadbackNode {
   const item = record(value, path);
   return {
@@ -70,6 +118,7 @@ function node(value: unknown, path: string): ReadbackNode {
     name: string(item.name, `${path}.name`),
     controllers: array(item.controllers, `${path}.controllers`).map((entry, index) => controller(entry, `${path}.controllers[${index}]`)),
     ...(item.mesh === undefined || item.mesh === null ? {} : { mesh: mesh(item.mesh, `${path}.mesh`) }),
+    ...(item.skin === undefined || item.skin === null ? {} : { skin: skin(item.skin, `${path}.skin`) }),
     children: array(item.children, `${path}.children`).map((entry, index) => node(entry, `${path}.children[${index}]`)),
   };
 }
@@ -129,11 +178,13 @@ export function projectCanonicalReadback(readbackJson: string): BinaryMdlInspect
   const format = string(report.format, "readbackJson.format");
   if (format !== NWN1_BINARY_MDL_FORMAT) fail("readbackJson.format");
   const roots = array(tree.roots, "readbackJson.nodeTree.roots").map((entry, index) => node(entry, `readbackJson.nodeTree.roots[${index}]`));
+  const animations = array(report.animations, "readbackJson.animations").map((entry, index) => animation(entry, `readbackJson.animations[${index}]`));
   const diagnostics = array(report.diagnostics, "readbackJson.diagnostics").map((entry, index) => diagnostic(entry, `readbackJson.diagnostics[${index}]`));
   return {
     schemaVersion: 1,
     format,
     nodeTree: { roots },
+    animations,
     diagnostics,
     validation: validationEvidence(roots, diagnostics),
   };

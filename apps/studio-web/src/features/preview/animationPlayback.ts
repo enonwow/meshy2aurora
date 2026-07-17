@@ -12,6 +12,7 @@ export interface AnimationPlaybackSnapshot {
   loop: boolean;
   timeSeconds: number;
   durationSeconds: number;
+  playbackRate: number;
 }
 
 export function inventoryAnimationClips(clips: readonly THREE.AnimationClip[]): AnimationClipInventoryItem[] {
@@ -28,6 +29,7 @@ export class AnimationPlaybackRuntime {
   private selectedClipIndex: number | null = null;
   private playing = false;
   private loop = true;
+  private playbackRate = 1;
 
   constructor(
     private readonly root: THREE.Object3D,
@@ -67,6 +69,40 @@ export class AnimationPlaybackRuntime {
     return this.snapshot();
   }
 
+  setPlaybackRate(playbackRate: number) {
+    if (!Number.isFinite(playbackRate) || playbackRate <= 0) {
+      throw new RangeError("Animation playback rate must be a positive finite number");
+    }
+    this.playbackRate = playbackRate;
+    return this.snapshot();
+  }
+
+  stop() {
+    this.playing = false;
+    if (this.selectedAction) {
+      this.selectedAction.reset().play();
+      this.selectedAction.paused = true;
+      this.mixer.update(0);
+    }
+    return this.snapshot();
+  }
+
+  stepKeyframe(direction: -1 | 1) {
+    if (!this.selectedAction) return this.snapshot();
+    const clip = this.selectedAction.getClip();
+    const current = this.selectedAction.time;
+    const keyframes = [...new Set(clip.tracks.flatMap((track) => Array.from(track.times)))].sort((a, b) => a - b);
+    const epsilon = 1.0e-6;
+    const target = direction < 0
+      ? [...keyframes].reverse().find((time) => time < current - epsilon) ?? 0
+      : keyframes.find((time) => time > current + epsilon) ?? clip.duration;
+    this.playing = false;
+    this.selectedAction.paused = true;
+    this.selectedAction.time = target;
+    this.mixer.update(0);
+    return this.snapshot();
+  }
+
   seek(timeSeconds: number) {
     if (this.selectedAction) {
       const duration = Math.max(this.selectedAction.getClip().duration, 0);
@@ -78,7 +114,7 @@ export class AnimationPlaybackRuntime {
 
   update(deltaSeconds: number) {
     if (this.playing && this.selectedAction) {
-      this.mixer.update(Math.max(deltaSeconds, 0));
+      this.mixer.update(Math.max(deltaSeconds, 0) * this.playbackRate);
       if (!this.loop && this.selectedAction.time >= this.selectedAction.getClip().duration) {
         this.playing = false;
         this.selectedAction.paused = true;
@@ -94,6 +130,7 @@ export class AnimationPlaybackRuntime {
       loop: this.loop,
       timeSeconds: this.selectedAction?.time ?? 0,
       durationSeconds: this.selectedAction?.getClip().duration ?? 0,
+      playbackRate: this.playbackRate,
     };
   }
 
@@ -103,6 +140,7 @@ export class AnimationPlaybackRuntime {
     this.selectedAction = undefined;
     this.selectedClipIndex = null;
     this.playing = false;
+    this.playbackRate = 1;
   }
 
   private configureLoop() {

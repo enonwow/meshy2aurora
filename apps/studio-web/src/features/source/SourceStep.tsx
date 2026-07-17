@@ -5,9 +5,12 @@ import {
   type FileIdentityValue,
   type SourceInputProps,
 } from "./InputsPanel";
+import type { MeshyArtifactProvenance } from "../meshy/bridge";
 
 export interface SourceStepProps extends SourceInputProps {
   onContinue: () => void;
+  onOpenMeshyLab?: () => void;
+  meshyProvenance?: MeshyArtifactProvenance;
 }
 
 interface DropZoneProps {
@@ -112,6 +115,8 @@ export function SourceStep({
   onRemoveAppearance,
   onClear,
   onContinue,
+  onOpenMeshyLab,
+  meshyProvenance,
 }: SourceStepProps) {
   const headingId = useId();
   const sourceInputId = useId();
@@ -160,6 +165,19 @@ export function SourceStep({
           selectLabel="Select appearance.2da"
         />
       </div>
+
+      {onOpenMeshyLab ? (
+        <aside className="source-step__meshy-lab" aria-label="Optional Meshy Lab integration">
+          <div><strong>Need a reproducible proof asset?</strong><span>Use the optional local Meshy Lab, then import its verified GLB here.</span></div>
+          <button type="button" className="button button--secondary" onClick={onOpenMeshyLab}>Open Meshy Lab</button>
+        </aside>
+      ) : null}
+
+      {meshyProvenance ? (
+        <p className="source-step__provenance">
+          Imported from Meshy Lab: {meshyProvenance.profileId} · SHA-256 {meshyProvenance.sha256.slice(0, 12)}...
+        </p>
+      ) : null}
 
       <footer className="source-step__actions">
         <p className="source-step__readiness" aria-live="polite">{readinessMessage}</p>

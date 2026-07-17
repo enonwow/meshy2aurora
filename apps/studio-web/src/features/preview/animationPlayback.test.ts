@@ -48,4 +48,17 @@ describe("AnimationPlaybackRuntime", () => {
     const runtime = new AnimationPlaybackRuntime(new THREE.Group(), []);
     expect(() => runtime.selectClip(0)).toThrow(/unavailable/);
   });
+
+  it("stops, adjusts speed and steps only through exact track keyframes", () => {
+    const root = new THREE.Group();
+    const runtime = new AnimationPlaybackRuntime(root, [positionClip()]);
+    runtime.selectClip(0);
+    runtime.setPlaying(true);
+    runtime.setPlaybackRate(2);
+    expect(runtime.update(0.25).timeSeconds).toBeCloseTo(0.5);
+    expect(runtime.stepKeyframe(1).timeSeconds).toBeCloseTo(1);
+    expect(runtime.stepKeyframe(-1).timeSeconds).toBeCloseTo(0);
+    expect(runtime.stop()).toMatchObject({ playing: false, timeSeconds: 0, playbackRate: 2 });
+    expect(() => runtime.setPlaybackRate(0)).toThrow(/positive finite/);
+  });
 });

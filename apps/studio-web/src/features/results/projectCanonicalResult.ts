@@ -192,7 +192,7 @@ export function projectCanonicalResult(
   equal(string(manifest.appearancePayloadPolicy, "manifest.appearancePayloadPolicy"), policy, "manifest.appearancePayloadPolicy");
 
   const outputJson = record(summary.outputs, "summary.outputs");
-  const outputs = Object.fromEntries(["model", "texture", "appearanceTwoDa", "hak", "report"].map((name) => [name, identity(outputJson[name], `summary.outputs.${name}`)]));
+  const outputs = Object.fromEntries(["model", "texture", "appearanceTwoDa", "hak", "proofModule", "report"].map((name) => [name, identity(outputJson[name], `summary.outputs.${name}`)]));
   const hakJson = record(report.hak, "report.hak");
   const hak = {
     byteLength: integer(hakJson.byteLength, "report.hak.byteLength"),
@@ -227,6 +227,11 @@ export function projectCanonicalResult(
   equal(integer(record(modelJson.layout, "report.model.layout").fileLength, "report.model.layout.fileLength"), outputs.model.byteLength, "report.model.layout.fileLength");
   equal(integer(appearanceJson.outputByteLength, "report.appearance.outputByteLength"), outputs.appearanceTwoDa.byteLength, "report.appearance.outputByteLength");
   equal(sha256(appearanceJson.outputSha256, "report.appearance.outputSha256"), outputs.appearanceTwoDa.sha256, "report.appearance.outputSha256");
+  const proofModuleJson = record(report.proofModule, "report.proofModule");
+  equal(integer(proofModuleJson.byteLength, "report.proofModule.byteLength"), outputs.proofModule.byteLength, "report.proofModule.byteLength");
+  equal(sha256(proofModuleJson.sha256, "report.proofModule.sha256"), outputs.proofModule.sha256, "report.proofModule.sha256");
+  equal(integer(proofModuleJson.appearanceRow, "report.proofModule.appearanceRow"), appendedRow, "report.proofModule.appearanceRow");
+  if (string(proofModuleJson.semanticReadbackStatus, "report.proofModule.semanticReadbackStatus") !== "PASS") fail("report.proofModule.semanticReadbackStatus");
 
   const packageManifest = record(manifest.packageManifest, "manifest.packageManifest");
   equal(sha256(packageManifest.packageSha256, "manifest.packageManifest.packageSha256"), hak.sha256, "manifest.packageManifest.packageSha256");
@@ -260,12 +265,13 @@ export function projectCanonicalResult(
   equal(textureResource.resref, string(summary.textureResref, "summary.textureResref"), "manifest.packageManifest.resources.TEXTURE.resref");
   equal(appearanceResource.resref, "appearance", "manifest.packageManifest.resources.APPEARANCE_TABLE.resref");
 
-  if (artifacts.length !== 5 || new Set(artifacts.map(({ artifactId }) => artifactId)).size !== artifacts.length) {
+  if (artifacts.length !== 6 || new Set(artifacts.map(({ artifactId }) => artifactId)).size !== artifacts.length) {
     throw new Error("Canonical result identity mismatch at artifact inventory");
   }
   const requiredArtifacts = [
     ["package-hak", "HAK", outputs.hak],
     ["model-mdl", "MODEL", outputs.model],
+    ["proof-module", "MODULE", outputs.proofModule],
     ["report-json", "JSON_REPORT", outputs.report],
   ] as const;
   for (const [artifactId, kind, expected] of requiredArtifacts) {

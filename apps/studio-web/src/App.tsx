@@ -40,6 +40,9 @@ import {
 import { projectCanonicalReadback } from "./features/results/projectReadback";
 import { InputsPanel } from "./features/source/InputsPanel";
 import { SourceStep } from "./features/source/SourceStep";
+import { LocalMeshyBridgeClient, type MeshyArtifactProvenance, type MeshyBridgeClient } from "./features/meshy/bridge";
+import { isMeshyLabEnabled } from "./features/meshy/feature";
+import { MeshyLab } from "./features/meshy/MeshyLab";
 import { StudioWorkerClient } from "./worker/client";
 
 const requestId = () => crypto.randomUUID();
@@ -158,7 +161,12 @@ function appearanceValidationChecks(snapshot?: AppearanceInspectionSnapshot): In
   return [schema, ...diagnostics];
 }
 
-export function App() {
+export interface AppProps {
+  readonly meshyBridge?: MeshyBridgeClient;
+  readonly meshyLabEnabled?: boolean;
+}
+
+export function App({ meshyBridge, meshyLabEnabled = isMeshyLabEnabled() }: AppProps = {}) {
   const workerRef = useRef<StudioWorkerClient | undefined>(undefined);
   const sessionRef = useRef<StudioState>(
     createInitialStudioSession<
@@ -173,6 +181,11 @@ export function App() {
   const [reviewViewport, setReviewViewport] = useState<ReviewViewport>("CONVERTED");
   const [selectedReadbackPart, setSelectedReadbackPart] = useState<ModelPartRef>();
   const [debugDrawerMessage, setDebugDrawerMessage] = useState<string>();
+  const [showMeshyLab, setShowMeshyLab] = useState(false);
+  const [meshyProvenance, setMeshyProvenance] = useState<MeshyArtifactProvenance>();
+  const meshyBridgeRef = useRef<MeshyBridgeClient | undefined>(undefined);
+
+  if (!meshyBridgeRef.current) meshyBridgeRef.current = meshyBridge ?? new LocalMeshyBridgeClient();
 
   sessionRef.current = session;
 
@@ -315,13 +328,14 @@ export function App() {
     return () => { cancelled = true; };
   }, [appearanceFile, session.revision]);
 
-  const selectSource = (file: File) => {
+  const selectSource = (file: File, provenance?: MeshyArtifactProvenance) => {
     if (!isGlb(file)) {
       setSourceError("Select a Meshy model in .glb format.");
       return;
     }
     invalidateRunningBuild();
     setSourceError(undefined);
+    setMeshyProvenance(provenance);
     dispatch({ type: "SOURCE_SELECTED", file });
   };
 
@@ -338,6 +352,7 @@ export function App() {
   const removeSource = () => {
     invalidateRunningBuild();
     setSourceError(undefined);
+    setMeshyProvenance(undefined);
     dispatch({ type: "SOURCE_REMOVED" });
   };
 
@@ -350,6 +365,7 @@ export function App() {
   const clearFiles = () => {
     invalidateRunningBuild();
     setSourceError(undefined);
+    setMeshyProvenance(undefined);
     setAppearanceError(undefined);
     setSelectedReadbackPart(undefined);
     setDebugDrawerMessage(undefined);
@@ -554,8 +570,8 @@ export function App() {
           onStepSelect={(step) => dispatch({ type: "NAVIGATE", step })}
         />
       )}
-      inputs={inputs}
-      aside={session.currentStep === "SOURCE" ? requirements : undefined}
+      inputs={showMeshyLab ? null : inputs}
+      aside={!showMeshyLab && session.currentStep === "SOURCE" ? requirements : undefined}
       debugDrawer={(
         <section className="debug-drawer-placeholder" aria-label="Debug Drawer">
           <strong>Debug Drawer</strong>
@@ -563,7 +579,16 @@ export function App() {
         </section>
       )}
     >
-      {session.currentStep === "SOURCE" ? (
+      {showMeshyLab ? (
+        <MeshyLab
+          bridge={meshyBridgeRef.current}
+          onBack={() => setShowMeshyLab(false)}
+          onImport={(file, provenance) => {
+            selectSource(file, provenance);
+            setShowMeshyLab(false);
+          }}
+        />
+      ) : session.currentStep === "SOURCE" ? (
         <SourceStep
           source={session.source?.file}
           appearance={session.appearance?.file}
@@ -577,6 +602,8 @@ export function App() {
           onRemoveAppearance={removeAppearance}
           onClear={clearFiles}
           onContinue={() => dispatch({ type: "CONTINUE_TO_INSPECT" })}
+          onOpenMeshyLab={meshyLabEnabled ? () => setShowMeshyLab(true) : undefined}
+          meshyProvenance={meshyProvenance}
         />
       ) : session.currentStep === "INSPECT" ? (
         <InspectStep

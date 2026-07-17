@@ -20,7 +20,9 @@ describe("canonical Worker downloads", () => {
     vi.useFakeTimers();
     Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:test") });
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
-    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      expect(document.body.contains(this)).toBe(true);
+    });
   });
 
   afterEach(() => {
@@ -44,6 +46,16 @@ describe("canonical Worker downloads", () => {
       .rejects.toThrow("Byte-length mismatch");
     await expect(downloadWorkerArtifact({ ...validArtifact(), fileName: "model.zip" }))
       .rejects.toThrow("Invalid artifact filename");
+  });
+
+  it("accepts a generated MOD proof artifact", async () => {
+    await downloadWorkerArtifact({
+      ...validArtifact(),
+      artifactId: "proof-module",
+      kind: "MODULE",
+      fileName: "m2a_codex_aproof.mod",
+    });
+    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
   });
 
   it("rejects byte corruption even when SHA-256 metadata has a valid shape", async () => {

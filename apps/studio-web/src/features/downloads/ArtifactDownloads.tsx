@@ -4,6 +4,7 @@ function extension(kind: WorkerArtifact["kind"]) {
   switch (kind) {
     case "HAK": return ".hak";
     case "MODEL": return ".mdl";
+    case "MODULE": return ".mod";
     case "JSON_REPORT": return ".json";
   }
 }
@@ -44,7 +45,13 @@ export async function downloadWorkerArtifact(artifact: WorkerArtifact) {
   anchor.href = url;
   anchor.download = artifact.fileName;
   anchor.rel = "noopener";
+  // Attach the transient anchor so Chromium treats the click as a real
+  // download gesture.  Detached anchors are unreliable in headless and some
+  // hardened browser contexts, which would leave a valid Worker artefact
+  // visible but not actually downloadable.
+  document.body.append(anchor);
   anchor.click();
+  anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 

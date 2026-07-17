@@ -9,7 +9,7 @@ const valid = () => ({
       offset: 12,
       number: 1,
       name: "root",
-      controllers: [{ controllerName: "position", values: [[0, 1, 2]] }],
+      controllers: [{ controllerName: "position", times: [0], values: [[0, 1, 2]] }],
       mesh: {
         vertices: [{ x: 0, y: 1, z: 2 }],
         normals: [{ x: 0, y: 0, z: 1 }],
@@ -17,9 +17,18 @@ const valid = () => ({
         rawIndices: [[0, 0, 0]],
         faces: [{ vertexIndices: [0, 0, 0] }],
       },
+      skin: {
+        nodeToBoneMap: [0],
+        inlineMapping: [0],
+        inverseBoneRotationsRaw: [[1, 0, 0, 0]],
+        inverseBoneTranslations: [{ x: 0, y: 0, z: 0 }],
+        vertexWeights: [[1, 0, 0, 0]],
+        boneReferences: [[0, 0, 0, 0]],
+      },
       children: [],
     }],
   },
+  animations: [],
   diagnostics: [{ schemaVersion: 1, code: "NOTE", severity: "INFO", offset: 12, context: "owned" }],
 });
 
@@ -79,12 +88,13 @@ describe("canonical readback projector", () => {
     };
     const root = value.nodeTree.roots[0];
     root.mesh = null;
+    root.skin = null;
     (root.controllers as Array<Record<string, unknown>>)[0].controllerName = null;
     expect(projectCanonicalReadback(JSON.stringify(value)).nodeTree.roots[0]).toEqual({
       offset: 12,
       number: 1,
       name: "root",
-      controllers: [{ values: [[0, 1, 2]] }],
+      controllers: [{ times: [0], values: [[0, 1, 2]] }],
       children: [],
     });
   });

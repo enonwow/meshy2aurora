@@ -26,7 +26,7 @@ export type StudioWorkerRequest =
 
 export interface WorkerArtifact {
   artifactId: string;
-  kind: "HAK" | "MODEL" | "JSON_REPORT";
+  kind: "HAK" | "MODEL" | "MODULE" | "JSON_REPORT";
   fileName: string;
   mediaType: string;
   byteLength: number;

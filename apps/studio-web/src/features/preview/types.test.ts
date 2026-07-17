@@ -16,6 +16,7 @@ describe("readback diagnostic mapping", () => {
           children: [],
         }],
       },
+      animations: [],
       diagnostics: [
         { schemaVersion: 1, code: "MATCH", severity: "warning", offset: 128, context: "node warning" },
         { schemaVersion: 1, code: "NO_MATCH", severity: "warning", offset: 129, context: "other warning" },

@@ -74,6 +74,27 @@ describe("SourceStep", () => {
     expect(onContinue).toHaveBeenCalledOnce();
   });
 
+  it("shows redacted Meshy provenance only when the source was explicitly imported from Meshy Lab", async () => {
+    const container = await render(
+      <SourceStep
+        {...handlers()}
+        source={source()}
+        meshyProvenance={{
+          profileId: "S1-static-prop/v1",
+          bridgeProtocolVersion: 1,
+          sha256: "a".repeat(64),
+          byteLength: 4,
+          taskIds: { PREVIEW: "task-preview", REFINE: "task-refine" },
+        }}
+        onContinue={vi.fn()}
+      />,
+    );
+
+    expect(container.textContent).toContain("Imported from Meshy Lab: S1-static-prop/v1");
+    expect(container.textContent).toContain("SHA-256 aaaaaaaaaaaa...");
+    expect(container.textContent).not.toContain("MESHY_API_KEY");
+  });
+
   it("routes dropped files through the same selection callback", async () => {
     const callbacks = handlers();
     const container = await render(<SourceStep {...callbacks} onContinue={vi.fn()} />);

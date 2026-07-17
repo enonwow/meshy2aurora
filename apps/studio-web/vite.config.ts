@@ -2,6 +2,8 @@ import { fileURLToPath, URL } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
+const workspaceRoot = fileURLToPath(new URL("../..", import.meta.url));
+
 export default defineConfig({
   base: "./",
   plugins: [react()],
@@ -10,6 +12,13 @@ export default defineConfig({
       "@m2a-wasm": fileURLToPath(
         new URL("../../crates/m2a-wasm/pkg/m2a_wasm.js", import.meta.url),
       ),
+    },
+  },
+  server: {
+    fs: {
+      // The web-WASM package is built in the canonical workspace, outside
+      // apps/studio-web. Keep Vite's dev-server file boundary explicit.
+      allow: [workspaceRoot],
     },
   },
   worker: { format: "es" },

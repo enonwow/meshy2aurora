@@ -45,6 +45,7 @@ const emptyAnimationUi: AnimationUiState = {
   loop: true,
   timeSeconds: 0,
   durationSeconds: 0,
+  playbackRate: 1,
 };
 
 const overlayLabels: Record<SceneOverlayKind, string> = {
@@ -314,6 +315,38 @@ export function SceneViewport({
               >
                 {animationUi.playing ? "Pause" : "Play"}
               </button>
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={() => {
+                  const runtime = animationRuntimeRef.current;
+                  if (runtime) updateAnimation(runtime.stop());
+                }}
+              >
+                Stop
+              </button>
+              <button
+                type="button"
+                className="button button--secondary"
+                aria-label="Previous animation keyframe"
+                onClick={() => {
+                  const runtime = animationRuntimeRef.current;
+                  if (runtime) updateAnimation(runtime.stepKeyframe(-1));
+                }}
+              >
+                Previous keyframe
+              </button>
+              <button
+                type="button"
+                className="button button--secondary"
+                aria-label="Next animation keyframe"
+                onClick={() => {
+                  const runtime = animationRuntimeRef.current;
+                  if (runtime) updateAnimation(runtime.stepKeyframe(1));
+                }}
+              >
+                Next keyframe
+              </button>
               <label className="viewport__loop">
                 <input
                   type="checkbox"
@@ -324,6 +357,19 @@ export function SceneViewport({
                   }}
                 />
                 Loop
+              </label>
+              <label>
+                Speed
+                <select
+                  aria-label="Animation speed"
+                  value={animationUi.playbackRate}
+                  onChange={(event) => {
+                    const runtime = animationRuntimeRef.current;
+                    if (runtime) updateAnimation(runtime.setPlaybackRate(Number(event.target.value)));
+                  }}
+                >
+                  {[0.25, 0.5, 1, 1.5, 2].map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
+                </select>
               </label>
               <label className="viewport__timeline">
                 Timeline

@@ -2,7 +2,7 @@
 
 import init, {
   buildM7CorpusBatchV1,
-  buildM6ModelPackageV1,
+  buildMeshyH1ModelPackageV1,
   ingestGlbJson,
   inspectTwoDaV2Json,
   inspectM7CorpusIntakeV1Json,
@@ -136,19 +136,21 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
     };
   }
 
-  const result = buildM6ModelPackageV1(
+  const result = buildMeshyH1ModelPackageV1(
     new Uint8Array(request.sourceGlb),
     new Uint8Array(request.appearanceTwoDa),
   );
   try {
     const hak = exactBuffer(result.takeHakBytes());
     const model = exactBuffer(result.takeModelBytes());
+    const proofModule = exactBuffer(result.takeProofModuleBytes());
     const report = encoder.encode(result.reportJson).buffer;
     const manifest = encoder.encode(result.manifestJson).buffer;
     const summary = encoder.encode(result.summaryJson).buffer;
     const artifacts = await Promise.all([
-      artifact("package-hak", "HAK", "meshy2aurora.hak", "application/octet-stream", hak),
-      artifact("model-mdl", "MODEL", "meshy2aurora.mdl", "application/octet-stream", model),
+      artifact("package-hak", "HAK", "m2a_codex_aproof.hak", "application/octet-stream", hak),
+      artifact("model-mdl", "MODEL", "m2a_m6p01.mdl", "application/octet-stream", model),
+      artifact("proof-module", "MODULE", "m2a_codex_aproof.mod", "application/octet-stream", proofModule),
       artifact("report-json", "JSON_REPORT", "inspection.json", "application/json", report),
       artifact("manifest-json", "JSON_REPORT", "conversion-manifest.json", "application/json", manifest),
       artifact("summary-json", "JSON_REPORT", "summary.json", "application/json", summary),

@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import sourceUrl from "../.generated/owned-package/generated/source-owned.glb?url";
-import expectedHakUrl from "../.generated/owned-package/generated/m2a_m6p01.hak?url";
+import sourceUrl from "../.generated/owned-package/generated/source.glb?url";
+import expectedHakUrl from "../.generated/owned-package/generated/m2a_codex_aproof.hak?url";
 import appearanceUrl from "../fixtures/appearance.2da?url";
 import { buildM7PayloadEnvelope } from "../../src/features/m7/envelope";
 import { projectCanonicalResult } from "../../src/features/results/projectCanonicalResult";

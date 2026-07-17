@@ -4,6 +4,7 @@ import { StrictMode, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import { InMemoryMeshyBridgeClient, type MeshyBridgeClient } from "./features/meshy/bridge";
 import type { StudioWorkerRequest, StudioWorkerResponse, WorkerArtifact } from "./worker/types";
 
 vi.mock("./features/preview/SceneViewport", () => ({
@@ -83,17 +84,19 @@ function builtResponse(requestId: string, format = "nwn1-binary-mdl"): StudioWor
     texture: { width: 2, height: 2, pixelFormat: "RGBA8", byteLength: 60, outputSha256: "d".repeat(64) },
     appearance: { appendedRowIndex: 1, sourcePrefixPreserved: true, outputByteLength: 7, outputSha256: "e".repeat(64) },
     hak: { byteLength: 3, archiveSha256: "a".repeat(64), entryCount: 3 },
+    proofModule: { byteLength: 4, sha256: "7".repeat(64), appearanceRow: 1, semanticReadbackStatus: "PASS" },
   });
-  const summaryJson = JSON.stringify({ schemaVersion: 1, status: "M6_MODEL_PACKAGE_MATERIALIZED", outputs: { model: { byteLength: 2, sha256: "b".repeat(64) }, texture: { byteLength: 60, sha256: "d".repeat(64) }, appearanceTwoDa: { byteLength: 7, sha256: "e".repeat(64) }, hak: { byteLength: 3, sha256: "a".repeat(64) }, report: { byteLength: new TextEncoder().encode(reportJson).byteLength, sha256: "c".repeat(64) } }, appendedPhysicalRow: 1, modelResref: "m2a_model", textureResref: "m2a_texture", animation: { sourceName: "walk", outputName: "cwalk", durationSeconds: 1.25, hasMotion: true }, appearancePayloadPolicy: "PRESERVED_AND_APPENDED" });
+  const summaryJson = JSON.stringify({ schemaVersion: 1, status: "M6_MODEL_PACKAGE_MATERIALIZED", outputs: { model: { byteLength: 2, sha256: "b".repeat(64) }, texture: { byteLength: 60, sha256: "d".repeat(64) }, appearanceTwoDa: { byteLength: 7, sha256: "e".repeat(64) }, hak: { byteLength: 3, sha256: "a".repeat(64) }, proofModule: { byteLength: 4, sha256: "7".repeat(64) }, report: { byteLength: new TextEncoder().encode(reportJson).byteLength, sha256: "c".repeat(64) } }, appendedPhysicalRow: 1, modelResref: "m2a_model", textureResref: "m2a_texture", animation: { sourceName: "walk", outputName: "cwalk", durationSeconds: 1.25, hasMotion: true }, appearancePayloadPolicy: "PRESERVED_AND_APPENDED" });
   const manifestJson = JSON.stringify({ schemaVersion: 1, status: "M6_MODEL_PACKAGE_MATERIALIZED", appendedPhysicalRow: 1, appearancePayloadPolicy: "PRESERVED_AND_APPENDED", packageManifest: { packageSha256: "a".repeat(64), resources: [{ role: "APPEARANCE_TABLE", resref: "appearance", type: 2017, byteLength: 7, sha256: "e".repeat(64) }, { role: "MODEL", resref: "m2a_model", type: 2002, byteLength: 2, sha256: "b".repeat(64) }, { role: "TEXTURE", resref: "m2a_texture", type: 3, byteLength: 60, sha256: "d".repeat(64) }] } });
   return {
     requestId, ok: true, type: "MODEL_PACKAGE_BUILT", reportJson,
     summaryJson,
     manifestJson,
-    readbackJson: JSON.stringify({ schemaVersion: 1, format, nodeTree: { roots: [{ offset: 12, number: 1, name: "root", controllers: [], children: [] }] }, diagnostics: [] }),
+    readbackJson: JSON.stringify({ schemaVersion: 1, format, nodeTree: { roots: [{ offset: 12, number: 1, name: "root", controllers: [], children: [] }] }, animations: [], diagnostics: [] }),
     artifacts: [
       artifact("package-hak", "HAK", [1, 2, 3], "a".repeat(64)),
       artifact("model-mdl", "MODEL", [1, 2], "b".repeat(64)),
+      artifact("proof-module", "MODULE", [4, 5, 6, 7], "7".repeat(64)),
       artifact("report-json", "JSON_REPORT", [...new TextEncoder().encode(reportJson)], "c".repeat(64)),
       artifact("manifest-json", "JSON_REPORT", [...new TextEncoder().encode(manifestJson)], "f".repeat(64)),
       artifact("summary-json", "JSON_REPORT", [...new TextEncoder().encode(summaryJson)], "9".repeat(64)),
@@ -116,12 +119,19 @@ function button(container: HTMLElement, label: string) {
     .find((candidate) => candidate.textContent?.trim() === label);
 }
 
-async function renderApp(strict = false) {
+function setValue(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
+  const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(prototype, "value")?.set?.call(element, value);
+  element.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+async function renderApp(strict = false, options: { meshyBridge?: MeshyBridgeClient; meshyLabEnabled?: boolean } = {}) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   roots.push(root);
-  await act(async () => root.render(strict ? <StrictMode><App /></StrictMode> : <App />));
+  const app = <App {...options} />;
+  await act(async () => root.render(strict ? <StrictMode>{app}</StrictMode> : app));
   return container;
 }
 
@@ -194,5 +204,35 @@ describe("Studio workflow", () => {
 
     expect(worker.terminated).toBe(true);
     expect(container.querySelector("#review-model-heading")).toBeNull();
+  });
+
+  it("imports a verified Meshy Lab GLB through the same Source intake as a local file", async () => {
+    const bridge = new InMemoryMeshyBridgeClient({ availableCredits: 120 });
+    const container = await renderApp(false, { meshyBridge: bridge, meshyLabEnabled: true });
+    await act(async () => button(container, "Open Meshy Lab")?.click());
+    await act(async () => {
+      setValue(container.querySelector<HTMLInputElement>("#meshy-pairing-code")!, "local-proof");
+      button(container, "Connect local bridge")?.click();
+    });
+    await settle();
+    await act(async () => {
+      setValue(container.querySelector<HTMLTextAreaElement>("#meshy-asset-prompt")!, "A weathered stone lantern");
+      Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+        .find((candidate) => candidate.textContent?.includes("S1 · Static Prop"))?.click();
+    });
+    await settle();
+    await act(async () => button(container, "Review generation")?.click());
+    await settle();
+    await act(async () => button(container, "Generate S1 asset")?.click());
+    await settle();
+    await bridge.completeRunForTest(bridge.latestRunIdForTest()!, new Uint8Array([0x67, 0x6c, 0x54, 0x46]));
+    await act(async () => button(container, "Refresh status")?.click());
+    await settle();
+    await act(async () => button(container, "Import verified GLB to Source")?.click());
+    await settle();
+
+    expect(container.textContent).toContain("meshy-s1-static-prop.glb");
+    expect(container.textContent).toContain("Imported from Meshy Lab: S1-static-prop/v1");
+    expect(FakeWorker.instances.at(-1)?.requests.some((request) => request.type === "INSPECT_SOURCE")).toBe(true);
   });
 });
