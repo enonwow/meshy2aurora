@@ -22,7 +22,9 @@ use crate::{
     profile_a::{
         CreatureRigProfileV1, ProfileAAnimationMappingV1, ProfileAConversionReportV1,
         RigProvenanceV1, convert_profile_a_with_animations_v1,
+        derive_meshy_h1_profile_and_mapping_v1,
     },
+    proof_module::{ProofModuleReportV1, build_creature_proof_module_v1},
     tga::{TgaWriterOptionsV1, TgaWriterReportV1, write_tga_v1},
     two_da::{
         TwoDaAppendReportV1, TwoDaAppendRequestV1, TwoDaCellAssignmentV1, TwoDaCellValueV1,
@@ -33,7 +35,9 @@ use crate::{
 pub const M6_MODEL_RESREF: &str = "m2a_m6p01";
 pub const M6_TEXTURE_RESREF: &str = "m2a_m6t01";
 pub const M6_APPEARANCE_LABEL: &str = "M2A_M6_PROOF";
-pub const M6_HAK_FILE_NAME: &str = "m2a_m6p01.hak";
+/// Companion HAK for the one canonical Codex animation-proof module.
+pub const M6_HAK_FILE_NAME: &str = "m2a_codex_aproof.hak";
+pub const M6_PROOF_MODULE_FILE_NAME: &str = "m2a_codex_aproof.mod";
 pub const M6_MANIFEST_FILE_NAME: &str = "materialization-manifest.json";
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -72,6 +76,7 @@ pub struct M6OutputIdentitiesV1 {
     pub texture: M6ByteIdentityV1,
     pub appearance_two_da: M6ByteIdentityV1,
     pub hak: M6ByteIdentityV1,
+    pub proof_module: M6ByteIdentityV1,
     pub report: M6ByteIdentityV1,
 }
 
@@ -148,6 +153,7 @@ pub struct M6MaterializationReportV1 {
     pub texture: TgaWriterReportV1,
     pub appearance: TwoDaAppendReportV1,
     pub hak: HakWriterReportV1,
+    pub proof_module: ProofModuleReportV1,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -168,6 +174,7 @@ pub struct M6ModelPackageArtifactV1 {
     pub texture: Vec<u8>,
     pub appearance_two_da: Vec<u8>,
     pub hak: Vec<u8>,
+    pub proof_module: Vec<u8>,
     pub manifest: M6MaterializationManifestV1,
     pub package_manifest: PackageManifestV1,
     pub manifest_json: Vec<u8>,
@@ -191,14 +198,41 @@ pub fn build_m6_model_package_v1(
     )
 }
 
+/// Runs the Studio's constrained Meshy H1 route.  The source is first
+/// inspected into an owned profile/mapping derived solely from the selected
+/// GLB; package materialization remains the same audited MDL/TGA/2DA/HAK
+/// pipeline as the M6 proof route.
+pub fn build_meshy_h1_model_package_v1(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
+    let mut source = ingest_glb(source_glb, &GlbLimits::default()).map_err(|error| {
+        pipeline_error(
+            "ingest",
+            error.code,
+            error.json_path.unwrap_or_else(|| "input".to_owned()),
+            error.message,
+        )
+    })?;
+    sanitize_meshy_h1_degenerate_triangles_v1(&mut source)?;
+    let (rig, mapping) = derive_meshy_h1_profile_and_mapping_v1(&source)
+        .map_err(|error| pipeline_error("profile", error.code, error.path, error.message))?;
+    build_m6_model_package_with_ingest_v1(
+        source_glb,
+        appearance_two_da,
+        source,
+        &rig,
+        &Default::default(),
+        &mapping,
+    )
+}
+
 pub fn build_m6_model_package_with_profile_v1(
     source_glb: &[u8],
     appearance_two_da: &[u8],
     rig: &CreatureRigProfileV1,
     mapping: &ProfileAAnimationMappingV1,
 ) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
-    let input_glb_identity = identity(source_glb);
-    let input_appearance_identity = identity(appearance_two_da);
     let glb_limits = GlbLimits::default();
     let ingest = ingest_glb(source_glb, &glb_limits).map_err(|error| {
         pipeline_error(
@@ -208,7 +242,28 @@ pub fn build_m6_model_package_with_profile_v1(
             error.message,
         )
     })?;
-    let animated = convert_profile_a_with_animations_v1(&ingest, rig, &Default::default(), mapping)
+    build_m6_model_package_with_ingest_v1(
+        source_glb,
+        appearance_two_da,
+        ingest,
+        rig,
+        &Default::default(),
+        mapping,
+    )
+}
+
+fn build_m6_model_package_with_ingest_v1(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    ingest: GlbIngestResult,
+    rig: &CreatureRigProfileV1,
+    profile_options: &crate::profile_a::ProfileAOptionsV1,
+    mapping: &ProfileAAnimationMappingV1,
+) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
+    let input_glb_identity = identity(source_glb);
+    let input_appearance_identity = identity(appearance_two_da);
+    let glb_limits = GlbLimits::default();
+    let animated = convert_profile_a_with_animations_v1(&ingest, rig, profile_options, mapping)
         .map_err(|error| {
             let stage = if error.code.starts_with("M4A-") {
                 "animation"
@@ -432,6 +487,8 @@ pub fn build_m6_model_package_with_profile_v1(
         .to_vec();
     let hak = package.hak.payload.clone();
     let package_manifest = package.manifest;
+    let proof_module = build_creature_proof_module_v1(appearance.report.appended_row_index)
+        .map_err(|error| pipeline_error("proof_module", error.code, error.path, error.message))?;
 
     let primitive = ingest.ir.primitives.first().ok_or_else(|| {
         pipeline_error(
@@ -475,6 +532,7 @@ pub fn build_m6_model_package_with_profile_v1(
         texture: tga.report,
         appearance: appearance.report,
         hak: package.hak.report,
+        proof_module: proof_module.report.clone(),
     };
     let report_json = json_bytes(&report, "report")?;
     let source_animation = ingest.ir.animations.first().ok_or_else(|| {
@@ -495,6 +553,7 @@ pub fn build_m6_model_package_with_profile_v1(
             texture: identity(&texture),
             appearance_two_da: identity(&appearance_two_da),
             hak: identity(&hak),
+            proof_module: identity(&proof_module.payload),
             report: identity(&report_json),
         },
         appended_physical_row: report.appearance.appended_row_index,
@@ -515,11 +574,15 @@ pub fn build_m6_model_package_with_profile_v1(
     };
     let summary_json = json_bytes(&summary, "summary")?;
     let generated_files = [
-        ("generated/source-owned.glb", source_glb),
+        ("generated/source.glb", source_glb),
         ("generated/m2a_m6p01.mdl", model.as_slice()),
         ("generated/m2a_m6t01.tga", texture.as_slice()),
         ("generated/appearance.2da", appearance_two_da.as_slice()),
-        ("generated/m2a_m6p01.hak", hak.as_slice()),
+        ("generated/m2a_codex_aproof.hak", hak.as_slice()),
+        (
+            "generated/m2a_codex_aproof.mod",
+            proof_module.payload.as_slice(),
+        ),
         (
             "reports/materialization-report.json",
             report_json.as_slice(),
@@ -555,6 +618,7 @@ pub fn build_m6_model_package_with_profile_v1(
         texture,
         appearance_two_da,
         hak,
+        proof_module: proof_module.payload,
         manifest,
         package_manifest,
         manifest_json,
@@ -563,6 +627,74 @@ pub fn build_m6_model_package_with_profile_v1(
         summary,
         summary_json,
     })
+}
+
+fn sanitize_meshy_h1_degenerate_triangles_v1(
+    source: &mut GlbIngestResult,
+) -> Result<(), M6PipelineErrorV1> {
+    if source.ir.primitives.len() != 1 {
+        return Err(pipeline_error(
+            "profile",
+            "M4A-MESHY-H1-SOURCE-INVALID",
+            "source.ir.primitives",
+            "Meshy H1 route requires exactly one primitive before sanitation",
+        ));
+    }
+    let primitive = &mut source.ir.primitives[0];
+    let before = primitive.indices.len() / 3;
+    let mut retained = Vec::with_capacity(primitive.indices.len());
+    for triangle in primitive.indices.chunks_exact(3) {
+        let a = primitive.positions[triangle[0] as usize];
+        let b = primitive.positions[triangle[1] as usize];
+        let c = primitive.positions[triangle[2] as usize];
+        let ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        let ac = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        let cross = [
+            ab[1] * ac[2] - ab[2] * ac[1],
+            ab[2] * ac[0] - ab[0] * ac[2],
+            ab[0] * ac[1] - ab[1] * ac[0],
+        ];
+        let length_squared = cross.iter().map(|value| value * value).sum::<f32>();
+        if length_squared.is_finite() && length_squared > 1.0e-10 {
+            retained.extend_from_slice(triangle);
+        }
+    }
+    if retained.is_empty() {
+        return Err(pipeline_error(
+            "profile",
+            "M4A-MESHY-H1-SOURCE-INVALID",
+            "source.ir.primitives[0].indices",
+            "Meshy H1 source contains no Aurora-safe non-degenerate triangles",
+        ));
+    }
+    primitive.indices = retained;
+    let after = primitive.indices.len() / 3;
+    let removed = before.saturating_sub(after);
+    source.report.statistics.index_count = source
+        .ir
+        .primitives
+        .iter()
+        .map(|item| item.indices.len())
+        .sum();
+    source.report.statistics.triangle_count = source
+        .ir
+        .primitives
+        .iter()
+        .map(|item| item.indices.len() / 3)
+        .sum();
+    if removed > 0 {
+        source.report.diagnostics.push(crate::glb::GlbDiagnostic {
+            schema_version: 1,
+            severity: "WARNING".to_owned(),
+            code: "M4A-MESHY-H1-DEGENERATE-TRIANGLES-REMOVED".to_owned(),
+            message: format!(
+                "removed {removed} degenerate source triangles before Aurora materialization"
+            ),
+            byte_offset: None,
+            json_path: Some("meshes[0].primitives[0].indices".to_owned()),
+        });
+    }
+    Ok(())
 }
 
 /// Resolves the first used primitive's base color by stable GLB IDs rather
@@ -700,10 +832,7 @@ fn write_staging_packet(
             .map_err(|error| io_error("output", "M6-OUTPUT-CREATE-FAILED", path, error))?;
     }
     for (path, bytes) in [
-        (
-            generated.join("source-owned.glb"),
-            artifact.source_glb.as_slice(),
-        ),
+        (generated.join("source.glb"), artifact.source_glb.as_slice()),
         (
             generated.join(format!("{M6_MODEL_RESREF}.mdl")),
             artifact.model.as_slice(),
@@ -717,6 +846,10 @@ fn write_staging_packet(
             artifact.appearance_two_da.as_slice(),
         ),
         (generated.join(M6_HAK_FILE_NAME), artifact.hak.as_slice()),
+        (
+            generated.join(M6_PROOF_MODULE_FILE_NAME),
+            artifact.proof_module.as_slice(),
+        ),
         (
             reports.join("materialization-report.json"),
             artifact.report_json.as_slice(),

@@ -10,6 +10,7 @@ pub mod model_pipeline;
 pub mod owned_fixture;
 pub mod package;
 pub mod profile_a;
+pub mod proof_module;
 pub mod reference_proof;
 pub mod tga;
 pub mod two_da;

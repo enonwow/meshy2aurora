@@ -69,6 +69,14 @@ fn minimal_source() -> m2a_core::glb::GlbIngestResult {
     ingest_glb(&fixtures::minimal_indexed_triangle(), &GlbLimits::default()).unwrap()
 }
 
+#[test]
+fn real_meshy_h1_distance_budget_is_not_regressed_to_the_historical_m3_cap() {
+    assert_eq!(
+        ProfileAOptionsV1::default().limits.max_distance_evaluations,
+        10_000_000
+    );
+}
+
 fn rehash(mut rig: CreatureRigProfileV1) -> CreatureRigProfileV1 {
     rig.content_sha256.clear();
     rig.content_sha256 = canonical_profile_sha256(&rig).unwrap();
@@ -125,6 +133,7 @@ fn animation_mapping() -> ProfileAAnimationMappingV1 {
                 rights_confirmed: true,
             },
         },
+        source_translation_scale: 1.0,
         node_mappings: vec![
             ProfileAAnimationNodeMappingV1 {
                 source_node_id: 0,
@@ -633,6 +642,24 @@ fn mapped_animation_requires_every_channel_target_mapping() {
 }
 
 #[test]
+fn mapped_animation_infers_optional_skin_root_and_stops_at_skin_boundary() {
+    let mut source = linear_animated_source();
+    // glTF permits skin.skeleton to be absent.
+    source.ir.skins[0].skeleton_root_node_id = None;
+
+    let outcome = convert_profile_a_with_animations_v1(
+        &source,
+        &animated_profile(),
+        &ProfileAOptionsV1::default(),
+        &animation_mapping(),
+    )
+    .expect("a single inferred skin root must be legal");
+
+    assert!(outcome.base.report.conversion_eligible);
+    assert_eq!(outcome.animations.unwrap().clips[0].name, "cpause1");
+}
+
+#[test]
 fn mapped_animation_schema_provenance_and_skin_fail_with_stable_codes() {
     let source = linear_animated_source();
     let rig = animated_profile();
@@ -704,11 +731,15 @@ fn mapped_animation_rejects_unsupported_interpolation_and_target_paths() {
     step.ir.animations[0].samplers[0].interpolation = "STEP".to_owned();
     assert_animation_fatal(&step, &rig, &mapping, "M4A-INTERPOLATION-UNSUPPORTED");
 
-    for path in ["SCALE", "WEIGHTS"] {
+    for path in ["WEIGHTS"] {
         let mut source = linear_animated_source();
         source.ir.animations[0].channels[0].target_path = path.to_owned();
         assert_animation_fatal(&source, &rig, &mapping, "M4A-TRACK-PATH-UNSUPPORTED");
     }
+
+    let mut nonuniform_scale = linear_animated_source();
+    nonuniform_scale.ir.animations[0].channels[0].target_path = "SCALE".to_owned();
+    assert_animation_fatal(&nonuniform_scale, &rig, &mapping, "M4A-SCALE-UNSUPPORTED");
 }
 
 #[test]

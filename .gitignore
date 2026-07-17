@@ -15,3 +15,9 @@ apps/studio-web/.vitest-attachments/
 /local-reference-assets/
 *.hak
 *.mod
+
+# Owner-selected Meshy proof assets are local runtime inputs, never repository fixtures.
+/test-assets/meshy/incoming/*
+!/test-assets/meshy/incoming/.gitkeep
+/test-assets/meshy/active/*
+!/test-assets/meshy/active/.gitkeep

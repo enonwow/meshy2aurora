@@ -62,6 +62,7 @@ impl Default for ErfLimits {
 pub enum ErfFileType {
     Erf,
     Hak,
+    Module,
 }
 
 impl ErfFileType {
@@ -69,6 +70,7 @@ impl ErfFileType {
         match self {
             Self::Erf => *b"ERF ",
             Self::Hak => *b"HAK ",
+            Self::Module => *b"MOD ",
         }
     }
 
@@ -76,10 +78,11 @@ impl ErfFileType {
         match signature {
             b"ERF " => Ok(Self::Erf),
             b"HAK " => Ok(Self::Hak),
+            b"MOD " => Ok(Self::Module),
             _ => Err(ErfError::new(
                 SIGNATURE_UNSUPPORTED,
                 offset,
-                "expected ERF or HAK signature",
+                "expected ERF, HAK or MOD signature",
             )),
         }
     }

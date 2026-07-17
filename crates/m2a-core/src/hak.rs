@@ -160,7 +160,28 @@ pub fn write_hak_v1(
     resources: &[HakResourceInputV1],
     options: &HakWriterOptionsV1,
 ) -> Result<HakArtifactV1, HakWriteError> {
-    write_hak_v1_inner(
+    write_erf_archive_v1(ErfFileType::Hak, resources, options)
+}
+
+/// Writes a deterministic ERF-family archive with the same bounds, ordering
+/// and semantic readback contract used by the HAK writer.  `MOD V1.0` has the
+/// identical container layout; only the four-byte file signature differs.
+/// The public input remains deliberately narrow because this is the package
+/// boundary used for both generated HAKs and proof modules.
+pub fn write_erf_archive_v1(
+    file_type: ErfFileType,
+    resources: &[HakResourceInputV1],
+    options: &HakWriterOptionsV1,
+) -> Result<HakArtifactV1, HakWriteError> {
+    if !matches!(file_type, ErfFileType::Hak | ErfFileType::Module) {
+        return Err(HakWriteError::fatal(
+            OPTIONS_INVALID,
+            "fileType",
+            "writer supports only HAK or MOD V1.0 archives",
+        ));
+    }
+    write_erf_archive_v1_inner(
+        file_type,
         resources,
         options,
         #[cfg(test)]
@@ -184,13 +205,15 @@ pub fn preflight_hak_v1<T: HakResourceMetadataV1>(
     })
 }
 
-fn write_hak_v1_inner(
+fn write_erf_archive_v1_inner(
+    file_type: ErfFileType,
     resources: &[HakResourceInputV1],
     options: &HakWriterOptionsV1,
     #[cfg(test)] force_output_allocation_failure: bool,
 ) -> Result<HakArtifactV1, HakWriteError> {
     let (sorted, plan) = preflight_hak_layout(resources, options)?;
-    emit_hak_v1(
+    emit_erf_archive_v1(
+        file_type,
         &sorted,
         &plan,
         #[cfg(test)]
@@ -291,7 +314,8 @@ fn preflight_hak_layout<'a, T: HakResourceMetadataV1>(
     Ok((sorted, plan))
 }
 
-fn emit_hak_v1(
+fn emit_erf_archive_v1(
+    file_type: ErfFileType,
     sorted: &[&HakResourceInputV1],
     plan: &LayoutPlan,
     #[cfg(test)] force_output_allocation_failure: bool,
@@ -320,7 +344,7 @@ fn emit_hak_v1(
         )
     })?;
     payload.resize(160, 0);
-    payload[0..4].copy_from_slice(b"HAK ");
+    payload[0..4].copy_from_slice(&file_type.signature());
     payload[4..8].copy_from_slice(b"V1.0");
     write_u32(&mut payload, 0x10, plan.scalar.entry_count);
     write_u32(&mut payload, 0x14, 0xa0);
@@ -387,13 +411,14 @@ fn emit_hak_v1(
         archive_sha256,
         resources: reports,
     };
-    verify_exact_layout(&payload, sorted, plan)?;
-    verify_semantic_readback(&payload, sorted, plan, &report)?;
+    verify_exact_layout(&payload, file_type, sorted, plan)?;
+    verify_semantic_readback(&payload, file_type, sorted, plan, &report)?;
     Ok(HakArtifactV1 { payload, report })
 }
 
 fn verify_exact_layout(
     bytes: &[u8],
+    file_type: ErfFileType,
     sorted: &[&HakResourceInputV1],
     plan: &LayoutPlan,
 ) -> Result<(), HakWriteError> {
@@ -410,9 +435,9 @@ fn verify_exact_layout(
         return Err(readback_failed("internal HAK plan is inconsistent"));
     }
 
-    if &bytes[0..4] != b"HAK " || &bytes[4..8] != b"V1.0" {
+    if bytes[0..4] != file_type.signature() || &bytes[4..8] != b"V1.0" {
         return Err(readback_failed(
-            "HAK identity fields changed after emission",
+            "ERF-family identity fields changed after emission",
         ));
     }
     let header_fields = [
@@ -533,6 +558,7 @@ fn verify_exact_layout(
 
 fn verify_semantic_readback(
     bytes: &[u8],
+    file_type: ErfFileType,
     sorted: &[&HakResourceInputV1],
     plan: &LayoutPlan,
     report: &HakWriterReportV1,
@@ -545,8 +571,10 @@ fn verify_semantic_readback(
         },
     )
     .map_err(|error| readback_failed(format!("ErfArchive rejected generated HAK: {error}")))?;
-    if archive.file_type() != ErfFileType::Hak {
-        return Err(semantic_diff("readback file type is not HAK"));
+    if archive.file_type() != file_type {
+        return Err(semantic_diff(
+            "readback file type differs from emitted archive",
+        ));
     }
     if archive.resources().len() != sorted.len() || report.resources.len() != sorted.len() {
         return Err(semantic_diff("readback resource count differs from input"));
@@ -922,8 +950,8 @@ mod tests {
         plan: &LayoutPlan,
         report: &HakWriterReportV1,
     ) -> Result<(), HakWriteError> {
-        verify_exact_layout(bytes, sorted, plan)?;
-        verify_semantic_readback(bytes, sorted, plan, report)
+        verify_exact_layout(bytes, ErfFileType::Hak, sorted, plan)?;
+        verify_semantic_readback(bytes, ErfFileType::Hak, sorted, plan, report)
     }
 
     #[test]
@@ -1053,7 +1081,8 @@ mod tests {
 
     #[test]
     fn deterministic_test_only_allocation_failure_seam_is_stable() {
-        let error = write_hak_v1_inner(
+        let error = write_erf_archive_v1_inner(
+            ErfFileType::Hak,
             &[HakResourceInputV1 {
                 resref: "a".to_owned(),
                 resource_type: 1,

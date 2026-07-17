@@ -124,7 +124,15 @@ fn owned_fixture_materializes_deterministically_through_the_complete_model_pipel
         first.summary.outputs.hak.sha256
     );
     assert_eq!(parsed_manifest.appended_physical_row, 1);
-    assert_eq!(parsed_manifest.generated_files.len(), 7);
+    assert_eq!(parsed_manifest.generated_files.len(), 8);
+    assert_eq!(
+        first.summary.outputs.proof_module.byte_length,
+        first.proof_module.len() as u64
+    );
+    assert_eq!(
+        first.summary.outputs.proof_module.sha256,
+        hex_sha256(&first.proof_module)
+    );
     assert_eq!(
         parsed_manifest.appearance_payload_policy,
         "PRESERVED_AND_APPENDED"
@@ -134,11 +142,12 @@ fn owned_fixture_materializes_deterministically_through_the_complete_model_pipel
     assert!(!summary_text.contains("zeroRetailPayloadCopied"));
     for file in &parsed_manifest.generated_files {
         let bytes = match file.relative_path.as_str() {
-            "generated/source-owned.glb" => first.source_glb.as_slice(),
+            "generated/source.glb" => first.source_glb.as_slice(),
             "generated/m2a_m6p01.mdl" => first.model.as_slice(),
             "generated/m2a_m6t01.tga" => first.texture.as_slice(),
             "generated/appearance.2da" => first.appearance_two_da.as_slice(),
-            "generated/m2a_m6p01.hak" => first.hak.as_slice(),
+            "generated/m2a_codex_aproof.hak" => first.hak.as_slice(),
+            "generated/m2a_codex_aproof.mod" => first.proof_module.as_slice(),
             "reports/materialization-report.json" => first.report_json.as_slice(),
             "reports/summary.json" => first.summary_json.as_slice(),
             path => panic!("unexpected manifest path {path}"),
@@ -275,8 +284,12 @@ fn proof_packet_writes_generated_reports_and_empty_live_directories() {
         artifact.appearance_two_da
     );
     assert_eq!(
-        fs::read(path.join("generated/m2a_m6p01.hak")).unwrap(),
+        fs::read(path.join("generated/m2a_codex_aproof.hak")).unwrap(),
         artifact.hak
+    );
+    assert_eq!(
+        fs::read(path.join("generated/m2a_codex_aproof.mod")).unwrap(),
+        artifact.proof_module
     );
     assert_eq!(
         fs::read(path.join("reports/materialization-manifest.json")).unwrap(),

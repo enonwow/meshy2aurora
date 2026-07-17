@@ -181,7 +181,7 @@ impl Default for ProfileALimitsV1 {
             max_reference_triangles: 1_000_000,
             max_output_vertices: 1_000_000,
             max_output_indices: 3_000_000,
-            max_distance_evaluations: 3_000_000,
+            max_distance_evaluations: 10_000_000,
             max_work_bytes: 256 * 1024 * 1024,
             max_diagnostics: 2_048,
             max_unique_materials: 1,
@@ -252,8 +252,18 @@ pub struct ProfileAAnimationMappingV1 {
     pub schema_version: u32,
     pub source_skin_id: u32,
     pub provenance: RigProvenanceV1,
+    /// Multiplies local source translation deltas during retargeting.  This
+    /// explicitly represents a unit-only scene container that is intentionally
+    /// outside the selected skin hierarchy (for example Meshy's Armature
+    /// scale).  It never changes rotations or scale controllers.
+    #[serde(default = "default_animation_translation_scale")]
+    pub source_translation_scale: f32,
     pub node_mappings: Vec<ProfileAAnimationNodeMappingV1>,
     pub clip_mappings: Vec<ProfileAAnimationClipMappingV1>,
+}
+
+fn default_animation_translation_scale() -> f32 {
+    1.0
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -568,6 +578,7 @@ struct ValidatedAnimationMapping {
     source_rest: BTreeMap<u32, AnimationRestPose>,
     target_rest: BTreeMap<u32, AnimationRestPose>,
     clip_mapping_index_by_source: BTreeMap<u32, usize>,
+    source_translation_scale: f32,
 }
 
 #[derive(Default)]
@@ -628,6 +639,464 @@ pub fn canonical_profile_sha256(
         )
     })?;
     Ok(hex_sha256(&bytes))
+}
+
+/// Derives a constrained, clean-room Profile A rig from one Meshy H1-style
+/// skinned GLB.  The route deliberately accepts only one skinned mesh and one
+/// skin; it does not guess a game skeleton or copy a reference rig.
+///
+/// Meshy commonly places both the mesh and joints below a unit-only Armature
+/// container.  That container is not a skin joint, so its uniform scale is
+/// folded into joint translations and recorded explicitly in the animation
+/// mapping.  The output hierarchy therefore remains a rigid Aurora hierarchy.
+pub fn derive_meshy_h1_profile_and_mapping_v1(
+    source: &GlbIngestResult,
+) -> Result<(CreatureRigProfileV1, ProfileAAnimationMappingV1), ProfileAConversionFatalError> {
+    if source.ir.skins.len() != 1 {
+        return Err(fatal(
+            "M4A-MESHY-H1-SOURCE-INVALID",
+            "source.ir.skins",
+            "Meshy H1 route requires exactly one source skin",
+        ));
+    }
+    let skin = &source.ir.skins[0];
+    let mut source_nodes = BTreeMap::<u32, &IrNode>::new();
+    for node in &source.ir.nodes {
+        if source_nodes.insert(node.id, node).is_some() || node.parent_ids.len() > 1 {
+            return Err(fatal(
+                "M4A-MESHY-H1-SOURCE-INVALID",
+                "source.ir.nodes",
+                "Meshy H1 route requires unique single-parent source nodes",
+            ));
+        }
+    }
+    let skeleton_root = skin.skeleton_root_node_id.map(Ok).unwrap_or_else(|| {
+        infer_skin_root_node_id(skin, &source_nodes)
+            .map_err(|error| fatal(&error.code, &error.path, error.message))
+    })?;
+    let container_scale = meshy_h1_container_scale(&source_nodes, skeleton_root)?;
+    let joint_ids = skin.joint_node_ids.iter().copied().collect::<BTreeSet<_>>();
+    if joint_ids.len() != skin.joint_node_ids.len() || !joint_ids.contains(&skeleton_root) {
+        return Err(fatal(
+            "M4A-MESHY-H1-SOURCE-INVALID",
+            "source.ir.skins[0].jointNodeIds",
+            "Meshy H1 skin joints must be unique and contain the skeleton root",
+        ));
+    }
+    let mesh_nodes = source
+        .ir
+        .nodes
+        .iter()
+        .filter(|node| node.skin_id == Some(skin.id) && node.mesh_id.is_some())
+        .collect::<Vec<_>>();
+    if mesh_nodes.len() != 1 {
+        return Err(fatal(
+            "M4A-MESHY-H1-SOURCE-INVALID",
+            "source.ir.nodes",
+            "Meshy H1 route requires exactly one mesh node bound to the selected skin",
+        ));
+    }
+    let mesh_node = mesh_nodes[0];
+    let mesh_id = mesh_node.mesh_id.ok_or_else(|| {
+        fatal(
+            "M4A-MESHY-H1-SOURCE-INVALID",
+            "source.ir.nodes.meshId",
+            "selected Meshy H1 mesh node is missing meshId",
+        )
+    })?;
+    let mesh = source
+        .ir
+        .meshes
+        .iter()
+        .find(|mesh| mesh.id == mesh_id)
+        .ok_or_else(|| {
+            fatal(
+                "M4A-MESHY-H1-SOURCE-INVALID",
+                "source.ir.nodes.meshId",
+                "selected Meshy H1 mesh is missing",
+            )
+        })?;
+    if mesh.primitive_ids.len() != 1 {
+        return Err(fatal(
+            "M4A-MESHY-H1-SOURCE-INVALID",
+            "source.ir.meshes.primitiveIds",
+            "Meshy H1 route currently requires exactly one mesh primitive",
+        ));
+    }
+    let primitive = source
+        .ir
+        .primitives
+        .iter()
+        .find(|primitive| primitive.id == mesh.primitive_ids[0])
+        .ok_or_else(|| {
+            fatal(
+                "M4A-MESHY-H1-SOURCE-INVALID",
+                "source.ir.meshes.primitiveIds",
+                "selected Meshy H1 primitive is missing",
+            )
+        })?;
+    if primitive.positions.is_empty()
+        || primitive.normals.len() != primitive.positions.len()
+        || primitive.uv0.len() != primitive.positions.len()
+        || primitive.joints0.len() != primitive.positions.len()
+        || primitive.weights0.len() != primitive.positions.len()
+        || primitive.indices.is_empty()
+        || !primitive.indices.len().is_multiple_of(3)
+    {
+        return Err(fatal(
+            "M4A-MESHY-H1-SOURCE-INVALID",
+            "source.ir.primitives",
+            "Meshy H1 requires one indexed primitive with normals, UVs and skin lanes",
+        ));
+    }
+
+    let options = ProfileAOptionsV1::default();
+    let selection = match select_default_scene(source, &options.limits, 0) {
+        Ok(value) => value,
+        Err(error) => match *error {
+            SourceSelectionError::Gate(gate) => {
+                return Err(fatal(
+                    "M4A-MESHY-H1-SOURCE-INVALID",
+                    &gate.path,
+                    gate.message,
+                ));
+            }
+            SourceSelectionError::Fatal(error) => return Err(error),
+        },
+    };
+    if !selection
+        .ordered_nodes
+        .iter()
+        .any(|node| node.id == mesh_node.id)
+    {
+        return Err(fatal(
+            "M4A-MESHY-H1-SOURCE-INVALID",
+            "source.ir.defaultSceneId",
+            "selected Meshy H1 mesh node is not reachable from the default scene",
+        ));
+    }
+    let mesh_world = selection
+        .worlds
+        .get(mesh_node.id as usize)
+        .copied()
+        .flatten()
+        .ok_or_else(|| {
+            fatal(
+                "M4A-MESHY-H1-SOURCE-INVALID",
+                "source.ir.nodes",
+                "selected Meshy H1 mesh world transform is missing",
+            )
+        })?;
+    let basis = basis_matrix();
+    let mut target_bounds = Bounds3V1::empty();
+    for &position in &primitive.positions {
+        target_bounds.include(basis.mul(mesh_world).transform_point(position)?);
+    }
+    target_bounds = target_bounds.ensure_nonempty("source.ir.primitives.positions")?;
+    // Meshy exports its joints in centimetre-like units below a 0.01 Armature
+    // container while the mesh positions are already authored at game-scale.
+    // Profile A's source-world calculation includes that container, so the
+    // target bounds intentionally restore the mesh unit before conversion.
+    target_bounds = scale_bounds(target_bounds, 1.0 / container_scale);
+    if target_bounds.max[2] - target_bounds.min[2] <= f32::EPSILON {
+        return Err(fatal(
+            "M4A-MESHY-H1-SOURCE-INVALID",
+            "source.ir.primitives.positions",
+            "Meshy H1 source height must be positive after Aurora basis conversion",
+        ));
+    }
+
+    let mut nodes = Vec::with_capacity(skin.joint_node_ids.len());
+    for &joint_id in &skin.joint_node_ids {
+        let source_node = source_nodes.get(&joint_id).copied().ok_or_else(|| {
+            fatal(
+                "M4A-MESHY-H1-SOURCE-INVALID",
+                "source.ir.skins[0].jointNodeIds",
+                "Meshy H1 skin references a missing joint node",
+            )
+        })?;
+        let parent_id = if joint_id == skeleton_root {
+            None
+        } else {
+            source_node
+                .parent_ids
+                .first()
+                .copied()
+                .ok_or_else(|| {
+                    fatal(
+                        "M4A-MESHY-H1-SOURCE-INVALID",
+                        "source.ir.nodes.parentIds",
+                        "a non-root Meshy H1 joint has no parent",
+                    )
+                })?
+                .into()
+        };
+        if parent_id.is_some_and(|parent| !joint_ids.contains(&parent)) {
+            return Err(fatal(
+                "M4A-MESHY-H1-SOURCE-INVALID",
+                "source.ir.nodes.parentIds",
+                "a non-root Meshy H1 joint parent must also be a skin joint",
+            ));
+        }
+        nodes.push(CreatureRigNodeV1 {
+            id: joint_id,
+            name: source_node
+                .name
+                .clone()
+                .filter(|name| logical_label(name))
+                .unwrap_or_else(|| format!("meshy_joint_{joint_id}")),
+            parent_id,
+            bind_local_matrix: meshy_h1_target_local_matrix(source_node, container_scale)?,
+        });
+    }
+    let root_matrix = nodes
+        .iter()
+        .find(|node| node.id == skeleton_root)
+        .map(|node| Mat4(node.bind_local_matrix))
+        .ok_or_else(|| {
+            fatal(
+                "M4A-MESHY-H1-SOURCE-INVALID",
+                "rig.nodes",
+                "missing target root",
+            )
+        })?;
+    let root_inverse = root_matrix.inverse_affine().ok_or_else(|| {
+        fatal(
+            "M4A-MESHY-H1-SOURCE-INVALID",
+            "rig.nodes.root.bindLocalMatrix",
+            "Meshy H1 target root must remain invertible",
+        )
+    })?;
+    let surface_transform = root_inverse
+        .mul(Mat4::from_scale_basis_translation(
+            1.0 / container_scale,
+            [0.0; 3],
+        ))
+        .mul(mesh_world);
+    let surface_positions = primitive
+        .positions
+        .iter()
+        .copied()
+        .map(|position| surface_transform.transform_point(position))
+        .collect::<Result<Vec<_>, _>>()?;
+    let reference_weights = primitive
+        .joints0
+        .iter()
+        .zip(&primitive.weights0)
+        .map(|(lanes, weights)| {
+            lanes
+                .iter()
+                .zip(weights)
+                .filter_map(|(&lane, &value)| {
+                    (value > 0.0).then(|| {
+                        skin.joint_node_ids
+                            .get(lane as usize)
+                            .copied()
+                            .map(|bone_node_id| RigWeightInfluenceV1 {
+                                bone_node_id,
+                                value,
+                            })
+                    })
+                })
+                .collect::<Option<Vec<_>>>()
+                .ok_or_else(|| {
+                    fatal(
+                        "M4A-MESHY-H1-SOURCE-INVALID",
+                        "source.ir.primitives.joints0",
+                        "Meshy H1 skin lane is outside the selected skin joint domain",
+                    )
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let surface_indices = primitive
+        .indices
+        .chunks_exact(3)
+        .filter(|triangle| {
+            let a = surface_positions[triangle[0] as usize];
+            let b = surface_positions[triangle[1] as usize];
+            let c = surface_positions[triangle[2] as usize];
+            length_sq(cross(sub3(b, a), sub3(c, a))) > 1.0e-10
+        })
+        .flatten()
+        .copied()
+        .collect::<Vec<_>>();
+    if surface_indices.is_empty() {
+        return Err(fatal(
+            "M4A-MESHY-H1-SOURCE-INVALID",
+            "source.ir.primitives.indices",
+            "Meshy H1 source contains no non-degenerate triangles",
+        ));
+    }
+    let provenance = RigProvenanceV1 {
+        kind: RigProvenanceKindV1::UserProvided,
+        export_allowed: true,
+        attestations: RigProvenanceAttestationsV1 {
+            controlled_construction: true,
+            no_reference_payload_copied: true,
+            rights_confirmed: true,
+        },
+    };
+    let mut profile = CreatureRigProfileV1 {
+        schema_version: PROFILE_A_SCHEMA_VERSION,
+        profile_id: "meshy-h1-derived-user-rig-v1".to_owned(),
+        content_sha256: String::new(),
+        provenance: provenance.clone(),
+        target_bounds,
+        alignment_anchor: bottom_center(target_bounds),
+        nodes,
+        segments: vec![CreatureRigSegmentV1 {
+            id: 1,
+            name: "meshy_h1_skinned_surface".to_owned(),
+            deformation: RigSegmentDeformationV1::Skin,
+            parent_node_id: skeleton_root,
+            surface_positions,
+            surface_indices,
+            allowed_bone_node_ids: skin.joint_node_ids.clone(),
+            reference_weights,
+        }],
+    };
+    profile.content_sha256 = canonical_profile_sha256(&profile)?;
+    let clip_mappings = source
+        .ir
+        .animations
+        .iter()
+        .enumerate()
+        .map(|(index, animation)| ProfileAAnimationClipMappingV1 {
+            source_animation_id: animation.id,
+            output_clip_name: if index == 0 {
+                "cpause1".to_owned()
+            } else {
+                format!("m2a_h1_{index}")
+            },
+            transition_seconds: 0.25,
+        })
+        .collect();
+    Ok((
+        profile,
+        ProfileAAnimationMappingV1 {
+            schema_version: PROFILE_A_SCHEMA_VERSION,
+            source_skin_id: skin.id,
+            provenance,
+            // `emit_animation_set_v1` subsequently applies Profile A's M3
+            // geometry normalization scale. H1's target rig already folds the
+            // Armature container scale into its bind locals, so the mapping
+            // needs the reciprocal compensation here: (1 / containerScale) *
+            // (containerScale * containerScale) = containerScale. This keeps
+            // animated joint deltas in the same local space as the emitted
+            // H1 bind pose instead of applying the M3 geometry scale twice.
+            source_translation_scale: container_scale * container_scale,
+            node_mappings: skin
+                .joint_node_ids
+                .iter()
+                .copied()
+                .map(|node_id| ProfileAAnimationNodeMappingV1 {
+                    source_node_id: node_id,
+                    output_rig_node_id: node_id,
+                })
+                .collect(),
+            clip_mappings,
+        },
+    ))
+}
+
+fn meshy_h1_container_scale(
+    source_nodes: &BTreeMap<u32, &IrNode>,
+    skeleton_root: u32,
+) -> Result<f32, ProfileAConversionFatalError> {
+    let mut scale = 1.0_f32;
+    let mut current = skeleton_root;
+    loop {
+        let node = source_nodes.get(&current).copied().ok_or_else(|| {
+            fatal(
+                "M4A-MESHY-H1-SOURCE-INVALID",
+                "source.ir.nodes",
+                "Meshy H1 skeleton node is missing",
+            )
+        })?;
+        let Some(parent) = node.parent_ids.first().copied() else {
+            break;
+        };
+        let container = source_nodes.get(&parent).copied().ok_or_else(|| {
+            fatal(
+                "M4A-MESHY-H1-SOURCE-INVALID",
+                "source.ir.nodes.parentIds",
+                "Meshy H1 skeleton container is missing",
+            )
+        })?;
+        if container.transform.kind != "TRS" || container.transform.matrix.is_some() {
+            return Err(fatal(
+                "M4A-MESHY-H1-SOURCE-INVALID",
+                "source.ir.nodes.transform",
+                "Meshy H1 skeleton containers must use TRS transforms",
+            ));
+        }
+        let translation = container.transform.translation.unwrap_or([0.0; 3]);
+        let rotation = container.transform.rotation.unwrap_or([0.0, 0.0, 0.0, 1.0]);
+        let local_scale = container.transform.scale.unwrap_or([1.0; 3]);
+        if translation.iter().any(|value| value.abs() > 1.0e-5)
+            || rotation[..3].iter().any(|value| value.abs() > 1.0e-5)
+            || (rotation[3] - 1.0).abs() > 1.0e-5
+            || local_scale.iter().any(|value| !value.is_finite())
+            || (local_scale[0] - local_scale[1]).abs() > 1.0e-5
+            || (local_scale[1] - local_scale[2]).abs() > 1.0e-5
+            || local_scale[0] <= 0.0
+        {
+            return Err(fatal(
+                "M4A-MESHY-H1-SOURCE-INVALID",
+                "source.ir.nodes.transform",
+                "Meshy H1 skeleton containers must be positive uniform-scale only",
+            ));
+        }
+        scale *= local_scale[0];
+        if !scale.is_finite() || scale <= 0.0 {
+            return Err(fatal(
+                "M4A-MESHY-H1-SOURCE-INVALID",
+                "source.ir.nodes.transform.scale",
+                "Meshy H1 accumulated container scale must be positive and finite",
+            ));
+        }
+        current = parent;
+    }
+    Ok(scale)
+}
+
+fn meshy_h1_target_local_matrix(
+    source_node: &IrNode,
+    container_scale: f32,
+) -> Result<[f32; 16], ProfileAConversionFatalError> {
+    if source_node.transform.kind != "TRS" || source_node.transform.matrix.is_some() {
+        return Err(fatal(
+            "M4A-MESHY-H1-SOURCE-INVALID",
+            "source.ir.nodes.transform",
+            "Meshy H1 joints must use TRS transforms",
+        ));
+    }
+    let source_scale = source_node.transform.scale.unwrap_or([1.0; 3]);
+    if source_scale
+        .iter()
+        .any(|value| !value.is_finite() || (*value - 1.0).abs() > 1.0e-4)
+    {
+        return Err(fatal(
+            "M4A-MESHY-H1-SOURCE-INVALID",
+            "source.ir.nodes.transform.scale",
+            "Meshy H1 joint rest transforms must have unit scale",
+        ));
+    }
+    let translation = source_node
+        .transform
+        .translation
+        .unwrap_or([0.0; 3])
+        .map(|value| value * container_scale);
+    let local = Mat4::from_trs(
+        translation,
+        source_node
+            .transform
+            .rotation
+            .unwrap_or([0.0, 0.0, 0.0, 1.0]),
+        [1.0; 3],
+    )?;
+    let basis = basis_matrix();
+    Ok(basis.mul(local).mul(basis).0)
 }
 
 fn normalize_profile_zeroes(
@@ -1244,6 +1713,13 @@ fn validate_animation_mapping_v1(
             "mapping provenance policy forbids export",
         ));
     }
+    if !mapping.source_translation_scale.is_finite() || mapping.source_translation_scale <= 0.0 {
+        return Err(animation_fatal(
+            "M4A-MAPPER-BASIS-INVALID",
+            "mapping.sourceTranslationScale",
+            "source translation scale must be positive and finite",
+        ));
+    }
     if source.ir.skins.len() != 1 || source.ir.skins[0].id != mapping.source_skin_id {
         return Err(animation_fatal(
             "M4A-MAPPER-SKIN-INVALID",
@@ -1252,14 +1728,6 @@ fn validate_animation_mapping_v1(
         ));
     }
     let skin = &source.ir.skins[0];
-    let skeleton_root = skin.skeleton_root_node_id.ok_or_else(|| {
-        animation_fatal(
-            "M4A-MAPPER-SKIN-INVALID",
-            "source.ir.skins[0].skeletonRootNodeId",
-            "the selected source skin must declare a skeleton root",
-        )
-    })?;
-
     let mut source_nodes = BTreeMap::<u32, &IrNode>::new();
     for (index, node) in source.ir.nodes.iter().enumerate() {
         if source_nodes.insert(node.id, node).is_some() {
@@ -1277,6 +1745,10 @@ fn validate_animation_mapping_v1(
             ));
         }
     }
+    let skeleton_root = skin
+        .skeleton_root_node_id
+        .map(Ok)
+        .unwrap_or_else(|| infer_skin_root_node_id(skin, &source_nodes))?;
     let mut rig_nodes = BTreeMap::new();
     for (index, node) in rig.nodes.iter().enumerate() {
         if rig_nodes.insert(node.id, node).is_some() {
@@ -1438,7 +1910,8 @@ fn validate_animation_mapping_v1(
                 format!("required source node {node_id} does not exist"),
             )
         })?;
-        if let Some(&parent_id) = node.parent_ids.first()
+        if node_id != skeleton_root
+            && let Some(&parent_id) = node.parent_ids.first()
             && required.insert(parent_id)
         {
             pending.push(parent_id);
@@ -1456,18 +1929,22 @@ fn validate_animation_mapping_v1(
     for (&source_id, &output_id) in &source_to_output {
         let source_node = source_nodes[&source_id];
         let target_node = rig_nodes[&output_id];
-        let expected_parent = source_node
-            .parent_ids
-            .first()
-            .map(|parent| source_to_output.get(parent).copied())
-            .transpose_option()
-            .ok_or_else(|| {
-                animation_fatal(
-                    "M4A-MAPPER-TARGET-MISSING",
-                    "mapping.nodeMappings",
-                    "mapped source ancestor has no explicit output mapping",
-                )
-            })?;
+        let expected_parent = if source_id == skeleton_root {
+            None
+        } else {
+            source_node
+                .parent_ids
+                .first()
+                .map(|parent| source_to_output.get(parent).copied())
+                .transpose_option()
+                .ok_or_else(|| {
+                    animation_fatal(
+                        "M4A-MAPPER-TARGET-MISSING",
+                        "mapping.nodeMappings",
+                        "mapped source ancestor has no explicit output mapping",
+                    )
+                })?
+        };
         if target_node.parent_id != expected_parent {
             return Err(animation_fatal(
                 "M4A-MAPPER-BASIS-INVALID",
@@ -1483,7 +1960,44 @@ fn validate_animation_mapping_v1(
         source_rest,
         target_rest,
         clip_mapping_index_by_source,
+        source_translation_scale: mapping.source_translation_scale,
     })
+}
+
+fn infer_skin_root_node_id(
+    skin: &crate::glb::IrSkin,
+    source_nodes: &BTreeMap<u32, &IrNode>,
+) -> Result<u32, ProfileAAnimationFatalError> {
+    let joints = skin.joint_node_ids.iter().copied().collect::<BTreeSet<_>>();
+    if joints.len() != skin.joint_node_ids.len() || joints.is_empty() {
+        return Err(animation_fatal(
+            "M4A-MAPPER-SKIN-INVALID",
+            "source.ir.skins[0].jointNodeIds",
+            "the selected source skin must declare unique joint nodes",
+        ));
+    }
+    let roots = joints
+        .iter()
+        .copied()
+        .filter(|node_id| {
+            source_nodes
+                .get(node_id)
+                .is_some_and(|node| !node.parent_ids.iter().any(|parent| joints.contains(parent)))
+        })
+        .collect::<Vec<_>>();
+    match roots.as_slice() {
+        [root] => Ok(*root),
+        [] => Err(animation_fatal(
+            "M4A-MAPPER-SKIN-INVALID",
+            "source.ir.skins[0].jointNodeIds",
+            "the selected source skin has no inferable joint root",
+        )),
+        _ => Err(animation_fatal(
+            "M4A-MAPPER-SKIN-INVALID",
+            "source.ir.skins[0].jointNodeIds",
+            "the selected source skin has multiple inferable joint roots",
+        )),
+    }
 }
 
 trait TransposeOption<T> {
@@ -1557,14 +2071,15 @@ fn validate_source_animation_v1(
     let mut seen_tracks = BTreeSet::new();
     for (channel_index, channel) in animation.channels.iter().enumerate() {
         let channel_path = format!("{clip_path}.channels[{channel_index}]");
-        let arity = match channel.target_path.as_str() {
-            "TRANSLATION" | "translation" => 3,
-            "ROTATION" | "rotation" => 4,
+        let (arity, is_scale) = match channel.target_path.as_str() {
+            "TRANSLATION" | "translation" => (3, false),
+            "ROTATION" | "rotation" => (4, false),
+            "SCALE" | "scale" => (3, true),
             _ => {
                 return Err(animation_fatal(
                     "M4A-TRACK-PATH-UNSUPPORTED",
                     &format!("{channel_path}.targetPath"),
-                    "M4A2 v1 supports translation and rotation channels only",
+                    "M4A2 v1 supports translation, rotation and constrained scale channels only",
                 ));
             }
         };
@@ -1583,11 +2098,11 @@ fn validate_source_animation_v1(
                 "animation channel references a missing sampler",
             )
         })?;
-        if sampler.interpolation != "LINEAR" {
+        if sampler.interpolation != "LINEAR" && !(is_scale && sampler.interpolation == "STEP") {
             return Err(animation_fatal(
                 "M4A-INTERPOLATION-UNSUPPORTED",
                 &format!("{channel_path}.interpolation"),
-                "M4A2 v1 supports LINEAR interpolation only",
+                "M4A2 v1 supports LINEAR interpolation, plus identity STEP scale channels",
             ));
         }
         if sampler.input_times_seconds.is_empty()
@@ -1641,6 +2156,32 @@ fn validate_source_animation_v1(
                     [values[0], values[1], values[2], values[3]],
                     &format!("{channel_path}.values[{row}]"),
                 )?;
+            }
+        }
+        if is_scale {
+            let rows = sampler.output_values.chunks_exact(3);
+            if rows.clone().any(|row| {
+                row.iter().any(|value| *value <= 0.0)
+                    || (row[0] - row[1]).abs() > 1.0e-4
+                    || (row[1] - row[2]).abs() > 1.0e-4
+            }) {
+                return Err(animation_fatal(
+                    "M4A-SCALE-UNSUPPORTED",
+                    &format!("{channel_path}.values"),
+                    "Aurora scale controllers require positive uniform source scale",
+                ));
+            }
+            if sampler.interpolation == "STEP"
+                && sampler
+                    .output_values
+                    .chunks_exact(3)
+                    .any(|row| row.iter().any(|value| (*value - 1.0).abs() > 1.0e-4))
+            {
+                return Err(animation_fatal(
+                    "M4A-INTERPOLATION-UNSUPPORTED",
+                    &format!("{channel_path}.interpolation"),
+                    "only identity STEP scale channels may be elided for Aurora",
+                ));
             }
         }
     }
@@ -1798,9 +2339,9 @@ fn emit_animation_set_v1(
                             let mapped = mul3(
                                 correction,
                                 [
-                                    basis_delta[0] * scale,
-                                    basis_delta[1] * scale,
-                                    basis_delta[2] * scale,
+                                    basis_delta[0] * scale * validated.source_translation_scale,
+                                    basis_delta[1] * scale * validated.source_translation_scale,
+                                    basis_delta[2] * scale * validated.source_translation_scale,
                                 ],
                             );
                             let output = [
@@ -1843,6 +2384,18 @@ fn emit_animation_set_v1(
                         })
                         .collect::<Result<Vec<_>, ProfileAAnimationFatalError>>()?;
                     (MdlAnimationTrackPathV1::Rotation, rows)
+                }
+                "scale" => {
+                    let values = sampler
+                        .output_values
+                        .chunks_exact(3)
+                        .map(|row| vec![(row[0] + row[1] + row[2]) / 3.0])
+                        .collect::<Vec<_>>();
+                    let identity = values.iter().all(|row| (row[0] - 1.0).abs() <= 1.0e-4);
+                    if sampler.interpolation == "STEP" || identity {
+                        continue;
+                    }
+                    (MdlAnimationTrackPathV1::Scale, values)
                 }
                 _ => unreachable!("validated M4A2 channel path"),
             };
@@ -2921,7 +3474,7 @@ fn validate_rig(
             let a = segment.surface_positions[triangle[0] as usize];
             let b = segment.surface_positions[triangle[1] as usize];
             let c = segment.surface_positions[triangle[2] as usize];
-            if length_sq(cross(sub3(b, a), sub3(c, a))) <= f32::EPSILON {
+            if length_sq(cross(sub3(b, a), sub3(c, a))) <= 1.0e-10 {
                 return Err(fatal(
                     "M3A-PROFILE-SEGMENT-INVALID",
                     "rig.segments.surfaceIndices",

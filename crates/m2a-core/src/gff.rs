@@ -34,6 +34,8 @@ pub enum GffFileTypeV1 {
     Git,
     #[serde(rename = "GIC ")]
     Gic,
+    #[serde(rename = "FAC ")]
+    Fac,
 }
 
 impl GffFileTypeV1 {
@@ -44,6 +46,7 @@ impl GffFileTypeV1 {
             Self::Are => *b"ARE ",
             Self::Git => *b"GIT ",
             Self::Gic => *b"GIC ",
+            Self::Fac => *b"FAC ",
         }
     }
     fn from_bytes(bytes: &[u8]) -> Option<Self> {
@@ -53,6 +56,7 @@ impl GffFileTypeV1 {
             b"ARE " => Some(Self::Are),
             b"GIT " => Some(Self::Git),
             b"GIC " => Some(Self::Gic),
+            b"FAC " => Some(Self::Fac),
             _ => None,
         }
     }
@@ -985,8 +989,10 @@ fn validate_indices_and_ownership(
     let mut label_references = filled_vec(0u32, labels.len(), "input.labels")?;
     let mut label_last_struct = filled_vec(None::<usize>, labels.len(), "input.labels")?;
     let mut field_owned = filled_vec(false, fields.len(), "input.fields")?;
-    let mut fi_cursor = 0u32;
-    let mut expected_field_index = 0u32;
+    let mut field_index_ranges = Vec::new();
+    field_index_ranges
+        .try_reserve_exact(structs.len())
+        .map_err(|_| alloc("input.fieldIndices"))?;
     for (si, s) in structs.iter().enumerate() {
         if s.count == 0 {
             if s.data != 0 {
@@ -996,12 +1002,6 @@ fn validate_indices_and_ownership(
                 ));
             }
         } else if s.count > 1 {
-            if s.data != fi_cursor {
-                return Err(layout(
-                    format!("input.structs[{si}].data"),
-                    "FieldIndices records are not canonical",
-                ));
-            }
             let bytes_len = mul_u32(s.count, 4, "fieldIndices")?;
             let end = add_u32(s.data, bytes_len, "fieldIndices")?;
             if end > h.fic {
@@ -1011,7 +1011,7 @@ fn validate_indices_and_ownership(
                     "FieldIndices range is out of bounds",
                 ));
             }
-            fi_cursor = end;
+            field_index_ranges.push((s.data, end));
         }
         for position in 0..s.count {
             let u = field_index_at(bytes, h, *s, position)? as usize;
@@ -1022,15 +1022,6 @@ fn validate_indices_and_ownership(
                     "field index is out of bounds",
                 ));
             }
-            if u as u32 != expected_field_index {
-                return Err(layout(
-                    format!("input.structs[{si}].fields[{position}]"),
-                    "FieldArray encounter order must be the exact sequence 0..FieldCount",
-                ));
-            }
-            expected_field_index = expected_field_index
-                .checked_add(1)
-                .ok_or_else(|| layout("input.fields", "field encounter index overflow"))?;
             if field_owned[u] {
                 return Err(layout(
                     format!("input.structs[{si}]"),
@@ -1058,6 +1049,17 @@ fn validate_indices_and_ownership(
                 .checked_add(1)
                 .ok_or_else(|| layout("input.labels", "label reference count overflow"))?;
         }
+    }
+    field_index_ranges.sort_unstable_by_key(|range| range.0);
+    let mut fi_cursor = 0u32;
+    for (start, end) in field_index_ranges {
+        if start != fi_cursor {
+            return Err(layout(
+                "input.fieldIndices",
+                "FieldIndices records overlap or leave gaps",
+            ));
+        }
+        fi_cursor = end;
     }
     if fi_cursor != h.fic || field_owned.iter().any(|v| !*v) || label_references.contains(&0) {
         return Err(layout(

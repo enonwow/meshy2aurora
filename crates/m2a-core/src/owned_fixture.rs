@@ -287,6 +287,7 @@ pub fn synthetic_owned_m6_animation_mapping_v1() -> ProfileAAnimationMappingV1 {
         schema_version: 1,
         source_skin_id: 0,
         provenance: provenance(),
+        source_translation_scale: 1.0,
         node_mappings: vec![
             ProfileAAnimationNodeMappingV1 {
                 source_node_id: 0,

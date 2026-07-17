@@ -791,6 +791,7 @@ pub fn write_package_manifest_v1_json(
 pub struct StudioModelPackageArtifactV1 {
     hak_bytes: Vec<u8>,
     model_bytes: Vec<u8>,
+    proof_module_bytes: Vec<u8>,
     report_json: String,
     manifest_json: String,
     summary_json: String,
@@ -807,6 +808,12 @@ impl StudioModelPackageArtifactV1 {
     #[wasm_bindgen(js_name = takeModelBytes)]
     pub fn take_model_bytes(&mut self) -> Vec<u8> {
         std::mem::take(&mut self.model_bytes)
+    }
+
+    /// Transfers the self-contained generated proof module exactly once.
+    #[wasm_bindgen(js_name = takeProofModuleBytes)]
+    pub fn take_proof_module_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.proof_module_bytes)
     }
 
     #[wasm_bindgen(getter, js_name = reportJson)]
@@ -847,6 +854,35 @@ pub fn build_m6_model_package_v1(
     Ok(StudioModelPackageArtifactV1 {
         hak_bytes: artifact.hak,
         model_bytes: artifact.model,
+        proof_module_bytes: artifact.proof_module,
+        report_json: String::from_utf8(artifact.report_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?,
+        manifest_json: String::from_utf8(artifact.manifest_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?,
+        summary_json: String::from_utf8(artifact.summary_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?,
+        readback_json: serialize_json(&readback),
+    })
+}
+
+/// Executes the constrained real-Meshy H1 Studio route for browser-selected
+/// bytes.  It derives its clean-room rig from the selected GLB and returns the
+/// same one-shot transferable artifact surface as the synthetic M6 proof.
+#[wasm_bindgen(js_name = buildMeshyH1ModelPackageV1)]
+pub fn build_meshy_h1_model_package_v1(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+) -> Result<StudioModelPackageArtifactV1, JsValue> {
+    let artifact =
+        m2a_core::model_pipeline::build_meshy_h1_model_package_v1(source_glb, appearance_two_da)
+            .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+    let readback = m2a_core::inspect_binary_mdl(&artifact.model)
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+
+    Ok(StudioModelPackageArtifactV1 {
+        hak_bytes: artifact.hak,
+        model_bytes: artifact.model,
+        proof_module_bytes: artifact.proof_module,
         report_json: String::from_utf8(artifact.report_json)
             .map_err(|error| JsValue::from_str(&error.to_string()))?,
         manifest_json: String::from_utf8(artifact.manifest_json)

@@ -942,11 +942,12 @@ fn prepare_animation_track(
     let (controller_type, packed_byte, arity) = match track.path {
         MdlAnimationTrackPathV1::Translation => (8, 3, 3),
         MdlAnimationTrackPathV1::Rotation => (20, 4, 4),
-        MdlAnimationTrackPathV1::Scale | MdlAnimationTrackPathV1::Weights => {
+        MdlAnimationTrackPathV1::Scale => (36, 1, 1),
+        MdlAnimationTrackPathV1::Weights => {
             return Err(error(
                 "M4A-TRACK-PATH-UNSUPPORTED",
                 &format!("{path}.path"),
-                "M4A1 supports TRANSLATION and ROTATION only",
+                "M4A1 supports TRANSLATION, ROTATION and uniform SCALE only",
             ));
         }
     };
@@ -2022,10 +2023,13 @@ fn animation_writer_report(
                         .map(|(track_index, track)| {
                             Ok(MdlAnimationTrackLayoutV1 {
                                 target_node_id: plan.rig[node.rig_index].id,
-                                path: if track.controller_type == 8 {
-                                    MdlAnimationTrackPathV1::Translation
-                                } else {
-                                    MdlAnimationTrackPathV1::Rotation
+                                path: match track.controller_type {
+                                    8 => MdlAnimationTrackPathV1::Translation,
+                                    20 => MdlAnimationTrackPathV1::Rotation,
+                                    36 => MdlAnimationTrackPathV1::Scale,
+                                    _ => unreachable!(
+                                        "writer emits only known animation controllers"
+                                    ),
                                 },
                                 controller_type: track.controller_type,
                                 packed_byte: track.packed_byte,
