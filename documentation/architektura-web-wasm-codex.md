@@ -181,6 +181,27 @@ not_a_trigger:
 
 Status: DESIGN DECISION. A later backend must expose a minimal job/API boundary and must not move Aurora parsing logic out of `m2a-core` without a separate decision.
 
+## 7A. Optional Meshy Local Bridge
+
+```yaml
+status: IMPLEMENTED_OPTIONAL_COMPANION
+ui_feature_flag: "VITE_MESHY_LAB=1"
+bridge: "tools/meshy-local-bridge/index.mjs"
+bind: ["127.0.0.1"]
+credential_boundary: "MESHY_API_KEY exists only in the Bridge process environment"
+browser_contract: "paired session token; no API key or signed Meshy URL"
+allowed_routes: ["health", "pair", "balance", "profiles", "runs preview/create/status/cancel", "provenance", "verified artifact"]
+profiles: ["H1 humanoid animated", "N1 quadruped", "S1 static prop"]
+asset_import: "verified Blob/File follows the standard Studio Source selection path"
+worker_wasm: "no Meshy network access"
+real_e2e: "manual only; requires MESHY_REAL_E2E=1, MESHY_API_KEY and MESHY_MAX_CREDITS"
+```
+
+This companion is not an MVP backend: it has no remote listener, account
+database, asset retention, public webhook, or generic HTTP proxy. It preserves
+the D12-D14 local-first boundary while providing an owner-controlled path around
+Meshy browser CORS restrictions.
+
 ## 8. Web-specific gates
 
 ```yaml
