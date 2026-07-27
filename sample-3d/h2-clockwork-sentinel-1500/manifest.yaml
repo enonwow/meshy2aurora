@@ -1,0 +1,11 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: h2-clockwork-sentinel-1500
+provider: meshy
+local_only: true
+qualification: proof-used
+files:
+  - role: source
+    path: source.glb
+    size_bytes: 8234708
+    sha256: f8cf0af21c8143a62b64c490a81dd2855ad3c3f9865922e3854f84b714dec3a3
+provenance_note: owner-selected local Meshy input; payload is not tracked by Git

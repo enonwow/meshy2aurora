@@ -59,7 +59,9 @@ sources:
   - SHA-256:
     `aac32ee6197457653b9b247a8f360230cfa0709cb2b2989d85aa155e1699ece1`;
 - project-owned Meshy H1 animated donor:
-  `test-assets/meshy/incoming/h1-humanoid-1500.glb`;
+  `sample-3d/h1-humanoid-1500/source.glb`;
+  - path amendment 2026-07-27: canonical relocation only; source bytes and
+    SHA-256 used by this evidence did not change;
   - bytes: `7,944,380`;
   - SHA-256:
     `3071664994aec7d71f8a6fb8808587161dab9e09816f1a78b8562380e967485f`.

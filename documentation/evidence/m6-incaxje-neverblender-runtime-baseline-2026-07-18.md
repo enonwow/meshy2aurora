@@ -18,7 +18,7 @@ wlasnym writerem tylko `2DA`, `HAK` i `MOD` dla tego eksperymentu.
 
 | Pole | Fakt |
 | --- | --- |
-| GLB | `test-assets/meshy/incoming/h1-humanoid-1500.glb`, SHA-256 `3071664994aec7d71f8a6fb8808587161dab9e09816f1a78b8562380e967485f` |
+| GLB | `sample-3d/h1-humanoid-1500/source.glb`, SHA-256 `3071664994aec7d71f8a6fb8808587161dab9e09816f1a78b8562380e967485f`; path amended 2026-07-27 after byte-identical canonical relocation |
 | Eksporter | Blender `4.0.2`, NeverBlender `4.1.0`, izolowany profil uzytkownika |
 | Eksport ASCII | `proof-output/incaxje-neverblender-proof/incaxje.ascii.mdl`; SHA-256 `d6060a9a873ad894a35c571974f8cdfbcfb1fa970753f5ee540004bbaba9b507` |
 | Semantyka ASCII | `newmodel incaxje`, `bitmap incaxjet`, jeden `skin`, 1334 wierzcholki, 1556 trojkatow, 24 grupy wag |

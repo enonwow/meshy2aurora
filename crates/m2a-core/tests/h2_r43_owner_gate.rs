@@ -16,7 +16,7 @@ fn exact_candidate() -> m2a_core::animated_donor_candidate::H2R43H1RootLayoutCan
         .and_then(std::path::Path::parent)
         .expect("canonical repository root")
         .to_path_buf();
-    let source = fs::read(repo.join("test-assets/meshy/incoming/h2-clockwork-sentinel-1500.glb"))
+    let source = fs::read(repo.join("sample-3d/h2-clockwork-sentinel-1500/source.glb"))
         .expect("exact generated Meshy H2 source");
     let appearance = fs::read(repo.join("local-reference-assets/appearance.2da"))
         .expect("exact full runtime appearance table");

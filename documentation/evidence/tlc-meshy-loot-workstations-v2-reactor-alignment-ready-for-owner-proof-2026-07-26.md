@@ -119,7 +119,7 @@ Maszynowy handoff:
 
 ## Dowód viewportu offline
 
-![Reaktor V2 — misa pod kotłem i strumień skierowany do wnętrza](../../output/playwright/reactor-v2-centered-basin-lava-aligned-clean.png)
+![Reaktor V2 — misa pod kotłem i strumień skierowany do wnętrza](reactor-v2-centered-basin-lava-aligned-clean.png)
 
 Screenshot SHA-256:
 `ee73d54dd99d53a6928a3515fac24def12830f7202021dcafd870d34e8adf852`.

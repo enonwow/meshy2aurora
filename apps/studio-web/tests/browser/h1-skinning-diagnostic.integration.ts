@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import h2Url from "../../../../test-assets/meshy/incoming/h2-clockwork-sentinel-1500.glb?url";
+import h2Url from "../../../../sample-3d/h2-clockwork-sentinel-1500/source.glb?url";
 import appearanceUrl from "../../../../local-reference-assets/appearance.2da?url";
 import { AuroraReadbackViewport, buildAuroraReadbackAsset } from "../../src/features/preview/AuroraReadbackViewport";
 import { projectCanonicalReadback } from "../../src/features/results/projectReadback";

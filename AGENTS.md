@@ -29,6 +29,36 @@ All durable project documentation belongs in
 `documentation/PROJECT_RULES.md` and
 `documentation/CANONICAL_WORKSPACE.md` before changing the project.
 
+## Canonical Meshy asset layout — HARD STOP
+
+The only canonical project root for owner-selected Meshy source models is:
+
+`C:\Projects\meshy2aurora\sample-3d\<asset-id>\`
+
+Every local sample directory must contain `manifest.yaml`. Model payloads such
+as GLB remain local and Git-ignored, but their filenames, sizes, SHA-256 hashes,
+roles and provenance are recorded in the tracked manifest. Product code and
+tests must reference models through `sample-3d`; creating or restoring a
+competing source root such as `test-assets\meshy` is forbidden.
+
+`proof-output` is reserved for immutable proof lineages and `artifacts` for
+generated deliverables. Neither is a source-model library, and their payloads
+must not be silently promoted, duplicated or substituted for a `sample-3d`
+source. After a canonical relocation, documentation may normalize a source
+path only with a dated amendment confirming byte-identical SHA-256 identity;
+the original immutable proof packet remains authoritative for historical
+capture-time paths.
+
+Before adding, moving or reconnecting a Meshy source model, read
+`documentation/MESHY_ASSET_LAYOUT.md` and run:
+
+`powershell -NoProfile -ExecutionPolicy Bypass -File assert-meshy-asset-layout.ps1`
+
+Any second active asset-root policy, sample without a manifest, undeclared
+payload, hash mismatch or product-code reference to `test-assets\meshy` is a
+layout failure. Stop and repair the canonical structure instead of adding
+another exception or storage location.
+
 Aurora, NWN, Toolset, game installations, user configuration and
 `nwtoolset.ini` remain read-only except for the mandatory, narrowly scoped
 installation of exact proof MOD/HAK artifacts authorized below, or unless the

@@ -20,7 +20,7 @@ Status: `ready_for_owner_proof`
 - [x] Cały reaktor otrzymał wspólną skalę `2,5`, co daje wysokość fizyczną
       dokładnie `1,50 m` bez zmiany wzajemnego układu korpusu i lawy.
 
-![Reaktor V3 — pionowa lawa wpada do misy pomiędzy nogami](../../output/playwright/reactor-v3-owner-layout-clean.png)
+![Reaktor V3 — pionowa lawa wpada do misy pomiędzy nogami](reactor-v3-owner-layout-clean.png)
 
 Podgląd jest kontrolą authoringu Three.js. Nie jest dowodem renderera Aurora ani
 NWN.

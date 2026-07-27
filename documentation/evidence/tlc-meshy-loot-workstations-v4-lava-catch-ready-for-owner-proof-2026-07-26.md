@@ -22,7 +22,7 @@ Status: `ready_for_owner_proof`
       wynosi `0.375153`, przy limicie `0.600000`.
 - [x] Stary układ V3 daje `0.872884` i jest przez nowy kontrakt odrzucany.
 
-![Reaktor V4 — pionowy strumień kończy się na tafli dolnej misy](../../output/playwright/reactor-v4-basin-16-z014-s150.png)
+![Reaktor V4 — pionowy strumień kończy się na tafli dolnej misy](reactor-v4-basin-16-z014-s150.png)
 
 SHA-256 obrazu viewportu:
 `c86eadea4bb1e80ad657eb752a686445444e39b6a30b6bdd972cd94cf7aa9c87`.

@@ -544,7 +544,7 @@ rozgałęzia serializację na granicy formatu:
 
 Input:
 
-`test-assets/meshy/incoming/s1-placeable-ritual-pedestal-1500.glb`
+`sample-3d/s1-placeable-ritual-pedestal-1500/source.glb`
 
 Evidence:
 

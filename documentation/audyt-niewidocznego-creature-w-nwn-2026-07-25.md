@@ -1310,7 +1310,7 @@ Wejściem pozostaje dokładny owned H2 z jednym klipem
     deformację ważonych vertexów.
 
 Test na dokładnym pliku
-`test-assets/meshy/incoming/h2-clockwork-sentinel-1500.glb` przechodzi:
+`sample-3d/h2-clockwork-sentinel-1500/source.glb` przechodzi:
 
 - 42/42 nazw;
 - wszystkie stany typu 5;

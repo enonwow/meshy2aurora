@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import sourceUrl from "../.generated/owned-package/generated/source.glb?url";
 import fullNative42SourceUrl from "../.generated/owned-full42-package/generated/source.glb?url";
-import proceduralHumanoidSourceUrl from "../../../../test-assets/meshy/incoming/h2-clockwork-sentinel-1500.glb?url";
+import proceduralHumanoidSourceUrl from "../../../../sample-3d/h2-clockwork-sentinel-1500/source.glb?url";
 import appearanceUrl from "../fixtures/appearance.2da?url";
 import placeablesUrl from "../fixtures/placeables.2da?url";
 import { buildM7PayloadEnvelope } from "../../src/features/m7/envelope";

@@ -2,6 +2,7 @@
 .codex-tmp/
 **/.playwright-cli/
 /tmp/
+/output/
 **/pkg/
 node_modules/
 dist/
@@ -9,8 +10,24 @@ dist/
 apps/studio-web/tests/.generated/
 apps/studio-web/tests/browser/__screenshots__/
 apps/studio-web/.vitest-attachments/
+coverage/
+playwright-report/
+test-results/
 *.tmp
 *.log
+
+# Local credentials and environment.
+.env
+.env.*
+!.env.example
+*.pem
+*.keytab
+*.pfx
+
+# Operating-system metadata.
+.DS_Store
+Thumbs.db
+Desktop.ini
 
 # Local proof payloads are generated or selected at runtime and are never fixtures.
 /proof-output/
@@ -18,8 +35,8 @@ apps/studio-web/.vitest-attachments/
 *.hak
 *.mod
 
-# Owner-selected Meshy proof assets are local runtime inputs, never repository fixtures.
-/test-assets/meshy/incoming/*
-!/test-assets/meshy/incoming/.gitkeep
-/test-assets/meshy/active/*
-!/test-assets/meshy/active/.gitkeep
+# Owner-selected Meshy source payloads are local; tracked manifests live beside them.
+/sample-3d/**/*.glb
+/sample-3d/**/*.gltf
+/sample-3d/**/*.fbx
+/sample-3d/**/*.zip

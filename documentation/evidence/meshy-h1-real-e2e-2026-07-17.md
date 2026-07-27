@@ -6,8 +6,10 @@ Status: `OPEN / BUILD BLOCKED`.
 
 Przeprowadzono lokalny, przegladarkowy workflow Studio dla rzeczywistych wejsc:
 
-- GLB: `test-assets/meshy/incoming/h1-humanoid-1500.glb` (lokalny, ignorowany
+- GLB: `sample-3d/h1-humanoid-1500/source.glb` (lokalny, ignorowany
   przez Git), SHA-256 `3071664994aec7d71f8a6fb8808587161dab9e09816f1a78b8562380e967485f`;
+- aktualizacja sciezki 2026-07-27: wylacznie kanoniczne przeniesienie; bajty
+  wejscia i SHA-256 tego proofu nie zmienily sie;
 - wybrana przez wlasciciela tabela `local-reference-assets/appearance.2da`
   (lokalna, ignorowana przez Git), SHA-256
   `815c0b3bce0895e9f17d4b92cb02a6d34366267b5a4b9081dece0f4eee7d7a1a`.

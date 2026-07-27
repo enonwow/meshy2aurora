@@ -1,0 +1,19 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: tlc-sewer-ward-p20k-v1
+provider: meshy
+local_only: true
+qualification: active
+files:
+  - role: source
+    path: source.glb
+    size_bytes: 10762780
+    sha256: b8d6759fc0d2a3863a40c480c6f07db91a5c80446534ce6857a5dcc49015dcb9
+  - role: qualified
+    path: qualified.glb
+    size_bytes: 11747684
+    sha256: 6e304b43a16e820e0febc06f7902d81618871463f95eab5d5f60fe6a126ec88f
+  - role: final
+    path: final.glb
+    size_bytes: 11682532
+    sha256: 4192345b22327997708bad441fc70ce35be8db45331aa01dd928eeb432cc28c1
+provenance_note: owner-selected local Meshy source and qualified variants; payloads are not tracked by Git

@@ -21,7 +21,9 @@ This admitted one new iteration.
 H2 is a newly generated Meshy humanoid, not an M0 reskin:
 
 - source:
-  `test-assets/meshy/incoming/h2-clockwork-sentinel-1500.glb`;
+  `sample-3d/h2-clockwork-sentinel-1500/source.glb`;
+- path amendment 2026-07-27: canonical relocation only; source bytes and
+  SHA-256 used by this evidence did not change;
 - visual identity: turquoise enamel and burnished copper clockwork sentinel
   with an amber chest core;
 - SHA-256:

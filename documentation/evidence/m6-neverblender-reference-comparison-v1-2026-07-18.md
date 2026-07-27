@@ -16,8 +16,10 @@ separate a loss of source geometry/weights from a binary `skin`-layout issue.
 
 Input GLB:
 
-- path: `test-assets/meshy/incoming/h1-humanoid-1500.glb`;
+- path: `sample-3d/h1-humanoid-1500/source.glb`;
 - SHA-256: `3071664994aec7d71f8a6fb8808587161dab9e09816f1a78b8562380e967485f`.
+- path amendment 2026-07-27: canonical relocation only; input bytes did not
+  change.
 
 ## Reference environment and provenance
 

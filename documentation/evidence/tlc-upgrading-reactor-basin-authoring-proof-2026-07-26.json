@@ -59,22 +59,22 @@
   },
   "evidence": [
     {
-      "path": "output/playwright/reactor-basin-before.png",
+      "path": "documentation/evidence/reactor-basin-before.png",
       "sha256": "23e53788d1dae493ae26d7d329582ee37ac48d68ca8388141ebff9c0c53ff0d3",
       "meaning": "Original edited-view viewport before component splitting or movement."
     },
     {
-      "path": "output/playwright/reactor-basin-isolated-before-move.png",
+      "path": "documentation/evidence/reactor-basin-isolated-before-move.png",
       "sha256": "7b649451ccbdfef6d32cd2785afe642053887810da0d59350ace3322b2763d48",
       "meaning": "The sixteen selected components isolated as the lower basin assembly."
     },
     {
-      "path": "output/playwright/reactor-basin-after-z-plus-010.png",
+      "path": "documentation/evidence/reactor-basin-after-z-plus-010.png",
       "sha256": "b386e316f29421058d5af0a61d356a2e5b1dd15f3fb7477854e481c5d5a97e82",
       "meaning": "Edited viewport after the basin group receives Z = +0.10 m."
     },
     {
-      "path": "output/playwright/reactor-basin-after-with-transform-ui.png",
+      "path": "documentation/evidence/reactor-basin-after-with-transform-ui.png",
       "sha256": "69c48dbc9bbc7645bf5e9cc8a08c17bcb730da2ec5a46a1095911dab2610b0ea",
       "meaning": "Application viewport plus Transform panel readback showing Group Location Z = 0.1."
     }

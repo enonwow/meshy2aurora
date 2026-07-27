@@ -44,6 +44,32 @@ Nie wolno oznaczac problemu jako rozwiazanego samym udanym buildem, odczytem
 Toolsetu albo niezweryfikowana hipoteza. Gdy problem dotyczy runtime NWN,
 wynik musi wyraznie rozroznic proof Toolsetu od proofu w grze.
 
+### 1.2 Kanoniczny uklad modeli Meshy
+
+Jedynym katalogiem zrodlowym lokalnych modeli wybranych przez wlasciciela jest:
+
+`C:\Projects\meshy2aurora\sample-3d\<asset-id>\`
+
+Kazda probka ma sledzony `manifest.yaml` z provenance, rolami plikow,
+rozmiarami i SHA-256. Binarne payloady sa lokalne i ignorowane przez Git.
+`test-assets\meshy` jest wycofanym, zabronionym drugim rootem i nie moze byc
+odtwarzany ani wskazywany przez kod lub testy.
+
+`proof-output` przechowuje zamrozone lineage proof, a `artifacts` wygenerowane
+wyniki. Nie sa biblioteka zrodel i nie wolno nimi po cichu zastepowac
+`sample-3d`. Po kanonicznym przeniesieniu dokumentacja moze znormalizowac
+sciezke zrodla tylko z datowanym amendmentem potwierdzajacym byte-identical
+SHA-256. Oryginalny immutable packet proof pozostaje autorytatywny dla sciezki
+obowiazujacej w chwili capture.
+
+Przed zmiana ukladu trzeba przeczytac `MESHY_ASSET_LAYOUT.md` i uruchomic:
+
+`powershell -NoProfile -ExecutionPolicy Bypass -File assert-meshy-asset-layout.ps1`
+
+Gate ma pozostac zielony. Nowy konkurencyjny katalog, brak manifestu,
+niezadeklarowany payload albo hash niezgodny z manifestem jest bledem struktury,
+nie powodem do dodania wyjatku.
+
 ## 2. Aurora First
 
 ZASADA NAJWAZNIEJSZA DLA IMPLEMENTACJI: AURORA FIRST.

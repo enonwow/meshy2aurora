@@ -142,7 +142,7 @@
     }
   },
   "offlineViewportEvidence": {
-    "path": "output/playwright/reactor-v3-owner-layout-clean.png",
+    "path": "documentation/evidence/reactor-v3-owner-layout-clean.png",
     "sha256": "f56cf1b34bcf36746bfc6ca3ce42c94f9eda4ec7e3c63424eba11ba695eb4d10",
     "scope": "Three.js design/readability evidence only; not Aurora Toolset or NWN proof"
   },

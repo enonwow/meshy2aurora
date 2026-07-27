@@ -1,0 +1,19 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: tlc-aether-lamp-p20k-v1
+provider: meshy
+local_only: true
+qualification: active
+files:
+  - role: source
+    path: source.glb
+    size_bytes: 11768132
+    sha256: fcd1189007a2f88bfa95d3a8c4aff697f342c04d7d2bbf1b3d2157fe6356621e
+  - role: qualified
+    path: qualified.glb
+    size_bytes: 12764396
+    sha256: b896cbdfc14032b728a57cd5f466e20a6349c91b5ff1556f210d906f988e5120
+  - role: final
+    path: final.glb
+    size_bytes: 12722972
+    sha256: 310a6597f92bfcd391f44d293585417fa53abe3f1a576d93a7e0dc2c586b1ac7
+provenance_note: owner-selected local Meshy source and qualified variants; payloads are not tracked by Git

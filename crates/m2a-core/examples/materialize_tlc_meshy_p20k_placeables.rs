@@ -1083,7 +1083,7 @@ fn asset_specs(candidate: CandidateProfile) -> [AssetSpec; 3] {
     let mut specs = [
         AssetSpec {
             style_name: "Civic Reliquary",
-            source_path: r"C:\Projects\meshy2aurora\test-assets\meshy\active\tlc-p20k-v1\final\tlc-civic-reliquary-20000.glb",
+            source_path: r"C:\Projects\meshy2aurora\sample-3d\tlc-civic-reliquary-p20k-v1\final.glb",
             source_sha256: "865fe8eaab2e2996354faf19491b7ccf341a3239a30762c78cadad3b3a0dc994",
             source_triangles: 21_550,
             meshy_task_kind: "text-to-3d",
@@ -1105,7 +1105,7 @@ fn asset_specs(candidate: CandidateProfile) -> [AssetSpec; 3] {
         },
         AssetSpec {
             style_name: "Aether Street Lamp",
-            source_path: r"C:\Projects\meshy2aurora\test-assets\meshy\active\tlc-p20k-v1\final\tlc-aether-lamp-20000.glb",
+            source_path: r"C:\Projects\meshy2aurora\sample-3d\tlc-aether-lamp-p20k-v1\final.glb",
             source_sha256: "310a6597f92bfcd391f44d293585417fa53abe3f1a576d93a7e0dc2c586b1ac7",
             source_triangles: 21_456,
             meshy_task_kind: "text-to-3d",
@@ -1127,7 +1127,7 @@ fn asset_specs(candidate: CandidateProfile) -> [AssetSpec; 3] {
         },
         AssetSpec {
             style_name: "Sewer Ward Barricade",
-            source_path: r"C:\Projects\meshy2aurora\test-assets\meshy\active\tlc-p20k-v1\final\tlc-sewer-ward-20000.glb",
+            source_path: r"C:\Projects\meshy2aurora\sample-3d\tlc-sewer-ward-p20k-v1\final.glb",
             source_sha256: "4192345b22327997708bad441fc70ce35be8db45331aa01dd928eeb432cc28c1",
             source_triangles: 22_037,
             meshy_task_kind: "text-to-3d",

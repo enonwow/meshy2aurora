@@ -9,7 +9,9 @@ task.
 
 ## Fixture and setup
 
-- GLB fixture: `test-assets/meshy/incoming/s1-static-prop-1500.glb`.
+- GLB fixture: `sample-3d/s1-static-prop-1500/source.glb`.
+- Path amendment 2026-07-27: canonical relocation only; fixture bytes and
+  SHA-256 used by this proof did not change.
 - Synthetic loopback Bridge: `tools/meshy-local-bridge/visual-proof-server.mjs
   --visual-proof`.
 - The synthetic record is a completed `text-to-3d-refine` task with one

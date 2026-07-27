@@ -235,7 +235,7 @@ fn procedural_humanoid_profile_authors_a_distinct_owned_42_state_set_from_h2_idl
         .and_then(std::path::Path::parent)
         .expect("canonical repository root")
         .to_path_buf();
-    let h2 = fs::read(repo.join("test-assets/meshy/incoming/h2-clockwork-sentinel-1500.glb"))
+    let h2 = fs::read(repo.join("sample-3d/h2-clockwork-sentinel-1500/source.glb"))
         .expect("owned H2 humanoid source");
 
     let identity = ProceduralCreaturePackageIdentityV1 {

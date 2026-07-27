@@ -1,0 +1,11 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: s1-placeable-ritual-pedestal-1500
+provider: meshy
+local_only: true
+qualification: proof-used
+files:
+  - role: source
+    path: source.glb
+    size_bytes: 10011256
+    sha256: dad22a5c3490242458cb7a81e50c53e265abf75886f57f6bd8a770938c2f7372
+provenance_note: owner-selected local Meshy input; payload is not tracked by Git

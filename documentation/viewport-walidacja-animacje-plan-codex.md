@@ -398,9 +398,10 @@ viewport_architecture:
 ```json
 {
   "asset": {
-    "resref": "m2a_koc01",
+    "assetId": "<asset-id>",
+    "resref": "<aurora-resref>",
     "type": "creature",
-    "source": "sample-3d/m2a_koc01/source.glb"
+    "source": "sample-3d/<asset-id>/source.glb"
   },
   "geometry": {
     "nodes": 12,

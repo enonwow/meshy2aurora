@@ -5,7 +5,7 @@ if (!process.argv.includes("--visual-proof")) {
   throw new Error("Pass --visual-proof to run the synthetic local visual-proof Bridge.");
 }
 
-const glb = await readFile(new URL("../../test-assets/meshy/incoming/s1-static-prop-1500.glb", import.meta.url));
+const glb = await readFile(new URL("../../sample-3d/s1-static-prop-1500/source.glb", import.meta.url));
 const thumbnail = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"));
 const task = {
   id: "proof-refine-task", type: "text-to-3d-refine", status: "SUCCEEDED", prompt: "Verified stone lantern proof asset",

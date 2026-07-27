@@ -10,7 +10,9 @@ animates in Aurora Toolset or NWN EE.
 
 ## Input and route
 
-- local ignored input: `test-assets/meshy/incoming/h1-humanoid-1500.glb`;
+- local ignored input: `sample-3d/h1-humanoid-1500/source.glb`;
+- path amendment 2026-07-27: canonical relocation only; input bytes and
+  SHA-256 used by this proof did not change;
 - local ignored appearance table: `local-reference-assets/appearance.2da`;
 - route: local file -> Studio Worker/WASM -> own binary MDL writer -> own
   binary readback -> Three preview built only from that readback;
@@ -95,7 +97,7 @@ The reproducible CLI route is now available:
 
 ```text
 cargo run -p m2a-core --example materialize_m6 -- \
-  --meshy-h1-source test-assets/meshy/incoming/h1-humanoid-1500.glb \
+  --meshy-h1-source sample-3d/h1-humanoid-1500/source.glb \
   --appearance-2da local-reference-assets/appearance.2da \
   --output-dir <new-empty-output-dir>
 ```

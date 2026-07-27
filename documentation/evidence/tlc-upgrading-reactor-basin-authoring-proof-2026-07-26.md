@@ -60,10 +60,10 @@ Po przesunięciu grupy o `+0.10 m`:
 
 ## Materiał dowodowy
 
-- [Widok przed przesunięciem](../../output/playwright/reactor-basin-before.png)
-- [Odizolowana dolna misa](../../output/playwright/reactor-basin-isolated-before-move.png)
-- [Widok po przesunięciu Z +0,10 m](../../output/playwright/reactor-basin-after-z-plus-010.png)
-- [Odczyt UI: grupa i Location Z = 0,1](../../output/playwright/reactor-basin-after-with-transform-ui.png)
+- [Widok przed przesunięciem](reactor-basin-before.png)
+- [Odizolowana dolna misa](reactor-basin-isolated-before-move.png)
+- [Widok po przesunięciu Z +0,10 m](reactor-basin-after-z-plus-010.png)
+- [Odczyt UI: grupa i Location Z = 0,1](reactor-basin-after-with-transform-ui.png)
 - [Manifest dowodu](tlc-upgrading-reactor-basin-authoring-proof-2026-07-26.json)
 
 Hashe plików dowodowych znajdują się w manifeście JSON.

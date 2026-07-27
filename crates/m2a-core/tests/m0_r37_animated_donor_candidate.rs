@@ -29,8 +29,8 @@ fn exact_m0_r37_direct_root_skinmesh_candidate_is_deterministic_and_runtime_comp
         repo.join("proof-output/m0-r30-retail-runtime-conformance-20260721/generated/source.glb"),
     )
     .expect("exact M0 source");
-    let donor = fs::read(repo.join("test-assets/meshy/incoming/h1-humanoid-1500.glb"))
-        .expect("exact H1 donor");
+    let donor =
+        fs::read(repo.join("sample-3d/h1-humanoid-1500/source.glb")).expect("exact H1 donor");
     let appearance =
         fs::read(repo.join("local-reference-assets/appearance.2da")).expect("exact appearance");
 

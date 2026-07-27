@@ -1,0 +1,19 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: tlc-civic-reliquary-p20k-v1
+provider: meshy
+local_only: true
+qualification: active
+files:
+  - role: source
+    path: source.glb
+    size_bytes: 10365724
+    sha256: c940eda0b0b56c349b95edbb6c76fd6a9d7770afe87dceab9860d4e6852b8da4
+  - role: qualified
+    path: qualified.glb
+    size_bytes: 11351044
+    sha256: 25b5477b21b2e2d14779ba9f3b97bec49e6a54732fda370503520b9541f2d3ff
+  - role: final
+    path: final.glb
+    size_bytes: 11308892
+    sha256: 865fe8eaab2e2996354faf19491b7ccf341a3239a30762c78cadad3b3a0dc994
+provenance_note: owner-selected local Meshy source and qualified variants; payloads are not tracked by Git

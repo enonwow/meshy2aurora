@@ -1,0 +1,11 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: s1-static-prop-1500
+provider: meshy
+local_only: true
+qualification: proof-used
+files:
+  - role: source
+    path: source.glb
+    size_bytes: 6720596
+    sha256: e476bfa426701bb73f75b7555bd6576a7923064ecab0f7e7afae277f373ca191
+provenance_note: owner-selected local Meshy input; payload is not tracked by Git

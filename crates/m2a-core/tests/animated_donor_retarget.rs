@@ -702,7 +702,7 @@ fn exact_m0_retargets_to_the_real_h1_animated_donor_with_rig_only_states_for_r34
         repo.join("proof-output/m0-r30-retail-runtime-conformance-20260721/generated/source.glb"),
     )
     .expect("exact M0 source GLB");
-    let donor = std::fs::read(repo.join("test-assets/meshy/incoming/h1-humanoid-1500.glb"))
+    let donor = std::fs::read(repo.join("sample-3d/h1-humanoid-1500/source.glb"))
         .expect("exact Meshy H1 donor GLB");
     let options = MdlWriterOptionsV1 {
         schema_version: 1,
@@ -784,7 +784,7 @@ fn exact_r34_to_native_zero_terminated_skin_changes_only_the_unused_inline_palet
         repo.join("proof-output/m0-r30-retail-runtime-conformance-20260721/generated/source.glb"),
     )
     .expect("exact M0 source GLB");
-    let donor = std::fs::read(repo.join("test-assets/meshy/incoming/h1-humanoid-1500.glb"))
+    let donor = std::fs::read(repo.join("sample-3d/h1-humanoid-1500/source.glb"))
         .expect("exact Meshy H1 donor GLB");
     let mut legacy_options = MdlWriterOptionsV1 {
         schema_version: 1,
@@ -878,7 +878,7 @@ fn exact_m0_h1_v2_adds_only_a_dedicated_unweighted_aurora_root() {
         repo.join("proof-output/m0-r30-retail-runtime-conformance-20260721/generated/source.glb"),
     )
     .expect("exact M0 source GLB");
-    let donor = std::fs::read(repo.join("test-assets/meshy/incoming/h1-humanoid-1500.glb"))
+    let donor = std::fs::read(repo.join("sample-3d/h1-humanoid-1500/source.glb"))
         .expect("exact Meshy H1 donor GLB");
     let options = MdlWriterOptionsV1 {
         schema_version: 1,
@@ -1015,7 +1015,7 @@ fn exact_m0_h1_v3_reparents_skin_without_moving_bind_pose_world_geometry() {
         repo.join("proof-output/m0-r30-retail-runtime-conformance-20260721/generated/source.glb"),
     )
     .expect("exact M0 source GLB");
-    let donor = std::fs::read(repo.join("test-assets/meshy/incoming/h1-humanoid-1500.glb"))
+    let donor = std::fs::read(repo.join("sample-3d/h1-humanoid-1500/source.glb"))
         .expect("exact Meshy H1 donor GLB");
     let options = MdlWriterOptionsV1 {
         schema_version: 1,
@@ -1136,7 +1136,7 @@ fn exact_m0_h1_v4_removes_only_the_unrepresentable_root_scale_controllers() {
         repo.join("proof-output/m0-r30-retail-runtime-conformance-20260721/generated/source.glb"),
     )
     .expect("exact M0 source GLB");
-    let donor = std::fs::read(repo.join("test-assets/meshy/incoming/h1-humanoid-1500.glb"))
+    let donor = std::fs::read(repo.join("sample-3d/h1-humanoid-1500/source.glb"))
         .expect("exact Meshy H1 donor GLB");
     let options = MdlWriterOptionsV1 {
         schema_version: 1,
@@ -1247,7 +1247,7 @@ fn exact_m0_h1_v5_preserves_the_surface_as_animated_rigid_triangle_groups() {
         repo.join("proof-output/m0-r30-retail-runtime-conformance-20260721/generated/source.glb"),
     )
     .expect("exact M0 source GLB");
-    let donor = std::fs::read(repo.join("test-assets/meshy/incoming/h1-humanoid-1500.glb"))
+    let donor = std::fs::read(repo.join("sample-3d/h1-humanoid-1500/source.glb"))
         .expect("exact Meshy H1 donor GLB");
     let options = MdlWriterOptionsV1 {
         schema_version: 1,
@@ -1372,7 +1372,7 @@ fn exact_m0_h1_controllerless_root_profile_changes_only_the_base_root_controller
         repo.join("proof-output/m0-r30-retail-runtime-conformance-20260721/generated/source.glb"),
     )
     .expect("exact M0 source GLB");
-    let donor = std::fs::read(repo.join("test-assets/meshy/incoming/h1-humanoid-1500.glb"))
+    let donor = std::fs::read(repo.join("sample-3d/h1-humanoid-1500/source.glb"))
         .expect("exact Meshy H1 donor GLB");
     let mut legacy_options = MdlWriterOptionsV1 {
         schema_version: 1,

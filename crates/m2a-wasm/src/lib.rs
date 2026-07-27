@@ -1859,7 +1859,7 @@ mod m7_native_tests {
     }"#;
     const EMPTY_DESCRIPTORS: &str = r#"{"schemaVersion":1,"payloads":[]}"#;
     const READY_BATCH_JSON_SHA256: &str =
-        "6abb4c15a165a3ca2d492bdc108b3cc101c52e54026be3466ebe864bcd7d49f3";
+        "e5c2535ad0221f09e97fa4de468b21f8c82fefd8c563ce2bb15d7f5109536cc2";
     const APPEARANCE: &[u8] =
         include_bytes!("../../../apps/studio-web/tests/fixtures/appearance.2da");
 
@@ -2340,6 +2340,8 @@ mod m5_native_tests {
     use m2a_core::two_da::{
         TwoDaAppendRequestV1, TwoDaCellAssignmentV1, TwoDaCellValueV1, TwoDaLimitsV1,
     };
+
+    const DIRECT_CREATURE_APPEARANCE: &[u8] = b"2DA V2.0\r\n\r\nLABEL MOVERATE MODELTYPE RACE PORTRAIT ENVMAP DefaultPhenoType BLOODCOLR WEAPONSCALE SIZECATEGORY STRING_REF NAME WING_TAIL_SCALE HELMET_SCALE_M HELMET_SCALE_F WALKDIST RUNDIST PERSPACE CREPERSPACE HEIGHT HITDIST PREFATCKDIST TARGETHEIGHT ABORTONPARRY RACIALTYPE HASLEGS HASARMS PERCEPTIONDIST FOOTSTEPTYPE SOUNDAPPTYPE HEADTRACK HEAD_ARC_H HEAD_ARC_V HEAD_NAME BODY_BAG TARGETABLE\r\n0 Existing NORM S c_horror po_Horror **** 0 G **** 4 **** Hook_Horror 1 1 1 2.33 3.5 0.6 1 1 0.4 2.1 H 1 1 1 1 9 4 6 1 60 30 head 0 1\r\n";
 
     fn tga_image() -> TgaImageV1 {
         TgaImageV1 {
@@ -2895,7 +2897,7 @@ mod m5_native_tests {
     #[test]
     fn studio_model_package_adapter_is_exact_core_and_transfers_each_binary_once() {
         let source = m2a_core::owned_fixture::synthetic_owned_m6_glb_v1().unwrap();
-        let appearance = b"2DA V2.0\r\n\r\nLABEL MOVERATE MODELTYPE RACE PORTRAIT ENVMAP DefaultPhenoType BLOODCOLR WEAPONSCALE SIZECATEGORY\r\n0 Existing NORM P existing **** **** 0 R 1.0 4\r\n";
+        let appearance = DIRECT_CREATURE_APPEARANCE;
         let core =
             m2a_core::model_pipeline::build_m6_model_package_v1(&source, appearance).unwrap();
         let mut studio = build_m6_model_package_v1(&source, appearance).unwrap();
@@ -2925,7 +2927,7 @@ mod m5_native_tests {
     #[test]
     fn studio_full_native_h1_v2_is_exact_core_and_fails_closed_without_42_source_clips() {
         let source = full_native_42_owned_glb();
-        let appearance = b"2DA V2.0\r\n\r\nLABEL MOVERATE MODELTYPE RACE PORTRAIT ENVMAP DefaultPhenoType BLOODCOLR WEAPONSCALE SIZECATEGORY\r\n0 Existing NORM P existing **** **** 0 R 1.0 4\r\n";
+        let appearance = DIRECT_CREATURE_APPEARANCE;
         let core = m2a_core::model_pipeline::build_meshy_h1_model_package_v2(
             &source,
             appearance,
@@ -2954,10 +2956,10 @@ mod m5_native_tests {
     fn studio_h2_procedural_lane_materializes_the_owned_single_idle_source_as_full_42() {
         let source = std::fs::read(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../test-assets/meshy/incoming/h2-clockwork-sentinel-1500.glb"),
+                .join("../../sample-3d/h2-clockwork-sentinel-1500/source.glb"),
         )
         .expect("owned H2 GLB");
-        let appearance = b"2DA V2.0\r\n\r\nLABEL MOVERATE MODELTYPE RACE PORTRAIT ENVMAP DefaultPhenoType BLOODCOLR WEAPONSCALE SIZECATEGORY\r\n0 Existing NORM P existing **** **** 0 R 1.0 4\r\n";
+        let appearance = DIRECT_CREATURE_APPEARANCE;
         let core = m2a_core::model_pipeline::build_meshy_h1_model_package_v2(
             &source,
             appearance,
@@ -2991,7 +2993,7 @@ mod m5_native_tests {
     #[test]
     fn studio_full_native_h1_v3_is_exact_core_and_rejects_invalid_or_incomplete_events() {
         let source = full_native_42_owned_glb();
-        let appearance = b"2DA V2.0\r\n\r\nLABEL MOVERATE MODELTYPE RACE PORTRAIT ENVMAP DefaultPhenoType BLOODCOLR WEAPONSCALE SIZECATEGORY\r\n0 Existing NORM P existing **** **** 0 R 1.0 4\r\n";
+        let appearance = DIRECT_CREATURE_APPEARANCE;
         let event_authoring = common_native_event_authoring();
         let event_authoring_json =
             serde_json::to_string(&event_authoring).expect("event authoring JSON");

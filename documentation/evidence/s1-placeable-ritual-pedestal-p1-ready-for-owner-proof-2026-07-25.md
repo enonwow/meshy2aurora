@@ -38,8 +38,11 @@ Machine-readable handoff:
 
 | Input | Bytes | SHA-256 |
 |---|---:|---|
-| `test-assets/meshy/incoming/s1-placeable-ritual-pedestal-1500.glb` | 10011256 | `dad22a5c3490242458cb7a81e50c53e265abf75886f57f6bd8a770938c2f7372` |
+| `sample-3d/s1-placeable-ritual-pedestal-1500/source.glb` | 10011256 | `dad22a5c3490242458cb7a81e50c53e265abf75886f57f6bd8a770938c2f7372` |
 | read-only base `placeables.2da` | 3019695 | `b772eafec5e6b380ad41e163e2a52585f2ddcec1c5bd7acea230b7e1a618df90` |
+
+Path amendment 2026-07-27: the GLB was relocated to the canonical `sample-3d`
+root without changing its bytes or SHA-256.
 
 GLB readback: GLB 2.0, jeden node, jeden mesh, jeden primitive, jeden
 materiał, cztery obrazy, `1477` trójkątów, bez skinów i animacji.
