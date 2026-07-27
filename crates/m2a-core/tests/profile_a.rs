@@ -733,11 +733,9 @@ fn mapped_animation_rejects_unsupported_interpolation_and_target_paths() {
     step.ir.animations[0].samplers[0].interpolation = "STEP".to_owned();
     assert_animation_fatal(&step, &rig, &mapping, "M4A-INTERPOLATION-UNSUPPORTED");
 
-    for path in ["WEIGHTS"] {
-        let mut source = linear_animated_source();
-        source.ir.animations[0].channels[0].target_path = path.to_owned();
-        assert_animation_fatal(&source, &rig, &mapping, "M4A-TRACK-PATH-UNSUPPORTED");
-    }
+    let mut source = linear_animated_source();
+    source.ir.animations[0].channels[0].target_path = "WEIGHTS".to_owned();
+    assert_animation_fatal(&source, &rig, &mapping, "M4A-TRACK-PATH-UNSUPPORTED");
 
     let mut nonuniform_scale = linear_animated_source();
     nonuniform_scale.ir.animations[0].channels[0].target_path = "SCALE".to_owned();

@@ -914,7 +914,7 @@ fn upgrading_reactor_owner_layout_authoring_document(
 fn reactor_stream_surface_radial_fraction(base_translation: [f32; 3], base_scale: [f32; 3]) -> f32 {
     const LIQUID_SURFACE_CENTER_X: f32 = 0.000_525_36;
     const LIQUID_SURFACE_CENTER_Z: f32 = 0.000_184_28;
-    const LIQUID_SURFACE_HALF_X: f32 = 0.159_335_40;
+    const LIQUID_SURFACE_HALF_X: f32 = 0.159_335_4;
     const LIQUID_SURFACE_HALF_Z: f32 = 0.161_398_71;
     const STREAM_CENTER_X: f32 = REACTOR_STREAM_PIVOT[0];
     const STREAM_CENTER_Z: f32 = REACTOR_STREAM_PIVOT[2];

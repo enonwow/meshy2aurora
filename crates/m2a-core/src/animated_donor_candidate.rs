@@ -1038,7 +1038,12 @@ pub fn build_m0_r33_animated_donor_candidate_v1(
         return Err(candidate_error(
             "M2A-R33-RETARGET-CONTRACT",
             "retarget.report",
-            "exact M0/H1 retarget differs from the admitted weighted runtime profile",
+            frozen_retarget_drift_message(
+                "r33",
+                M0_R33_MODEL_SHA256,
+                &retarget.report.model_sha256,
+                "exact M0/H1 retarget differs from the admitted weighted runtime profile",
+            ),
         ));
     }
     let skin_readback = inspect_skin_contract(&retarget.model.inspection)?;
@@ -1309,7 +1314,12 @@ pub fn build_m0_r34_animated_donor_candidate_v1(
         return Err(candidate_error(
             "M2A-R34-RETARGET-CONTRACT",
             "retarget.report",
-            "exact M0/H1 retarget differs from the admitted rig-only state profile",
+            frozen_retarget_drift_message(
+                "r34",
+                M0_R34_MODEL_SHA256,
+                &retarget.report.model_sha256,
+                "exact M0/H1 retarget differs from the admitted rig-only state profile",
+            ),
         ));
     }
     verify_direct_creature_state_projection_v1(
@@ -1587,7 +1597,12 @@ pub fn build_m0_r35_animated_donor_candidate_v1(
         return Err(candidate_error(
             "M2A-R35-RETARGET-CONTRACT",
             "retarget.report",
-            "exact M0/H1 retarget differs from the admitted zero-terminated SkinMesh profile",
+            frozen_retarget_drift_message(
+                "r35",
+                M0_R35_MODEL_SHA256,
+                &retarget.report.model_sha256,
+                "exact M0/H1 retarget differs from the admitted zero-terminated SkinMesh profile",
+            ),
         ));
     }
     verify_direct_creature_state_projection_v1(
@@ -1862,7 +1877,12 @@ pub fn build_m0_r36_animated_donor_candidate_v1(
         return Err(candidate_error(
             "M2A-R36-RETARGET-CONTRACT",
             "retarget.report",
-            "exact M0/H1 retarget differs from the admitted dedicated Aurora Root profile",
+            frozen_retarget_drift_message(
+                "r36",
+                M0_R36_MODEL_SHA256,
+                &retarget.report.model_sha256,
+                "exact M0/H1 retarget differs from the admitted dedicated Aurora Root profile",
+            ),
         ));
     }
     verify_direct_creature_state_projection_v1(
@@ -2273,7 +2293,12 @@ pub fn build_m0_r37_animated_donor_candidate_v1(
         return Err(candidate_error(
             "M2A-R37-RETARGET-CONTRACT",
             "retarget.report",
-            "exact M0/H1 retarget differs from the admitted direct-root SkinMesh profile",
+            frozen_retarget_drift_message(
+                "r37",
+                M0_R37_MODEL_SHA256,
+                &retarget.report.model_sha256,
+                "exact M0/H1 retarget differs from the admitted direct-root SkinMesh profile",
+            ),
         ));
     }
     verify_direct_creature_state_projection_v1(
@@ -2553,7 +2578,12 @@ pub fn build_m0_r38_animated_donor_candidate_v1(
         return Err(candidate_error(
             "M2A-R38-RETARGET-CONTRACT",
             "retarget",
-            "exact M0/H1 retarget differs from the admitted scale-normalized direct-root SkinMesh profile",
+            frozen_retarget_drift_message(
+                "r38",
+                M0_R38_MODEL_SHA256,
+                &retarget.report.model_sha256,
+                "exact M0/H1 retarget differs from the admitted scale-normalized direct-root SkinMesh profile",
+            ),
         ));
     }
     verify_direct_creature_state_projection_v1(
@@ -2834,7 +2864,12 @@ pub fn build_m0_r39_animated_donor_candidate_v1(
         return Err(candidate_error(
             "M2A-R39-RETARGET-CONTRACT",
             "retarget",
-            "exact M0/H1 retarget differs from the admitted controllerless identity-root SkinMesh profile",
+            frozen_retarget_drift_message(
+                "r39",
+                M0_R39_MODEL_SHA256,
+                &retarget.report.model_sha256,
+                "exact M0/H1 retarget differs from the admitted controllerless identity-root SkinMesh profile",
+            ),
         ));
     }
     verify_direct_creature_state_projection_v1(
@@ -3116,7 +3151,12 @@ pub fn build_m0_r40_animated_donor_candidate_v1(
         return Err(candidate_error(
             "M2A-R40-RETARGET-CONTRACT",
             "retarget",
-            "exact M0/H1 retarget differs from the admitted rigid triangle-group profile",
+            frozen_retarget_drift_message(
+                "r40",
+                M0_R40_MODEL_SHA256,
+                &retarget.report.model_sha256,
+                "exact M0/H1 retarget differs from the admitted rigid triangle-group profile",
+            ),
         ));
     }
     verify_direct_creature_state_projection_v1(
@@ -3547,7 +3587,12 @@ pub fn build_m0_r41_animated_donor_candidate_v1(
         return Err(candidate_error(
             "M2A-R41-RETARGET-CONTRACT",
             "retarget",
-            "exact M0/H1 retarget differs from the admitted full-topology rigid state profile",
+            frozen_retarget_drift_message(
+                "r41",
+                M0_R41_MODEL_SHA256,
+                &retarget.report.model_sha256,
+                "exact M0/H1 retarget differs from the admitted full-topology rigid state profile",
+            ),
         ));
     }
     verify_direct_creature_state_projection_v1(
@@ -6873,6 +6918,30 @@ fn sha256_bytes(bytes: &[u8]) -> String {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect()
+}
+
+fn frozen_retarget_drift_message(
+    profile: &str,
+    expected_sha256: &str,
+    actual_sha256: &str,
+    summary: &str,
+) -> String {
+    let cause = if matches!(
+        profile,
+        "r33" | "r34" | "r35" | "r36" | "r37" | "r38" | "r39"
+    ) {
+        "This historical SkinMesh lineage predates the mandatory r45 base-controller fix. The \
+         current writer adds position/orientation controller keys (24 bytes) and data (36 bytes), \
+         for an exact +60-byte core delta per SkinMesh. The archived artifact and its hash remain \
+         immutable; this historical builder fails closed by design"
+    } else {
+        "This is unexplained lineage drift, not permission to update the frozen hash or allocate a \
+         new rNN candidate"
+    };
+    format!(
+        "{summary}; frozen {profile} model SHA-256 expected {expected_sha256}, generated \
+         {actual_sha256}. {cause}. See documentation/audyt-bramek-pre-push-2026-07-27.md"
+    )
 }
 
 fn candidate_error(

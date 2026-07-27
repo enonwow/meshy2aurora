@@ -25,10 +25,17 @@ Aktualny kierunek po audycie 2026-07-09:
 - `c_kocrachn` jest technicznym proxy dla creature pipeline, nie assetem The Last City.
 - Produkt jest aplikacja webowa local-first: UI w przegladarce, Rust 1.96.1 skompilowany do WebAssembly oraz pobieranie wygenerowanych HAK/raportow jako plikow. Studio bedzie osobnym etapem po proofie M6.
 
+> **HISTORYCZNE R33-R39 (2026-07-27):** rozne hashe obecnego writera sa
+> wyjasnionym skutkiem obowiazkowej naprawy base controllerow SkinMesh w r45,
+> a nie regresja migracji. Nie aktualizuj starych hashy i nie tworz nowego
+> `rNN`; szczegoly i test delty `+60` bajtow:
+> [audyt bramek pre-push](audyt-bramek-pre-push-2026-07-27.md).
+
 ## Dokumenty
 
 - [CANONICAL_WORKSPACE.md](CANONICAL_WORKSPACE.md) - bezwzgledny invariant jednej kanonicznej lokalizacji oraz zakaz uzywania niekanonicznego folderu `Documents`.
 - [PROJECT_RULES.md](PROJECT_RULES.md) - zasady projektu i implementacji.
+- [audyt-bramek-pre-push-2026-07-27.md](audyt-bramek-pre-push-2026-07-27.md) - zamknieta diagnoza historycznego driftu r33-r39: naprawa r45, dokladna delta `+60` core, macierz hashy i zabezpieczenia przed naruszeniem model iteration gate.
 - [audyt-gotowosci-startowej-2026-07-10-codex.md](audyt-gotowosci-startowej-2026-07-10-codex.md) - kanoniczny gate przed implementacja: stan repo, toolchain, bootstrap, CI, M1A DoD i otwarte decyzje.
 - [macierz-gotowosci-wiedzy-codex.md](macierz-gotowosci-wiedzy-codex.md) - centralny stan wiedzy dla calego pipeline; oddziela ustalony kierunek, otwarte evidence i runtime proof.
 - [mdl-binary-crosswalk-codex.md](mdl-binary-crosswalk-codex.md) - wspolny layout binary MDL, zakres profilu A i jawny konflikt wariantow skin header.

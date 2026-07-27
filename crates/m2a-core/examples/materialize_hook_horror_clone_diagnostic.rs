@@ -1,4 +1,8 @@
-use std::{env, fs, path::PathBuf, process::ExitCode};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    process::ExitCode,
+};
 
 use m2a_core::{
     hook_horror_clone_diagnostic::{
@@ -119,7 +123,7 @@ fn parse_command(arguments: impl IntoIterator<Item = String>) -> Result<Command,
     })
 }
 
-fn write_error(path: &PathBuf) -> impl FnOnce(std::io::Error) -> String + '_ {
+fn write_error(path: &Path) -> impl FnOnce(std::io::Error) -> String + '_ {
     move |error| format!("M2A-HOOK-HORROR-WRITE {}: {error}", path.display())
 }
 

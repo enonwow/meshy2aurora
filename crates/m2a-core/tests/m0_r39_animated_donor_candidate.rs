@@ -14,7 +14,7 @@ use m2a_core::{
 
 #[test]
 #[ignore = "requires M2A_REQUIRE_RUNTIME_WITNESSES=1 and the exact local M0/H1 GLBs"]
-fn exact_m0_r39_controllerless_identity_root_candidate_is_deterministic_and_runtime_complete() {
+fn exact_m0_r39_historical_candidate_fails_closed_after_r45_skin_bind_upgrade() {
     assert_eq!(
         std::env::var("M2A_REQUIRE_RUNTIME_WITNESSES").as_deref(),
         Ok("1"),
@@ -34,8 +34,19 @@ fn exact_m0_r39_controllerless_identity_root_candidate_is_deterministic_and_runt
     let appearance =
         fs::read(repo.join("local-reference-assets/appearance.2da")).expect("exact appearance");
 
-    let artifact = build_m0_r39_animated_donor_candidate_v1(&source, &donor, &appearance)
-        .expect("exact r39 candidate");
+    let artifact = match build_m0_r39_animated_donor_candidate_v1(&source, &donor, &appearance) {
+        Ok(artifact) => artifact,
+        Err(error) => {
+            assert_eq!(error.code, "M2A-R39-RETARGET-CONTRACT");
+            assert!(error.message.contains(M0_R39_MODEL_SHA256));
+            assert!(
+                error
+                    .message
+                    .contains("historical SkinMesh lineage predates the mandatory r45")
+            );
+            return;
+        }
+    };
     verify_m0_r39_animated_donor_candidate_v1(
         &artifact.contract,
         &source,

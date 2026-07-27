@@ -434,7 +434,7 @@ fn procedural_humanoid_profile_authors_a_distinct_owned_42_state_set_from_h2_idl
     assert_eq!(module.scene.area_resref, identity.module.area_resref);
     assert_eq!(
         module.scene.ordered_hak_resrefs,
-        [identity.module.hak_resref.clone()]
+        std::slice::from_ref(&identity.module.hak_resref)
     );
     assert_eq!(
         module.scene.fixtures[0].template_resref,
@@ -1971,7 +1971,7 @@ fn canonical_m0_runtime_package_accepts_one_fresh_caller_owned_identity() {
     assert_eq!(contract.binary_scene.area_resref, identity.area_resref);
     assert_eq!(
         contract.binary_scene.ordered_hak_resrefs,
-        [identity.hak_resref.clone()]
+        std::slice::from_ref(&identity.hak_resref)
     );
     assert_eq!(
         contract.state_projection_profile,

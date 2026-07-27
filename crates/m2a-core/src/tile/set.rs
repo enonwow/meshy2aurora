@@ -498,9 +498,7 @@ fn parse_document(bytes: &[u8]) -> Result<SetDocumentV1, TileSetErrorV1> {
     Ok(SetDocumentV1 { sections })
 }
 
-fn section_map<'a>(
-    document: &'a SetDocumentV1,
-) -> Result<HashMap<String, &'a SetSectionV1>, TileSetErrorV1> {
+fn section_map(document: &SetDocumentV1) -> Result<HashMap<String, &SetSectionV1>, TileSetErrorV1> {
     let mut map = HashMap::with_capacity(document.sections.len());
     for section in &document.sections {
         let key = section.name.to_ascii_uppercase();

@@ -31,7 +31,7 @@ fn main() -> ExitCode {
 
 fn run() -> Result<String, String> {
     let command = parse(env::args().skip(1))?;
-    if command.output != PathBuf::from(CANONICAL_OUTPUT) {
+    if command.output.as_path() != Path::new(CANONICAL_OUTPUT) {
         return Err(format!(
             "M2A-R34-OUTPUT-IDENTITY: exact output must be {CANONICAL_OUTPUT}"
         ));

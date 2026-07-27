@@ -837,7 +837,9 @@ fn publish_outputs_atomically_verified(
     );
     let operation = (|| {
         require_no_reparse_chain(&staging, false, "staging directory")?;
-        for (_index, (file_name, bytes)) in outputs.iter().enumerate() {
+        for (index, (file_name, bytes)) in outputs.iter().enumerate() {
+            #[cfg(not(test))]
+            let _ = index;
             require_plain_file_name(file_name)?;
             let path = staging.join(file_name);
             let mut file = OpenOptions::new()
@@ -854,7 +856,7 @@ fn publish_outputs_atomically_verified(
                 format!("M2A-TRI-CONTROL-CLI-WRITE: {}: {error}", path.display())
             })?;
             #[cfg(test)]
-            if _index == 0 && fault == PublicationFaultV1::PartialWrite {
+            if index == 0 && fault == PublicationFaultV1::PartialWrite {
                 return Err("M2A-TRI-CONTROL-CLI-TEST-PARTIAL-WRITE".to_owned());
             }
         }

@@ -42,7 +42,7 @@ fn main() -> ExitCode {
 fn run() -> Result<String, String> {
     let command = parse(env::args().skip(1))?;
     let candidate = candidate(&command.candidate)?;
-    if command.output != PathBuf::from(candidate.canonical_output) {
+    if command.output.as_path() != Path::new(candidate.canonical_output) {
         return Err(format!(
             "PLACEABLE-COLLISION-OUTPUT-IDENTITY: exact output must be {}",
             candidate.canonical_output

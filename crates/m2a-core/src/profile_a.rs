@@ -846,16 +846,15 @@ pub fn derive_meshy_h1_profile_and_mapping_v1(
             lanes
                 .iter()
                 .zip(weights)
-                .filter_map(|(&lane, &value)| {
-                    (value > 0.0).then(|| {
-                        skin.joint_node_ids
-                            .get(lane as usize)
-                            .copied()
-                            .map(|bone_node_id| RigWeightInfluenceV1 {
-                                bone_node_id,
-                                value,
-                            })
-                    })
+                .filter(|(_, value)| **value > 0.0)
+                .map(|(&lane, &value)| {
+                    skin.joint_node_ids
+                        .get(lane as usize)
+                        .copied()
+                        .map(|bone_node_id| RigWeightInfluenceV1 {
+                            bone_node_id,
+                            value,
+                        })
                 })
                 .collect::<Option<Vec<_>>>()
                 .ok_or_else(|| {

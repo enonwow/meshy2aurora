@@ -618,8 +618,8 @@ fn summarize_and_require_exact_m0_source(
     let node = summary.nodes[0].clone();
     let mesh = summary.meshes[0].clone();
     let primitive = summary.primitives[0].clone();
-    if node.ordered_parent_ids.len() != 0
-        || node.ordered_child_ids.len() != 0
+    if !node.ordered_parent_ids.is_empty()
+        || !node.ordered_child_ids.is_empty()
         || node.mesh_id != Some(mesh.mesh_id)
         || node.skin_id.is_some()
         || mesh.ordered_primitive_ids.as_slice() != [primitive.primitive_id]

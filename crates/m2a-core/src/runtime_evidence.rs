@@ -286,6 +286,9 @@ pub struct KnownRuntimeNegativeV1 {
     pub structural_verdict: DirectCreatureEngineEnvelopeVerdictV1,
 }
 
+// The pre/post process and log snapshots are deliberately separate: collapsing
+// them would weaken the fail-closed evidence boundary this API validates.
+#[allow(clippy::too_many_arguments)]
 pub fn inspect_log_window_v1(
     candidate: RuntimeCandidateIdentityV1,
     expected_resource_tokens: &[String],
@@ -1315,7 +1318,8 @@ mod tests {
 
     #[test]
     fn c_no_log_token_old_window_suffix_substring_bare_row_and_warning_are_not_loaded() {
-        let cases: [(&[u8], &[u8], &[u8], &[u8]); 5] = [
+        type LogWindowBytes<'a> = (&'a [u8], &'a [u8], &'a [u8], &'a [u8]);
+        let cases: [LogWindowBytes<'_>; 5] = [
             (b"old\n", b"old\nnew unrelated line\n", b"e\n", b"e\nnone\n"),
             (
                 b"Loading Module: m2a_m0r30\n",

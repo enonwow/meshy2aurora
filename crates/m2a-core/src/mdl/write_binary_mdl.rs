@@ -1215,6 +1215,9 @@ fn plan(
     })
 }
 
+// Keep the frozen binary-writer inputs explicit at this boundary: grouping them
+// would obscure which independently validated source controls each layout plan.
+#[allow(clippy::too_many_arguments)]
 fn plan_animations(
     creature: &AuroraCreatureIrV1,
     animation_set: &MdlAnimationSetV1,

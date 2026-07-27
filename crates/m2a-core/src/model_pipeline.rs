@@ -1544,6 +1544,9 @@ fn require_m0_direct_creature_resolver_binding_v1(
     Ok(())
 }
 
+// This validator intentionally receives every independently hashed artifact so
+// the cross-artifact contract remains visible at the call boundary.
+#[allow(clippy::too_many_arguments)]
 fn build_m0_binary_runtime_fixture_contract_v2(
     source_glb: &[u8],
     runtime_profile: &DirectCreatureRuntimeProfileV2,
@@ -2083,6 +2086,9 @@ fn build_m6_model_package_with_ingest_v2(
     )
 }
 
+// Preserve the historical v3 compatibility boundary instead of hiding its
+// independently versioned inputs in a new aggregate type.
+#[allow(clippy::too_many_arguments)]
 fn build_m6_model_package_with_ingest_v3(
     source_glb: &[u8],
     appearance_two_da: &[u8],

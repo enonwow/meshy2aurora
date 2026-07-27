@@ -1323,10 +1323,12 @@ fn owned_cpause1_roundtrips_exact_animation_layout_events_and_linear_keys() {
 
 #[test]
 fn retail_rig_only_projection_keeps_skin_in_base_and_omits_it_from_type5_states() {
+    type FlattenedNode = (u64, String, Option<u64>, u64, bool, bool, Vec<i64>);
+
     fn flatten(
         node: &serde_json::Value,
         parent_number: Option<u64>,
-        output: &mut Vec<(u64, String, Option<u64>, u64, bool, bool, Vec<i64>)>,
+        output: &mut Vec<FlattenedNode>,
     ) {
         let number = node["number"].as_u64().expect("node number");
         output.push((

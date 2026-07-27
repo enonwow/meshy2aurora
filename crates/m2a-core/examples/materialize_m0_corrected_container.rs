@@ -2,7 +2,11 @@
 //! No HAK, model, texture, 2DA, runtime profile, Toolset process, or NWN
 //! process is created or modified by this example.
 
-use std::{env, fs, path::PathBuf, process::ExitCode};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    process::ExitCode,
+};
 
 use m2a_core::{
     hierarchy_candidate::{
@@ -288,7 +292,7 @@ fn read_exact(path: &PathBuf, expected_sha256: &str, label: &str) -> Result<Vec<
     Ok(bytes)
 }
 
-fn display(path: &PathBuf) -> String {
+fn display(path: &Path) -> String {
     path.display().to_string()
 }
 

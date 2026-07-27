@@ -88,10 +88,11 @@ pub fn static_placeable_profile_a_options_v1() -> ProfileAOptionsV1 {
 /// ceilings stay shared; only the triangle diagnostics follow the placeable
 /// Profile A envelope.
 pub fn static_placeable_glb_limits_v1() -> GlbLimits {
-    let mut limits = GlbLimits::default();
-    limits.triangle_warning_above = PROFILE_A_PLACEABLE_TRIANGLE_WARNING_ABOVE_V1 as usize;
-    limits.triangle_blocking_above = NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1;
-    limits
+    GlbLimits {
+        triangle_warning_above: PROFILE_A_PLACEABLE_TRIANGLE_WARNING_ABOVE_V1 as usize,
+        triangle_blocking_above: NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1,
+        ..GlbLimits::default()
+    }
 }
 
 const REQUIRED_PLACEABLES_COLUMNS: [&str; 13] = [

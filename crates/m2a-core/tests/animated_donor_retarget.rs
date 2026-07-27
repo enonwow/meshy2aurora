@@ -10,10 +10,109 @@ use m2a_core::{
     },
     mdl::{
         MdlAnimationTrackPathV1, MdlFormatProfileV1, MdlMaterialTextureBindingV1,
-        MdlStateProjectionProfileV1, MdlWriterOptionsV1,
+        MdlStateProjectionProfileV1, MdlWriterOptionsV1, NodeReport, inspect_binary_mdl,
     },
     profile_a::RigSegmentDeformationV1,
 };
+use sha2::{Digest, Sha256};
+
+const FROZEN_RUNTIME_DRIFT_AUDIT: &str = "documentation/audyt-bramek-pre-push-2026-07-27.md";
+
+fn collect_skin_nodes<'a>(nodes: &'a [NodeReport], output: &mut Vec<&'a NodeReport>) {
+    for node in nodes {
+        if node.skin.is_some() {
+            output.push(node);
+        }
+        collect_skin_nodes(&node.children, output);
+    }
+}
+
+fn assert_historical_skin_bind_upgrade(
+    profile: &str,
+    actual_payload: &[u8],
+    actual_sha256: &str,
+    post_r45_expected_sha256: Option<&str>,
+    historical_sha256: &str,
+    frozen_relative_path: &str,
+) {
+    let repo = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("canonical repository root")
+        .to_owned();
+    let frozen_path = repo.join(frozen_relative_path);
+    let frozen_payload = std::fs::read(&frozen_path).unwrap_or_else(|error| {
+        panic!(
+            "{profile} immutable proof artifact is required for the historical upgrade check: {}: \
+             {error}",
+            frozen_path.display()
+        )
+    });
+    let frozen_sha256 = format!("{:x}", Sha256::digest(&frozen_payload));
+    assert_eq!(
+        frozen_sha256,
+        historical_sha256,
+        "{profile} immutable proof artifact does not match its historical contract: {}",
+        frozen_path.display()
+    );
+    if let Some(expected) = post_r45_expected_sha256 {
+        assert_eq!(
+            actual_sha256, expected,
+            "{profile} post-r45 writer output changed; this is distinct from the immutable \
+             historical candidate hash. See {FROZEN_RUNTIME_DRIFT_AUDIT}"
+        );
+    }
+    assert_ne!(
+        actual_sha256, historical_sha256,
+        "{profile} historical SkinMesh lacked mandatory base controllers and must not silently \
+         become the current writer output"
+    );
+    assert_eq!(actual_payload.len(), frozen_payload.len() + 60);
+    let header_u32 = |payload: &[u8], offset: usize| {
+        u32::from_le_bytes(
+            payload[offset..offset + 4]
+                .try_into()
+                .expect("complete MDL header field"),
+        )
+    };
+    assert_eq!(
+        header_u32(actual_payload, 4),
+        header_u32(&frozen_payload, 4) + 60,
+        "{profile} current writer must add exactly 24 controller-key bytes and 36 controller-data \
+         bytes to the core"
+    );
+    assert_eq!(
+        header_u32(actual_payload, 8),
+        header_u32(&frozen_payload, 8),
+        "{profile} SkinMesh base controllers must not change the raw geometry block"
+    );
+
+    let actual = inspect_binary_mdl(actual_payload).expect("post-r45 generated MDL readback");
+    let frozen = inspect_binary_mdl(&frozen_payload).expect("historical frozen MDL readback");
+    let mut actual_skins = Vec::new();
+    let mut frozen_skins = Vec::new();
+    collect_skin_nodes(&actual.node_tree.roots, &mut actual_skins);
+    collect_skin_nodes(&frozen.node_tree.roots, &mut frozen_skins);
+    assert_eq!(actual_skins.len(), 1);
+    assert_eq!(frozen_skins.len(), 1);
+    assert!(
+        frozen_skins[0].controllers.is_empty(),
+        "{profile} historical lineage must remain the pre-r45 zero-controller witness"
+    );
+    assert_eq!(
+        actual_skins[0]
+            .controllers
+            .iter()
+            .map(|controller| controller.controller_type)
+            .collect::<Vec<_>>(),
+        [8, 20],
+        "{profile} current writer must add only position and orientation base controllers"
+    );
+    eprintln!(
+        "{profile}: historical={historical_sha256}; post-r45={actual_sha256}; exact delta=+60 core \
+         bytes (24 keys + 36 data)"
+    );
+}
 
 fn linear_animated_donor() -> Vec<u8> {
     let donor = fixtures::mutate_json(
@@ -704,6 +803,26 @@ fn exact_m0_retargets_to_the_real_h1_animated_donor_with_rig_only_states_for_r34
     .expect("exact M0 source GLB");
     let donor = std::fs::read(repo.join("sample-3d/h1-humanoid-1500/source.glb"))
         .expect("exact Meshy H1 donor GLB");
+    let r33_options = MdlWriterOptionsV1 {
+        schema_version: 1,
+        format_profile: MdlFormatProfileV1::M4DirectCreatureExtended64V1,
+        state_projection_profile: MdlStateProjectionProfileV1::RetailDirectCreatureType5DummyV1,
+        state_projection_provenance: None,
+        model_resource_resref: "m2a_m0p33".to_owned(),
+        diffuse_texture_resref_by_material_slot: vec![MdlMaterialTextureBindingV1 {
+            material_slot: 0,
+            resref: "m2a_m0t01".to_owned(),
+        }],
+    };
+    let r33 = retarget_static_mesh_to_animated_donor_v1(&source, &donor, &r33_options).unwrap();
+    assert_historical_skin_bind_upgrade(
+        "r33",
+        &r33.model.payload,
+        &r33.report.model_sha256,
+        Some("b4e1ac1e27e2da6f95ce192f28a90601a036d8f73ecb7c6bdbd27609cc173b46"),
+        "b82b6d7b9260a05cebb7bb93ed75f2938a210a01bd01bd397f1b63fc60fde25e",
+        "proof-output/m0-r33-animated-donor-20260724/generated/m2a_m0p33.mdl",
+    );
     let options = MdlWriterOptionsV1 {
         schema_version: 1,
         format_profile: MdlFormatProfileV1::M4DirectCreatureExtended64V1,
@@ -799,9 +918,13 @@ fn exact_r34_to_native_zero_terminated_skin_changes_only_the_unused_inline_palet
     };
     let legacy =
         retarget_static_mesh_to_animated_donor_v1(&source, &donor, &legacy_options).unwrap();
-    assert_eq!(
-        legacy.report.model_sha256,
-        "2fe4ad1ae4354335008916cbff3e0f724fedf0119f30f07aa8d5341c3d5b4af5"
+    assert_historical_skin_bind_upgrade(
+        "r34",
+        &legacy.model.payload,
+        &legacy.report.model_sha256,
+        Some("172f166b552cb29556e08a0235bff3f4be239e8c9d5f0938fb9ef2ca6bf1c16d"),
+        "2fe4ad1ae4354335008916cbff3e0f724fedf0119f30f07aa8d5341c3d5b4af5",
+        "proof-output/m0-r34-rig-only-state-20260724/generated/m2a_m0p34.mdl",
     );
 
     legacy_options.format_profile = MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedV2;
@@ -855,9 +978,13 @@ fn exact_r34_to_native_zero_terminated_skin_changes_only_the_unused_inline_palet
 
     legacy_options.model_resource_resref = "m2a_m0p35".to_owned();
     let r35 = retarget_static_mesh_to_animated_donor_v1(&source, &donor, &legacy_options).unwrap();
-    assert_eq!(
-        r35.report.model_sha256,
-        "779d93fa762980ef17448762ba97d8f8775b03335b1d9561b8c2b6483772b3e0"
+    assert_historical_skin_bind_upgrade(
+        "r35",
+        &r35.model.payload,
+        &r35.report.model_sha256,
+        Some("eb71c15b4049caaae49ecd099e73909f1717edc8668223618484e2b6f58f2c2f"),
+        "779d93fa762980ef17448762ba97d8f8775b03335b1d9561b8c2b6483772b3e0",
+        "proof-output/m0-r35-zero-terminated-skin-20260724/generated/m2a_m0p35.mdl",
     );
 }
 
@@ -987,9 +1114,13 @@ fn exact_m0_h1_v2_adds_only_a_dedicated_unweighted_aurora_root() {
     assert_eq!(skin.t_header.used, 26);
     assert_eq!(skin.constants_header.used, 26);
     assert!(v2.model.report.semantic_diff.is_empty());
-    assert_eq!(
-        v2.report.model_sha256,
-        "459b9954d377c1daab9b12c73a2bf9a64507b5f3cf6d2a6a2ea7d751f680963a"
+    assert_historical_skin_bind_upgrade(
+        "r36",
+        &v2.model.payload,
+        &v2.report.model_sha256,
+        Some("b04bf97bf989e0021aa3f622511911cff3313cc2079a9f893d912ce8be370b6b"),
+        "459b9954d377c1daab9b12c73a2bf9a64507b5f3cf6d2a6a2ea7d751f680963a",
+        "proof-output/m0-r36-dedicated-aurora-root-20260724/generated/m2a_m0p36.mdl",
     );
 
     println!(
@@ -1108,9 +1239,13 @@ fn exact_m0_h1_v3_reparents_skin_without_moving_bind_pose_world_geometry() {
     );
     assert!(v3.model.report.semantic_diff.is_empty());
     assert_ne!(v3.report.model_sha256, v2.report.model_sha256);
-    assert_eq!(
-        v3.report.model_sha256,
-        "48746e6e0b19bedbdcc8a364ff96cd583848dfa38e06971706bfb69b0341f676"
+    assert_historical_skin_bind_upgrade(
+        "r37",
+        &v3.model.payload,
+        &v3.report.model_sha256,
+        Some("2f7e399bde73a91590ad588fc35ec177fd8b6ef4083da644a57a5cbe991a9f16"),
+        "48746e6e0b19bedbdcc8a364ff96cd583848dfa38e06971706bfb69b0341f676",
+        "proof-output/m0-r37-direct-root-skinmesh-20260724/generated/m2a_m0p37.mdl",
     );
 
     println!(
@@ -1219,9 +1354,13 @@ fn exact_m0_h1_v4_removes_only_the_unrepresentable_root_scale_controllers() {
     assert_eq!(v4_scale_controller_count, 0);
     assert!(v4.model.report.semantic_diff.is_empty());
     assert_ne!(v4.report.model_sha256, v3.report.model_sha256);
-    assert_eq!(
-        v4.report.model_sha256,
-        "039d07cd937430d83006c7d0176aa7659440265417fb7fe53bf73b405563c248"
+    assert_historical_skin_bind_upgrade(
+        "r38",
+        &v4.model.payload,
+        &v4.report.model_sha256,
+        Some("6d3a56d9b18bada169da02a82ec00e181fa46810760b4e3c3c95c016d68e2c45"),
+        "039d07cd937430d83006c7d0176aa7659440265417fb7fe53bf73b405563c248",
+        "proof-output/m0-r38-scale-normalized-skinmesh-20260724/generated/m2a_m0p38.mdl",
     );
 
     println!(
@@ -1277,8 +1416,8 @@ fn exact_m0_h1_v5_preserves_the_surface_as_animated_rigid_triangle_groups() {
     assert_eq!(v5.report.local_animation_count, 7);
     assert_eq!(v5.report.active_bone_count, 20);
     assert_eq!(
-        v5.report.model_sha256,
-        "1809b05370e77f2c2559ec3e6fb354518bb5695ed48600954033175377fc0a40"
+        v5.report.model_sha256, "1809b05370e77f2c2559ec3e6fb354518bb5695ed48600954033175377fc0a40",
+        "r40 has no SkinMesh and must remain byte-identical across the r45 writer fix"
     );
     assert_eq!(v5_creature.segments.len(), 20);
     assert!(v5_creature.segments.iter().all(|segment| {
@@ -1429,9 +1568,13 @@ fn exact_m0_h1_controllerless_root_profile_changes_only_the_base_root_controller
             .all(|animation| animation.node_tree.roots[0].controllers.is_empty())
     );
     assert_ne!(candidate.report.model_sha256, legacy.report.model_sha256);
-    assert_eq!(
-        candidate.report.model_sha256,
-        "fab5ab98e9225c1553947f17994441273ae4c9bbd5a1d14034721ee3be2d86db"
+    assert_historical_skin_bind_upgrade(
+        "r39",
+        &candidate.model.payload,
+        &candidate.report.model_sha256,
+        Some("144f4d7fb7b39e77869ac8dc1128e6f4c60bcb999178f6eef0dc777db4d1dac3"),
+        "fab5ab98e9225c1553947f17994441273ae4c9bbd5a1d14034721ee3be2d86db",
+        "proof-output/m0-r39-controllerless-identity-root-20260724/generated/m2a_m0p39.mdl",
     );
     println!(
         "{}",
