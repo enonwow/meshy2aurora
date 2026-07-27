@@ -58,7 +58,9 @@ AnimationHeader size = 0xc4
 0x48        animation root core offset u32
 0x4c        declared node budget u32
 0x50..0x67  opaque/empty geometry arrays in M4A1
-0x68..0x6f  opaque runtime fields; zero in M4A1
+0x68..0x6b  unknown/opaque u32; zero in deterministic M4A1 output
+0x6c        local-animation type u8; required value 5
+0x6d..0x6f  padding; zero in deterministic M4A1 output
 0x70        length f32 seconds
 0x74        transition_time f32 seconds
 0x78..0xb7  animroot char[64]
@@ -161,11 +163,32 @@ R3 pokazuje, ze animroot nie musi byc nazwa serialized animation root node:
 `phod_horror_blak` i `phod_horror_purg` sa stale per model, podczas gdy root
 nodes nazywaja sie jak modele. Nie wolno zamrazac tych nazw jako produktu.
 
-### D02 - opaque GeometryHeader `+0x68/+0x6c`
+### D02 - `+0x68` pozostaje opaque, ale niski bajt `+0x6c` jest typem GeometryHeader
 
-M4A1 zapisuje zero, tak jak zamrozona polityka M4 dla runtime/opaque fields.
-Canonical nonzero tokens nie sa offsetami do kopiowania i nie moga trafic do
-outputu. Akceptacja zer pozostaje `M4A-RUNTIME-OPAQUE-ZERO / OPEN_M6`.
+Wczesniejsza polityka traktujaca cale `+0x68/+0x6c` jako zero jest zbyt
+szeroka. Binary loader Aurory `FUN_00a3b874 -> FUN_00a3ee64 ->
+FUN_00a3ed90` kopiuje z serialized animation do runtime objectu byte pod
+`+0x6c`. xoreos `readAnimBinary()` po dwoch ArrayDef i 4 bajtach `+0x68`
+czyta ten sam byte jako `type`. Read-only native witness `c_squirrel` ma dla
+pierwszego state `0x6c..0x6f = 05 7f 00 00`: wymagany typ to zatem `5`, a
+nie zero.
+
+Minimalna polityka emitera jest nastepujaca:
+
+- `+0x68..0x6b`: nadal zero w M4A1
+  (`M4A-RUNTIME-FIELD-68-OPAQUE-ZERO / OPEN_M6`);
+- `+0x6c`: zapisac `5` jako animation GeometryHeader type;
+- `+0x6d..0x6f`: deterministyczny zero-padding, bez kopiowania native
+  tokenu `7f 00 00`.
+
+Nie wynika z tego semantyka `+0x68` ani wysokich trzech bajtow `+0x6c`; nie
+wolno klonowac ich z canonical payloadu.
+
+Trace konstrukcji stanu zatrzymuje sie na potwierdzonym transferze: Aurora
+kopiuje byte do obiektu local-animation przed eventami i root state tree, ale
+nie znaleziono jeszcze bezposredniego branchu przypisujacego semantyke wartosci
+`5`. To jest kontrakt serializacji/readbacku, nie claim, ze samo `type=0`
+wyjasnia niewidocznosc w NWN; runtime A/B pozostaje osobnym gate'em.
 
 ### D03 - duplicate times
 
@@ -207,9 +230,11 @@ Clip names musza byc unikalne po ASCII case-fold.
 
 Target identity jest hierarchiczna. Root jest parowany jawnie; kazde dziecko
 musi miec dokladnie jedno name match wsrod bezposrednich dzieci sparowanego
-rodzica. Duplicate sibling names sa fatal. Global duplicate names sa dozwolone.
-Ta walidacja jest wykonywana tylko dla niepustego animation setu. Jawny empty
-set wywoluje zamrozona sciezke M4 bez dodatkowej walidacji nazw/hierarchii.
+rodzica. Wszystkie output node names -- zarowno `creature.nodes`, jak i
+generowane `m2a_seg_<segment_id>` -- musza byc globalnie unikalne po ASCII
+case-fold. Gate dziala rowniez dla pustego animation setu, poniewaz nazwa jest
+tozsamoscia base node'a niezaleznie od obecnosci lokalnych clipow. Kolizja jest
+fatal `M4-NODE-NAME-DUPLICATE`; writer nie przemianowuje nodow automatycznie.
 
 ### D08 - packed key i quaternion
 
@@ -234,7 +259,7 @@ dac byte-identyczny M4 payload:
 payload_length = 1188
 core_length    = 1072
 raw_length     = 104
-sha256         = e100130d1dfbd18657413cdb7a701396d466cee081683591fc9836bf0c11b4b2
+sha256         = 257f30d79926e38922f1a8af375ac2c1869aedd41e8783420cca56ab647c25c1
 ```
 
 Nie wolno utrwalac R3 bytes, keyframes, event tables, skeletonu ani runtime
@@ -324,6 +349,7 @@ mogl dostarczyc `AuroraCreatureIrV1` przez domyslny gate M3.
 
 ## 8. Stable fatal taxonomy
 
+- `M4-NODE-NAME-DUPLICATE`;
 - `M4A-ANIMATION-SET-SCHEMA-INVALID`;
 - `M4A-ANIMATION-NAME-INVALID`;
 - `M4A-ANIMROOT-INVALID`;
@@ -412,7 +438,7 @@ M4A jest `DONE_STRUCTURAL` dopiero po wszystkich powyzszych punktach. Nie jest
 - `M4A-DECOMP-ANIMROOT-CONSUMER`;
 - `M4A-DECOMP-EVENT-NAME-SEMANTICS`;
 - `M4A-RUNTIME-STATE-ROUTING` i loop/one-shot behavior;
-- `M4A-RUNTIME-OPAQUE-ZERO` dla GeometryHeader/runtime fields;
+- `M4A-RUNTIME-FIELD-68-OPAQUE-ZERO` tylko dla nieznanego pola `+0x68`;
 - `M4A-RUNTIME-ANIM-TREE-PROFILE` dla rig-only dummy tree bez skin mesh nodes;
 - widoczna cpause1 motion oraz pozniejsze movement/gameplay clips w NWN EE.
 

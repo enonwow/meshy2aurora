@@ -1,0 +1,202 @@
+{
+  "schemaVersion": 1,
+  "status": "owner_runtime_result_recorded_hash_bound_engine_audit_open",
+  "source": "owner_report_and_owner_supplied_toolset_screenshot_in_active_codex_task",
+  "ownerReport": "dodałem do testów model ktoy jest natywny z nwn bo twoje z meshy i tyen horror nie dzialaja!",
+  "ownerClarification": "bo podmienilem do testow wyglad =)",
+  "ownerLatestCorrection": "rozumiesz ze tworzysz modul testowy z corrupted modelamai a dotego model nie dziala w nwn =(",
+  "reportedAtLocalDate": "2026-07-26",
+  "scene": {
+    "installedModuleFilename": "m2a_h2r43.mod",
+    "toolsetModuleFrame": "m2a_h2r43.mod",
+    "areaResref": "m2a_h2a43",
+    "areaDisplayName": "Meshy2Aurora M0 binary vertical-slice area",
+    "orderedHakResrefs": [
+      "m2a_h2r43"
+    ],
+    "hak": {
+      "byteLength": 20084361,
+      "sha256": "d4381dbdc9aee5f0dab2b8159a414586a913b7ed9bf68fe48515a951cdebbdb1"
+    },
+    "originalFrozenModule": {
+      "byteLength": 20280,
+      "sha256": "ef2b48b80e4c01b455a04246c8e1da8f839171d9e9b4f9e835b846738f0a0c89",
+      "backupReadbackPath": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\modules\\m2a_h2r43.BackupMod"
+    },
+    "ownerModifiedInstalledModule": {
+      "byteLength": 39090,
+      "lastWriteTime": "2026-07-26T00:39:51.5276275+02:00",
+      "sha256": "a444722545f81da256d6733b10c71c830609939eb31df496a3db2e9e7e3f7f77",
+      "hashStatus": "verified_read_only",
+      "mutation": "Owner added one native NWN palette creature and saved the module in Toolset."
+    },
+    "toolsetExtractedGit": {
+      "path": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\modules\\temp0\\m2a_h2a43.git",
+      "byteLength": 12113,
+      "sha256": "40275d3d358f11bbe97b7947b7311e9b2e932f68e1244f44872bf4154f1ec71d"
+    }
+  },
+  "ownerScreenshot": {
+    "sourcePath": "C:\\Users\\enonw\\AppData\\Local\\Temp\\codex-clipboard-6f8d6cca-f9c5-414b-b311-c2ab751098a8.png",
+    "byteLength": 463868,
+    "sha256": "7ddad96134188551c73b69e804b5110918728058dd61f10c5691ab672e3446ce",
+    "observedToolsetTreeEntries": [
+      "Drider Chief",
+      "Meshy H2 H1-root clockwork sentinel",
+      "Stock Hook Horror control"
+    ],
+    "scope": "Toolset observational evidence only; it is not a validated TScrollBox object-bound Toolset verdict and it is not an NWN runtime capture."
+  },
+  "exactGitReadback": {
+    "creatures": [
+      {
+        "index": 0,
+        "templateResref": "m2a_h2utc43",
+        "tag": "h2_fixture",
+        "appearanceRow": 15100,
+        "position": {
+          "x": 10.0,
+          "y": 14.5,
+          "z": 0.0
+        },
+        "runtimeProfile": {
+          "race": 0,
+          "factionId": 2,
+          "interruptable": 0,
+          "walkRate": 0,
+          "hitPoints": 1,
+          "currentHitPoints": 1,
+          "maxHitPoints": 13,
+          "perceptionRange": 0,
+          "classId": 12,
+          "classLevel": 12,
+          "defaultAiScripts": false
+        }
+      },
+      {
+        "index": 1,
+        "templateResref": "m2a_h2ctrl43",
+        "tag": "stock_control",
+        "appearanceRow": 102,
+        "position": {
+          "x": 7.0,
+          "y": 14.5,
+          "z": 0.0
+        },
+        "runtimeProfile": {
+          "race": 0,
+          "factionId": 2,
+          "interruptable": 0,
+          "walkRate": 0,
+          "hitPoints": 1,
+          "currentHitPoints": 1,
+          "maxHitPoints": 13,
+          "perceptionRange": 0,
+          "classId": 12,
+          "classLevel": 12,
+          "defaultAiScripts": false
+        }
+      },
+      {
+        "index": 2,
+        "templateResref": "x2_drider003",
+        "tag": "X2_DRIDER003",
+        "appearanceRow": 15100,
+        "position": {
+          "x": 15.11306381225586,
+          "y": 15.40926456451416,
+          "z": 0.000000738418577839184
+        },
+        "runtimeProfile": {
+          "race": 7,
+          "factionId": 1,
+          "interruptable": 1,
+          "walkRate": 7,
+          "hitPoints": 80,
+          "currentHitPoints": 80,
+          "maxHitPoints": 128,
+          "perceptionRange": 11,
+          "classes": [
+            {
+              "classId": 11,
+              "classLevel": 6
+            },
+            {
+              "classId": 9,
+              "classLevel": 10
+            }
+          ],
+          "defaultAiScripts": true
+        },
+        "importantIdentityNote": "The Toolset tree/blueprint is native x2_drider003. The owner intentionally changed this instance to Appearance_Type=15100 as a cross-test of the native-complete creature profile with the Meshy H2 appearance; retail Drider row 407 was not expected in this test."
+      }
+    ]
+  },
+  "runtimeVerdicts": {
+    "meshyGeneratedCreature": {
+      "modelVisibility": "not_visible",
+      "proofCompleteness": "failed",
+      "basis": "fresh owner runtime report for the current modified m2a_h2r43 scene; no NWN capture supplied"
+    },
+    "generatedHookHorrorControl": {
+      "modelVisibility": "not_visible",
+      "proofCompleteness": "failed",
+      "basis": "fresh owner runtime report for the current modified m2a_h2r43 scene; no NWN capture supplied"
+    },
+    "ownerAddedNativeBlueprintControl": {
+      "modelVisibility": "not_tested",
+      "proofCompleteness": "failed",
+      "modelOperation": "does_not_work",
+      "renderIntegrity": "not_distinguished_by_owner_wording",
+      "basis": "The owner explicitly corrected the audit: the test module contains corrupted models and the custom model does not work in NWN. The wording does not distinguish a visible-corrupt draw from complete absence for this third exact instance, so its visibility enum remains not_tested while the operational failure is confirmed.",
+      "remainingAmbiguity": "Only the morphology of the third instance remains unstated. This no longer leaves the custom model lane open: the owner has supplied an authoritative failed NWN result for the custom appearance."
+    }
+  },
+  "diagnosis": {
+    "excluded": [
+      "wrong module",
+      "wrong Area",
+      "empty Toolset creature scene"
+    ],
+    "strongestSharedFailureBoundary": "The owner-bound scene failed operationally in NWN, but the exact failing scalar is not isolated. The native-complete x2_drider003 instance deliberately used Appearance row 15100, while the Hook Horror used the generated gameplay profile; no instance combined a native-complete creature profile with a native appearance/model. The current EE static trace additionally shows that the r43 TriMesh itself satisfies instance creation and final draw eligibility, so the failure cannot honestly be assigned to the seven-state rigid model family without an upstream resource/model-instance trace.",
+    "confirmedProcessDefect": "H1 v20 was classified in code as a runtime-positive correctness witness although its only runtime image was a severely deformed blob. r43 was then required to reproduce that corrupt root, one-rigid-mesh and seven-state type-0 family. This was a false baseline.",
+    "retailDifferential": "Exact readback of retail c_Direwolf, retail c_Horror and CEP R3 shows 42 local type-5 states, while CEP c_kocrachn inherits c_Horror. These are strong completeness references, not a proven no-draw gate. The current EE functions MdlNodeTriMesh::InternalCreateInstance, CreateInstanceTreeR, PartTriMesh::IsPartRenderable and PartTriMesh::Draw contain no requirement for SkinMesh, 42 states or a non-NULL supermodel. H1 v20 also reached the draw path with one rigid mesh and seven type-0 states, although it rendered corruptly.",
+    "notYetProvenScalar": "No renderer scalar is established. Exact r43 readback has valid indices, winding, finite bounds, render=1, 2678 vertices and legal MDX streams. In the installed 2026-01-22 nwmain.exe, TriMesh instance creation copies render!=0 into the PartTriMesh enabled byte, the final renderability predicate accepts a nonzero vertex count, and Draw reaches a concrete render path after the same checks. The unresolved boundary is therefore before or around current-client resource resolution/model attachment, scene visibility, or owner-proof binding; it is not proved to be the animation-count or SkinMesh family.",
+    "auroraDecompilationFact": "The creature load routine reads the complete instance state directly from the GIT structure. TemplateResRef is retained metadata; it does not merge a retail UTC profile into a sparse or minimal GIT creature at runtime.",
+    "retailResourceFact": "Valid native UTCs vary in MaxHitPoints and SkillList length/ranks. MaxHitPoints=13 and exactly 28 zero-rank skills are not engine invariants."
+  },
+  "offlineImplementationVerification": {
+    "productionRouting": "Studio now routes a skinned source without an exact caller-owned 42-state set to SKINNED_PROCEDURAL_HUMANOID_42. The old H1_SKINNED corrupt-draw route is absent from the Worker request union.",
+    "legacyQuarantine": "A real browser Worker test sends the historical H1_SKINNED lane and requires rejection before any artifact is returned.",
+    "idleScaleCorrection": "The exact H2 cpause1 initially retained exporter scale tracks while the 41 authored clips removed them. A bind-pose deformation test exposed this hidden asymmetry. The procedural author now admits only finite constant uniform scale, removes it from cpause1 and every authored clip, and rejects animated or non-uniform scale.",
+    "binaryModelReadback": "The exact owned H2 output has 42 type-5 states, a controllerless model root, controllerless state roots, direct-root SkinMesh, a weighted skeleton below the model root, no scale-controller rejection in any of the 42 deformation samples, and SkinMesh bind reconstruction error <= 1e-4.",
+    "geometryBounds": "Exact binary readback bounds are approximately [-0.6094,-0.3487,0.0]..[0.6094,0.3487,1.7000]. The test requires a grounded 1.6..1.8m height and rejects the oversized corrupt-blob regression.",
+    "cleanFixtureModule": "The procedural package emits exactly one creature fixture directly in front of the player. Both its GIT instance and module-local UTC independently read back as ActiveMonsterBaseline. No H1 model and no Hook Horror generated control are present.",
+    "webReadback": "The rebuilt WASM/Worker pipeline materializes the exact H2 successfully, reports 1 explicit plus 41 procedural clips, 23/23 callbacks and complete SkinMesh deformation, and reconstructs a visible articulated humanoid in the offline Three.js binary-readback viewport.",
+    "inlineMapAdapterCorrection": "The web preview incorrectly treated zero-filled unused extended64 inline slots as active slots. It now derives the active count from the forward node-to-bone map, matching the native zero-terminated SkinMesh family. This was a preview-adapter defect, not a reason to mutate the MDL mapping.",
+    "fullWorkspaceRegression": "cargo test --workspace completed with exit code 0 after updating the stale parser regression that still treated the now-supported AABB family as unsupported. Scoped Core, WASM, Studio, Worker, optimized browser and strict Clippy checks also pass.",
+    "runtimeClaim": "These are offline binary and web-readback results only. They do not claim Aurora Toolset or NWN visibility."
+  },
+  "conclusions": {
+    "ownerCorrectionAccepted": "The r43 test module contained corrupted generated model families and did not prove a working custom creature in NWN. The audit must not reinterpret that result as success, a wrong-module error or a mere proof-packet gap.",
+    "rootCause": "The exact artifact-level cause of complete NWN absence is not yet proven. What is proven is a process root cause: H1 v20 was promoted from a corrupt draw witness to a correctness baseline, the r43 control matrix omitted native-profile plus native-appearance, and internal readback was treated as engine acceptance. Current EE static analysis contradicts the stronger claim that r43 was rejected merely because it had one rigid TriMesh, seven type-0 states, NULL supermodel or no SkinMesh.",
+    "implementedResolution": "The production path now emits a controllerless Aurora root, direct-root SkinMesh, weighted skeleton, normalized unit scale, 42 distinct type-5 states, 23 gameplay callbacks and a clean one-creature ActiveMonsterBaseline test module. These are implemented completeness improvements, not a proven resolution of the observed r43 no-draw. The historical H1_SKINNED route is quarantined and rejected by the production Worker.",
+    "verifiedScope": "Core binary readback, deformation, geometry bounds, WASM, Studio, Worker, optimized browser readback, typecheck, strict Clippy and cargo test --workspace pass. This establishes offline implementation consistency only.",
+    "unresolvedScope": "No exact post-r43 candidate has been materialized and no claim of Toolset or NWN visibility is made. Only owner proof of one immutable MOD/HAK/model lineage can close runtime visibility and animation.",
+    "resumeCondition": "The modified MOD is now hash-bound. Before a new model iteration, close the missing A/B boundary on the same diagnosis lane: owner-test the already materialized stock-only generated-container diagnostic m2a_van02.mod or provide a candidate-bound NWN capture/log that proves whether a native-profile plus native-appearance creature is instantiated and visible. Only after that result may the exact minimal artifact delta be declared.",
+    "forbiddenShortcuts": [
+      "Do not test or present the current r43 corrupted lineage as the fixed candidate.",
+      "Do not create r44, a new HAK, model resref, texture resref or appearance row merely because r43 is now hash-bound; the engine-level cause and minimal delta are still not diagnosed.",
+      "Do not use H1 v20 or the generated Hook Horror as correctness controls.",
+      "Do not claim NWN success from offline readback, build success or a web preview."
+    ]
+  },
+  "iterationGate": {
+    "newCandidateAdmitted": false,
+    "visualFailureAdmitted": true,
+    "reason": "The owner supplied a fresh operational failure and the exact 39090-byte modified MOD is now immutably bound by SHA-256 a444722545f81da256d6733b10c71c830609939eb31df496a3db2e9e7e3f7f77. The remaining gate is diagnosis: current EE static analysis shows that r43 passes TriMesh instance and draw-eligibility predicates, while the scene omitted the native-profile plus native-appearance quadrant. A minimal model delta is therefore not yet justified.",
+    "offlineImplementationAllowed": true,
+    "implementedOfflineDelta": "A new opt-in FULL_NATIVE_42_PROCEDURAL_HUMANOID_V1 route now authors 41 distinct clean-room clips around the owned H2 cpause1 source, emits the exact 42-state type-5 namespace, authors 23 gameplay callbacks, removes admitted constant scale controllers from all 42 states, inserts a controllerless Aurora root, keeps the weighted skeleton below it and reparents SkinMesh directly to that root. Exact H2 readback passes behavior, bind reconstruction, grounded-scale and non-rigid deformation gates. Studio/WASM/Worker selects this route, quarantines H1_SKINNED, and emits a one-creature ActiveMonsterBaseline fixture.",
+    "declaredMinimalNextArtifactDelta": "Not declared. First close the existing stock-only container diagnostic or obtain an exact current-client resource/model-instance trace. The procedural SkinMesh/42-state path remains available as a completeness candidate, but it is not yet proved to be the minimal fix for the observed total absence."
+  }
+}

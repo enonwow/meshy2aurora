@@ -1,6 +1,6 @@
 # Docker build/test supplement
 
-Data: 2026-07-12 | Autor: Codex | Status: D1 IMPLEMENTED / VERIFYING
+Data: 2026-07-12 | Autor: Codex | Status: D1 + LOCAL COMPOSE IMPLEMENTED / VERIFYING
 
 ## 1. Decyzja
 
@@ -24,6 +24,11 @@ Docker nie zmienia architektury produktu. Konwersja nadal wykonuje sie lokalnie 
 przegladarce na plikach jawnie wybranych przez uzytkownika, a `m2a-core` pozostaje
 jedynym rdzeniem formatu. Na obecnym etapie obraz ma jedynie odtwarzac toolchain i
 uruchamiac te same gates, ktore istnieja na hoscie i w CI.
+
+`docker-compose.yml` dodaje lokalny serwer Vite dla Studio, profil `quality` i
+nazwane wolumeny wyłącznie dla zależności/cache. Operacyjny kontrakt startu,
+restartu i jawnego resetu cache jest w `documentation/docker-compose-runbook.md`.
+Compose nie montuje ani nie zmienia Aurora/NWN/Toolsetu lub katalogów użytkownika.
 
 Nie dodajemy jeszcze obrazu serwujacego aplikacje. `apps/studio-web`, React/Vite,
 Worker, viewport oraz statyczny obraz webowy naleza do S1, ktore zalezy od

@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "status": "owner_visual_proof_passed",
+  "candidate": {
+    "testModuleFileName": "m2a_s1_plc_mod.mod",
+    "moduleSha256BeforeLaunch": "ba0e978dc9d01d9ad4f69bd9e7857c687ba41ab782c8bc93d73370f52e0afa9b",
+    "hakFileName": "m2a_s1_plc_hak.hak",
+    "hakSha256": "b6553710c6190346fcddaadec0040ed830fe4796cb448e7f455c5f06d727fceb",
+    "areaResref": "m2a_s1_plc_ar",
+    "objectName": "Meshy Ritual Pedestal",
+    "objectTag": "m2a_s1_ritual_pedestal",
+    "appearanceRow": 16500,
+    "modelResref": "m2a_s1_plc_ped"
+  },
+  "ownerReport": {
+    "text": "pięknie zadziałało <3",
+    "reportedAtLocalDate": "2026-07-25"
+  },
+  "toolset": {
+    "modelVisibility": "visible",
+    "proofCompleteness": "verified",
+    "screenshot": {
+      "path": "documentation/evidence/s1-placeable-ritual-pedestal-p1-owner-toolset-visible-2026-07-25.png",
+      "byteLength": 2678074,
+      "width": 1919,
+      "height": 1032,
+      "sha256": "b09c0ec912c58b8127006e2d19722748df93dc9822a9b757e69666a2e9dfe0b8"
+    },
+    "observations": {
+      "moduleFrame": "m2a_s1_plc_mod.mod*",
+      "areaTab": "m2a_s1_plc_ar*",
+      "objectTreeName": "Meshy Ritual Pedestal",
+      "objectSelected": true,
+      "modelClearlyVisible": true,
+      "captureJudgeable": true
+    }
+  },
+  "nwn": {
+    "modelVisibility": "visible",
+    "proofCompleteness": "verified",
+    "screenshot": {
+      "path": "documentation/evidence/s1-placeable-ritual-pedestal-p1-owner-nwn-visible-2026-07-25.png",
+      "byteLength": 3151052,
+      "width": 1919,
+      "height": 1027,
+      "sha256": "2de846b35756faa010c4f68aa194e0268a664b223c13b77e1b6b4cfee010bef5"
+    },
+    "observations": {
+      "playerVisible": true,
+      "modelClearlyVisibleInForwardScene": true,
+      "captureJudgeable": true,
+      "candidateBinding": "owner-supplied runtime capture from the exact Toolset test session"
+    }
+  },
+  "separateFindings": {
+    "toolsetDirtyMarkerVisible": true,
+    "toolsetAreaTreeDisplayName": "Meshy2Aurora M0 binary vertical-slice area",
+    "expectedAreaDisplayName": "Meshy2Aurora S1 Ritual Pedestal",
+    "areaDisplayNameMatchesHandoff": false,
+    "installedModulePostRunHash": {
+      "status": "unreadable_while_locked_by_nwtoolset",
+      "preLaunchHashWasVerifiedByteIdentical": true
+    },
+    "installedHakPostRunHash": {
+      "status": "verified",
+      "sha256": "b6553710c6190346fcddaadec0040ed830fe4796cb448e7f455c5f06d727fceb"
+    },
+    "paletteProof": "not_tested",
+    "collisionCompleteness": "pwk_not_implemented"
+  },
+  "iterationGate": {
+    "newModelIterationAdmitted": false,
+    "reason": "Both Toolset and NWN modelVisibility are visible."
+  }
+}

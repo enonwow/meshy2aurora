@@ -169,7 +169,7 @@ M4 empty-animation output musi pozostac:
 payload_length: 1188
 core_length: 1072
 raw_length: 104
-sha256: e100130d1dfbd18657413cdb7a701396d466cee081683591fc9836bf0c11b4b2
+sha256: 257f30d79926e38922f1a8af375ac2c1869aedd41e8783420cca56ab647c25c1
 ```
 
 Ten hash jest gate'em regresji, nie dowodem runtime.
@@ -274,7 +274,7 @@ frozen_empty_animation:
   payload_length: 1188
   core_length: 1072
   raw_length: 104
-  sha256: e100130d1dfbd18657413cdb7a701396d466cee081683591fc9836bf0c11b4b2
+  sha256: 257f30d79926e38922f1a8af375ac2c1869aedd41e8783420cca56ab647c25c1
 quality:
   fmt: PASS
   clippy_all_targets_deny_warnings: PASS

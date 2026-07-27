@@ -58,13 +58,13 @@ acceptance_levels:
     clips: ["cpause1", "cwalk", "crun"]
     purpose: "looping movement states"
   profile_A_gameplay_candidate:
-    clips: ["cpause1", "cwalk", "crun", "ca1slashl", "cdamagel", "cdead"]
+    clips: ["cpause1", "cwalk", "crun", "ca1slashl", "cdamagel", "ckdbckdie", "cdead"]
     status: "candidate names; exact state routing must be proved in game"
   full_selected_profile:
     purpose: "every state selected for the product has an explicit clip/fallback decision and proof"
 ```
 
-Nazwy szesciu klipow sa kierunkiem kompatybilnosci, nie licencja na kopiowanie danych animacji.
+Nazwy klipow sa kierunkiem kompatybilnosci, nie licencja na kopiowanie danych animacji.
 
 ## 5. Potwierdzony binary contract
 
@@ -106,10 +106,133 @@ tests:
   behavior:
     - "loader smoke shows measurable cpause1 motion"
     - "movement proof distinguishes cwalk and crun"
-    - "one-shot proof reaches terminal pose without being mistaken for a loop"
+    - "ckdbckdie one-shot reaches a terminal pose before the cdead state"
     - "event proof records observed hit/footstep behavior or a named blocker"
   provenance:
     - "no external animation payload is committed or copied"
 ```
 
 GB-005 ma status `DIRECTION_DEFINED_RUNTIME_OPEN`. Implementacja M4A zaczyna sie od self-contained `loader_smoke`, a nie od zalozenia, ze `c_Horror` bedzie dostepnym proof dependency.
+
+## 8. Implementacja full selected profile -- 2026-07-25
+
+`FullNative42ExplicitV1` jest obecnie wersjonowanym, opt-in profilem Core,
+WASM i Studio. Wymaga exact 42-name namespace potwierdzonego przez own reader
+na `c_Direwolf`, `c_horror` i CEP R3. Kazdy output clip musi pochodzic z
+osobnego, jawnego source animation mappingu; profil nie uzupelnia brakow przez
+klonowanie `cpause1`.
+
+Poza samym namespace builder V2 uruchamia dwa fail-closed oracle:
+
+- behavior oracle wymaga kontrolerow we wszystkich 42 klipach, ruchu we
+  wszystkich stanach aktywnych zgodnych pomiedzy trzema rodzinami native,
+  roznych semantyk `cpause1`/`cwalk`/`crun`/atak/damage/death oraz terminalnej
+  pozy w `ckdbckdie`;
+- SkinMesh oracle probkuje `cwalk`, `crun`, `ca1slashl`, `cdamagel` i
+  `ckdbckdie` po own binary readbacku i wymaga rzeczywistej zmiany ksztaltu
+  wazonej siatki. Sam rigid transform root nie przechodzi.
+
+Wazna korekta semantyczna: `cdead` nie jest uniwersalnym one-shotem smierci.
+Retail `c_Direwolf` trzyma tam statyczna poze, a CEP R3 ma zmienne kontrolery.
+Analogicznie `ccastoutlp` i `cgetmidlp` sa family-variable. Kontrakt wymaga dla
+nich jawnego payloadu kontrolerow, ale nie narzuca globalnie ruchu ani bezruchu.
+Przejscie do terminalnej pozy jest sprawdzane w `ckdbckdie`.
+
+Granice:
+
+- legacy V1 nadal ma 7-state idle-fallback, aby nie zmieniac zamrozonych
+  lineage i ich hashy;
+- full V2 nie deklaruje, ze przejscie oracle dowodzi artystycznej jakosci ruchu
+  ani state routingu zamknietego engine'u;
+- syntetyczna fixture ma 42 niezalezne source payloady, trzy jawne stany
+  family-variable oraz ruch child-bone powodujacy nierigid deformacje;
+- finalne zamkniecie nadal wymaga runtime proofu callbackow eventow,
+  petli/state routingu oraz hash-bound owner proof w NWN.
+
+## 9. Caller-owned event authoring V1 -- 2026-07-25
+
+Decyzja o eventach jest zamknieta strukturalnie, ale nie runtime'owo. Own
+reader potwierdza dokladny wspolny floor trzech niezaleznych rodzin:
+retail `c_Direwolf`, retail `c_horror` i CEP R3 `c_phod_horror_b`.
+Wspolna czesc zawiera dokladnie 23 pary `(clip, event)`:
+
+| Clip | Event |
+|---|---|
+| `ca1slashl` | `hit` |
+| `ca1slashr` | `hit` |
+| `ca1stab` | `hit` |
+| `ca1stab` | `snd_footstep` |
+| `ccastout` | `cast` |
+| `ccloseh` | `hit` |
+| `cclosel` | `hit` |
+| `ccturnr` | `snd_footstep` |
+| `ccwalkb` | `snd_footstep` |
+| `ccwalkf` | `snd_footstep` |
+| `ccwalkl` | `snd_footstep` |
+| `ccwalkr` | `snd_footstep` |
+| `cdamagel` | `snd_footstep` |
+| `cdamager` | `snd_footstep` |
+| `cdamages` | `snd_footstep` |
+| `cdodgelr` | `snd_footstep` |
+| `cdodges` | `snd_footstep` |
+| `ckdbck` | `snd_hitground` |
+| `creach` | `hit` |
+| `creach` | `snd_footstep` |
+| `crun` | `snd_footstep` |
+| `ctaunt` | `snd_footstep` |
+| `cwalk` | `snd_footstep` |
+
+Ten floor jest profilem pokrycia, nie zrodlem timingow. Produkt nie kopiuje
+czasow, keyframes ani innych payloadow witnessow. Uzytkownik podaje wlasny
+strict JSON V1:
+
+```json
+{
+  "schemaVersion": 1,
+  "clips": [
+    {
+      "clipName": "cwalk",
+      "events": [
+        { "timeSeconds": 0.25, "name": "snd_footstep" }
+      ]
+    }
+  ]
+}
+```
+
+`DirectCreatureEventAuthoringV1` wymaga unikalnych nazw klipow po ASCII
+case-fold. Nazwa eventu musi byc niepusta, ASCII, bez NUL i miec najwyzej
+31 bajtow. Czas musi byc skonczony i nalezec do `0..clip.length`. Eventy
+nieznane sa zachowywane, ale raportowane.
+
+Core V3 naklada caller-owned tabele po materializacji exact 42 stanow, zapisuje
+MDL, ponownie czyta jego dokladne bajty i dopiero z binary readbacku wymaga
+`23/23`. Raport zawiera:
+
+- `animationEventConformance`;
+- kanoniczny `byteLength` i SHA-256 sparsowanego sidecara w
+  `animationEventAuthoringCanonical`.
+
+WASM udostepnia `buildMeshyH1ModelPackageV3`. Worker ma osobny lane
+`H1_SKINNED_FULL_42_EVENTS`, a Studio przekazuje wybrany
+`animation-events.json` bez zmiany. Sidecar z placeable albo source bez exact
+42 stanow jest odrzucany fail-closed. Legacy V1 i V2 zachowuja dotychczasowe
+bajty i nie dostaja niejawnych eventow.
+
+Zamkniete offline:
+
+- strict schema, nazwy i zakres czasu;
+- deterministyczny zapis i own binary readback;
+- dokladny floor 23 par;
+- brakujaca para, malformed JSON i niepelny profil sa bledami;
+- Core, WASM, Worker i Studio przenosza ten sam caller-owned payload.
+
+Nadal otwarte runtime:
+
+- czy NWN wywoluje `hit`, `cast` i sound callback w oczekiwanym momencie;
+- engine loop i state routing;
+- artystyczna/gameplayowa jakosc caller-owned timingow.
+
+Dlatego status GB-005 pozostaje `DIRECTION_DEFINED_RUNTIME_OPEN`: implementacja
+event payloadu jest kompletna offline, lecz callback semantics wymagaja
+hash-bound owner proof w NWN.

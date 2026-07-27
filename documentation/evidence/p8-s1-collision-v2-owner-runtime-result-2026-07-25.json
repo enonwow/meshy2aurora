@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-07-25",
+  "source": "owner_followup_in_active_codex_task",
+  "ownerReport": "kolizja nadal nie działa; wykonaj audyt zaczynając od dekompilacji Aurory",
+  "candidateBinding": {
+    "basis": "the report immediately follows the unique active V2 collision handoff; no later collision candidate exists",
+    "testModuleFileName": "m2a_s1_c2_mod.mod",
+    "toolsetModuleName": "Meshy2Aurora S1 Collision V2",
+    "areaName": "Meshy2Aurora M0 binary vertical-slice area",
+    "areaResref": "m2a_s1_c2_ar",
+    "hakFileName": "m2a_s1_c2_hak.hak",
+    "modelResref": "m2a_s1_c2_ped",
+    "objectTag": "m2a_s1_c2_obj",
+    "appearanceRow": 16500,
+    "placement": {
+      "x": 10.0,
+      "y": 14.5,
+      "z": 0.0,
+      "bearing": 0.0
+    }
+  },
+  "hashes": {
+    "moduleSha256": "bdc2c1fc6e1f6f9e0c93d80d3e768fd60e7fe6876b9faeabb9665e83eaaaa7de",
+    "hakSha256": "25c3f064d6b040cce946adf51092478bc6e239139ccbb4a962249d2e406e8440",
+    "pwkSha256": "4eef6b278925845ebe6ee17646aa0d647a38fbaa56c7e0cce6252950c2e4e6d2"
+  },
+  "expected": "player movement is blocked by the pedestal footprint",
+  "actual": "placeable still does not provide collision",
+  "collisionRuntimeVerdict": "not_blocking",
+  "collisionProofCompleteness": "verified_by_owner_report",
+  "modelVisibility": "not_tested",
+  "candidateDisposition": "failed_collision_runtime_gate",
+  "modelIterationGate": "new_collision_iteration_admitted_but_not_materialized",
+  "auditStatus": "complete_root_cause_confirmed",
+  "rootCause": {
+    "code": "BINARY_PWK_SENT_TO_ASCII_ONLY_PLACEABLE_WALKMESH_LOADER",
+    "summary": "Meshy2Aurora emits the type-2053 PWK as binary MDL, while CNWPlaceableSurfaceMesh::LoadWalkMesh in the exact NWN client and server parses PWK only as newline-delimited text tokens",
+    "candidateEffect": "the exact V2 payload produces zero recognized node, verts, faces or endnode records and therefore no collision geometry",
+    "confidenceBoundary": "confirmed for exact NWN:EE client and dedicated server version 89.8193.37-17 installed on this workstation"
+  },
+  "runtimeEvidence": {
+    "nwmain": {
+      "version": "89.8193.37-17",
+      "byteLength": 21071872,
+      "sha256": "3b7cb1252e0edb2ce22d7971f333aade027039ae30a45b4bc64732c3e6bec73a",
+      "loadWalkMeshRva": "0x2CE0B0",
+      "loadWalkMeshStringRva": "0x2CEAF0",
+      "getPwkDataPtrRva": "0x2CB720",
+      "getPwkSizeRva": "0x2CB730",
+      "resourceTypeImmediate": "0x805"
+    },
+    "nwserver": {
+      "version": "89.8193.37-17",
+      "byteLength": 12586496,
+      "sha256": "98951511ae7d06a251355f12d4f3e4b96269a2414fa3058e641afd70098690f6",
+      "loadWalkMeshRva": "0x261730",
+      "loadWalkMeshStringRva": "0x262170"
+    },
+    "recognizedTextTokens": [
+      "node",
+      "trimesh",
+      "dummy",
+      "position",
+      "orientation",
+      "verts",
+      "vertices",
+      "faces",
+      "endnode",
+      "pwk_use",
+      "pwk_dp_use_"
+    ],
+    "binaryHeaderBranchPresent": false
+  },
+  "exactPwkParserProjection": {
+    "byteLength": 1272,
+    "first32BytesHex": "00 00 00 00 50 04 00 00 9c 00 00 00 00 00 00 00 00 00 00 00 6d 32 61 5f 73 31 5f 63 32 5f 70 65",
+    "newlineCount": 0,
+    "runtimeLineBufferBytes": 256,
+    "recognizedNodeRecords": 0,
+    "recognizedVertsRecords": 0,
+    "recognizedFacesRecords": 0
+  },
+  "rejectedPriorDiagnoses": [
+    {
+      "hypothesis": "missing face adjacency was the collision root cause",
+      "reason": "V2 contains the expected shared-edge adjacency and still does not block movement"
+    },
+    {
+      "hypothesis": "binary root hierarchy was the collision root cause",
+      "reason": "the runtime collision loader never parses the binary node hierarchy"
+    },
+    {
+      "hypothesis": "mesh.m_fFaceNormalSumDiv2 at offset 0x268 was the collision root cause",
+      "reason": "the runtime collision loader never reads the binary mesh field"
+    }
+  ],
+  "positiveCorpus": {
+    "retailPwkCount": 1090,
+    "externalHakPwkCount": 8662,
+    "totalExternalAsciiPwkCount": 9752,
+    "externalBinaryPwkCount": 0,
+    "projectBinaryPwkCount": 2,
+    "projectBinaryPwks": [
+      "m2a_s1_col_hak.hak",
+      "m2a_s1_c2_hak.hak"
+    ]
+  },
+  "independentCrossChecks": [
+    {
+      "source": "xoreos src/engines/nwn/walkmeshloader.cpp",
+      "revision": "89c99d2a93c23f3ba2b1218759e38775e4f2bdf9",
+      "result": "PWK is parsed with a newline-delimited StreamTokenizer and node/position/orientation/verts/faces/aabb/endnode tokens; no binary PWK route"
+    },
+    {
+      "source": "NwnExplorer nwnexplorer/ModelView.cpp",
+      "revision": "56da6dc2fe94da6bbabe83ad18670f47fccd7dfb",
+      "result": "binary PWK support is confined to the tool's model-view path and does not establish runtime collision support"
+    }
+  ],
+  "minimumNextDelta": {
+    "status": "documented_not_implemented",
+    "concept": "keep the shared geometry IR and transforms, but serialize type-2053 PWK with a dedicated ASCII writer/readback matching CNWPlaceableSurfaceMesh",
+    "requirements": [
+      "derive the footprint from AuroraModelIrV1",
+      "emit newline-delimited node trimesh, parent, position, orientation, verts, faces and endnode records",
+      "emit eight face fields including adjacency and surface 7 Nonwalk",
+      "reject binary PWK from runtime-ready placeable packages",
+      "preserve resource type, resref, Static, Useable, appearance row and placement",
+      "keep render MDL on the shared binary MDL writer"
+    ]
+  },
+  "auditEvidence": "documentation/evidence/p8-s1-collision-v2-aurora-decomp-audit-2026-07-25.md",
+  "startsToolset": false,
+  "startsNwn": false,
+  "createsNewModuleOrHak": false,
+  "writesNativeNwnDirectories": false
+}

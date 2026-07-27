@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "status": "generated_input_ready_for_placeable_pipeline_implementation",
+  "assetRole": "S1 static placeable example",
+  "displayName": "Weathered stone and brass ritual pedestal",
+  "generation": {
+    "provider": "Meshy",
+    "profileId": "S1-static-prop/v1",
+    "geometryTarget": "AURORA_PROOF",
+    "targetPolycount": 1500,
+    "prompt": "A freestanding medieval fantasy ritual pedestal for a classic isometric RPG, weathered carved gray stone base with aged brass bands and a solid closed ornamental top, one centered static game prop, symmetrical readable silhouette, flat stable bottom resting on the ground, no character, no weapon, no floating parts, no thin chains, no glass, no transparency, no glow, no text, no background",
+    "ownerCreditCap": 40,
+    "consumedCredits": 30,
+    "tasks": [
+      {
+        "taskId": "019f98b8-2314-7e3e-8138-86be43fb1a1f",
+        "stage": "PREVIEW",
+        "status": "SUCCEEDED",
+        "createdAtUtc": "2026-07-25T10:00:34.027Z",
+        "finishedAtUtc": "2026-07-25T10:01:16.878Z",
+        "consumedCredits": 20
+      },
+      {
+        "taskId": "019f98b8-da22-7e6d-b21b-809e850ab2b2",
+        "stage": "REFINE",
+        "status": "SUCCEEDED",
+        "createdAtUtc": "2026-07-25T10:01:19.151Z",
+        "finishedAtUtc": "2026-07-25T10:03:02.079Z",
+        "consumedCredits": 10
+      }
+    ]
+  },
+  "glb": {
+    "path": "C:\\Projects\\meshy2aurora\\test-assets\\meshy\\incoming\\s1-placeable-ritual-pedestal-1500.glb",
+    "sha256": "dad22a5c3490242458cb7a81e50c53e265abf75886f57f6bd8a770938c2f7372",
+    "byteLength": 10011256,
+    "format": "GLB 2.0",
+    "generator": "pygltflib@v1.16.5",
+    "sceneCount": 1,
+    "nodeCount": 1,
+    "meshCount": 1,
+    "primitiveCount": 1,
+    "triangleCount": 1477,
+    "materialCount": 1,
+    "textureCount": 4,
+    "imageCount": 4,
+    "skinCount": 0,
+    "animationCount": 0,
+    "sourceAxisConvention": "glTF Y-up",
+    "bounds": {
+      "min": [
+        -0.32822299003601074,
+        -0.9496840238571167,
+        -0.32589098811149597
+      ],
+      "max": [
+        0.32668301463127136,
+        0.9206500053405762,
+        0.3222759962081909
+      ],
+      "size": [
+        0.6549060046672821,
+        1.8703340291976929,
+        0.6481669843196869
+      ]
+    }
+  },
+  "thumbnail": {
+    "path": "C:\\Projects\\meshy2aurora\\documentation\\evidence\\s1-placeable-ritual-pedestal-meshy-thumbnail-2026-07-25.png",
+    "sha256": "4ee56720e32ad3eb54d2ff2a0bf20d1c0893c2e05e9fb39f86b68604508435e9",
+    "byteLength": 90694
+  },
+  "review": {
+    "technical": "PASS",
+    "visual": "PASS",
+    "notes": [
+      "Single static textured mesh with no skin or animations.",
+      "Triangle count is within the requested Aurora proof target.",
+      "The silhouette is readable, the base is flat, and there are no detached or thin moving parts.",
+      "The GLB remains an implementation input; no Aurora Toolset or NWN compatibility claim is made."
+    ]
+  }
+}

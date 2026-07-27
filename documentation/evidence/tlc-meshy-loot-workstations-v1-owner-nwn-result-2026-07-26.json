@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-07-26",
+  "candidate": {
+    "lane": "TLC_MESHY_LOOT_WORKSTATIONS_V1",
+    "moduleFileName": "m2a_tlcw1_mod.mod",
+    "moduleDisplayName": "Meshy2Aurora TLC Loot Workstations V1",
+    "areaName": "Meshy2Aurora TLC Loot Workstations",
+    "orderedHakFiles": [
+      "m2a_tlcw1_hak.hak"
+    ],
+    "moduleSha256": "6fda8b551dd1799f0eee066b06892dc06eeda3feac3f6298be8bcefa19f3cc79",
+    "hakSha256": "251d6c0888124b7fdaddffececfed40e893bc3e27fd39216ba40154fa8ddfe36"
+  },
+  "ownerEvidence": [
+    {
+      "role": "NWN_RUNTIME_SCALE_FAILURE",
+      "path": "documentation/evidence/tlc-meshy-loot-workstations-v1-owner-nwn-scale-failure-2026-07-26.png",
+      "sha256": "11b18249386a3e83a2f2246641bb62d599f6edd4bc5150b4130d43f2827a322e"
+    },
+    {
+      "role": "UPGRADING_REACTOR_LAVA_ANNOTATION",
+      "path": "documentation/evidence/tlc-meshy-loot-workstations-v1-owner-reactor-annotation-2026-07-26.png",
+      "sha256": "be1d473ea5d63bf79876b5c697404dd101b37a45c1552607e3aa7f6badd5897d"
+    }
+  ],
+  "nwn": {
+    "modelVisibility": "visible",
+    "proofCompleteness": "verified",
+    "acceptance": "failed",
+    "ownerFindings": [
+      {
+        "code": "PLACEABLE-SCALE-TOO-SMALL",
+        "scope": "all_three_placeables",
+        "verdict": "failed"
+      },
+      {
+        "code": "UPGRADING-REACTOR-LAVA-MISSES-LOWER-BASIN",
+        "scope": "m2a_tlcw1_upg",
+        "verdict": "failed"
+      }
+    ]
+  },
+  "offlineDiagnosis": {
+    "scale": {
+      "cause": "Meshy auto-size dimensions were preserved as NWN world dimensions and the placeable build boundary has no explicit physical-height authoring contract.",
+      "sourceHeights": {
+        "m2a_tlcw1_dis": 1.0,
+        "m2a_tlcw1_pur": 0.3199999928474426,
+        "m2a_tlcw1_upg": 0.6000000238418579
+      }
+    },
+    "reactor": {
+      "cause": "The front thumbnail is not sufficient 3D geometry proof. The generated reactor GLB contains 810 disconnected triangle components, so the apparent front-view lava-to-basin contact is not a reliable continuous spatial construction.",
+      "sourceMaterialDoubleSided": true,
+      "auroraRuntimeRisk": "Disconnected or thin lava geometry can become unreadable from the NWN camera even when the source front thumbnail looks aligned."
+    }
+  },
+  "minimalIntendedDelta": [
+    "Add an explicit target physical height to the static placeable authoring boundary and report source/target height plus uniform scale.",
+    "Do not change triangle limits, shared parser, model IR, shadow adjacency, collision generation, 2DA/UTP/GIT/GIC/ITP or package writers.",
+    "Regenerate only the upgrading reactor geometry from multi-view references that prove the lava stream is centered over and physically terminates inside the lower basin.",
+    "Build a new immutable MOD/HAK lineage only after the owner selects target heights and explicitly requests the correction."
+  ],
+  "nextCandidate": {
+    "status": "not_created",
+    "reason": "V1 is visible but failed scale and geometry acceptance; target dimensions and explicit correction request are required before authoring V2."
+  }
+}

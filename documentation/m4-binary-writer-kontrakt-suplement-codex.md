@@ -433,7 +433,7 @@ do `M4-SKIN-LANE-INVALID`, brak bone do `M4-SKIN-BONE-MISSING`, a limit do
   deterministic bytes/report oraz nie mutuja inputu;
 - mutacje boundary/map/q/t/constants/weights/refs sa odrzucane stabilnym kodem;
 - frozen rigid payload pozostaje `len=1188`, core/raw `1072/104`, SHA-256
-  `e100130d1dfbd18657413cdb7a701396d466cee081683591fc9836bf0c11b4b2`;
+  `257f30d79926e38922f1a8af375ac2c1869aedd41e8783420cca56ab647c25c1`;
 - canonical R1 reader P-REF pozostaje PASS bez payloadu w repo;
 - native workspace, WASM, no-cache Docker i niezalezny review przechodza;
 - M4 moze byc `DONE_STRUCTURAL` po tych gate'ach, ale runtime deformation oraz

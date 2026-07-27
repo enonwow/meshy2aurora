@@ -27,6 +27,32 @@ The Bridge prints a one-time pairing code. Enter it in Meshy Lab after clicking
 **Open Meshy Lab** on Source. Do not add the key, pairing code, task response,
 or signed artifact URL to source control, a screenshot, or a public issue.
 
+In Docker Compose the Bridge listens on `0.0.0.0` only inside its isolated
+container, because a container loopback listener cannot receive published-port
+traffic. This requires `MESHY_BRIDGE_ALLOW_CONTAINER_BIND=1`; the Compose port
+mapping remains fixed to `127.0.0.1:43119`, and the exact-origin/session checks
+remain enforced by the Bridge.
+
+### Restart from Studio
+
+The Docker Compose Bridge advertises a `Restart local Bridge` control on the
+Studio pairing screen. It is available only when the Bridge is started with
+`MESHY_BRIDGE_RESTARTABLE=1` under Compose's `restart: unless-stopped`
+supervisor. The exact-origin `POST /v1/bridge/restart` route causes only that
+Bridge process to exit; Compose recreates it and emits a fresh one-use pairing
+code in the local container terminal/log. The UI never receives or displays
+that code. Restarting clears local Bridge sessions and does not cancel a Meshy
+task that is already running.
+
+### Same-origin automatic pairing in Docker Compose
+
+Compose also sets `MESHY_BRIDGE_AUTOMATIC_PAIRING=1`. On the exact configured
+Studio origin only, the explicit **Connect local bridge** action can mint a
+short-lived local session without sending a pairing code or `MESHY_API_KEY` to
+the browser. This is intended for the owner-operated `localhost` Compose
+Studio. A Bridge started directly without this explicit capability retains the
+manual one-use pairing-code flow.
+
 For a static deployment, `MESHY_BRIDGE_ALLOWED_ORIGIN` must be the exact
 deployed Studio origin. Wildcards and LAN binding are intentionally unsupported.
 `VITE_MESHY_LAB=1` must be present when Vite starts/builds; the optional Lab is
@@ -55,8 +81,10 @@ remain `LOWER_DETAIL` (10,000), `BALANCED` (30,000), and `HIGHER_DETAIL`
 
 ## Operational limits
 
-- A browser session expires after 15 minutes. The pairing code is one-use; restart
-  the Bridge to obtain a fresh code before pairing again.
+- A browser session expires after 15 minutes. The direct-process pairing code
+  is one-use; restart the Bridge to obtain a fresh code before pairing again.
+  The explicit Docker Compose automatic-pairing capability mints a new
+  short-lived session for the exact configured Studio origin instead.
 - `confirmationNonce` is one-use. The Bridge does not retry a paid create request.
 - `Cancel run` stops the local pipeline from beginning further stages. A Meshy
   task that is already running may still consume credits; the UI must not claim

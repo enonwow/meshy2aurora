@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "status": "r46_materialization_admitted_not_yet_materialized",
+  "recordedAtLocalDate": "2026-07-27",
+  "failedCandidate": {
+    "testModuleFilename": "m2a_h2r45.mod",
+    "moduleSha256": "c6ce6e814fcd56b0ce8e86738b4cba4b01174065689f5a546d6206f9adc4955e",
+    "hakSha256": "de8adc62b0dedadf0485f7a6072e9e5ce235255fdc20c7e0beef3182362e7937",
+    "modelSha256": "ba10e8b3221e5748a7c8072e3364815ed5e932adb03d45234bb4106c98a8e1dc",
+    "nwn": {
+      "modelVisibility": "not_visible",
+      "proofCompleteness": "failed"
+    },
+    "ownerFailureEvidence": {
+      "path": "C:\\Projects\\meshy2aurora\\documentation\\evidence\\h2-r45-owner-nwn-visual-result-2026-07-26.json",
+      "sha256": "7c45cc9df1023c8cccd446e99bf5c33b6b3d05480e8d9f25dc88c7e43064b3bf"
+    }
+  },
+  "postFailureAudit": {
+    "path": "C:\\Projects\\meshy2aurora\\documentation\\audyt-r45-dalej-pusto-w-nwn-2026-07-26.md",
+    "sha256": "db470fb296639fb0e0c85227c408b427a3d70ed1a285c23492515f2706b1620f",
+    "diagnosedConformanceDefects": [
+      {
+        "code": "M2A-DIRECT-S-APPEARANCE-SPARSE-RUNTIME-ROW",
+        "fact": "r45 custom appearance row populated only 7 of the exact 35 runtime columns and converted 28 cells to ****, including TARGETABLE, HEIGHT and collision/interaction dimensions"
+      },
+      {
+        "code": "M2A-MDL-ROOT-PART-NONZERO",
+        "fact": "r45 emitted model root part 24 while every one of the 53 audited standalone animated native creature models used model root part 0"
+      }
+    ],
+    "excludedHypothesis": {
+      "code": "M2A-CREATURE-PHENOTYPE-MISSING",
+      "fact": "r45 already contains Phenotype=INT 0 in both GIT and UTC; direct MODELTYPE=S resolves the model through appearance.2da RACE, not through phenotype body-part assembly"
+    },
+    "causalBoundary": "Both remaining items are confirmed conformance defects on the pre-draw resolution/instance boundary. Static evidence does not prove either item alone is the sole no-draw root cause."
+  },
+  "admittedCandidate": {
+    "testModuleFilename": "m2a_h2r46.mod",
+    "moduleResref": "m2a_h2r46",
+    "toolsetModuleName": "Meshy2Aurora procedural humanoid proof",
+    "areaName": "Meshy2Aurora M0 binary vertical-slice area",
+    "areaResref": "m2a_h2a46",
+    "orderedHakResrefs": [
+      "m2a_h2r46"
+    ],
+    "modelResref": "m2a_h2p46",
+    "textureResref": "m2a_h2t46",
+    "creatureTemplateResref": "m2a_h2utc46",
+    "creatureTag": "m2a_procedural_creature",
+    "creaturePosition": [
+      10.0,
+      14.5,
+      0.0
+    ],
+    "playerEntryPosition": [
+      10.0,
+      10.0,
+      0.0
+    ],
+    "minimalIntendedArtifactDelta": [
+      "renumber the base model and every local animation hierarchy in root-first preorder so each root is part 0, while remapping all parent links and skin part maps consistently",
+      "append the r46 direct-S appearance row by cloning all 35 cells of verified stock donor physical row 102 and changing only LABEL and RACE",
+      "bind fresh r46 MOD, HAK, MDL, texture, UTC and Area resrefs without overwriting the failed r45 lineage"
+    ],
+    "mustRemainUnchanged": [
+      "source GLB content hash",
+      "texture pixels",
+      "geometry, indices, normals, UVs, skin weights, bone references and inverse binds",
+      "42 local animation states with type 5",
+      "23 authored callback events",
+      "base SkinMesh position and orientation controllers introduced in r45",
+      "ActiveMonsterBaseline GIT/UTC runtime profile including explicit Phenotype=INT 0",
+      "Area geometry, player entry, creature placement and orientation"
+    ],
+    "inputBindings": {
+      "sourceGlbSha256": "f8cf0af21c8143a62b64c490a81dd2855ad3c3f9865922e3854f84b714dec3a3",
+      "baseAppearanceSha256": "24b8351629fbcb00d160df13589bba49d49c29b72a644d70b651bfa3d8b9b966",
+      "preservedTextureSha256": "03169b1493ed4b2f5269ed6fa611aef787e219cddd08661c9135a7f82191c167",
+      "baseAppearanceContainsFailedR45Row": true,
+      "newAppearanceRowExpectedPhysicalIndex": 15220,
+      "directSDonorPhysicalRow": 102
+    },
+    "requiredOfflineGates": [
+      "model root part number is 0",
+      "all 42 animation root part numbers are 0",
+      "full appended appearance row equals donor row 102 in every cell except LABEL and RACE",
+      "HAK contains byte-identical MDL, TGA and appearance.2da resources",
+      "MOD readback binds one ActiveMonsterBaseline fixture, one ordered HAK and explicit Phenotype=INT 0"
+    ],
+    "requiredOwnerProofResult": {
+      "toolset": {
+        "modelVisibility": "visible | not_visible | not_tested",
+        "proofCompleteness": "verified | failed | missing"
+      },
+      "nwn": {
+        "modelVisibility": "visible | not_visible | not_tested",
+        "proofCompleteness": "verified | failed | missing"
+      }
+    }
+  },
+  "iterationGate": {
+    "freshCandidateBoundVisualFailure": true,
+    "diagnosedCauseRecorded": true,
+    "minimalIntendedArtifactDeltaRecorded": true,
+    "newIterationAdmitted": true,
+    "newIterationMaterialized": false
+  },
+  "agentStartedOrControlledToolsetOrNwn": false
+}

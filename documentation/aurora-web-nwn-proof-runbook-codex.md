@@ -46,6 +46,24 @@ Przeniesione fakty:
   traktować jako licencję na zgadywanie identyfikatorów;
 - dowód konkretnej funkcji wymaga realnego runtime, a nie samego Toolsetu.
 
+### Kontrakt recovery
+
+Recovery zatrzymuje bieżącą mutację live, ale nie cały cel i nie oznacza
+domyślnie oczekiwania na decyzję właściciela.
+
+- Dla dokładnego komunikatu informującego, że `No` niszczy backup, wybierz
+  kierowanym komunikatem niedestrukcyjne `Tak`, a następnie ponownie odczytaj
+  wszystkie okna i tożsamość odzyskanego modułu.
+- `Nie` wolno wybrać bez pytania tylko wtedy, gdy packet bieżącego runu
+  zawiera `recoveryPolicy=discard_backup`, backup należy do jednorazowego
+  modułu proof, a zatwierdzony MOD na dysku ma oczekiwany hash.
+- Po recovery nie wysyłaj `File -> Open` w tym samym procesie. Nie zapisuj
+  odzyskanego modułu przed potwierdzeniem jego tożsamości i stanu.
+- Pytaj właściciela tylko przy nieznanym komunikacie, konflikcie tożsamości
+  albo ryzyku utraty niezidentyfikowanych danych. Nie wymagaj odpowiedzi
+  wyłącznie `Tak` lub `Nie`.
+- Podczas pauzy live wykonuj nadal bezpieczny audyt i przygotowanie offline.
+
 ## Kontrakt H1 (aktualny proof)
 
 Jedynym modułem jest `m2a_codex_aproof.mod`, a jedynym dołączonym HAK jest

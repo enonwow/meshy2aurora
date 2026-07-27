@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 1,
+  "status": "owner_nwn_visual_failure_recorded_conformance_defect_found_r45_delta_admitted",
+  "source": "owner_report_in_active_codex_task",
+  "ownerReport": "nic nie widac",
+  "reportedAtLocalDate": "2026-07-26",
+  "candidate": {
+    "testModuleFilename": "m2a_h2r44.mod",
+    "toolsetModuleName": "Meshy2Aurora procedural humanoid proof",
+    "areaName": "Meshy2Aurora M0 binary vertical-slice area",
+    "areaResref": "m2a_h2a44",
+    "orderedHakResrefs": [
+      "m2a_h2r44"
+    ],
+    "appearanceRow": 15219,
+    "modelResref": "m2a_h2p44",
+    "textureResref": "m2a_h2t44",
+    "creatureTemplateResref": "m2a_h2utc44",
+    "creatureTag": "m2a_procedural_creature",
+    "creaturePosition": [
+      10.0,
+      14.5,
+      0.0
+    ],
+    "playerEntryPosition": [
+      10.0,
+      10.0,
+      0.0
+    ],
+    "sourceModule": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\h2-r44-procedural-full-native-20260726\\generated\\m2a_h2r44.mod",
+      "byteLength": 15157,
+      "sha256": "721f4653cc7c546fe6c2ed26df36e7643909a267c4c3f0bed061077ee578a315"
+    },
+    "sourceHak": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\h2-r44-procedural-full-native-20260726\\generated\\m2a_h2r44.hak",
+      "byteLength": 20851425,
+      "sha256": "c2a089f0fd6ee50ce186a6495f992b0fbb0a8f348dcca7406ddd670849f21ac6"
+    },
+    "sourceModel": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\h2-r44-procedural-full-native-20260726\\generated\\m2a_h2p44.mdl",
+      "byteLength": 612692,
+      "sha256": "41138bf8b5ce94e04607ef119752f45d6800a107a6ee6f282888317908e6eb80"
+    },
+    "nativeInstallation": {
+      "method": "create_new_no_clobber_hash_verified",
+      "moduleDestination": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\modules\\m2a_h2r44.mod",
+      "moduleSha256": "721f4653cc7c546fe6c2ed26df36e7643909a267c4c3f0bed061077ee578a315",
+      "hakDestination": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\hak\\m2a_h2r44.hak",
+      "hakSha256": "c2a089f0fd6ee50ce186a6495f992b0fbb0a8f348dcca7406ddd670849f21ac6",
+      "sourceDestinationIdentical": true
+    }
+  },
+  "runtimeVerdict": {
+    "toolset": {
+      "modelVisibility": "not_tested",
+      "proofCompleteness": "missing",
+      "basis": "The owner report in this task states the NWN result and does not make a fresh Toolset verdict for r44."
+    },
+    "nwn": {
+      "modelVisibility": "not_visible",
+      "proofCompleteness": "failed",
+      "basis": "Fresh owner report immediately after the exact r44 owner-proof handoff: the deliberately placed creature is absent in NWN. Under the owner visual decision this is a visual model failure and must not be downgraded because no agent-side capture exists."
+    }
+  },
+  "postFailureAudit": {
+    "excludedAsSoleCause": [
+      "The r43 rigid and seven-state family was replaced by one direct-root SkinMesh and 42 type-5 states, but r44 is still absent.",
+      "The r44 SkinMesh uses 22 active joints, which is below the current NWN:EE 64-bone-per-SkinMesh path exposed by the installed renderer.",
+      "The exact binary MDL is already Aurora Z-up and grounded: SkinMesh bounds are approximately [-0.6094,-0.3487,0.0]..[0.6094,0.3487,1.7000]. The Y-up bounds in materialization-report.geometry describe the source primitive, not the emitted MDL.",
+      "The exact GIT creature and module-local UTC both contain the ActiveMonsterBaseline fields, including Race=7, Appearance_Type=15219, FactionID=1, Interruptable=1, WalkRate=7, positive hit points, PerceptionRange=11, a nonempty ClassList and default AI scripts."
+    ],
+    "reportingDefectsFound": [
+      "ready-for-owner-proof.json reports activeJointCount=24, while the materialization report and exact emitted SkinMesh readback report 22 active joints.",
+      "materialization-report.geometry preserves source GLB Y-up bounds without labeling them as source-space output; the exact emitted MDL bounds are correctly Z-up."
+    ],
+    "reportingDefectsExplainRuntimeAbsence": false,
+    "confirmedConformanceDefect": {
+      "code": "M2A-NWN-SKIN-BASE-CONTROLLERS-MISSING",
+      "classification": "confirmed emitter conformance defect; not proven as the sole NWN invisibility root cause",
+      "boundary": "binary MDL SkinMesh base-node ABI",
+      "r44Fact": "The exact m2a_h2p44 SkinMesh node has an empty controller-key array, an empty controller-data array and zero decoded base controllers.",
+      "historicalGeneratedFact": "The same zero-controller SkinMesh profile is present throughout the generated r33-r39 skinned family that remained invisible.",
+      "nativeCorpus": {
+        "path": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\hak\\cep3_core1.hak",
+        "byteLength": 1429801961,
+        "sha256": "6a8e6a64773a77fd46740cbcce19a708db6a70b4975732d0405978f3fbe8eb1a",
+        "binarySkinMeshNodeCount": 1437,
+        "controllerCountDistribution": {
+          "zero": 0,
+          "two": 332,
+          "three": 962,
+          "moreThanThree": 143
+        },
+        "minimalNativeControllerTypes": [
+          8,
+          20
+        ],
+        "minimalNativeControllerNames": [
+          "position",
+          "orientation"
+        ]
+      },
+      "differential": "Controllerless rigid TriMesh nodes exist and are drawn by the generated placeable path and the historical H1 corrupt-draw witness. The zero-controller defect is specific to the generated SkinMesh base-node profile and proves that a visible rigid placeable does not validate generated skinned creatures; it does not by itself prove why the creature is wholly absent.",
+      "runtimeUse": "The installed NWN:EE SkinMesh draw path builds the deformation palette from the instantiated SkinMesh node and its composed node/parent transform. The native corpus always supplies at least explicit base position and orientation controllers for that node; r44 omitted both.",
+      "scope": "This proves an emitter ABI defect and admitted its minimal correction. The owner's later exact r45 not_visible result proves that this correction was insufficient and therefore this defect must not be reported as the confirmed or sole runtime root cause."
+    },
+    "minimalIntendedArtifactDelta": [
+      "Preserve the exact r44 source GLB, geometry, indices, normals, UVs, texture, 22 active joints, weights, bone references, inverse binds, direct-root SkinMesh topology, 42 type-5 states, 23 callbacks, appearance semantics, creature runtime profile, Area and placement.",
+      "On every base SkinMesh node only, emit one constant position controller (type 8) with value [0,0,0] and one constant orientation controller (type 20) with identity quaternion [0,0,0,1].",
+      "Add semantic readback and regression tests that reject a generated SkinMesh without the two-controller native minimum.",
+      "Freeze the result under fresh r45 identities and install its exact MOD/HAK with create-new/no-clobber hash verification."
+    ],
+    "nextAuditBoundary": "Materialize exact r45 with the isolated SkinMesh-controller delta; do not change geometry, animation, GFF, appearance semantics or placement in the same iteration."
+  },
+  "iterationGate": {
+    "freshCandidateBoundVisualFailure": true,
+    "newIterationAdmittedByVisibilityAxis": true,
+    "newIterationMaterialized": true,
+    "reason": "The owner supplied a fresh exact-r44 NWN not_visible result. The post-failure audit confirmed a zero-controller SkinMesh ABI conformance defect against 1437 native SkinMesh nodes and recorded one isolated two-controller delta without claiming it was the sole visibility cause. Exact r45 was then materialized and installed without modifying the frozen r44 lineage.",
+    "forbiddenShortcut": "Do not create r45 by guessing another model, animation, appearance row, HAK, MOD or resref change."
+  },
+  "admittedIteration": {
+    "testModuleFilename": "m2a_h2r45.mod",
+    "toolsetModuleName": "Meshy2Aurora procedural humanoid proof",
+    "areaName": "Meshy2Aurora M0 binary vertical-slice area",
+    "areaResref": "m2a_h2a45",
+    "orderedHakResrefs": [
+      "m2a_h2r45"
+    ],
+    "appearanceRow": 15219,
+    "modelResref": "m2a_h2p45",
+    "textureResref": "m2a_h2t45",
+    "creatureTemplateResref": "m2a_h2utc45",
+    "modelDelta": {
+      "r44SkinMeshBaseControllerCount": 0,
+      "r45SkinMeshBaseControllerCount": 2,
+      "r45ControllerTypes": [
+        8,
+        20
+      ],
+      "allComparedGeometrySkinAnimationAndSceneSemanticsPreserved": true
+    },
+    "sourceModule": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\h2-r45-skin-bind-controllers-20260726\\generated\\m2a_h2r45.mod",
+      "byteLength": 15157,
+      "sha256": "c6ce6e814fcd56b0ce8e86738b4cba4b01174065689f5a546d6206f9adc4955e"
+    },
+    "sourceHak": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\h2-r45-skin-bind-controllers-20260726\\generated\\m2a_h2r45.hak",
+      "byteLength": 20851485,
+      "sha256": "de8adc62b0dedadf0485f7a6072e9e5ce235255fdc20c7e0beef3182362e7937"
+    },
+    "sourceModel": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\h2-r45-skin-bind-controllers-20260726\\generated\\m2a_h2p45.mdl",
+      "byteLength": 612752,
+      "sha256": "ba10e8b3221e5748a7c8072e3364815ed5e932adb03d45234bb4106c98a8e1dc"
+    },
+    "nativeInstallation": {
+      "method": "create_new_no_clobber_hash_verified",
+      "moduleDestination": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\modules\\m2a_h2r45.mod",
+      "moduleSha256": "c6ce6e814fcd56b0ce8e86738b4cba4b01174065689f5a546d6206f9adc4955e",
+      "hakDestination": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\hak\\m2a_h2r45.hak",
+      "hakSha256": "de8adc62b0dedadf0485f7a6072e9e5ce235255fdc20c7e0beef3182362e7937",
+      "sourceDestinationIdentical": true
+    },
+    "runtimeVerdict": {
+      "toolset": {
+        "modelVisibility": "not_tested",
+        "proofCompleteness": "missing"
+      },
+      "nwn": {
+        "modelVisibility": "not_tested",
+        "proofCompleteness": "missing"
+      }
+    }
+  },
+  "agentStartedOrControlledToolsetOrNwn": false
+}

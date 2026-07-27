@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "status": "owner_nwn_visual_failure_recorded_audit_open",
+  "source": "owner_report_in_active_codex_task",
+  "ownerReport": "dalejh pusto",
+  "reportedAtLocalDate": "2026-07-26",
+  "candidate": {
+    "testModuleFilename": "m2a_h2r45.mod",
+    "toolsetModuleName": "Meshy2Aurora procedural humanoid proof",
+    "areaName": "Meshy2Aurora M0 binary vertical-slice area",
+    "areaResref": "m2a_h2a45",
+    "orderedHakResrefs": [
+      "m2a_h2r45"
+    ],
+    "appearanceRow": 15219,
+    "modelResref": "m2a_h2p45",
+    "textureResref": "m2a_h2t45",
+    "creatureTemplateResref": "m2a_h2utc45",
+    "creatureTag": "m2a_procedural_creature",
+    "creaturePosition": [
+      10.0,
+      14.5,
+      0.0
+    ],
+    "playerEntryPosition": [
+      10.0,
+      10.0,
+      0.0
+    ],
+    "sourceModule": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\h2-r45-skin-bind-controllers-20260726\\generated\\m2a_h2r45.mod",
+      "byteLength": 15157,
+      "sha256": "c6ce6e814fcd56b0ce8e86738b4cba4b01174065689f5a546d6206f9adc4955e"
+    },
+    "sourceHak": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\h2-r45-skin-bind-controllers-20260726\\generated\\m2a_h2r45.hak",
+      "byteLength": 20851485,
+      "sha256": "de8adc62b0dedadf0485f7a6072e9e5ce235255fdc20c7e0beef3182362e7937"
+    },
+    "sourceModel": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\h2-r45-skin-bind-controllers-20260726\\generated\\m2a_h2p45.mdl",
+      "byteLength": 612752,
+      "sha256": "ba10e8b3221e5748a7c8072e3364815ed5e932adb03d45234bb4106c98a8e1dc"
+    },
+    "nativeInstallation": {
+      "method": "create_new_no_clobber_hash_verified",
+      "moduleDestination": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\modules\\m2a_h2r45.mod",
+      "moduleSha256": "c6ce6e814fcd56b0ce8e86738b4cba4b01174065689f5a546d6206f9adc4955e",
+      "hakDestination": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\hak\\m2a_h2r45.hak",
+      "hakSha256": "de8adc62b0dedadf0485f7a6072e9e5ce235255fdc20c7e0beef3182362e7937",
+      "sourceDestinationIdentical": true
+    }
+  },
+  "runtimeVerdict": {
+    "toolset": {
+      "modelVisibility": "not_tested",
+      "proofCompleteness": "missing",
+      "basis": "The owner supplied a fresh NWN result, not a fresh Toolset verdict for exact r45."
+    },
+    "nwn": {
+      "modelVisibility": "not_visible",
+      "proofCompleteness": "failed",
+      "basis": "Fresh owner report immediately after the exact r45 handoff states that the expected scene remains empty. Under the owner visual decision this is an exact candidate-bound NWN model failure."
+    }
+  },
+  "previousDeltaResult": {
+    "causeCode": "M2A-NWN-SKIN-BASE-CONTROLLERS-MISSING",
+    "r44SkinMeshBaseControllerCount": 0,
+    "r45SkinMeshBaseControllerCount": 2,
+    "conclusion": "The missing SkinMesh position/orientation controllers were a real emitter ABI defect, but correcting them was not sufficient to make the exact generated creature visible in NWN. They must remain fixed while the next independent blocker is diagnosed."
+  },
+  "iterationGate": {
+    "freshCandidateBoundVisualFailure": true,
+    "newIterationAdmittedByVisibilityAxis": true,
+    "newIterationMaterialized": false,
+    "diagnosedCauseRecorded": false,
+    "minimalIntendedArtifactDeltaRecorded": false,
+    "reason": "The visibility axis admits diagnosis after exact r45 failure, but a new artifact iteration remains forbidden until the next cause and isolated delta are established durably."
+  },
+  "audit": {
+    "status": "open",
+    "requiredBoundary": "Compare the complete exact r45 binary model structure with native visible creature SkinMesh models and trace every material difference through the Aurora/NWN loader and renderer before changing artifacts."
+  },
+  "agentStartedOrControlledToolsetOrNwn": false
+}

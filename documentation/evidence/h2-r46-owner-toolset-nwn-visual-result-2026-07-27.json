@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "status": "owner_nwn_visual_success_recorded_visibility_stage_closed",
+  "reportedAtLocalDate": "2026-07-27",
+  "source": "owner_report_and_owner_supplied_screenshots_in_active_codex_task",
+  "ownerReport": "ładnie zadziałało <3",
+  "candidate": {
+    "testModuleFilename": "m2a_h2r46.mod",
+    "toolsetModuleName": "Meshy2Aurora procedural humanoid proof",
+    "areaName": "Meshy2Aurora M0 binary vertical-slice area",
+    "areaResref": "m2a_h2a46",
+    "orderedHakResrefs": [
+      "m2a_h2r46"
+    ],
+    "appearanceRow": 15220,
+    "modelResref": "m2a_h2p46",
+    "textureResref": "m2a_h2t46",
+    "creatureTemplateResref": "m2a_h2utc46",
+    "creatureTag": "m2a_procedural_creature",
+    "creaturePosition": [
+      10.0,
+      14.5,
+      0.0
+    ],
+    "playerEntryPosition": [
+      10.0,
+      10.0,
+      0.0
+    ],
+    "module": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\h2-r46-root-first-full-appearance-20260727\\generated\\m2a_h2r46.mod",
+      "byteLength": 15157,
+      "sha256": "b206f5507ce14406d62716f9e75c029044e9090f8ead1cdebfc2574e887b959c"
+    },
+    "hak": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\h2-r46-root-first-full-appearance-20260727\\generated\\m2a_h2r46.hak",
+      "byteLength": 20851627,
+      "sha256": "027a9fc32fee9f75447c63f7308def35a1d098018d68d4d788d39c1174c7f98a"
+    },
+    "model": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\h2-r46-root-first-full-appearance-20260727\\generated\\m2a_h2p46.mdl",
+      "byteLength": 612752,
+      "sha256": "d788f07137c7bf713f18654a14f0ce0559e46315cbb2558ea6dcb6fb7fc8d739"
+    },
+    "readyPacket": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\h2-r46-root-first-full-appearance-20260727\\ready-for-owner-proof.json",
+      "byteLength": 4182,
+      "sha256": "2d6fd04a5025120ba26906c30486879601aebb41d202ad3be389b348642ca369"
+    }
+  },
+  "ownerEvidence": {
+    "toolset": {
+      "path": "C:\\Projects\\meshy2aurora\\documentation\\evidence\\h2-r46-owner-toolset-visible-2026-07-27.png",
+      "byteLength": 921256,
+      "sha256": "1b8f2053908d51ecedd6afa2a15745f35ed7e84ae92693d63989e172daffdda1",
+      "width": 1916,
+      "height": 1031,
+      "observations": [
+        "window title identifies m2a_h2r46.mod",
+        "Area tree identifies Meshy2Aurora M0 binary vertical-slice area",
+        "the generated humanoid is visibly rendered in the Area viewport",
+        "the screenshot does not show an explicit object selection/readback"
+      ]
+    },
+    "nwn": {
+      "path": "C:\\Projects\\meshy2aurora\\documentation\\evidence\\h2-r46-owner-nwn-visible-2026-07-27.png",
+      "byteLength": 4082575,
+      "sha256": "5ac7e2ae1579473e209cdb1538835dce31cd7e014d5efc3133e56be67319805a",
+      "width": 1884,
+      "height": 910,
+      "observations": [
+        "the player character and an unobstructed forward scene are visible",
+        "the generated turquoise-brown humanoid is clearly drawn directly in front of the player",
+        "the humanoid has an articulated non-bind pose",
+        "the owner report binds this screenshot to the exact r46 handoff"
+      ]
+    }
+  },
+  "runtimeVerdict": {
+    "toolset": {
+      "modelVisibility": "visible",
+      "proofCompleteness": "missing",
+      "basis": "The exact r46 module and Area are visible in the Toolset frame and the sole generated creature is rendered, but the supplied screenshot does not contain the strict object selection/readback required for a complete Toolset proof packet."
+    },
+    "nwn": {
+      "modelVisibility": "visible",
+      "proofCompleteness": "verified",
+      "basis": "The owner supplied a fresh candidate-bound NWN screenshot and explicitly reported that r46 worked. The expected generated humanoid is clearly rendered in the judgeable scene directly in front of the player."
+    }
+  },
+  "animationObservation": {
+    "articulatedPoseVisibleInNwn": true,
+    "offlineAnimationStateCount": 42,
+    "offlineAnimationHeaderType": 5,
+    "offlineAuthoredCallbackCount": 23,
+    "exhaustiveVisualStateCoverage": false,
+    "conclusion": "The owner evidence confirms that the skinned creature is instantiated and rendered in an articulated pose. It does not separately exercise every one of the 42 authored states."
+  },
+  "causalConclusion": {
+    "failedBaseline": "m2a_h2r45.mod",
+    "successfulCandidate": "m2a_h2r46.mod",
+    "preservedBetweenCandidates": [
+      "source GLB",
+      "texture pixels",
+      "geometry and skin payload",
+      "42 type-5 local animation states",
+      "23 authored callback events",
+      "base SkinMesh position and orientation controllers",
+      "ActiveMonsterBaseline creature profile",
+      "Phenotype=INT 0 in GIT and UTC",
+      "Area geometry and placement"
+    ],
+    "changedBetweenCandidates": [
+      "root-first part numbering with model and animation roots at part 0",
+      "complete 35-cell direct-S appearance row cloned from verified donor row 102 with only LABEL and RACE overridden",
+      "fresh r46 resource identities required by the iteration gate"
+    ],
+    "proven": "The combined root-first numbering and complete direct-S appearance correction restored generated creature visibility in NWN.",
+    "notProven": "Because both conformance defects were corrected in the same admitted candidate, the evidence does not isolate either one as the sole no-draw root cause.",
+    "phenotypeVerdict": "excluded_as_missing_root_cause"
+  },
+  "stageClosure": {
+    "generatedCreatureVisibilityInNwn": "closed_success",
+    "readyForOwnerProof": false,
+    "ownerProofCompleted": true,
+    "newModelIterationRequired": false,
+    "full42StateArtisticQaRequiredForVisibilityClosure": false
+  },
+  "agentStartedOrControlledToolsetOrNwn": false
+}

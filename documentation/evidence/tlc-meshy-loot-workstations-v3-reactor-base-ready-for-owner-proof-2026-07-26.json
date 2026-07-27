@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-07-26",
+  "status": "ready_for_owner_proof",
+  "testTarget": {
+    "moduleFileName": "m2a_tlcw3_mod.mod",
+    "moduleDisplayName": "Meshy2Aurora TLC Loot Workstations V3",
+    "areaName": "Meshy2Aurora TLC Loot Workstations V3",
+    "areaResref": "m2a_tlcw3_ar",
+    "orderedHakFiles": [
+      "m2a_tlcw3_hak.hak"
+    ],
+    "modelResref": "m2a_tlcw3_upg",
+    "blueprintResref": "m2a_tlcw3_uu",
+    "appearanceRow": 16502,
+    "placement": {
+      "x": 13.5,
+      "y": 14.5,
+      "z": 0.0,
+      "bearing": 0.0
+    }
+  },
+  "source": {
+    "path": "artifacts/meshy-tlc-workstations-20260726/tlc_upgrad01.glb",
+    "sha256": "cf2f6a7b43c6ccaf09ebb2d560a62bed0245ec4734b8c8df5d9b9e4dd0776ebd",
+    "triangleCount": 20000,
+    "connectedComponentCount": 810
+  },
+  "authoring": {
+    "schemaVersion": 1,
+    "authoringSha256": "6b933c67f20af4818d4550e4657c0be9cc3761313a9cdf8a5aab3d2b50c749c3",
+    "documentFileSha256": "6cb01f51de377eb88db9ff143212c120bc53ef2d46463fa3dd2ddff2a7f626ed",
+    "wholeModel": {
+      "uniformScale": 2.5,
+      "targetPhysicalHeightMeters": 1.5
+    },
+    "lowerBase": {
+      "componentIds": [
+        31,
+        33,
+        34,
+        35,
+        37,
+        45,
+        66,
+        74,
+        76,
+        84,
+        92,
+        144,
+        155,
+        170,
+        600,
+        602,
+        603
+      ],
+      "translation": [
+        0.0,
+        0.05,
+        0.08
+      ],
+      "scale": [
+        0.54,
+        1.0,
+        1.05
+      ],
+      "nearestLegInnerXBeforeWholeModelScale": 0.10528878,
+      "rimMaxAbsXBeforeWholeModelScale": 0.10318534,
+      "legFootInsideRim": false
+    },
+    "lava": {
+      "componentId": 766,
+      "localTransform": "identity",
+      "translated": false,
+      "rotated": false,
+      "scaledIndependently": false,
+      "duplicated": false
+    },
+    "sideChains": {
+      "groupCount": 2,
+      "rightComponentCount": 186,
+      "rightTriangleCount": 2301,
+      "leftComponentCount": 194,
+      "leftTriangleCount": 2245,
+      "localTransforms": "identity",
+      "duplicated": false
+    }
+  },
+  "pipeline": {
+    "path": "GLB -> shared parser/IR -> PlaceableAuthoringDocumentV1 -> Profile A -> binary MDL -> shadow adjacency -> ASCII PWK -> placeables.2da -> UTP -> GIT/GIC/ITP -> HAK/MOD",
+    "sourceTriangleCount": 20000,
+    "outputTriangleCount": 20000,
+    "indexCount": 60000,
+    "renderableElementCount": 810,
+    "collisionElementCount": 810,
+    "shadowElementCount": 810,
+    "boundsMin": [
+      -0.68890643,
+      0.00048801303,
+      -0.5995354
+    ],
+    "boundsMax": [
+      0.6867845,
+      1.5,
+      0.70271564
+    ],
+    "binaryMdlReadback": "passed",
+    "shadowAdjacencyReadback": "passed",
+    "asciiPwkReadback": "passed",
+    "packageReadback": "passed"
+  },
+  "artifacts": {
+    "module": {
+      "canonicalPath": "proof-output/tlc-meshy-loot-workstations-v3-20260726/generated/m2a_tlcw3_mod.mod",
+      "sha256": "06e51513f8e7543ab3d8d9d6b1fa571f8383cd80378e025ce38ec3816b4789fd"
+    },
+    "hak": {
+      "canonicalPath": "proof-output/tlc-meshy-loot-workstations-v3-20260726/generated/m2a_tlcw3_hak.hak",
+      "sha256": "3906389593039f96118a1ef393cfe2bcc1f1456f6385491a50d3f90e63f41055"
+    },
+    "mdl": {
+      "canonicalPath": "proof-output/tlc-meshy-loot-workstations-v3-20260726/generated/m2a_tlcw3_upg.mdl",
+      "sha256": "7c8f4dd334176c35cc0cde5e08320a72d7a0710f3322ca0ab4d8da43f3d49e11"
+    },
+    "pwk": {
+      "canonicalPath": "proof-output/tlc-meshy-loot-workstations-v3-20260726/generated/m2a_tlcw3_upg.pwk",
+      "sha256": "a1cd670c4bb82a89d514dd4e6fb4b3073423e84ff8fe74c9b5ce572f48fe339c"
+    }
+  },
+  "nativeInstallation": {
+    "module": {
+      "path": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\modules\\m2a_tlcw3_mod.mod",
+      "sha256": "06e51513f8e7543ab3d8d9d6b1fa571f8383cd80378e025ce38ec3816b4789fd",
+      "action": "installed-new",
+      "bytesMatchCanonicalSource": true
+    },
+    "hak": {
+      "path": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\hak\\m2a_tlcw3_hak.hak",
+      "sha256": "3906389593039f96118a1ef393cfe2bcc1f1456f6385491a50d3f90e63f41055",
+      "action": "installed-new",
+      "bytesMatchCanonicalSource": true
+    }
+  },
+  "offlineViewportEvidence": {
+    "path": "output/playwright/reactor-v3-owner-layout-clean.png",
+    "sha256": "f56cf1b34bcf36746bfc6ca3ce42c94f9eda4ec7e3c63424eba11ba695eb4d10",
+    "scope": "Three.js design/readability evidence only; not Aurora Toolset or NWN proof"
+  },
+  "tests": [
+    {
+      "command": "cargo test -p m2a-core --example materialize_tlc_meshy_p20k_placeables",
+      "result": "passed"
+    },
+    {
+      "command": "cargo test -p m2a-core --example materialize_tlc_meshy_p20k_placeables v3_base_only -- --ignored --nocapture",
+      "result": "1 passed; 0 failed"
+    },
+    {
+      "command": "cargo run -p m2a-core --example materialize_tlc_meshy_p20k_placeables -- --placeables-2da <exact-base> --out <exact-v3-output>",
+      "result": "passed with binary MDL, shadow adjacency, ASCII PWK and package readbacks"
+    }
+  ],
+  "proofState": {
+    "modelVisibility": "not_tested",
+    "proofCompleteness": "missing",
+    "collisionRuntimeVerdict": "not_tested",
+    "toolsetOperatedByAgent": false,
+    "nwnOperatedByAgent": false,
+    "ownerProofRequired": true
+  }
+}

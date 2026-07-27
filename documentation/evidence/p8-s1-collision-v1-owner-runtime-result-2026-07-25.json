@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-07-25",
+  "source": "owner_report_in_active_codex_task",
+  "ownerReport": "nie ma kolizji w tym mod",
+  "testModuleFileName": "m2a_s1_col_mod.mod",
+  "toolsetModuleName": "Meshy2Aurora S1 Collision Proof",
+  "areaName": "Meshy2Aurora M0 binary vertical-slice area",
+  "areaResref": "m2a_s1_col_ar",
+  "modelResref": "m2a_s1_col_ped",
+  "objectTag": "m2a_s1_collision",
+  "placement": {
+    "x": 10.0,
+    "y": 14.5,
+    "z": 0.0,
+    "bearing": 0.0
+  },
+  "hashes": {
+    "moduleSha256": "3da10b51f3f20b71cc96d35d0b6419ed458a07fd3b7755e41cd7fb8aa596afce",
+    "hakSha256": "06b5142a136a8c021766cc5d2b8344941571bbafcefc4ccc59dfb7c70c292d4e",
+    "pwkSha256": "1ed56a207c58ad939ee34c03d121e9ecf41b5aaaa51dbc88a210edf42c38b7d1"
+  },
+  "expected": "player movement is blocked by the pedestal footprint",
+  "actual": "placeable does not block player movement",
+  "modelVisibility": "not_tested",
+  "collisionRuntimeVerdict": "not_blocking",
+  "collisionProofCompleteness": "verified_by_owner_report",
+  "candidateDisposition": "failed_collision_runtime_gate",
+  "modelIterationGate": "new_collision_iteration_admitted",
+  "diagnosisStatus": "superseded_by_v2_runtime_failure",
+  "diagnosedCause": "Historical hypothesis only: the shared binary MDL/PWK writer emitted -1 for every NwnMdlFace.asAdjFace slot. V2 corrected that difference but still did not block movement, so missing adjacency is rejected as the collision root cause.",
+  "diagnosticEvidence": {
+    "failedPwkFaces": [
+      {
+        "vertices": [2, 0, 3],
+        "adjacentFaces": [-1, -1, -1]
+      },
+      {
+        "vertices": [1, 3, 0],
+        "adjacentFaces": [-1, -1, -1]
+      }
+    ],
+    "expectedPwkFaces": [
+      {
+        "vertices": [2, 0, 3],
+        "adjacentFaces": [-1, 1, -1]
+      },
+      {
+        "vertices": [1, 3, 0],
+        "adjacentFaces": [-1, 0, -1]
+      }
+    ],
+    "productWriter": "crates/m2a-core/src/mdl/write_binary_mdl.rs",
+    "retailKey": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Neverwinter Nights\\data\\nwn_base.key",
+    "retailBif": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Neverwinter Nights\\data\\os_models.bif",
+    "auditedRetailResource": "dag_applescene.pwk",
+    "readOnlyReferenceCompiler": "C:\\Projects\\Claude\\nwnexplorer\\_NmcLib\\NmcMesh.cpp"
+  },
+  "minimumDeltaStatus": "approved_from_exact_runtime_failure",
+  "intendedMinimumDelta": [
+    "derive deterministic adjacency for every triangle edge in the shared binary MDL writer",
+    "serialize and semantic-readback the derived adjacency",
+    "preserve the V1 render MDL, texture, Static=1 UTP contract, surface id 7, and footprint dimensions"
+  ],
+  "resultingCandidate": {
+    "status": "ready_for_owner_proof",
+    "testModuleFileName": "m2a_s1_c2_mod.mod",
+    "toolsetModuleName": "Meshy2Aurora S1 Collision V2",
+    "areaName": "Meshy2Aurora M0 binary vertical-slice area",
+    "hakFileName": "m2a_s1_c2_hak.hak",
+    "moduleSha256": "bdc2c1fc6e1f6f9e0c93d80d3e768fd60e7fe6876b9faeabb9665e83eaaaa7de",
+    "hakSha256": "25c3f064d6b040cce946adf51092478bc6e239139ccbb4a962249d2e406e8440",
+    "pwkSha256": "4eef6b278925845ebe6ee17646aa0d647a38fbaa56c7e0cce6252950c2e4e6d2",
+    "evidence": "documentation/evidence/p8-s1-collision-v2-adjacency-ready-for-owner-proof-2026-07-25.md"
+  }
+}

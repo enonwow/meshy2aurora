@@ -107,6 +107,7 @@ aurora_web_appearance_columns:
   default_phenotype:
     input_columns: ["DefaultPhenoType", "DefaultPhenotype", "DefaultPhenotypeID", "DefaultPheno"]
     output_field: "defaultPhenotype"
+    status: "reference-only parser aliases; not columns of the exact 35-column Last City appearance.2da"
   blood_color:
     input_columns: ["BLOODCOLR", "BloodColor", "Blood"]
     output_field: "bloodColor"
@@ -136,6 +137,28 @@ source_model_candidate_rule:
 
 Dla `meshy2aurora` MVP interesuje nas `direct-model`, czyli `MODELTYPE` inne niz `P`. Cloud pyta o `MODELTYPE=S`; lokalny kod potwierdza tylko regule `!= P`, ale `S` jest dobrym kandydatem do testu.
 
+## `Phenotype` nie jest brakujaca kolumna direct-S `appearance.2da`
+
+Status: POTWIERDZONE przez exact GFF writer/readback, 35-kolumnowy runtime
+`appearance.2da` oraz dekompilacje Aurory.
+
+- creature zapisuje `Phenotype` jako pole GFF typu `INT`; produkcyjny generator
+  zapisuje jawnie `Phenotype=0` do instancji GIT i module-local UTC;
+- `CNWSCreatureStats::ReadStatsFromGff` (`FUN_00532174`) czyta brakujace pole z
+  wartoscia domyslna `0`, a wartosc `1` normalizuje z powrotem do `0`;
+- `CNWSCreatureStats::SaveStats` (`FUN_0053521c`) zapisuje to pole jako `INT`;
+- `FUN_00536e60` najpierw rozstrzyga direct model przez
+  `Appearance_Type -> MODELTYPE/RACE`; odczyt `PHENOTYPE.2DA` i kolumny
+  `DefaultPhenoType` wystepuje w galezi skladania czesci phenotype/body-part,
+  nie jako dodatkowy resref modelu dla `MODELTYPE=S`;
+- exact runtime `appearance.2da` uzyty przez r45 ma 35 kolumn i nie zawiera
+  `DefaultPhenoType`. Ta nazwa nalezy do osobnej tabeli `phenotype.2da`.
+
+Wniosek: jawne `Phenotype=0` jest wymaganym kontraktem zgodnosci generatora,
+ale nie jest brakujacym bindingiem modelu r45 i nie wyjasnia totalnego no-draw.
+Podstawowy readback modułu odrzuca teraz brak, zly typ albo wartosc inna niz
+`INT 0`.
+
 ## Minimalny wiersz dla nowego direct creature
 
 Status: KIERUNEK WDROZENIOWY; wartosci gameplay pozostaja do runtime proofu.
@@ -150,7 +173,6 @@ minimal_direct_creature_appearance_row:
     - "RACE"
     - "PORTRAIT"
     - "ENVMAP"
-    - "DefaultPhenoType"
     - "BLOODCOLR"
     - "WEAPONSCALE"
     - "SIZECATEGORY"
@@ -162,7 +184,6 @@ minimal_direct_creature_appearance_row:
     RACE: "m2a_koc01"
     PORTRAIT: "****"
     ENVMAP: "****"
-    DefaultPhenoType: "0"
     BLOODCOLR: "R"
     WEAPONSCALE: 1.0
     SIZECATEGORY: 4
@@ -172,14 +193,16 @@ minimal_direct_creature_appearance_row:
     model_file: "m2a_koc01.mdl"
 ```
 
-Wiersz testowy `aurora-web` ma podobny naglowek:
+Wiersz testowy `aurora-web` ma podobny, syntetyczny naglowek:
 
 ```text
 Label MOVERATE MODELTYPE RACE PORTRAIT ENVMAP DefaultPhenoType BLOODCOLR WEAPONSCALE SIZECATEGORY
 17 Guard_Human WALK P Human po_hm_guard default_env 2 R 0.65 4
 ```
 
-Ten fixture jest POTWIERDZONY jako test parsera, ale nie jest direct creature.
+Ten fixture jest POTWIERDZONY jako test parsera, ale nie jest direct creature
+i nie jest dowodem, ze retail/runtime `appearance.2da` ma kolumne
+`DefaultPhenoType`.
 
 ## Kolumny z pytania Cloud spoza lokalnego kontraktu
 

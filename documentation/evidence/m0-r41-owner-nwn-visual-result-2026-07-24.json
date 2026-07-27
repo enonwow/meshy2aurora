@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "candidate": {
+    "moduleResref": "m2a_m0r41",
+    "moduleSha256": "8fd39e088605785864089f2ae48cfccbccb021c04f0a8f5f268c2f3c03837bc6",
+    "areaResref": "m2a_m0a41",
+    "hakResref": "m2a_m0r41",
+    "hakSha256": "4f14731659bc785313949acb98b772231ad45f56133d7c41c8fd59bf2b01459e",
+    "modelResref": "m2a_m0p41",
+    "modelSha256": "c6a341ac8fc432d3d3f5862f67e1fcbcad72bb1ab3d2d241ce6421a976261f6b",
+    "textureResref": "m2a_m0t01",
+    "textureSha256": "079bfedbb952ae3f3bbdd43f1bb244eb6247ca92a25d0acad2f3273f9aace59b",
+    "appearanceRow": 15100,
+    "appearanceSha256": "0c40478729e416b46acd11115bd07c77f4d631217fe545b71fb9f11784068cf5",
+    "fixtureId": "m0_fixture",
+    "fixtureDisplayName": "Meshy M0 full-state rigid fixture",
+    "placement": {
+      "x": 10.0,
+      "y": 14.5,
+      "z": 0.0,
+      "orientationX": 1.0,
+      "orientationY": 0.0
+    }
+  },
+  "nwn": {
+    "modelVisibility": "not_visible",
+    "proofCompleteness": "verified",
+    "ownerObservation": "The owner reports and supplies a judgeable NWN frame in which the expected r41 fixture directly in front of the player is absent.",
+    "capturePath": "C:\\Users\\enonw\\AppData\\Local\\Temp\\codex-clipboard-a8cea789-60ff-44a6-977f-69c697c6feef.png",
+    "captureSha256": "e041128951a61b82d8f211b753908989b8c8b11e3a56bf327280890bce0189a1",
+    "moduleLoadTimestampLocal": "2026-07-24T22:18:32+02:00",
+    "engineLogPath": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\logs\\nwengineLog.txt",
+    "engineLogSha256": "1a6b83a3e8fee295a13ee8ef0851ff6ad0968f355310b958059258259bbb4cc2",
+    "engineLogLoadLine": "I [22:18:32] Engine (serverexoappinternal.cpp:2159:LoadModule): Loading Module: m2a_m0r41",
+    "clientLogPath": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\logs\\nwclientLog1.txt",
+    "clientLogSha256": "b2f0bd97e70d9fd8e34ccb1ef2dbab5c2f164484dfddbf6c64476ee1ea7fc5ed",
+    "clientLogLoadLine": "[Fri Jul 24 22:18:32] Loading Module: m2a_m0r41"
+  },
+  "iterationGate": {
+    "newIterationAdmitted": true,
+    "reason": "Fresh candidate-bound owner visual evidence records r41 as not visible in NWN. The full-topology type-5 state correction did not restore runtime drawing."
+  }
+}

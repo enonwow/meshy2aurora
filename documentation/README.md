@@ -1,5 +1,11 @@
 # Documentation
 
+- [M0 source-topology rigid hierarchy experiment — offline evidence (2026-07-22)](evidence/m0-source-topology-rigid-hierarchy-experiment-2026-07-22.md)
+
+- [M0 r30 Retail runtime-conformance integration candidate — offline evidence (2026-07-21)](evidence/m0-r30-retail-runtime-conformance-iteration-2026-07-21.md)
+
+- [M0 runtime conformance/state-projection fix — offline evidence (2026-07-21)](evidence/m0-runtime-conformance-state-projection-fix-2026-07-21.md)
+
 > **HARD STOP — workspace:** jedynym repo projektu jest
 > `C:\Projects\meshy2aurora`. Nigdy nie uzywaj
 > `C:\Users\enonw\Documents\meshy2aurora`, nawet jako stagingu, scratcha lub
@@ -26,9 +32,26 @@ Aktualny kierunek po audycie 2026-07-09:
 - [audyt-gotowosci-startowej-2026-07-10-codex.md](audyt-gotowosci-startowej-2026-07-10-codex.md) - kanoniczny gate przed implementacja: stan repo, toolchain, bootstrap, CI, M1A DoD i otwarte decyzje.
 - [macierz-gotowosci-wiedzy-codex.md](macierz-gotowosci-wiedzy-codex.md) - centralny stan wiedzy dla calego pipeline; oddziela ustalony kierunek, otwarte evidence i runtime proof.
 - [mdl-binary-crosswalk-codex.md](mdl-binary-crosswalk-codex.md) - wspolny layout binary MDL, zakres profilu A i jawny konflikt wariantow skin header.
+- [audyt-wspolnego-pipeline-parserow-mdl-creature-placeable-tile-2026-07-25.md](audyt-wspolnego-pipeline-parserow-mdl-creature-placeable-tile-2026-07-25.md) - audyt dekompilacji potwierdzajacy jeden wspolny loader/parser MDL oraz osobne resolvery creature, placeable i tile.
+- [audyt-wymagan-pipeline-tile-aurora-nwn-2026-07-26.md](audyt-wymagan-pipeline-tile-aurora-nwn-2026-07-26.md) - audyt wymagan custom tile na podstawie dekompilacji Aurory, lokalnego corpusu retail SET/MDL/WOK i stanu Meshy2Aurora; zawiera architekture, blokery oraz etapowa checkliste implementacji i owner proof.
+- [audyt-placeable-widocznosc-aurora-nwn-plan-implementacji-2026-07-25.md](audyt-placeable-widocznosc-aurora-nwn-plan-implementacji-2026-07-25.md) - audyt widocznosci placeable w Toolset/NWN: kontrakty MDL/2DA/UTP/GIT/GIC/HAK/MOD oraz etapowa checklista implementacji i owner proof.
+- [web-placeable-pipeline-runbook-2026-07-26.md](web-placeable-pipeline-runbook-2026-07-26.md) - ilustrowana instrukcja uruchomienia Studio, wyboru lane placeable, wejsc GLB/placeables.2da oraz etapow Inspect/Build/Review/Download.
+- [implementacja-edytora-elementow-placeable-2026-07-26.md](implementacja-edytora-elementow-placeable-2026-07-26.md) - wykonawcza macierz kompletnego edytora elementow placeable: Outliner, gizmo, hierarchia, snapping, flagi render/collision/shadow, diagnostyka, wspolny core/WASM bake i zielone testy.
+- [evidence/s1-placeable-ritual-pedestal-p1-ready-for-owner-proof-2026-07-25.md](evidence/s1-placeable-ritual-pedestal-p1-ready-for-owner-proof-2026-07-25.md) - zamrozony pierwszy lineage statycznego placeable: exact MOD/HAK/resrefy, hashe, readback, test ledger i human-owned proof handoff.
+- [evidence/s1-placeable-ritual-pedestal-p1-owner-visual-result-2026-07-25.json](evidence/s1-placeable-ritual-pedestal-p1-owner-visual-result-2026-07-25.json) - owner-supplied Toolset/NWN verdict `visible + verified`, screenshot hashes oraz osobno zapisana rozbieznosc display name Area.
+- [evidence/p20k-placeable-stress-v1-ready-for-owner-proof-2026-07-25.md](evidence/p20k-placeable-stress-v1-ready-for-owner-proof-2026-07-25.md) - niezalezny placeable stress-test: jeden mesh, dokladnie 20 000 trojkatow, granica writera 21 845, exact MOD/HAK i checklista owner proof.
+- [evidence/placeable-shadow-adjacency-fix-2026-07-26.md](evidence/placeable-shadow-adjacency-fix-2026-07-26.md) - audyt przyczyny pasiastych shadow volumes oraz wspolna poprawka adjacency odporna na szwy UV/normalnych.
+- [evidence/tlc-meshy-p20k-shadow-adjacency-v2-ready-for-owner-proof-2026-07-26.md](evidence/tlc-meshy-p20k-shadow-adjacency-v2-ready-for-owner-proof-2026-07-26.md) - zamrozony i zainstalowany TLC shadow-v2: trzy placeable po 20 000 trojkatow, exact MOD/HAK, pomiary adjacency i checklista owner proof.
+- [evidence/p8-placeable-pwk-collision-implementation-2026-07-25.md](evidence/p8-placeable-pwk-collision-implementation-2026-07-25.md) - historia implementacji P8, negatywnych owner testow V1/V2 i poprawki ASCII PWK.
+- [evidence/p8-s1-collision-v1-owner-runtime-result-2026-07-25.json](evidence/p8-s1-collision-v1-owner-runtime-result-2026-07-25.json) - owner runtime verdict `not_blocking` dla exact V1; adjacency zachowane jako historyczna hipoteza odrzucona przez V2.
+- [evidence/p8-s1-collision-v2-adjacency-ready-for-owner-proof-2026-07-25.md](evidence/p8-s1-collision-v2-adjacency-ready-for-owner-proof-2026-07-25.md) - zamrozony V2 z adjacency, obecnie `not_blocking`.
+- [evidence/p8-s1-collision-v2-owner-runtime-result-2026-07-25.json](evidence/p8-s1-collision-v2-owner-runtime-result-2026-07-25.json) - machine-readable owner verdict i zwiazanie exact V2.
+- [evidence/p8-s1-collision-v2-aurora-decomp-audit-2026-07-25.md](evidence/p8-s1-collision-v2-aurora-decomp-audit-2026-07-25.md) - potwierdzona root cause z exact `nwmain`/`nwserver`: runtime parsuje PWK jako tekst, a V2 emituje binary MDL; pelny corpus `9 752` zewnetrznych PWK jest ASCII, wraz z planem ASCII PWK writera/readbacku.
+- [evidence/p8-s1-collision-v3-ascii-pwk-ready-for-owner-proof-2026-07-25.md](evidence/p8-s1-collision-v3-ascii-pwk-ready-for-owner-proof-2026-07-25.md) - exact V3 po poprawce: ASCII PWK, hashe MOD/HAK/PWK, offline gates i checklista testu kolizji przez wlasciciela.
 - [mdx-polityka-codex.md](mdx-polityka-codex.md) - aktywna polityka appended volatile/MDX dla profilu A.
 - [animacje-kontrakt-profil-a-codex.md](animacje-kontrakt-profil-a-codex.md) - self-contained kierunek animacji oraz korekta faktow o `c_kocrachn`/`c_Horror`.
 - [hak-2da-gff-crosswalk-codex.md](hak-2da-gff-crosswalk-codex.md) - kontrakt writerow HAK/ERF, 2DA i GFF oraz generated module proof.
+- [m0-runtime-fixture-standard.md](m0-runtime-fixture-standard.md) - jeden generowany Area, tile, entry point i pozycja fixture'a dla kolejnych testów eksportu Meshy M0 w Aurora/NWN.
 - [korpus-referencyjny-mdl-codex.md](korpus-referencyjny-mdl-codex.md) - polityka wielomodelowej regresji bez kopiowania retail/CEP payloadow do repo.
 - [reguly-dokumentacji-cloud.md](reguly-dokumentacji-cloud.md) - aktualne reguly wymiany plikow Cloud/Codex.
 - [audyt-dokumentacji-plan-2026-07-09-codex.md](audyt-dokumentacji-plan-2026-07-09-codex.md) - aktualna mapa rozjazdow, luk i plan naprawczy.

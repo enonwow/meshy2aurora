@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-07-26",
+  "candidate": {
+    "moduleFileName": "m2a_tlcw3_mod.mod",
+    "moduleDisplayName": "Meshy2Aurora TLC Loot Workstations V3",
+    "areaName": "Meshy2Aurora TLC Loot Workstations V3",
+    "moduleSha256": "06e51513f8e7543ab3d8d9d6b1fa571f8383cd80378e025ce38ec3816b4789fd",
+    "hakFileName": "m2a_tlcw3_hak.hak",
+    "hakSha256": "3906389593039f96118a1ef393cfe2bcc1f1456f6385491a50d3f90e63f41055",
+    "modelResref": "m2a_tlcw3_upg",
+    "blueprintResref": "m2a_tlcw3_uu",
+    "appearanceRow": 16502
+  },
+  "ownerDesignAcceptance": "failed",
+  "auroraProof": {
+    "modelVisibility": "not_tested",
+    "proofCompleteness": "missing"
+  },
+  "evidence": {
+    "file": "documentation/evidence/tlc-meshy-loot-workstations-v3-owner-lava-miss-2026-07-26.png",
+    "sha256": "cf4ab69b08bcae2aabe5f60b549a4c83440b48c6ab7934829fcb0b1d4589f563",
+    "ownerObservation": "Lawa nie wpada do podstawy; strumień trafia w skraj obręczy zamiast w użytkową powierzchnię dolnej misy."
+  },
+  "diagnosis": {
+    "cause": "Test V3 sprawdzał wyłącznie przynależność punktu do osiowego bounds powierzchni misy. Taki warunek zaakceptował trafienie w skrajny rant.",
+    "rejectedCondition": "stream endpoint inside transformed surface AABB",
+    "replacementCondition": "stream center inside the transformed liquid surface with a normalized radial margin of at least 40 percent"
+  },
+  "minimalNextDelta": {
+    "scope": "lower base group only",
+    "translationBefore": [0.0, 0.05, 0.08],
+    "translationAfter": [0.0, 0.05, 0.14],
+    "scaleBefore": [0.54, 1.0, 1.05],
+    "scaleAfter": [0.54, 1.0, 1.5],
+    "preserved": [
+      "lava component local transform remains identity",
+      "whole model uniform scale remains 2.5",
+      "two chain groups remain identity",
+      "ground ring component C37 remains with the legs and keeps an identity local transform",
+      "base X scale remains 0.54 so the legs stay outside the basin"
+    ]
+  }
+}

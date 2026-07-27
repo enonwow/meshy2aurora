@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "sourceRole": "NEW_MESHY_HUMANOID_ANIMATED_SOURCE_H2",
+  "generation": {
+    "profileId": "H1-humanoid-animated/v1",
+    "geometryTarget": "AURORA_PROOF",
+    "prompt": "A stylized turquoise enamel and burnished copper clockwork sentinel humanoid, broad shoulders, clearly separated arms and legs, symmetrical mechanical armor, glowing amber chest core, no weapon, no shield, no cape, no floating parts, neutral upright pose, isolated game character, visibly different from a gray stone golem",
+    "runId": "696c910d-fda6-4fa4-9525-3a9f0321a81e",
+    "taskIds": {
+      "preview": "019f95c9-b55f-7486-a53a-291ca597ee3c",
+      "refine": "019f95ca-f53c-7513-81d1-812eb1585dd3",
+      "rig": "019f95cc-90ff-73ff-9b90-eca1f1bb75b7",
+      "animate": "019f95cd-10e2-75b8-bfed-a0ab4e6e8f82"
+    }
+  },
+  "artifact": {
+    "path": "C:\\Projects\\meshy2aurora\\test-assets\\meshy\\incoming\\h2-clockwork-sentinel-1500.glb",
+    "byteLength": 8234708,
+    "sha256": "f8cf0af21c8143a62b64c490a81dd2855ad3c3f9865922e3854f84b714dec3a3",
+    "triangleCount": 1543
+  },
+  "glbReadback": {
+    "sceneCount": 1,
+    "nodeCount": 26,
+    "meshCount": 1,
+    "primitiveCount": 1,
+    "skinCount": 1,
+    "skinnedMeshNode": "char1",
+    "skinName": "Armature",
+    "jointCount": 24,
+    "animationCount": 1,
+    "animationName": "Armature|Idle|baselayer",
+    "animationChannelCount": 72,
+    "animationSamplerCount": 72,
+    "animatedTargetCount": 24,
+    "materialCount": 1,
+    "imageCount": 1,
+    "textureCount": 2
+  },
+  "preflight": {
+    "localBridgeTests": "16/16 passed",
+    "studioTests": "28 files / 172 tests passed",
+    "studioTypecheck": "passed"
+  },
+  "decision": {
+    "isNewMeshyModel": true,
+    "isM0Reskin": false,
+    "intendedUse": "Next admitted creature-model implementation after the owner-bound r41 NWN not_visible result.",
+    "remainingGate": "Offline conversion and package validation do not claim Aurora Toolset or NWN visual success; the owner performs final visual proof."
+  }
+}

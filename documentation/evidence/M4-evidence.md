@@ -56,7 +56,7 @@ activation:
 | Independent rigid implementation review | PASS; final rereview P1=0, P2=0 |
 | Extended64 contract and implementation review | PASS; two final independent rereviews P1=0, P2=0 |
 | Writer implementation | PASS_STRUCTURAL; rigid and extended64 skin emission complete |
-| Deterministic byte proof | PASS_STRUCTURAL; skin deterministic tests pass and rigid remains len `1188`, core `1072`, raw `104`, SHA-256 `e100130d1dfbd18657413cdb7a701396d466cee081683591fc9836bf0c11b4b2` |
+| Deterministic byte proof | PASS_STRUCTURAL; skin deterministic tests pass and rigid remains len `1188`, core `1072`, raw `104`, SHA-256 `257f30d79926e38922f1a8af375ac2c1869aedd41e8783420cca56ab647c25c1` |
 | Own-reader semantic readback | PASS_STRUCTURAL; rigid plus skin map/slot/q/t/constants/weights/refs semantic diff `0` |
 | P-REF invariant conformance | PASS_STRUCTURAL; rigid and extended64 emission/readback pass, runtime remains OPEN_M6 |
 | NWN EE runtime/visual proof | OPEN_M6 |
@@ -103,7 +103,7 @@ Frozen syntetyczny proof `m2a_test`:
 payload_length: 1188
 core_length: 1072
 raw_length: 104
-sha256: e100130d1dfbd18657413cdb7a701396d466cee081683591fc9836bf0c11b4b2
+sha256: 257f30d79926e38922f1a8af375ac2c1869aedd41e8783420cca56ab647c25c1
 semantic_diff_count: 0
 own_animation_count: 0
 unexpected_diagnostics: 0
@@ -279,7 +279,7 @@ rigid_frozen_proof:
   payload_length: 1188
   core_length: 1072
   raw_length: 104
-  sha256: e100130d1dfbd18657413cdb7a701396d466cee081683591fc9836bf0c11b4b2
+  sha256: 257f30d79926e38922f1a8af375ac2c1869aedd41e8783420cca56ab647c25c1
   unchanged: true
 ```
 

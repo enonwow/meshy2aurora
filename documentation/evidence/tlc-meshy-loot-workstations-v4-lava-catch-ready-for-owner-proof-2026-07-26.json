@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "status": "ready_for_owner_proof",
+  "candidate": {
+    "moduleFileName": "m2a_tlcw4_mod.mod",
+    "moduleDisplayName": "Meshy2Aurora TLC Loot Workstations V4",
+    "areaName": "Meshy2Aurora TLC Loot Workstations V4",
+    "hakFileName": "m2a_tlcw4_hak.hak",
+    "modelResref": "m2a_tlcw4_upg",
+    "blueprintResref": "m2a_tlcw4_uu",
+    "appearanceRow": 16502
+  },
+  "hashes": {
+    "moduleSha256": "c49ae2ab0bd79cf8f100794cfe5f93e1f7713408fd75902ba5ad69d3d4c9a348",
+    "hakSha256": "6b14c8ba49cb304e91039ebfa742d0ba4360474d4e21be5bbc7d3fa04cc26692",
+    "mdlSha256": "dfb50a33dc8dcc3266f090d2003c6f425ba49057612da1fe9a7782a79d89f5d2",
+    "pwkSha256": "3b949a92ae57f665ce8b471b4b26744ccfef0ad32850ba659310e7d6b6e5bd2c",
+    "authoringSha256": "db695e214d99709bdcb6ee16c70e8d468aa221ae2642126623ddbbe5e87f25ff",
+    "authoringFileSha256": "737f8b30bcad10aa3f42e71e925ad3ea6a99a7b10e72862c07d93ecacd24f256",
+    "viewportSha256": "c86eadea4bb1e80ad657eb752a686445444e39b6a30b6bdd972cd94cf7aa9c87"
+  },
+  "authoring": {
+    "lowerBasinComponents": [31, 33, 34, 35, 45, 66, 74, 76, 84, 92, 144, 155, 170, 600, 602, 603],
+    "lowerBasinTranslation": [0.0, 0.05, 0.14],
+    "lowerBasinScale": [0.54, 1.0, 1.5],
+    "wholeModelUniformScale": 2.5,
+    "streamRadialFraction": 0.3751530051231384,
+    "maximumStreamRadialFraction": 0.6000000238418579,
+    "identityComponents": [37, 766, 809],
+    "rightChainComponentCount": 186,
+    "leftChainComponentCount": 194
+  },
+  "geometry": {
+    "triangleCount": 20000,
+    "indexCount": 60000,
+    "triangleLimit": 21845,
+    "heightMeters": 1.5,
+    "render": 1,
+    "shadow": 1,
+    "classification": 4
+  },
+  "nativeInstallation": {
+    "modulePath": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\modules\\m2a_tlcw4_mod.mod",
+    "hakPath": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\hak\\m2a_tlcw4_hak.hak",
+    "moduleHashVerified": true,
+    "hakHashVerified": true
+  },
+  "proof": {
+    "ownerProofRequired": true,
+    "modelVisibility": "not_tested",
+    "proofCompleteness": "missing",
+    "collisionRuntimeVerdict": "not_tested",
+    "startsToolset": false,
+    "startsNwn": false
+  }
+}

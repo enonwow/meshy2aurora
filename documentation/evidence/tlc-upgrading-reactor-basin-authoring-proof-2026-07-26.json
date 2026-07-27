@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "proofKind": "OFFLINE_PLACEABLE_AUTHORING",
+  "date": "2026-07-26",
+  "verdict": "PASS",
+  "scope": {
+    "auroraToolsetOperated": false,
+    "nwnOperated": false,
+    "modOrHakCreated": false,
+    "claim": "The shared placeable-authoring document can move the lower reactor basin as a grouped assembly without moving the lava stream."
+  },
+  "source": {
+    "path": "artifacts/meshy-tlc-workstations-20260726/tlc_upgrad01.glb",
+    "byteLength": 14887344,
+    "sha256": "cf2f6a7b43c6ccaf09ebb2d560a62bed0245ec4734b8c8df5d9b9e4dd0776ebd",
+    "triangleCount": 20000,
+    "connectedComponentCount": 810
+  },
+  "observedFailureGeometry": {
+    "lavaStream": {
+      "elementId": "node:0:primitive:0:component:766",
+      "triangleCount": 52,
+      "boundsMin": [-0.0023416178, 0.11297853, 0.21610735],
+      "boundsMax": [0.0223763, 0.32637691, 0.23763743],
+      "centerZ": 0.22687239
+    },
+    "basinLavaSurface": {
+      "elementId": "node:0:primitive:0:component:76",
+      "triangleCount": 783,
+      "boundsMin": [-0.1598602, 0.051654562, -0.16121443],
+      "boundsMax": [0.15942207, 0.06293875, 0.16158299],
+      "sourceCenterZ": 0.00018428
+    },
+    "basinUpperRim": {
+      "elementId": "node:0:primitive:0:component:34",
+      "triangleCount": 236,
+      "boundsMin": [-0.19087297, 0.08424772, -0.18979363],
+      "boundsMax": [0.19108397, 0.08791791, 0.19049801],
+      "sourceCenterZ": 0.00035219
+    },
+    "sourceVerdict": "The stream center is outside both the lava-surface Z range and the upper-rim Z range."
+  },
+  "authoringOperation": {
+    "groupName": "Lower basin",
+    "componentIds": [31, 33, 34, 35, 45, 66, 74, 76, 84, 92, 144, 155, 170, 600, 602, 603],
+    "componentCount": 16,
+    "triangleCount": 2565,
+    "translation": [0.0, 0.0, 0.1],
+    "rotationXyzw": [0.0, 0.0, 0.0, 1.0],
+    "scale": [1.0, 1.0, 1.0],
+    "unselectedControlElement": "node:0:primitive:0:component:766"
+  },
+  "resultGeometry": {
+    "basinLavaSurfaceBoundsZ": [-0.06121443, 0.26158299],
+    "basinUpperRimBoundsZ": [-0.08979363, 0.29049801],
+    "lavaStreamCenterZ": 0.22687239,
+    "lavaStreamMoved": false,
+    "verdict": "The unchanged stream center is inside the translated basin surface and rim ranges."
+  },
+  "evidence": [
+    {
+      "path": "output/playwright/reactor-basin-before.png",
+      "sha256": "23e53788d1dae493ae26d7d329582ee37ac48d68ca8388141ebff9c0c53ff0d3",
+      "meaning": "Original edited-view viewport before component splitting or movement."
+    },
+    {
+      "path": "output/playwright/reactor-basin-isolated-before-move.png",
+      "sha256": "7b649451ccbdfef6d32cd2785afe642053887810da0d59350ace3322b2763d48",
+      "meaning": "The sixteen selected components isolated as the lower basin assembly."
+    },
+    {
+      "path": "output/playwright/reactor-basin-after-z-plus-010.png",
+      "sha256": "b386e316f29421058d5af0a61d356a2e5b1dd15f3fb7477854e481c5d5a97e82",
+      "meaning": "Edited viewport after the basin group receives Z = +0.10 m."
+    },
+    {
+      "path": "output/playwright/reactor-basin-after-with-transform-ui.png",
+      "sha256": "69c48dbc9bbc7645bf5e9cc8a08c17bcb730da2ec5a46a1095911dab2610b0ea",
+      "meaning": "Application viewport plus Transform panel readback showing Group Location Z = 0.1."
+    }
+  ],
+  "tests": {
+    "core": {
+      "command": "cargo test -p m2a-core --test placeable_authoring",
+      "result": "5 passed; 0 failed",
+      "newRegression": "group_translation_moves_only_its_component_children"
+    },
+    "web": {
+      "command": "npm test -- --run src/features/placeable-authoring/state.test.ts src/features/placeable-authoring/PlaceableAuthoringViewport.test.ts src/features/placeable-authoring/PlaceableAuthoringEditor.test.tsx",
+      "result": "3 test files passed; 7 tests passed"
+    }
+  }
+}

@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="data:," />
+  <title>Meshy2Aurora — Prepare Placeable mockup</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body data-panel="transform" data-tool="size" data-camera="actual">
+    <main class="app-shell">
+      <header class="app-header">
+        <a class="brand" href="#" aria-label="Meshy2Aurora home">
+          <span class="brand-mark" aria-hidden="true">
+            <i></i><i></i><i></i>
+          </span>
+          <strong>meshy<span>2</span>aurora</strong>
+          <small>v0.2.0</small>
+          <em>local</em>
+        </a>
+
+        <nav class="workflow" aria-label="Conversion workflow">
+          <button class="workflow-step workflow-step--done" type="button">
+            <span>✓</span><strong>Source</strong><small>Select input files</small>
+          </button>
+          <button class="workflow-step workflow-step--active" type="button">
+            <span>2</span><strong>Prepare Placeable</strong><small>Size, orient &amp; collide</small>
+          </button>
+          <button class="workflow-step" type="button">
+            <span>3</span><strong>Build</strong><small>Convert &amp; validate</small>
+          </button>
+          <button class="workflow-step" type="button">
+            <span>4</span><strong>Review Output</strong><small>Verify results</small>
+          </button>
+          <button class="workflow-step" type="button">
+            <span>5</span><strong>Download</strong><small>Get your results</small>
+          </button>
+        </nav>
+
+        <div class="header-actions">
+          <button type="button" aria-label="Help">?</button>
+          <button type="button" aria-label="Settings">⚙</button>
+        </div>
+      </header>
+
+      <section class="page-heading">
+        <div>
+          <p class="eyebrow">Step 2 · Placeable authoring</p>
+          <h1>Prepare Placeable</h1>
+          <p>Set physical size, orientation and the exact blocking footprint before building.</p>
+        </div>
+        <div class="source-chip">
+          <span class="status-dot"></span>
+          <div><strong>tlc_upgrad01.glb</strong><small>20,000 triangles · inspected</small></div>
+          <button type="button">Replace</button>
+        </div>
+      </section>
+
+      <section class="editor">
+        <aside class="view-rail" aria-label="Camera presets">
+          <strong>VIEW</strong>
+          <button class="view-button view-button--active" data-view="iso" type="button"><span>◇</span>Iso</button>
+          <button class="view-button" data-view="front" type="button"><span>▣</span>Front</button>
+          <button class="view-button" data-view="right" type="button"><span>▤</span>Right</button>
+          <button class="view-button" data-view="back" type="button"><span>▥</span>Back</button>
+          <button class="view-button" data-view="top" type="button"><span>▱</span>Top</button>
+          <button class="view-button" data-view="nwn" type="button"><span>◈</span>NWN</button>
+          <span class="rail-spacer"></span>
+          <button class="view-button" id="frame-model" type="button"><span>⌗</span>Frame</button>
+        </aside>
+
+        <section class="viewport-panel">
+          <header class="viewport-toolbar">
+            <div class="tool-group" role="group" aria-label="Transform tools">
+              <button class="tool-button" data-tool="select" type="button"><kbd>Q</kbd> Select</button>
+              <button class="tool-button" data-tool="move" type="button"><kbd>W</kbd> Move</button>
+              <button class="tool-button" data-tool="rotate" type="button"><kbd>E</kbd> Rotate</button>
+              <button class="tool-button tool-button--active" data-tool="size" type="button"><kbd>R</kbd> Size</button>
+            </div>
+            <span class="toolbar-divider"></span>
+            <button class="icon-button" id="undo" type="button" title="Undo">↶</button>
+            <button class="icon-button" id="redo" type="button" title="Redo" disabled>↷</button>
+            <button class="text-button" id="reset" type="button">Reset</button>
+            <span class="toolbar-spacer"></span>
+            <div class="segmented" aria-label="Camera framing">
+              <button class="segmented--active" data-camera="actual" type="button">Actual scale</button>
+              <button data-camera="fit" type="button">Fit model</button>
+            </div>
+            <button class="snap-button snap-button--active" id="snap" type="button"><span>⌁</span> Snap 0.1 m</button>
+          </header>
+
+          <div class="viewport" id="viewport">
+            <div class="viewport-badge">
+              <strong>Canonical Aurora space</strong>
+              <span>Z-up · meters · offline preview</span>
+            </div>
+            <div class="camera-label" id="camera-label">Isometric · actual scale</div>
+
+            <div class="world-grid" aria-hidden="true"></div>
+            <div class="tile-outline" aria-hidden="true"><span>10 m NWN tile</span></div>
+
+            <div class="axis-widget" aria-label="World axes">
+              <i class="axis axis--z"></i><i class="axis axis--x"></i><i class="axis axis--y"></i>
+              <b class="axis-label axis-label--z">Z</b>
+              <b class="axis-label axis-label--x">X</b>
+              <b class="axis-label axis-label--y">Y</b>
+            </div>
+
+            <div class="player-reference" id="player-reference" aria-label="1.7 meter player reference">
+              <div class="human">
+                <i class="human__head"></i>
+                <i class="human__torso"></i>
+                <i class="human__arm human__arm--left"></i>
+                <i class="human__arm human__arm--right"></i>
+                <i class="human__leg human__leg--left"></i>
+                <i class="human__leg human__leg--right"></i>
+              </div>
+              <span>Player reference</span><strong>1.70 m</strong>
+            </div>
+
+            <div class="model-stage" id="model-stage">
+              <div class="selection-bounds">
+                <span class="corner corner--tl"></span><span class="corner corner--tr"></span>
+                <span class="corner corner--bl"></span><span class="corner corner--br"></span>
+              </div>
+              <img src="./assets/upgrading-reactor.png" alt="TLC Upgrading Reactor" />
+              <div class="size-gizmo size-gizmo--top"></div>
+              <div class="size-gizmo size-gizmo--right"></div>
+              <div class="size-gizmo size-gizmo--bottom"></div>
+              <div class="pivot-marker"><i></i><i></i></div>
+            </div>
+
+            <div class="height-ruler">
+              <i></i>
+              <span id="height-label">2.20 m</span>
+            </div>
+            <div class="width-ruler"><i></i><span id="width-label">2.02 m</span></div>
+
+            <div class="pwk-footprint" id="pwk-footprint">
+              <span>PWK · auto rectangle</span>
+              <i class="pwk-dot pwk-dot--one"></i><i class="pwk-dot pwk-dot--two"></i>
+              <i class="pwk-dot pwk-dot--three"></i><i class="pwk-dot pwk-dot--four"></i>
+            </div>
+
+            <div class="viewport-legend">
+              <label><input id="toggle-player" type="checkbox" checked /> Player 1.70 m</label>
+              <label><input id="toggle-tile" type="checkbox" checked /> Tile 10 m</label>
+              <label><input id="toggle-pwk" type="checkbox" /> PWK footprint</label>
+              <label><input type="checkbox" checked /> Bounds</label>
+            </div>
+          </div>
+
+          <footer class="viewport-status">
+            <div><span>Source</span><strong>0.60 m</strong></div>
+            <span class="status-arrow">→</span>
+            <div><span>Target</span><strong id="status-height">2.20 m</strong></div>
+            <div><span>Uniform scale</span><strong id="status-scale">3.6667×</strong></div>
+            <div><span>Ground</span><strong class="success">Z = 0.00 m</strong></div>
+            <div><span>PWK</span><strong class="success">Ready</strong></div>
+          </footer>
+        </section>
+
+        <aside class="inspector">
+          <nav class="inspector-tabs" aria-label="Placeable authoring panels">
+            <button class="inspector-tab inspector-tab--active" data-panel="transform" type="button">Transform</button>
+            <button class="inspector-tab" data-panel="collision" type="button">Collision <i>1</i></button>
+            <button class="inspector-tab" data-panel="diagnostics" type="button">Diagnostics <i>1</i></button>
+          </nav>
+
+          <div class="inspector-scroll">
+            <section class="inspector-panel inspector-panel--active" data-panel-content="transform">
+              <div class="inspector-intro">
+                <p class="eyebrow">Physical size</p>
+                <h2>Scale by intent</h2>
+                <p>Use real-world dimensions. The same resolved transform will drive MDL, shadows and PWK.</p>
+              </div>
+
+              <fieldset class="control-section">
+                <legend>Sizing</legend>
+                <label class="field">
+                  <span>Preset</span>
+                  <select id="size-preset">
+                    <option value="0.6">Keep source size</option>
+                    <option value="0.65">Tabletop</option>
+                    <option value="1.35">Workbench</option>
+                    <option value="2.2" selected>Freestanding device</option>
+                    <option value="4">Monumental</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Target height <small>meters</small></span>
+                  <div class="number-input">
+                    <button data-nudge="-0.1" type="button">−</button>
+                    <input id="target-height" aria-label="Target height in meters" type="number" min="0.1" max="10" step="0.05" value="2.20" />
+                    <button data-nudge="0.1" type="button">+</button>
+                    <em>m</em>
+                  </div>
+                </label>
+                <div class="dimension-grid">
+                  <div><span>Source H</span><strong>0.60 m</strong></div>
+                  <div><span>Width</span><strong id="output-width">2.02 m</strong></div>
+                  <div><span>Depth</span><strong id="output-depth">1.76 m</strong></div>
+                  <div><span>Scale</span><strong id="output-scale">3.6667×</strong></div>
+                </div>
+                <label class="switch-row">
+                  <span><strong>Lock proportions</strong><small>Uniform scale is required for safe output</small></span>
+                  <input type="checkbox" checked disabled /><i></i>
+                </label>
+              </fieldset>
+
+              <fieldset class="control-section">
+                <legend>Orientation</legend>
+                <label class="field">
+                  <span>Facing / yaw <small>Aurora Z axis</small></span>
+                  <div class="degree-input">
+                    <input id="yaw" type="number" min="-360" max="360" step="5" value="180" /><em>°</em>
+                  </div>
+                </label>
+                <div class="quick-buttons" role="group" aria-label="Quick yaw">
+                  <button data-yaw="0" type="button">0°</button>
+                  <button data-yaw="90" type="button">90°</button>
+                  <button class="quick-button--active" data-yaw="180" type="button">180°</button>
+                  <button data-yaw="270" type="button">270°</button>
+                </div>
+                <button class="advanced-button" type="button">Advanced pitch &amp; roll <span>⌄</span></button>
+              </fieldset>
+
+              <fieldset class="control-section">
+                <legend>Origin &amp; ground</legend>
+                <label class="field">
+                  <span>Pivot</span>
+                  <select>
+                    <option>Bottom center · recommended</option>
+                    <option>Original source pivot</option>
+                    <option>Bounds center</option>
+                    <option>Custom offset</option>
+                  </select>
+                </label>
+                <label class="switch-row">
+                  <span><strong>Ground at Z = 0</strong><small>Output bottom: 0.000 m</small></span>
+                  <input type="checkbox" checked /><i></i>
+                </label>
+                <button class="secondary-action" type="button">Center on X/Y</button>
+              </fieldset>
+
+              <div class="resolved-card">
+                <span class="resolved-card__icon">✓</span>
+                <div><strong>Transform resolved</strong><p id="resolved-transform-summary">2.20 m high · grounded · yaw 180°</p></div>
+                <code>8f43…a10c</code>
+              </div>
+            </section>
+
+            <section class="inspector-panel" data-panel-content="collision">
+              <div class="inspector-intro">
+                <p class="eyebrow">Blocking footprint</p>
+                <h2>PWK collision</h2>
+                <p>This is the exact floor footprint that will block the player. It is not a 3D collider.</p>
+              </div>
+
+              <div class="warning-banner">
+                <span>!</span>
+                <div><strong>Conservative footprint</strong><p>The auto rectangle includes open space between the reactor legs.</p></div>
+              </div>
+
+              <fieldset class="control-section">
+                <legend>Collision shape</legend>
+                <label class="field">
+                  <span>Mode</span>
+                  <select>
+                    <option>Auto rectangle · supported</option>
+                    <option disabled>Convex hull · planned</option>
+                    <option disabled>Custom polygon · planned</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Padding <small>meters</small></span>
+                  <div class="number-input">
+                    <button type="button">−</button><input type="number" value="0.00" step="0.05" /><button type="button">+</button><em>m</em>
+                  </div>
+                </label>
+                <div class="dimension-grid">
+                  <div><span>Width</span><strong id="pwk-width">2.02 m</strong></div>
+                  <div><span>Depth</span><strong id="pwk-depth">1.76 m</strong></div>
+                  <div><span>Vertices</span><strong>4</strong></div>
+                  <div><span>Faces</span><strong>2</strong></div>
+                </div>
+              </fieldset>
+
+              <fieldset class="control-section">
+                <legend>Runtime semantics</legend>
+                <dl class="readback-list">
+                  <div><dt>Resource</dt><dd><code>m2a_tlcw2_upg.pwk</code></dd></div>
+                  <div><dt>Surface ID</dt><dd><strong>7</strong></dd></div>
+                  <div><dt>Ground plane</dt><dd><strong>Z = 0.00 m</strong></dd></div>
+                  <div><dt>Offline readback</dt><dd><strong class="success">PASS</strong></dd></div>
+                  <div><dt>NWN runtime</dt><dd><strong class="pending">NOT TESTED</strong></dd></div>
+                </dl>
+              </fieldset>
+
+              <button class="primary-outline" id="show-pwk" type="button">Show exact PWK footprint</button>
+              <p class="proof-note">Offline preview does not replace the owner's collision test in NWN.</p>
+            </section>
+
+            <section class="inspector-panel" data-panel-content="diagnostics">
+              <div class="inspector-intro">
+                <p class="eyebrow">Offline analysis</p>
+                <h2>Diagnostics</h2>
+                <p>Geometry, scale and shadow risks detected before package generation.</p>
+              </div>
+
+              <article class="diagnostic-card diagnostic-card--pass">
+                <header><span>✓</span><div><strong>Physical size</strong><small>PASS</small></div></header>
+                <p id="diagnostic-size-summary">Target height 2.20 m is within the freestanding-device range.</p>
+              </article>
+
+              <article class="diagnostic-card diagnostic-card--warning">
+                <header><span>!</span><div><strong>Feature continuity</strong><small>WARNING</small></div></header>
+                <p><b>810 disconnected components</b> detected. Inspect the lava stream from Front, Right and NWN views.</p>
+                <button id="inspect-right" type="button">Open Right view</button>
+              </article>
+
+              <article class="diagnostic-card diagnostic-card--pass">
+                <header><span>✓</span><div><strong>Aurora geometry budget</strong><small>PASS</small></div></header>
+                <dl>
+                  <div><dt>Triangles</dt><dd>20,000</dd></div>
+                  <div><dt>Limit</dt><dd>21,845</dd></div>
+                  <div><dt>Headroom</dt><dd>1,845</dd></div>
+                </dl>
+              </article>
+
+              <article class="diagnostic-card diagnostic-card--pass">
+                <header><span>✓</span><div><strong>Shadow adjacency</strong><small>PASS</small></div></header>
+                <dl>
+                  <div><dt>Linked edges</dt><dd>51,710</dd></div>
+                  <div><dt>Boundary edges</dt><dd>8,290</dd></div>
+                </dl>
+              </article>
+
+              <div class="proof-warning">
+                <strong>Offline diagnostic only</strong>
+                <p>WebGL shadows and geometry checks are not Aurora Toolset or NWN runtime proof.</p>
+              </div>
+            </section>
+          </div>
+        </aside>
+      </section>
+
+      <footer class="workflow-actions">
+        <div>
+          <span class="validation-summary validation-summary--warning">1 warning</span>
+          <p><strong>Ready to build with review</strong><small>Transform and PWK are resolved. Feature continuity requires visual inspection.</small></p>
+        </div>
+        <button class="button-secondary" type="button">Back to Source</button>
+        <button class="button-primary" type="button">Apply authoring &amp; continue <span>→</span></button>
+      </footer>
+
+      <button class="debug-drawer" type="button"><strong>Debug Drawer</strong><span>Collapsed</span><i>⌃</i></button>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

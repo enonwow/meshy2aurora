@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "candidate": {
+    "moduleFileName": "m2a_h2r42.mod",
+    "toolsetDisplayName": "Meshy2Aurora creature comparison",
+    "moduleResref": "m2a_h2r42",
+    "canonicalModuleByteLength": 20284,
+    "canonicalModuleSha256": "c22741a72ab19a4b6e43620902ec9530e73d251c67de2beb23a2fef60e2b3c10",
+    "toolsetRepackedModuleByteLength": 40865,
+    "toolsetRepackedModuleSha256": "fe2408754ca10b71998aa64fe5cd8b1cd9347b335980db79f58b01472730da99",
+    "toolsetRepackedModuleLastWriteTimeLocal": "2026-07-24T23:27:14.7144065+02:00",
+    "areaResref": "m2a_h2a42",
+    "hakResref": "m2a_h2r42",
+    "hakSha256": "6d50bd1f784a8d1b10b36b09e32565781674def6b4f4367d803ac7acced6da69",
+    "modelResref": "m2a_h2p42",
+    "modelSha256": "20fe29854f01880b0b9d5b4f0a5e703c76f858eeebb01a00ea3a29a4913969d4",
+    "textureResref": "m2a_h2t42",
+    "textureSha256": "03169b1493ed4b2f5269ed6fa611aef787e219cddd08661c9135a7f82191c167",
+    "appearanceRow": 15100,
+    "appearanceSha256": "134f3e8a33c1103716b0b2b6f0e68f4686aa7144c1da2bb7447785a7627fff65",
+    "fixtureId": "h2_fixture",
+    "fixtureDisplayName": "Meshy H2 turquoise clockwork sentinel",
+    "stockControlId": "stock_control",
+    "stockControlAppearanceRow": 102
+  },
+  "toolset": {
+    "modelVisibility": "visible",
+    "proofCompleteness": "verified",
+    "ownerObservation": "The owner supplied a fresh Toolset Creature Properties frame rendering the turquoise-and-copper H2 preview and binding the selected object to tag h2_fixture and Appearance M2A_H2_CLOCKWORK_SENTINEL. A second fresh Toolset frame shows H2 and the stock control in the exact m2a_h2r42 module.",
+    "propertiesCapturePath": "C:\\Users\\enonw\\AppData\\Local\\Temp\\codex-clipboard-55332319-c21d-4a40-9bf4-eafe2927e590.png",
+    "propertiesCaptureSha256": "2ad3e31c5b6e56b73cd3d41b2808789f065969e14c924f0a00a6434c8b7869d5",
+    "sceneCapturePath": "C:\\Users\\enonw\\AppData\\Local\\Temp\\codex-clipboard-f03c1829-1e67-419a-8beb-d8f7d040eb2c.png",
+    "sceneCaptureSha256": "71e01495d66b6f86c81cf1ef79f1f464c2c7c799f96306d97f82fbe5490f3ada",
+    "sceneCaptureByteLength": 1265652
+  },
+  "nwn": {
+    "modelVisibility": "not_visible",
+    "proofCompleteness": "failed",
+    "ownerObservation": "The owner directly reports a fresh r42 NWN test in which none of the deliberately placed models were visible. No runtime screenshot was supplied with this report, so capture completeness remains failed while the owner's judgeable visual verdict is retained as not_visible.",
+    "runtimeCapturePath": null,
+    "engineLogPath": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\logs\\nwengineLog.txt",
+    "engineLogSha256": "cedf0cae21ab4a80b66b654c369f354d815c0204e9b58b116f75b17070341590",
+    "clientLogPath": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\logs\\nwclientLog1.txt",
+    "clientLogSha256": "41dc3602fd8b4c1b94acaaa84941af44ce2492097d963179c8e53f18e08ade78",
+    "loadLines": [
+      "[Fri Jul 24 23:26:02] Loading Module: m2a_h2r42",
+      "[Fri Jul 24 23:27:05] Loading Module: m2a_h2r42",
+      "[Fri Jul 24 23:27:20] Loading Module: m2a_h2r42"
+    ],
+    "lastRunModuleBinding": "The final logged load at 23:27:20 occurred after the Toolset-repacked module's 23:27:14 last-write time. The HAK remained byte-identical to the frozen r42 HAK."
+  },
+  "offlineDiagnosis": {
+    "invalidClassWarnings": "rejected_as_root_cause",
+    "invalidClassReason": "The same warning sequence was previously observed while the exact generated fixture parsed as Class=12 and ClassLevel=12; it is not candidate-bound.",
+    "containerComparison": "The project-owned H1 v20 runtime-visible module uses the same 70-field generated creature envelope, Class=12/Level=12, WalkRate=0 and PerceptionRange=0. The r42 generated GIT field order and field types also match the Toolset-authored creature saved into the same Area.",
+    "strongestModelDelta": "r42 introduced a dedicated controllerless identity Aurora Root and writer profile V3. The project-owned H1 v20 runtime-positive rigid witness instead uses the mapped skeleton root renamed to the model resref, emits bind controllers on that root, attaches the single rigid mesh directly to it and uses the V1 direct-creature layout."
+  },
+  "iterationGate": {
+    "newIterationAdmitted": true,
+    "reason": "The owner's fresh r42 NWN verdict is not_visible. The exact HAK and model lineage remained frozen; Toolset repacked only the MOD and the final runtime load is bound to the resulting module hash. A single next iteration may change the H2 root/layout profile to match the project-owned H1 v20 runtime-positive topology."
+  }
+}

@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-07-26",
+  "candidate": {
+    "moduleFile": "m2a_tlcw2_mod.mod",
+    "moduleSha256": "457e25b4c45c20b4fcb51d5a3d219d09df49caf40f2c2b0b83fa6abfe28c6bbd",
+    "hakFile": "m2a_tlcw2_hak.hak",
+    "hakSha256": "a816091f442d12e759013a7d062b5fcfb7d36e750c7695dec0aa2b33634b38c9",
+    "modelResref": "m2a_tlcw2_upg",
+    "sourceGlbSha256": "cf2f6a7b43c6ccaf09ebb2d560a62bed0245ec4734b8c8df5d9b9e4dd0776ebd"
+  },
+  "ownerFeedback": {
+    "accepted": false,
+    "code": "V2-SCOPE-ERROR-LAVA-WAS-MODIFIED",
+    "message": "Należało dopasować wyłącznie dolny fragment; nie dodawać ani nie zmieniać kąta lawy."
+  },
+  "proofState": {
+    "modelVisibility": "not_tested",
+    "proofCompleteness": "missing",
+    "auroraOrNwnFailureRecorded": false,
+    "newArtifactIterationAdmitted": false
+  },
+  "correctedAuthoringTarget": {
+    "ownerReference": {
+      "path": "C:\\Users\\enonw\\AppData\\Local\\Temp\\codex-clipboard-cd006e43-1cbf-422f-8847-0b30a4603d9b.png",
+      "blueMarkupMeaning": "central lower base and catch basin between the legs",
+      "redMarkupMeaning": "side chain from the body lug to the corresponding lower leg/base anchor; mirrored on the opposite side"
+    },
+    "assemblyContract": {
+      "bodyModified": false,
+      "lavaModified": false,
+      "lowerBase": {
+        "isIndependentAssembly": true,
+        "position": "centrally below the body and between the legs",
+        "receivesOriginalLavaStream": true,
+        "legFeetInsideBase": false,
+        "fullUnderLegDiskAllowed": false
+      },
+      "legs": {
+        "count": 4,
+        "standOnGround": true,
+        "remainOutsideLowerBase": true,
+        "formOuterSupportFrame": true
+      },
+      "sideChains": {
+        "count": 2,
+        "symmetric": true,
+        "upperAnchors": "left and right body lugs",
+        "lowerAnchors": "corresponding lower leg/base anchors",
+        "topSuspensionChainRequired": false
+      }
+    },
+    "lowerBasinComponentIds": [
+      31,
+      33,
+      34,
+      35,
+      45,
+      66,
+      74,
+      76,
+      84,
+      92,
+      144,
+      155,
+      170,
+      600,
+      602,
+      603
+    ],
+    "lowerBasinTranslationMeters": [
+      0.0,
+      0.05,
+      0.08
+    ],
+    "lowerBasinRotationXyzw": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "lowerBasinScale": [
+      1.0,
+      1.0,
+      1.3
+    ],
+    "lowerBasinFitContract": {
+      "expansionAxis": "Z only",
+      "legComponentsModified": false,
+      "legFeetMustRemainOutsideBasin": true,
+      "basinMustRemainBetweenLegs": true
+    },
+    "lavaComponentChanges": [],
+    "lavaTransformMustRemainIdentity": true
+  },
+  "offlineViewportEvidence": {
+    "path": "C:\\Projects\\meshy2aurora\\output\\playwright\\reactor-v3-basin-clear-of-legs-clean.png",
+    "sha256": "f977f65e7966e900d46fb51d74374ebf0bbf8f9d0875be6d5d9c49cd08c7db8d",
+    "scope": "design-only; not Aurora Toolset or NWN proof"
+  },
+  "resumeCondition": "Owner records a fresh candidate-bound visual result for exact V2 in Aurora Toolset or NWN. A not_visible or rejected judgeable runtime result admits the basin-only artifact iteration."
+}
