@@ -1,6 +1,7 @@
 /target/
 .codex-tmp/
 **/.playwright-cli/
+/tmp/
 **/pkg/
 node_modules/
 dist/

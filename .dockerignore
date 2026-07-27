@@ -3,6 +3,12 @@
 .codex-tmp/
 .agents/
 .codex/
+.playwright-cli/
+**/.playwright-cli/
+artifacts/
+output/
+proof-profiles/
+tmp/
 target/
 **/target/
 **/pkg/
@@ -12,6 +18,9 @@ dist/
 **/dist/
 *.tsbuildinfo
 **/*.tsbuildinfo
+apps/studio-web/tests/.generated/
+apps/studio-web/tests/browser/__screenshots__/
+apps/studio-web/.vitest-attachments/
 proof-output/
 **/proof-output/
 local-reference-assets/
