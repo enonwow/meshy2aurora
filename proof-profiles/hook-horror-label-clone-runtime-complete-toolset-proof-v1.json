@@ -1,0 +1,19 @@
+{
+  "version": "aurora-toolset-binary-module-toolset-proof-profile/v1",
+  "id": "m2a-hook-horror-label-clone-runtime-complete-toolset-proof-v1",
+  "binaryProfile": {
+    "path": "C:\\Projects\\meshy2aurora\\proof-profiles\\hook-horror-label-clone-runtime-complete-binary-bootstrap-v1.json",
+    "sha256": "2ca161c0ad9a62f41f6c9bbfc43364573d3c46e13ec112881820521e2b3f589d"
+  },
+  "fixtureSelection": {
+    "fixtureId": "hook_horror_clone",
+    "treeObjectText": "M2A Hook Horror clone control",
+    "occurrence": 0
+  },
+  "capture": {
+    "targetClass": "TScrollBox",
+    "allowUniformScene": false
+  },
+  "noSave": true,
+  "noLocalToolsetAdapter": true
+}

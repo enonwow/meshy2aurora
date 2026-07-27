@@ -5,7 +5,8 @@ use m2a_core::two_da::{
     COLUMN_INVALID, DEFAULT_INVALID, HEADER_INVALID, LIMIT_EXCEEDED, NEWLINE_INVALID,
     NUL_FORBIDDEN, QUOTE_INVALID, ROW_ARITY_INVALID, ROW_LABEL_INVALID, ROW_LABEL_MISMATCH,
     TAB_FORBIDDEN, TwoDaAppendRequestV1, TwoDaCellAssignmentV1, TwoDaCellValueV1, TwoDaLimitsV1,
-    TwoDaNewlineV1, VALUE_INVALID, append_two_da_row_v1, inspect_two_da_v2,
+    TwoDaNewlineV1, VALUE_INVALID, append_two_da_row_v1, clone_two_da_row_request_v1,
+    inspect_two_da_v2, read_two_da_row_v2,
 };
 
 fn text(value: &str) -> TwoDaCellValueV1 {
@@ -72,6 +73,44 @@ fn append_is_exact_prefix_plus_deterministic_source_eol_suffix() {
     assert_eq!(first.report.changed_cells[1].column_name, "VALUE");
     assert_eq!(first.report.source_sha256.len(), 64);
     assert_eq!(first.report.output_sha256.len(), 64);
+}
+
+#[test]
+fn cloned_row_request_covers_every_declared_column_and_applies_only_named_overrides() {
+    let source =
+        b"2DA V2.0\r\n\r\nLABEL MODELTYPE RACE HEIGHT TARGETABLE\r\n0 donor S c_horror 1 1\r\n";
+    let request = clone_two_da_row_request_v1(
+        source,
+        0,
+        &[
+            TwoDaCellAssignmentV1 {
+                column_name: "LABEL".to_owned(),
+                value: text("generated"),
+            },
+            TwoDaCellAssignmentV1 {
+                column_name: "RACE".to_owned(),
+                value: text("m2a_model"),
+            },
+        ],
+        &TwoDaLimitsV1::default(),
+    )
+    .expect("complete clone request");
+    assert_eq!(request.cells.len(), 5);
+
+    let artifact = append_two_da_row_v1(source, &request, &TwoDaLimitsV1::default())
+        .expect("append complete clone");
+    let clone = read_two_da_row_v2(&artifact.payload, 1, &TwoDaLimitsV1::default())
+        .expect("clone readback");
+    assert_eq!(
+        clone.cells,
+        [
+            text("generated"),
+            text("S"),
+            text("m2a_model"),
+            text("1"),
+            text("1"),
+        ]
+    );
 }
 
 #[test]

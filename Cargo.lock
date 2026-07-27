@@ -281,6 +281,7 @@ version = "0.1.0"
 dependencies = [
  "gltf",
  "image",
+ "m2a-win32-noreplace",
  "serde",
  "serde_json",
  "sha2",
@@ -297,6 +298,10 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-test",
 ]
+
+[[package]]
+name = "m2a-win32-noreplace"
+version = "0.1.0"
 
 [[package]]
 name = "memchr"

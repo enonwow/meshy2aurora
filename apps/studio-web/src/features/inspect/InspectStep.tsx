@@ -16,6 +16,7 @@ export interface InspectStepProps {
   readonly animationPlayer?: ReactNode;
   readonly debugOverlays?: ReactNode;
   readonly canContinue: boolean;
+  readonly wideViewport?: boolean;
   readonly onBack: () => void;
   readonly onContinue: () => void;
   readonly onSelectValidationCheck?: (check: InspectValidationCheck) => void;
@@ -28,12 +29,17 @@ export function InspectStep({
   animationPlayer,
   debugOverlays,
   canContinue,
+  wideViewport = false,
   onBack,
   onContinue,
   onSelectValidationCheck,
 }: InspectStepProps) {
   return (
-    <section className="inspect-step" aria-labelledby="inspect-step-heading">
+    <section
+      className="inspect-step"
+      data-wide-viewport={wideViewport}
+      aria-labelledby="inspect-step-heading"
+    >
       <header className="inspect-step__heading">
         <div>
           <p className="inspect-step__eyebrow">Step 2</p>

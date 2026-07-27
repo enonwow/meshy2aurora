@@ -1,0 +1,70 @@
+.tile-review {
+  display: grid;
+  gap: 1rem;
+}
+
+.tile-review__header,
+.tile-review__controls,
+.tile-review__metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tile-review__controls label {
+  display: inline-flex;
+  gap: .45rem;
+  align-items: center;
+}
+
+.tile-review__footprint {
+  margin: 0;
+  max-width: 42rem;
+}
+
+.tile-review__footprint svg {
+  width: min(100%, 36rem);
+  background: #111827;
+  border: 1px solid #475569;
+}
+
+.tile-review__boundary,
+.tile-review__render,
+.tile-review__wok path,
+.tile-review__aabb rect {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.tile-review__boundary { stroke: #f8fafc; stroke-width: 4; }
+.tile-review__render { stroke: #60a5fa; stroke-width: 5; }
+.tile-review__wok path { stroke: #4ade80; stroke-width: 3; }
+.tile-review__aabb rect { stroke: #fb7185; stroke-width: 2; stroke-dasharray: 8 5; }
+.tile-review__spawn { fill: #facc15; }
+.tile-review__footprint text { fill: #e2e8f0; font-size: 16px; }
+
+.tile-review__metrics article {
+  min-width: 9rem;
+  padding: .75rem;
+  border: 1px solid var(--border-color, #475569);
+  border-radius: .5rem;
+}
+
+.tile-review__metrics span,
+.tile-review__metrics strong {
+  display: block;
+}
+
+.tile-review__bindings {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.tile-review__bindings th,
+.tile-review__bindings td {
+  padding: .55rem;
+  border-bottom: 1px solid var(--border-color, #475569);
+  text-align: left;
+}

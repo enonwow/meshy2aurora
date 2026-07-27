@@ -113,6 +113,16 @@ pub struct TwoDaInspectionV1 {
     pub diagnostics: Vec<TwoDaDiagnosticV1>,
 }
 
+/// One physical 2DA row reconstructed by the bounded parser.  Consumers use
+/// the companion inspection's ordered `columns` list to bind cell names.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TwoDaRowReadbackV1 {
+    pub physical_row_index: u32,
+    pub printed_row_label: u32,
+    pub cells: Vec<TwoDaCellValueV1>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TwoDaChangedCellV1 {
@@ -801,6 +811,179 @@ pub fn inspect_two_da_v2(
         lines.as_slice(),
         line_limit_error,
     )
+}
+
+/// Reads one named physical row only after the complete input passes the same
+/// bounded lexical and structural validation as `inspect_two_da_v2`.
+pub fn read_two_da_row_v2(
+    bytes: &[u8],
+    physical_row_index: u32,
+    limits: &TwoDaLimitsV1,
+) -> Result<TwoDaRowReadbackV1, TwoDaError> {
+    let inspection = inspect_two_da_v2(bytes, limits)?;
+    if physical_row_index >= inspection.physical_row_count {
+        return Err(readback_error(format!(
+            "requested physical row {physical_row_index} but input has {} rows",
+            inspection.physical_row_count
+        )));
+    }
+    let (_, _, lines, line_limit_error) = scan_input(bytes, limits)?;
+    if let Some(error) = line_limit_error {
+        return Err(error);
+    }
+    let line_index = usize::try_from(physical_row_index)
+        .ok()
+        .and_then(|row| row.checked_add(3))
+        .ok_or_else(|| readback_error("physical row cannot index the 2DA line layout"))?;
+    let line = lines
+        .get(line_index)
+        .copied()
+        .ok_or_else(|| readback_error("validated 2DA is missing its requested row"))?;
+    let expected_arity = inspection
+        .columns
+        .len()
+        .checked_add(1)
+        .ok_or_else(|| readback_error("2DA column count overflows row arity"))?;
+    let row_path = format!("rows[{physical_row_index}]");
+    let tokens = parse_tokens(
+        line,
+        limits,
+        &row_path,
+        TokenCountLimit {
+            max_tokens: expected_arity,
+            code: ROW_ARITY_INVALID,
+            path: &row_path,
+            message: "row has more tokens than its full width",
+        },
+    )?;
+    if tokens.len() != expected_arity {
+        return Err(readback_error("validated 2DA row has unexpected arity"));
+    }
+    let label = std::str::from_utf8(tokens[0].bytes)
+        .ok()
+        .and_then(|value| value.parse::<u32>().ok())
+        .ok_or_else(|| readback_error("validated 2DA row label is not a u32"))?;
+    Ok(TwoDaRowReadbackV1 {
+        physical_row_index,
+        printed_row_label: label,
+        cells: tokens.into_iter().skip(1).map(token_to_cell).collect(),
+    })
+}
+
+/// Builds a full-width append request by cloning one validated physical row
+/// and replacing only the explicitly named cells. Unlike a sparse append,
+/// every declared column receives the donor's exact lexical value (including
+/// explicit `****` nulls), so engine defaults cannot be erased accidentally
+/// merely because the caller omitted a column.
+pub fn clone_two_da_row_request_v1(
+    bytes: &[u8],
+    physical_row_index: u32,
+    overrides: &[TwoDaCellAssignmentV1],
+    limits: &TwoDaLimitsV1,
+) -> Result<TwoDaAppendRequestV1, TwoDaError> {
+    let inspection = inspect_two_da_v2(bytes, limits)?;
+    let donor = read_two_da_row_v2(bytes, physical_row_index, limits)?;
+    if donor.cells.len() != inspection.columns.len() {
+        return Err(readback_error(
+            "validated donor row does not cover every declared column",
+        ));
+    }
+
+    let mut cells = inspection
+        .columns
+        .iter()
+        .cloned()
+        .zip(donor.cells)
+        .map(|(column_name, value)| TwoDaCellAssignmentV1 { column_name, value })
+        .collect::<Vec<_>>();
+    let mut replaced = vec![false; cells.len()];
+    for (override_index, assignment) in overrides.iter().enumerate() {
+        let column_index = inspection
+            .columns
+            .iter()
+            .position(|column| column.eq_ignore_ascii_case(&assignment.column_name))
+            .ok_or_else(|| {
+                TwoDaError::fatal(
+                    ASSIGNMENT_COLUMN_MISSING,
+                    &format!("overrides[{override_index}].columnName"),
+                    0,
+                    None,
+                    None,
+                    format!("column {:?} does not exist", assignment.column_name),
+                )
+            })?;
+        if replaced[column_index] {
+            return Err(TwoDaError::fatal(
+                ASSIGNMENT_DUPLICATE,
+                &format!("overrides[{override_index}]"),
+                0,
+                None,
+                None,
+                format!(
+                    "column {:?} is overridden more than once",
+                    inspection.columns[column_index]
+                ),
+            ));
+        }
+        validate_generated_value(&assignment.value, limits, override_index)?;
+        cells[column_index].value = assignment.value.clone();
+        replaced[column_index] = true;
+    }
+
+    Ok(TwoDaAppendRequestV1 {
+        schema_version: TWO_DA_SCHEMA_VERSION,
+        cells,
+    })
+}
+
+/// Returns a syntactically complete 2DA containing no more than `max_rows`
+/// physical data rows.  The retained prefix is byte-identical to the input,
+/// including its original newline convention.
+///
+/// This is intentionally a prefix operation rather than a row reserializer:
+/// callers that need an Aurora-visible subset do not silently rewrite the
+/// retail rows that they keep.
+pub fn retain_two_da_row_prefix_v1(
+    bytes: &[u8],
+    max_rows: u32,
+    limits: &TwoDaLimitsV1,
+) -> Result<Vec<u8>, TwoDaError> {
+    let source = inspect_two_da_v2(bytes, limits)?;
+    let retained_rows = source.physical_row_count.min(max_rows);
+    if retained_rows == source.physical_row_count {
+        return Ok(bytes.to_vec());
+    }
+
+    let (_, _, lines, line_limit_error) = scan_input(bytes, limits)?;
+    if let Some(error) = line_limit_error {
+        return Err(error);
+    }
+    let first_omitted_line = usize::try_from(retained_rows)
+        .ok()
+        .and_then(|row_count| row_count.checked_add(3))
+        .ok_or_else(|| layout_error("retained row count cannot index the 2DA line layout"))?;
+    let prefix_end = lines
+        .get(first_omitted_line)
+        .ok_or_else(|| layout_error("missing first omitted 2DA row after successful inspection"))?
+        .byte_offset;
+    let prefix_end = usize::try_from(prefix_end)
+        .map_err(|_| layout_error("retained 2DA prefix length cannot be represented as usize"))?;
+    let payload = bytes[..prefix_end].to_vec();
+    let readback = inspect_two_da_v2(&payload, limits)?;
+    if readback.physical_row_count != retained_rows {
+        return Err(TwoDaError::fatal(
+            READBACK_FAILED,
+            "rows",
+            prefix_end as u64,
+            None,
+            None,
+            format!(
+                "retained 2DA prefix has {} rows, expected {retained_rows}",
+                readback.physical_row_count
+            ),
+        ));
+    }
+    Ok(payload)
 }
 
 fn inspect_scanned(

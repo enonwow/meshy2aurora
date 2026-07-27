@@ -1,0 +1,19 @@
+{
+  "version": "aurora-toolset-binary-module-toolset-proof-profile/v1",
+  "id": "m2a-r31-tri-control-diagnostic-toolset-proof-v1",
+  "binaryProfile": {
+    "path": "C:\\Projects\\meshy2aurora\\proof-profiles\\m0-r31-tri-control-diagnostic-binary-bootstrap-v1.json",
+    "sha256": "6844c41b1cf790da850d8f3233b4603555a08b6880d27b136c65276fe3c4e150"
+  },
+  "fixtureSelection": {
+    "fixtureId": "candidate_m0",
+    "treeObjectText": "Exact r31 M0 candidate",
+    "occurrence": 0
+  },
+  "capture": {
+    "targetClass": "TScrollBox",
+    "allowUniformScene": false
+  },
+  "noSave": true,
+  "noLocalToolsetAdapter": true
+}

@@ -1,0 +1,46 @@
+{
+  "version": "aurora-toolset-binary-module-bootstrap-profile/v1",
+  "id": "m2a-last-city-appearance-diag02-binary-bootstrap-v1",
+  "module": {
+    "resref": "m2a_diag02",
+    "path": "C:\\Projects\\meshy2aurora\\proof-output\\m0-last-city-appearance-diag02-20260722\\generated\\m2a_diag02.mod",
+    "sha256": "0334dc33cf51f1489698db5d005b07cd2de3ed0125e31414c7d3a31b05b851bd"
+  },
+  "area": {
+    "resref": "m2a_diaga02",
+    "width": 2,
+    "height": 2
+  },
+  "entryPoint": {
+    "area": "m2a_diaga02",
+    "position": [10, 10, 0]
+  },
+  "orderedHakList": [
+    {
+      "resref": "m2a_diagh02",
+      "path": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\hak\\m2a_diagh02.hak",
+      "sha256": "88e477851a838ba154b16a7ccaa8235a2e6ee81544e59a1ba8c51d8b378bb3e2"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "stock_control",
+      "templateResRef": "m2a_d_stock",
+      "appearanceType": 102,
+      "position": [5, 18, 0]
+    },
+    {
+      "id": "candidate_m0",
+      "templateResRef": "m2a_d_m0",
+      "appearanceType": 15219,
+      "position": [10, 14.5, 0]
+    },
+    {
+      "id": "custom_control_h1",
+      "templateResRef": "m2a_d_h1",
+      "appearanceType": 15220,
+      "position": [15, 18, 0]
+    }
+  ],
+  "noLocalToolsetAdapter": true
+}

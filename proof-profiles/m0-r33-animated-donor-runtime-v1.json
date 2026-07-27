@@ -1,0 +1,41 @@
+{
+  "version": "aur-s07-runtime-profile/v1",
+  "id": "m2a-m0-r33-animated-donor-runtime",
+  "module": {
+    "sha256": "85c836e59b5d65bc9322cfce0d34da4bf93e04922efbe08d6886962afb4aae86",
+    "area": "m2a_m0a33",
+    "entryPoint": [
+      10.0,
+      10.0,
+      0.0
+    ]
+  },
+  "orderedHakList": [
+    {
+      "resref": "m2a_m0r33",
+      "sha256": "932c9448e89af2caaef608b589a2290181f988d52f5f467f387593339b045a54"
+    }
+  ],
+  "geometryGate": {
+    "status": "verified",
+    "evidence": "C:\\Projects\\meshy2aurora\\proof-output\\m0-r33-animated-donor-20260724\\m0-r33-animated-donor-lineage-contract-v1.json"
+  },
+  "fixtures": [
+    {
+      "id": "m0_fixture",
+      "resref": "m2a_m0p33",
+      "templateResRef": "nw_dwarfmerc001",
+      "appearanceRow": 15100,
+      "position": [
+        10.0,
+        14.5,
+        0.0
+      ]
+    }
+  ],
+  "launch": {
+    "mode": "user_owned_test_module_action",
+    "processName": "nwmain"
+  },
+  "noLocalSubstitute": true
+}

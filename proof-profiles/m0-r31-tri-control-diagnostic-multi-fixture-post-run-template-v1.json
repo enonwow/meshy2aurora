@@ -1,0 +1,148 @@
+{
+  "version": "m2a-multi-fixture-diagnostic-post-run-template/v1",
+  "status": "awaiting_accepted_base_run",
+  "executable": false,
+  "centralProfileVersion": "aurora-model-proof-120s-multi-fixture-diagnostic-profile/v1",
+  "id": "m2a-r31-tri-control-diagnostic-multi-fixture",
+  "hardLimitMs": 120000,
+  "proofProfile": {
+    "version": "aurora-model-proof-120s-profile/v1",
+    "path": "C:\\Projects\\meshy2aurora\\proof-profiles\\m0-r31-tri-control-diagnostic-model-proof-120s-v1.json",
+    "sha256": "41627822c46ca04b4d4fdeefd3e346a05f890cdf3c4b0de2be3e032ff7193ced",
+    "byteLength": 2765
+  },
+  "diagnosticBinaryProfile": {
+    "path": "C:\\Projects\\meshy2aurora\\proof-output\\m0-r31-tri-control-diagnostic-20260722\\generated\\tri-control-diagnostic-contract-v1.json",
+    "sha256": "6349591b83f3d699020b5aaea43fb25e2ca08d39b756923ab62c93546d22f468",
+    "byteLength": 5670
+  },
+  "publishedAcceptanceTrustRootId": null,
+  "diagnosticContractTrustRootId": "meshy2aurora-tri-control-project-witnesses-v1",
+  "projectWitnesses": {
+    "baseAppearance": {
+      "path": "C:\\Projects\\meshy2aurora\\local-reference-assets\\appearance.2da",
+      "sha256": "815c0b3bce0895e9f17d4b92cb02a6d34366267b5a4b9081dece0f4eee7d7a1a",
+      "byteLength": 6901169
+    },
+    "r31Appearance": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\m0-r31-hierarchy-only-20260722\\generated\\appearance.2da",
+      "sha256": "48d313b75761809e2231c99ad51e17d67632c1ce10e70b87fa8b1ccdfbc474a6",
+      "byteLength": 6901360
+    },
+    "r31Mdl": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\m0-r31-hierarchy-only-20260722\\generated\\m2a_m0p01.mdl",
+      "sha256": "fcfbe7e329d51aef6ccb3ae87b4bfe7db7c5395cd5e8adf24159e73e556b5ab6",
+      "byteLength": 151328
+    },
+    "r31Tga": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\m0-r31-hierarchy-only-20260722\\generated\\m2a_m0t01.tga",
+      "sha256": "079bfedbb952ae3f3bbdd43f1bb244eb6247ca92a25d0acad2f3273f9aace59b",
+      "byteLength": 12582956
+    },
+    "h1Appearance": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\meshy-h1-nwn-runtime-rigid-isolation-v20\\generated\\appearance.2da",
+      "sha256": "e50e2f8c5fc42771f5c433dd3984b0f8e740938d6f722adf838942f1f6342f8e",
+      "byteLength": 6901354
+    },
+    "h1Mdl": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\meshy-h1-nwn-runtime-rigid-isolation-v20\\generated\\m2a_m6p01.mdl",
+      "sha256": "6e34e7f7a57ac5ea33897cf64e1f37798e47f9fd632e48827037bb328d193fbd",
+      "byteLength": 557268
+    },
+    "h1Tga": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\meshy-h1-nwn-runtime-rigid-isolation-v20\\generated\\m2a_m6t01.tga",
+      "sha256": "ab8f11c7f448801d905594802a223a1ed5969bc5d09ce06e6588cbe83b6a86b4",
+      "byteLength": 12582956
+    }
+  },
+  "baseBinding": {
+    "installedModule": {
+      "path": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\modules\\m2a_diag01.mod",
+      "sha256": "40282440091c8d778b8b21f715ad9f4c5f9bff998c4605a1769f5fd156a00ff3",
+      "byteLength": 21053
+    },
+    "orderedHakList": [
+      {
+        "resref": "m2a_diagh01",
+        "path": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\hak\\m2a_diagh01.hak",
+        "sha256": "f538734743a76d20ef1fc7c294f4029940073d76d50ded174ac3b30a6fc74d6d",
+        "byteLength": 32776373
+      }
+    ],
+    "resources": {
+      "mdl": {
+        "resref": "m2a_m0p01",
+        "sha256": "fcfbe7e329d51aef6ccb3ae87b4bfe7db7c5395cd5e8adf24159e73e556b5ab6"
+      },
+      "tga": {
+        "resref": "m2a_m0t01",
+        "sha256": "079bfedbb952ae3f3bbdd43f1bb244eb6247ca92a25d0acad2f3273f9aace59b"
+      },
+      "appearance2da": {
+        "resref": "appearance",
+        "row": 15100,
+        "sha256": "3f7e7f6115e3f2a9917aadccb7e16b9708efb9d87b372cc84b4c56dc991d0448"
+      }
+    },
+    "area": {
+      "resref": "m2a_diaga01",
+      "displayName": "Meshy2Aurora M0 binary vertical-slice area",
+      "entryPoint": [10, 10, 0]
+    },
+    "runtime": {
+      "loadingModuleResref": "m2a_diag01",
+      "engineLogPath": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\logs\\nwclientLog1.txt"
+    }
+  },
+  "acceptedBaseRun": {
+    "clock": null,
+    "finalPacket": null,
+    "acceptance": null
+  },
+  "toolsetTargetFixtureId": "candidate_m0",
+  "fixtures": [
+    {
+      "id": "stock_control",
+      "templateResRef": "m2a_d_stock",
+      "treeObjectText": "Stock c_horror control",
+      "occurrence": 0,
+      "appearanceRow": 102,
+      "modelResref": "c_horror",
+      "position": [5, 18, 0],
+      "runtimeRoi": { "x": 0.05, "y": 0.2, "width": 0.25, "height": 0.65 }
+    },
+    {
+      "id": "custom_control_h1",
+      "templateResRef": "m2a_d_h1",
+      "treeObjectText": "Project-owned H1 v20 control",
+      "occurrence": 0,
+      "appearanceRow": 15101,
+      "modelResref": "m2a_m6p01",
+      "position": [15, 18, 0],
+      "runtimeRoi": { "x": 0.7, "y": 0.2, "width": 0.25, "height": 0.65 }
+    },
+    {
+      "id": "candidate_m0",
+      "templateResRef": "m2a_d_m0",
+      "treeObjectText": "Exact r31 M0 candidate",
+      "occurrence": 0,
+      "appearanceRow": 15100,
+      "modelResref": "m2a_m0p01",
+      "position": [10, 14.5, 0],
+      "runtimeRoi": { "x": 0.375, "y": 0.2, "width": 0.25, "height": 0.65 }
+    }
+  ],
+  "policy": {
+    "singleImmutableRuntimePng": true,
+    "failClosedUnreadableRoi": true,
+    "diagnosticOnly": true,
+    "noAutomaticResolverClaim": true,
+    "noAutomaticRendererClaim": true
+  },
+  "unresolved": [
+    "publishedAcceptanceTrustRootId requires a new code-owned central trust root for this exact accepted base run",
+    "acceptedBaseRun.clock requires the immutable accepted run-clock artifact identity",
+    "acceptedBaseRun.finalPacket requires the immutable final-model-proof artifact identity",
+    "acceptedBaseRun.acceptance requires the atomically published acceptance artifact identity"
+  ]
+}

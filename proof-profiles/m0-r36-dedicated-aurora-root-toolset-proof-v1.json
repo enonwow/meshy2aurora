@@ -1,0 +1,19 @@
+{
+  "version": "aurora-toolset-binary-module-toolset-proof-profile/v1",
+  "id": "m2a-m0-r36-dedicated-aurora-root-toolset-proof-v1",
+  "binaryProfile": {
+    "path": "C:\\Projects\\meshy2aurora\\proof-profiles\\m0-r36-dedicated-aurora-root-binary-bootstrap-v1.json",
+    "sha256": "8ab9bef045ab87aab9fb8e8dd75b216631dfbd1a91aa583be9a08e9d8d3702f0"
+  },
+  "fixtureSelection": {
+    "fixtureId": "m0_fixture",
+    "treeObjectText": "Meshy M0 animated-donor fixture",
+    "occurrence": 0
+  },
+  "capture": {
+    "targetClass": "TScrollBox",
+    "allowUniformScene": false
+  },
+  "noSave": true,
+  "noLocalToolsetAdapter": true
+}

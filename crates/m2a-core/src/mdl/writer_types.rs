@@ -6,12 +6,103 @@ use super::InspectionReport;
 
 pub const M4_WRITER_SCHEMA_VERSION: u32 = 1;
 pub const M4A_ANIMATION_SCHEMA_VERSION: u32 = 1;
+/// Current NWN:EE product boundary for one triangle-list mesh stream.
+///
+/// Raw vertex references are emitted as `u16`; constraining the stream to the
+/// same 65,535-entry boundary keeps one mesh at no more than 21,845 triangles.
+/// Larger models must be split into multiple model-IR segments before writing.
+pub const NWN_EE_MAX_MESH_INDEX_COUNT_V1: usize = u16::MAX as usize;
+pub const NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1: usize = NWN_EE_MAX_MESH_INDEX_COUNT_V1 / 3;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum MdlFormatProfileV1 {
     M4DirectCreatureExtended64V1,
+    /// Extended64 SkinMesh with the unused inline palette tail filled with
+    /// native-style zero terminators. The frozen V1 profile retains its
+    /// historical `-1` tail for exact lineage replay.
+    M4DirectCreatureExtended64ZeroTerminatedV2,
+    /// Extends V2 for a native-style dedicated creature model root. The
+    /// single parentless, model-named identity root has no redundant bind
+    /// controllers; every descendant retains the V2 controller contract.
+    M4DirectCreatureExtended64ZeroTerminatedControllerlessRootV3,
+    /// Static, unskinned direct creature using the selected runtime family.
+    M0StaticRigidNativeV1,
+    /// Static, unskinned placeable. It uses the common binary MDL writer but
+    /// derives model bounds from caller-owned geometry instead of the
+    /// historical direct-creature culling envelope.
+    PlaceableStaticRigidNativeV1,
+    /// Non-default, offline-only controlled experiment. It preserves the M0
+    /// native mesh policy while allowing caller-bound source transform dummies.
+    SourceTopologyPreservingRigidExperimentV1,
+    /// Explicit production candidate family for a caller-bound source
+    /// topology. Legacy M0/V2 construction never selects this variant.
+    SourceTopologyPreservingRigidCandidateV1,
+    /// Static tile profile using the common binary writer, caller-owned model
+    /// bounds, classification 2 and one semantic AABB mesh sourced from the
+    /// same `TileNavigationIrV1` as the ASCII WOK.
+    TileStaticV1,
     Legacy17V1,
+}
+
+/// Selects one audited binary family for projecting the base creature tree
+/// into every local-animation state.  This is deliberately independent from
+/// `MdlFormatProfileV1`: native corpora contain more than one legal state-tree
+/// family, and mixing their node semantics produces an ungrounded hybrid.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum MdlStateProjectionProfileV1 {
+    /// The retail family mirrors base name/part/parent topology with generic
+    /// `0x01` nodes. Animation trees contain no mesh, skin, or raw-MDX payload.
+    RetailDirectCreatureType5DummyV1,
+    /// The direct-creature family projects only the ordered rig into type-5
+    /// local-animation states. Renderable mesh/skin leaves remain exclusively
+    /// in the base tree and are deliberately absent from every state tree.
+    RetailDirectCreatureType5RigOnlyV1,
+    /// The historical project-owned type-0 rig-only family. The public variant
+    /// name is retained for exact lineage/API compatibility; its documented
+    /// runtime result belongs to the immutable candidate record and is not a
+    /// correctness baseline for TileStaticV1.
+    OwnedRuntimePositiveType0RigOnlyV1,
+    /// The separately audited CEP R3 family keeps rigid base-mesh identities
+    /// as zero-geometry `0x21` placeholders.  It is never an implicit default
+    /// and requires an exact provenance binding below.
+    CepRigidPlaceholderV1,
+}
+
+/// Metadata-only provenance supplied by the caller. Production code validates
+/// its shape but never embeds or opens a reference witness.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MdlStateProjectionProvenanceV1 {
+    pub schema_version: u32,
+    pub source_family: String,
+    pub container_sha256: String,
+    pub resource_resref: String,
+    pub resource_sha256: String,
+}
+
+pub(crate) fn is_well_formed_state_projection_provenance_v1(
+    provenance: &MdlStateProjectionProvenanceV1,
+) -> bool {
+    provenance.schema_version == 1
+        && !provenance.source_family.is_empty()
+        && provenance.source_family.len() <= 96
+        && is_lower_sha256(&provenance.container_sha256)
+        && !provenance.resource_resref.is_empty()
+        && provenance.resource_resref.len() <= 16
+        && provenance
+            .resource_resref
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+        && is_lower_sha256(&provenance.resource_sha256)
+}
+
+fn is_lower_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -26,6 +117,9 @@ pub struct MdlMaterialTextureBindingV1 {
 pub struct MdlWriterOptionsV1 {
     pub schema_version: u32,
     pub format_profile: MdlFormatProfileV1,
+    pub state_projection_profile: MdlStateProjectionProfileV1,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state_projection_provenance: Option<MdlStateProjectionProvenanceV1>,
     pub model_resource_resref: String,
     pub diffuse_texture_resref_by_material_slot: Vec<MdlMaterialTextureBindingV1>,
 }
@@ -149,6 +243,17 @@ pub struct MdlLayoutReportV1 {
     pub file_length: usize,
     pub rig_nodes: Vec<MdlRigNodeLayoutV1>,
     pub mesh_nodes: Vec<MdlMeshNodeLayoutV1>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aabb_node: Option<MdlAabbNodeLayoutV1>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MdlAabbNodeLayoutV1 {
+    pub part_number: u32,
+    pub core_offset: u32,
+    pub root_entry_core_offset: u32,
+    pub entry_count: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -174,6 +279,9 @@ pub struct M4SemanticProjectionV1 {
 pub struct MdlWriterReportV1 {
     pub schema_version: u32,
     pub format_profile: MdlFormatProfileV1,
+    pub state_projection_profile: MdlStateProjectionProfileV1,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state_projection_provenance: Option<MdlStateProjectionProvenanceV1>,
     pub payload_sha256: String,
     pub layout: MdlLayoutReportV1,
     pub projection: M4SemanticProjectionV1,
@@ -199,7 +307,10 @@ pub struct MdlAnimationClipLayoutV1 {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MdlAnimationNodeLayoutV1 {
-    pub ir_node_id: u32,
+    /// `None` marks a derived animation node that mirrors a base mesh part.
+    /// Its binary shape is selected by the report-level state projection
+    /// profile; callers must not infer a universal `0x01` or `0x21` family.
+    pub ir_node_id: Option<u32>,
     pub part_number: u32,
     pub core_offset: u32,
     pub children_array_core_offset: Option<u32>,

@@ -1,16 +1,25 @@
 .git/
 .github/
 .codex-tmp/
+.agents/
+.codex/
 target/
 **/target/
 **/pkg/
 node_modules/
+**/node_modules/
+dist/
+**/dist/
+*.tsbuildinfo
+**/*.tsbuildinfo
 proof-output/
 **/proof-output/
 local-reference-assets/
 **/local-reference-assets/
 sample-2d/
 sample-3d/
+documentation/
+test-assets/
 
 # Host configuration, credentials and transient output.
 .env

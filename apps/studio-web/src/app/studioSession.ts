@@ -1,6 +1,7 @@
 import { compareWorkflowSteps, type WorkflowStep } from "./workflow";
 
-export type StudioInputKind = "SOURCE" | "APPEARANCE";
+export type StudioInputKind = "SOURCE" | "APPEARANCE" | "ANIMATION_EVENTS";
+export type StudioTarget = "CREATURE" | "PLACEABLE" | "TILE";
 
 export type StudioInputParseState =
   | { kind: "NOT_STARTED" }
@@ -66,10 +67,12 @@ export interface StudioSessionState<
   TAppearanceInspection = unknown,
 > {
   readonly revision: number;
+  readonly target: StudioTarget;
   readonly currentStep: WorkflowStep;
   readonly lastAvailableStep: WorkflowStep;
   readonly source: StudioInputFile | null;
   readonly appearance: StudioInputFile | null;
+  readonly animationEvents: StudioInputFile | null;
   readonly sourceInspection: RevisionBoundSnapshot<TInspection> | null;
   readonly appearanceInspection: RevisionBoundSnapshot<TAppearanceInspection> | null;
   readonly build: BuildState<TResult>;
@@ -83,9 +86,14 @@ export type StudioSessionEvent<
   TResult = unknown,
 > =
   | { readonly type: "SOURCE_SELECTED"; readonly file: File }
+  | { readonly type: "TARGET_SELECTED"; readonly target: StudioTarget }
+  | { readonly type: "AUTHORING_OPTIONS_CHANGED" }
+  | { readonly type: "AUTHORING_DOCUMENT_CHANGED" }
   | { readonly type: "APPEARANCE_SELECTED"; readonly file: File }
+  | { readonly type: "ANIMATION_EVENTS_SELECTED"; readonly file: File }
   | { readonly type: "SOURCE_REMOVED" }
   | { readonly type: "APPEARANCE_REMOVED" }
+  | { readonly type: "ANIMATION_EVENTS_REMOVED" }
   | {
       readonly type: "INPUT_METADATA_UPDATED";
       readonly input: StudioInputKind;
@@ -153,10 +161,12 @@ export function createInitialStudioSession<
 ): StudioSessionState<TInspection, TResult, TAppearanceInspection> {
   return {
     revision,
+    target: "CREATURE",
     currentStep: "SOURCE",
     lastAvailableStep: "SOURCE",
     source: null,
     appearance: null,
+    animationEvents: null,
     sourceInspection: null,
     appearanceInspection: null,
     build: { kind: "IDLE" },
@@ -167,7 +177,10 @@ export function createInitialStudioSession<
 
 function invalidateDownstream<TInspection, TResult, TAppearanceInspection>(
   state: StudioSessionState<TInspection, TResult, TAppearanceInspection>,
-  inputs: Pick<StudioSessionState<TInspection, TResult, TAppearanceInspection>, "source" | "appearance">,
+  inputs: Pick<
+    StudioSessionState<TInspection, TResult, TAppearanceInspection>,
+    "source" | "appearance" | "animationEvents"
+  >,
 ): StudioSessionState<TInspection, TResult, TAppearanceInspection> {
   return {
     ...state,
@@ -189,7 +202,11 @@ function updateInputMetadata<TInspection, TResult, TAppearanceInspection>(
 ): StudioSessionState<TInspection, TResult, TAppearanceInspection> {
   if (event.revision !== state.revision) return state;
 
-  const key = event.input === "SOURCE" ? "source" : "appearance";
+  const key = event.input === "SOURCE"
+    ? "source"
+    : event.input === "APPEARANCE"
+      ? "appearance"
+      : "animationEvents";
   const input = state[key];
   if (!input) return state;
 
@@ -208,20 +225,70 @@ export function studioSessionReducer<TInspection, TResult, TAppearanceInspection
   event: StudioSessionEvent<TInspection, TAppearanceInspection, TResult>,
 ): StudioSessionState<TInspection, TResult, TAppearanceInspection> {
   switch (event.type) {
+    case "TARGET_SELECTED": {
+      if (event.target === state.target) return state;
+      const next = invalidateDownstream(state, {
+        source: state.source,
+        appearance: event.target === "TILE" ? null : state.appearance,
+        animationEvents: event.target === "TILE" ? null : state.animationEvents,
+      });
+      return { ...next, target: event.target };
+    }
+    case "AUTHORING_OPTIONS_CHANGED":
+      return invalidateDownstream(state, {
+        source: state.source,
+        appearance: state.appearance,
+        animationEvents: state.animationEvents,
+      });
+    case "AUTHORING_DOCUMENT_CHANGED":
+      return {
+        ...state,
+        lastAvailableStep: state.currentStep === "REVIEW" ? "BUILD" : state.lastAvailableStep,
+        build: { kind: "IDLE" },
+        result: null,
+        download: { kind: "LOCKED" },
+      };
     case "SOURCE_SELECTED":
       return invalidateDownstream(state, {
         source: selectedInput(event.file),
         appearance: state.appearance,
+        animationEvents: state.animationEvents,
       });
-    case "APPEARANCE_SELECTED":
-      return invalidateDownstream(state, {
+    case "APPEARANCE_SELECTED": {
+      const next = invalidateDownstream(state, {
         source: state.source,
         appearance: selectedInput(event.file),
+        animationEvents: state.animationEvents,
+      });
+      return {
+        ...next,
+        target: event.file.name.toLowerCase() === "placeables.2da" ? "PLACEABLE" : "CREATURE",
+      };
+    }
+    case "ANIMATION_EVENTS_SELECTED":
+      return invalidateDownstream(state, {
+        source: state.source,
+        appearance: state.appearance,
+        animationEvents: selectedInput(event.file),
       });
     case "SOURCE_REMOVED":
-      return invalidateDownstream(state, { source: null, appearance: state.appearance });
+      return invalidateDownstream(state, {
+        source: null,
+        appearance: state.appearance,
+        animationEvents: state.animationEvents,
+      });
     case "APPEARANCE_REMOVED":
-      return invalidateDownstream(state, { source: state.source, appearance: null });
+      return invalidateDownstream(state, {
+        source: state.source,
+        appearance: null,
+        animationEvents: state.animationEvents,
+      });
+    case "ANIMATION_EVENTS_REMOVED":
+      return invalidateDownstream(state, {
+        source: state.source,
+        appearance: state.appearance,
+        animationEvents: null,
+      });
     case "INPUT_METADATA_UPDATED":
       return updateInputMetadata(state, event);
     case "SOURCE_INSPECTION_SUCCEEDED":
@@ -253,7 +320,7 @@ export function studioSessionReducer<TInspection, TResult, TAppearanceInspection
         },
       };
     case "CONTINUE_TO_INSPECT":
-      if (!state.source || !state.appearance) return state;
+      if (!state.source || (state.target !== "TILE" && !state.appearance)) return state;
       return {
         ...state,
         currentStep: "INSPECT",
@@ -264,11 +331,14 @@ export function studioSessionReducer<TInspection, TResult, TAppearanceInspection
     case "CONTINUE_TO_BUILD":
       if (
         !state.source
-        || !state.appearance
+        || (state.target !== "TILE" && !state.appearance)
         || !state.sourceInspection
-        || !state.appearanceInspection
+        || (state.target !== "TILE" && !state.appearanceInspection)
         || state.sourceInspection.revision !== state.revision
-        || state.appearanceInspection.revision !== state.revision
+        || (
+          state.target !== "TILE"
+          && state.appearanceInspection?.revision !== state.revision
+        )
       ) return state;
       return {
         ...state,
@@ -283,9 +353,12 @@ export function studioSessionReducer<TInspection, TResult, TAppearanceInspection
         || state.currentStep !== "BUILD"
         || state.build.kind === "RUNNING"
         || !state.sourceInspection
-        || !state.appearanceInspection
+        || (state.target !== "TILE" && !state.appearanceInspection)
         || state.sourceInspection.revision !== state.revision
-        || state.appearanceInspection.revision !== state.revision
+        || (
+          state.target !== "TILE"
+          && state.appearanceInspection?.revision !== state.revision
+        )
       ) return state;
       return {
         ...state,

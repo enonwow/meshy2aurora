@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { page } from "@vitest/browser/context";
+import { page } from "vitest/browser";
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import h1Url from "../../../../test-assets/meshy/incoming/h1-humanoid-1500.glb?url";
+import h2Url from "../../../../test-assets/meshy/incoming/h2-clockwork-sentinel-1500.glb?url";
 import appearanceUrl from "../../../../local-reference-assets/appearance.2da?url";
 import { AuroraReadbackViewport, buildAuroraReadbackAsset } from "../../src/features/preview/AuroraReadbackViewport";
 import { projectCanonicalReadback } from "../../src/features/results/projectReadback";
@@ -24,25 +24,45 @@ async function input(url: string, name: string, type: string) {
   return new File([await response.arrayBuffer()], name, { type });
 }
 
-describe("real Meshy H1 canonical skin readback", () => {
+describe("real Meshy H2 procedural humanoid skin readback", () => {
   it("reconstructs a skinned Three asset only when inverse binds agree with the decoded MDL", async () => {
     const [source, appearance] = await Promise.all([
-      input(h1Url, "h1-humanoid-1500.glb", "model/gltf-binary"),
+      input(h2Url, "h2-clockwork-sentinel-1500.glb", "model/gltf-binary"),
       input(appearanceUrl, "appearance.2da", "text/plain"),
     ]);
     const [sourceGlb, appearanceTwoDa] = await Promise.all([source.arrayBuffer(), appearance.arrayBuffer()]);
     const client = new StudioWorkerClient();
     clients.push(client);
     const response = await client.request({
-      requestId: "real-h1-skinning-diagnostic",
+      requestId: "real-h2-procedural-skinning-diagnostic",
       type: "BUILD_MODEL_PACKAGE",
       sourceGlb,
       appearanceTwoDa,
+      packageLane: "SKINNED_PROCEDURAL_HUMANOID_42",
     }, [sourceGlb, appearanceTwoDa]);
     expect(response).toMatchObject({ ok: true, type: "MODEL_PACKAGE_BUILT" });
-    if (!response.ok || response.type !== "MODEL_PACKAGE_BUILT") throw new Error("H1 package unavailable");
+    if (!response.ok || response.type !== "MODEL_PACKAGE_BUILT") {
+      throw new Error("H2 procedural package unavailable");
+    }
+    const report = JSON.parse(response.reportJson) as {
+      animationCompleteness?: {
+        requiredClipCount?: number;
+        proceduralClipCount?: number;
+        fallbackAliasCount?: number;
+      };
+      skinAnimationConformance?: { complete?: boolean };
+    };
+    expect(report.animationCompleteness).toMatchObject({
+      requiredClipCount: 42,
+      proceduralClipCount: 41,
+      fallbackAliasCount: 0,
+    });
+    expect(report.skinAnimationConformance?.complete).toBe(true);
     const asset = buildAuroraReadbackAsset(projectCanonicalReadback(response.readbackJson));
-    expect(asset.animations.map((clip) => clip.name)).toContain("cpause1");
+    expect(asset.animations).toHaveLength(42);
+    expect(asset.animations.map((clip) => clip.name)).toEqual(
+      expect.arrayContaining(["cpause1", "cwalk", "crun", "ca1slashl", "ckdbckdie"]),
+    );
     expect(asset.root.getObjectByProperty("isSkinnedMesh", true)).toBeDefined();
 
     const container = document.createElement("main");
@@ -61,10 +81,10 @@ describe("real Meshy H1 canonical skin readback", () => {
     for (let index = 0; index <= 15; index += 1) {
       if (index > 0) await page.getByRole("button", { name: "Next animation keyframe" }).click();
       const frame = String(index).padStart(3, "0");
-      await page.screenshot({ path: `../../../../proof-output/meshy-h1-e2e-2026-07-17/animation-skinning-frames/frame-${frame}.png` });
+      await page.screenshot({ path: `../../../../proof-output/meshy-h2-procedural-offline-readback/animation-skinning-frames/frame-${frame}.png` });
     }
-    await page.screenshot({ path: "../../../../proof-output/meshy-h1-e2e-2026-07-17/13-converted-h1-skinned-000ms.png" });
-    await page.screenshot({ path: "../../../../proof-output/meshy-h1-e2e-2026-07-17/14-converted-h1-skinned-500ms.png" });
+    await page.screenshot({ path: "../../../../proof-output/meshy-h2-procedural-offline-readback/converted-h2-skinned-000ms.png" });
+    await page.screenshot({ path: "../../../../proof-output/meshy-h2-procedural-offline-readback/converted-h2-skinned-500ms.png" });
     await page.getByRole("button", { name: "Stop" }).click();
     for (let index = 0; index <= 15; index += 1) {
       if (index > 0) {
@@ -73,7 +93,7 @@ describe("real Meshy H1 canonical skin readback", () => {
         }
       }
       const frame = String(index).padStart(3, "0");
-      await page.screenshot({ path: `../../../../proof-output/meshy-h1-e2e-2026-07-17/animation-skinning-full-frames/frame-${frame}.png` });
+      await page.screenshot({ path: `../../../../proof-output/meshy-h2-procedural-offline-readback/animation-skinning-full-frames/frame-${frame}.png` });
     }
     expect(errors).toEqual([]);
   }, 60_000);

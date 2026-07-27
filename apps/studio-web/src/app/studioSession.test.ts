@@ -9,6 +9,10 @@ import {
 
 const source = () => new File(["glb"], "hero.glb", { type: "model/gltf-binary" });
 const appearance = () => new File(["2DA V2.0"], "appearance.2da", { type: "text/plain" });
+const animationEvents = () =>
+  new File(['{"schemaVersion":1,"clips":[]}'], "animation-events.json", {
+    type: "application/json",
+  });
 
 function readySourceState<TResult = unknown>() {
   let state = createInitialStudioSession<unknown, TResult>();
@@ -35,12 +39,37 @@ describe("Studio session reducer", () => {
       lastAvailableStep: "SOURCE",
       source: null,
       appearance: null,
+      animationEvents: null,
       sourceInspection: null,
       appearanceInspection: null,
       build: { kind: "IDLE" },
       result: null,
       download: { kind: "LOCKED" },
     });
+  });
+
+  it("stores the optional event sidecar and invalidates stale downstream evidence", () => {
+    const built = readyBuildState();
+    const selected = studioSessionReducer(built, {
+      type: "ANIMATION_EVENTS_SELECTED",
+      file: animationEvents(),
+    });
+
+    expect(selected.revision).toBe(built.revision + 1);
+    expect(selected.animationEvents).toMatchObject({
+      name: "animation-events.json",
+      parse: { kind: "NOT_STARTED" },
+    });
+    expect(selected.currentStep).toBe("SOURCE");
+    expect(selected.sourceInspection).toBeNull();
+    expect(selected.appearanceInspection).toBeNull();
+    expect(selected.build).toEqual({ kind: "IDLE" });
+
+    const removed = studioSessionReducer(selected, {
+      type: "ANIMATION_EVENTS_REMOVED",
+    });
+    expect(removed.animationEvents).toBeNull();
+    expect(removed.revision).toBe(selected.revision + 1);
   });
 
   it("stores both input kinds and increments revision for every selection", () => {
@@ -64,6 +93,33 @@ describe("Studio session reducer", () => {
       currentStep: "INSPECT",
       lastAvailableStep: "INSPECT",
     });
+  });
+
+  it("admits Tile with one GLB and current source inspection without a base 2DA", () => {
+    let state = createInitialStudioSession<{ eligible: boolean }>();
+    state = studioSessionReducer(state, { type: "TARGET_SELECTED", target: "TILE" });
+    state = studioSessionReducer(state, { type: "SOURCE_SELECTED", file: source() });
+    const inspect = studioSessionReducer(state, { type: "CONTINUE_TO_INSPECT" });
+    expect(inspect.currentStep).toBe("INSPECT");
+    const inspected: StudioSessionState<{ eligible: boolean }> = {
+      ...inspect,
+      sourceInspection: {
+        revision: inspect.revision,
+        value: { eligible: true },
+      },
+    };
+    const build = studioSessionReducer(inspected, { type: "CONTINUE_TO_BUILD" });
+    expect(build).toMatchObject({
+      target: "TILE",
+      currentStep: "BUILD",
+      appearance: null,
+      appearanceInspection: null,
+    });
+    expect(studioSessionReducer(build, {
+      type: "BUILD_STARTED",
+      requestId: "tile-build",
+      revision: build.revision,
+    }).build).toMatchObject({ kind: "RUNNING", requestId: "tile-build" });
   });
 
   it("ignores navigation to a locked step and permits navigation to an unlocked step", () => {
@@ -445,6 +501,28 @@ describe("Studio session reducer", () => {
       revision: selected.revision,
       value: { columns: 12 },
     });
+  });
+
+  it("invalidates a built result when authoring changes without discarding inspections", () => {
+    const ready = readyBuildState<{ artifactIds: string[] }>();
+    const running = studioSessionReducer(ready, {
+      type: "BUILD_STARTED",
+      requestId: "build-authoring",
+      revision: ready.revision,
+    });
+    const built = studioSessionReducer(running, {
+      type: "BUILD_SUCCEEDED",
+      requestId: "build-authoring",
+      revision: ready.revision,
+      result: { artifactIds: ["old"] },
+    });
+    const changed = studioSessionReducer(built, { type: "AUTHORING_DOCUMENT_CHANGED" });
+
+    expect(changed.sourceInspection).toBe(built.sourceInspection);
+    expect(changed.appearanceInspection).toBe(built.appearanceInspection);
+    expect(changed.result).toBeNull();
+    expect(changed.build.kind).toBe("IDLE");
+    expect(changed.download.kind).toBe("LOCKED");
   });
 
   it("starts a clean conversion with a newer revision", () => {

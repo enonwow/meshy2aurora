@@ -7,7 +7,9 @@ RUN test "$(node --version)" = "v24.15.0"
 
 FROM rust:1.96.1-bookworm@sha256:a339861ae23e9abb272cea45dfafde21760d2ce6577a70f8a926153677902663 AS rust_toolchain
 
-COPY --from=node_toolchain /usr/local/bin/node /usr/local/bin/node
+# npm/npx are symlinks into /usr/local/lib/node_modules. Copy the complete
+# Node prefix so those links stay valid in the Rust image.
+COPY --from=node_toolchain /usr/local/ /usr/local/
 
 RUN rustup component add rustfmt clippy \
     && rustup target add wasm32-unknown-unknown \
@@ -15,7 +17,28 @@ RUN rustup component add rustfmt clippy \
     && rustc --version | grep -E '^rustc 1\.96\.1 ' \
     && cargo --version | grep -E '^cargo 1\.96\.1 ' \
     && test "$(node --version)" = "v24.15.0" \
+    && test "$(npm --version)" = "11.12.1" \
     && test "$(wasm-pack --version)" = "wasm-pack 0.15.0"
+
+# Local Studio development only. Source is later bind-mounted by Compose, while
+# the named node_modules volume keeps host dependencies out of the workspace.
+FROM rust_toolchain AS studio-dev
+
+WORKDIR /workspace
+
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY crates/m2a-core crates/m2a-core
+COPY crates/m2a-wasm crates/m2a-wasm
+COPY apps/studio-web/package.json apps/studio-web/package-lock.json apps/studio-web/
+
+RUN npm --prefix apps/studio-web ci
+
+COPY apps/studio-web apps/studio-web
+COPY tools/meshy-local-bridge tools/meshy-local-bridge
+
+EXPOSE 5173
+
+CMD ["npm", "--prefix", "apps/studio-web", "run", "dev", "--", "--host", "0.0.0.0"]
 
 FROM rust_toolchain AS quality
 

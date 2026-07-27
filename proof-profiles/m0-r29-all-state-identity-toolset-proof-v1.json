@@ -1,0 +1,19 @@
+{
+  "version": "aurora-toolset-binary-module-toolset-proof-profile/v1",
+  "id": "m2a-m0-r29-all-state-identity-toolset-proof-v1",
+  "binaryProfile": {
+    "path": "C:\\Projects\\meshy2aurora\\proof-profiles\\m0-r29-all-state-identity-binary-bootstrap-v1.json",
+    "sha256": "f49b5990cd6cb8b6a625bf0a7cd5f2f4b905c77fe5a3312018a15320cb471050"
+  },
+  "fixtureSelection": {
+    "fixtureId": "m0_fixture",
+    "treeObjectText": "Meshy M0 binary vertical-slice fixture",
+    "occurrence": 0
+  },
+  "capture": {
+    "targetClass": "TScrollBox",
+    "allowUniformScene": false
+  },
+  "noSave": true,
+  "noLocalToolsetAdapter": true
+}

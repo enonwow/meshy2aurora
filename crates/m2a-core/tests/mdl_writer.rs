@@ -1,10 +1,16 @@
 use std::collections::HashMap;
 
+use m2a_core::direct_creature_animation::evaluate_direct_creature_animation_behavior_v1;
 use m2a_core::mdl::{
     MdlAnimationClipV1, MdlAnimationEventV1, MdlAnimationInterpolationV1, MdlAnimationSetV1,
     MdlAnimationTrackPathV1, MdlAnimationTrackV1, MdlFormatProfileV1, MdlMaterialTextureBindingV1,
-    MdlWriterOptionsV1, inspect_binary_mdl, write_binary_mdl, write_binary_mdl_with_animations,
+    MdlStateProjectionProfileV1, MdlStateProjectionProvenanceV1, MdlWriterOptionsV1,
+    NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1, evaluate_skin_deformation_v1, inspect_binary_mdl,
+    verify_direct_creature_state_projection_v1,
+    verify_direct_creature_state_projection_with_expected_provenance_v1, write_binary_mdl,
+    write_binary_mdl_with_animations,
 };
+use m2a_core::model_pipeline::FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1;
 use m2a_core::profile_a::{
     AuroraCreatureIrV1, AuroraCreatureNodeV1, AuroraCreatureSegmentV1, AuroraVertexWeightsV1,
     MaterialSourceBindingV1, RigSegmentDeformationV1,
@@ -75,11 +81,13 @@ fn segment(id: u32, parent: u32, material_slot: u32, z: f32) -> AuroraCreatureSe
         material_slot,
         deformation: RigSegmentDeformationV1::Rigid,
         parent_node_id: parent,
+        cast_shadow: true,
         positions: vec![[0.0, 0.0, z], [1.0, 0.0, z], [0.0, 1.0, z]],
         normals: vec![[0.0, 0.0, 1.0]; 3],
         tangents: None,
         uv0: vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
         indices: vec![0, 1, 2],
+        face_surface_ids: Vec::new(),
         weights: Vec::<AuroraVertexWeightsV1>::new(),
     }
 }
@@ -200,11 +208,32 @@ fn options() -> MdlWriterOptionsV1 {
     MdlWriterOptionsV1 {
         schema_version: 1,
         format_profile: MdlFormatProfileV1::M4DirectCreatureExtended64V1,
+        state_projection_profile: MdlStateProjectionProfileV1::RetailDirectCreatureType5DummyV1,
+        state_projection_provenance: None,
         model_resource_resref: "m2a_test".to_owned(),
         diffuse_texture_resref_by_material_slot: vec![MdlMaterialTextureBindingV1 {
             material_slot: 0,
             resref: "m2a_tex".to_owned(),
         }],
+    }
+}
+
+fn placeable_options() -> MdlWriterOptionsV1 {
+    MdlWriterOptionsV1 {
+        format_profile: MdlFormatProfileV1::PlaceableStaticRigidNativeV1,
+        ..options()
+    }
+}
+
+fn cep_r3_provenance() -> MdlStateProjectionProvenanceV1 {
+    MdlStateProjectionProvenanceV1 {
+        schema_version: 1,
+        source_family: "CEP3_CORE1_R3_RIGID_PLACEHOLDER".to_owned(),
+        container_sha256: "6a8e6a64773a77fd46740cbcce19a708db6a70b4975732d0405978f3fbe8eb1a"
+            .to_owned(),
+        resource_resref: "c_phod_horror_b".to_owned(),
+        resource_sha256: "62ab1f512f709f9acd0fe0c5deb9bc65691277c848799d261086bc3d63b28f2a"
+            .to_owned(),
     }
 }
 
@@ -284,7 +313,7 @@ fn minimal_rigid_writer_roundtrips_every_locked_semantic_and_exact_eof() {
     assert_eq!(artifact.inspection.model.fog, 1);
     assert_eq!(artifact.inspection.model.child_model_count, 0);
     assert_eq!(artifact.inspection.model.animation_scale, 1.0);
-    assert_eq!(artifact.inspection.model.supermodel_name, "null");
+    assert_eq!(artifact.inspection.model.supermodel_name, "NULL");
     assert!(
         artifact
             .report
@@ -348,7 +377,7 @@ fn minimal_rigid_writer_roundtrips_every_locked_semantic_and_exact_eof() {
     assert_eq!(artifact.payload.len(), 1188);
     assert_eq!(
         artifact.report.payload_sha256,
-        "e100130d1dfbd18657413cdb7a701396d466cee081683591fc9836bf0c11b4b2"
+        "257f30d79926e38922f1a8af375ac2c1869aedd41e8783420cca56ab647c25c1"
     );
 
     let mut trailing = artifact.payload.clone();
@@ -358,10 +387,43 @@ fn minimal_rigid_writer_roundtrips_every_locked_semantic_and_exact_eof() {
 }
 
 #[test]
+fn mesh_shadow_participation_roundtrips_without_changing_render_participation() {
+    let mut input = creature();
+    input.segments[0].cast_shadow = false;
+    let artifact = write_binary_mdl(&input, &options()).expect("shadowless rigid mesh");
+    assert!(artifact.report.semantic_diff.is_empty());
+    let mesh = artifact.inspection.node_tree.roots[0].children[0]
+        .mesh
+        .as_ref()
+        .expect("mesh readback");
+    assert_eq!(mesh.shadow, 0);
+    assert_eq!(mesh.render, 1);
+}
+
+#[test]
 fn extended64_skin_roundtrips_1_2_4_lanes_tree_ordinals_and_exact_layout() {
     let input = skin_creature();
     let artifact = write_binary_mdl(&input, &options()).expect("extended64 skin writer");
     assert!(artifact.report.semantic_diff.is_empty());
+    assert_eq!(
+        artifact
+            .report
+            .layout
+            .rig_nodes
+            .iter()
+            .map(|node| (node.ir_node_id, node.part_number))
+            .collect::<Vec<_>>(),
+        [(10, 0), (40, 1), (20, 2), (70, 3), (90, 4)],
+        "binary part numbers must follow root-first hierarchy order, not source-array order"
+    );
+    assert_eq!(
+        (
+            artifact.inspection.node_tree.roots[0].name.as_str(),
+            artifact.inspection.node_tree.roots[0].number,
+        ),
+        ("root", 0),
+        "the exact model root must be native-compatible part 0"
+    );
     assert_eq!(
         artifact
             .report
@@ -426,7 +488,7 @@ fn extended64_skin_roundtrips_1_2_4_lanes_tree_ordinals_and_exact_layout() {
             [3, 1, 2, 0]
         ]
     );
-    assert!(skin.bone_constants.iter().all(|value| *value == [0, 0]));
+    assert!(skin.bone_constants.iter().all(|value| *value == 0));
 
     assert_eq!(
         preorder
@@ -436,8 +498,8 @@ fn extended64_skin_roundtrips_1_2_4_lanes_tree_ordinals_and_exact_layout() {
         ["root", "bone_a", "bone_c", "bone_b", "bone_d", "m2a_seg_5"]
     );
     assert_eq!(
-        preorder[1].number, 0,
-        "tree ordinal differs from part number"
+        preorder[1].number, 1,
+        "root-first numbering keeps native part numbers aligned with tree ordinals"
     );
     let q = skin.inverse_bone_rotations_raw[1];
     let t = skin.inverse_bone_translations[1];
@@ -453,6 +515,160 @@ fn extended64_skin_roundtrips_1_2_4_lanes_tree_ordinals_and_exact_layout() {
         half_turn[1] > 0.0,
         "first nonzero XYZ component is positive"
     );
+}
+
+#[test]
+fn native_zero_terminated_extended64_skin_ends_the_runtime_palette_after_active_slots() {
+    let input = skin_creature();
+    let mut writer_options = options();
+    writer_options.format_profile = MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedV2;
+
+    let artifact =
+        write_binary_mdl(&input, &writer_options).expect("zero-terminated extended64 skin writer");
+    assert!(artifact.report.semantic_diff.is_empty());
+
+    let mut stack = artifact
+        .inspection
+        .node_tree
+        .roots
+        .iter()
+        .collect::<Vec<_>>();
+    let mut skin_node = None;
+    while let Some(node) = stack.pop() {
+        if node.skin.is_some() {
+            skin_node = Some(node);
+            break;
+        }
+        stack.extend(&node.children);
+    }
+    let skin_node = skin_node.expect("skin node readback");
+    assert_eq!(
+        skin_node
+            .controllers
+            .iter()
+            .map(|controller| controller.controller_type)
+            .collect::<Vec<_>>(),
+        [8, 20],
+    );
+    assert_eq!(skin_node.controllers[0].values, [[0.0, 0.0, 0.0]]);
+    assert_eq!(skin_node.controllers[1].values, [[0.0, 0.0, 0.0, 1.0]],);
+    let skin = skin_node.skin.as_ref().expect("skin readback");
+    assert_eq!(&skin.inline_mapping[..4], &[1, 2, 3, 4]);
+    assert!(
+        skin.inline_mapping[4..].iter().all(|value| *value == 0),
+        "the native runtime palette loop requires a zero-terminated unused tail"
+    );
+    assert!(
+        artifact
+            .report
+            .deviations
+            .iter()
+            .all(|item| item.code != "M4-SKIN-INLINE-UNUSED-OPEN-M6")
+    );
+}
+
+#[test]
+fn controllerless_identity_model_root_profile_removes_only_redundant_base_controllers() {
+    let mut input = skin_creature();
+    input
+        .nodes
+        .iter_mut()
+        .find(|node| node.parent_id.is_none())
+        .expect("single model root")
+        .name = "m2a_test".to_owned();
+    let animation_set = cpause1_set(40);
+    let mut legacy_options = options();
+    legacy_options.format_profile = MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedV2;
+    legacy_options.state_projection_profile =
+        MdlStateProjectionProfileV1::RetailDirectCreatureType5RigOnlyV1;
+    let mut controllerless_options = legacy_options.clone();
+    controllerless_options.format_profile =
+        MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedControllerlessRootV3;
+
+    let legacy = write_binary_mdl_with_animations(&input, &animation_set, &legacy_options).unwrap();
+    let artifact =
+        write_binary_mdl_with_animations(&input, &animation_set, &controllerless_options).unwrap();
+    let repeated =
+        write_binary_mdl_with_animations(&input, &animation_set, &controllerless_options).unwrap();
+    let legacy_root = &legacy.inspection.node_tree.roots[0];
+    let root = &artifact.inspection.node_tree.roots[0];
+
+    assert_eq!(root.name, "m2a_test");
+    assert_eq!(legacy_root.controllers.len(), 2);
+    assert!(root.controllers.is_empty());
+    assert_eq!(root.controller_keys_header.used, 0);
+    assert_eq!(root.controller_keys_header.allocated, 0);
+    assert_eq!(root.controller_data_header.used, 0);
+    assert_eq!(root.controller_data_header.allocated, 0);
+    assert_eq!(
+        artifact.report.layout.core_length + 60,
+        legacy.report.layout.core_length
+    );
+    assert_eq!(
+        artifact.report.layout.raw_length,
+        legacy.report.layout.raw_length
+    );
+    assert_eq!(artifact.payload, repeated.payload);
+    assert_eq!(artifact.report, repeated.report);
+    assert!(artifact.report.semantic_diff.is_empty());
+    assert!(
+        artifact
+            .inspection
+            .animations
+            .iter()
+            .all(|animation| animation.node_tree.roots[0].controllers.is_empty())
+    );
+
+    let legacy_skin = legacy_root
+        .children
+        .iter()
+        .find_map(|node| node.skin.as_ref())
+        .expect("legacy skin");
+    let skin = root
+        .children
+        .iter()
+        .find_map(|node| node.skin.as_ref())
+        .expect("controllerless-root skin");
+    assert_eq!(skin.node_to_bone_map, legacy_skin.node_to_bone_map);
+    assert_eq!(skin.inline_mapping, legacy_skin.inline_mapping);
+    assert_eq!(
+        skin.inverse_bone_rotations_raw,
+        legacy_skin.inverse_bone_rotations_raw
+    );
+    assert_eq!(
+        skin.inverse_bone_translations,
+        legacy_skin.inverse_bone_translations
+    );
+    assert_eq!(skin.vertex_weights, legacy_skin.vertex_weights);
+    assert_eq!(skin.bone_references, legacy_skin.bone_references);
+
+    let mut non_identity = input.clone();
+    non_identity
+        .nodes
+        .iter_mut()
+        .find(|node| node.parent_id.is_none())
+        .unwrap()
+        .bind_local_matrix = translated(1.0, 0.0, 0.0);
+    let error = write_binary_mdl(&non_identity, &controllerless_options).unwrap_err();
+    assert_eq!(error.code, "M4-CONTROLLERLESS-ROOT-INVALID");
+    assert!(error.path.ends_with("bindLocalMatrix"));
+
+    let mut wrong_name = input.clone();
+    wrong_name
+        .nodes
+        .iter_mut()
+        .find(|node| node.parent_id.is_none())
+        .unwrap()
+        .name = "other_root".to_owned();
+    let error = write_binary_mdl(&wrong_name, &controllerless_options).unwrap_err();
+    assert_eq!(error.code, "M4-CONTROLLERLESS-ROOT-INVALID");
+    assert!(error.path.ends_with(".name"));
+
+    let mut weighted_root = input;
+    weighted_root.segments[0].weights[0] = weight_row(&[(10, 1.0)]);
+    let error = write_binary_mdl(&weighted_root, &controllerless_options).unwrap_err();
+    assert_eq!(error.code, "M4-CONTROLLERLESS-ROOT-INVALID");
+    assert!(error.path.contains("weights"));
 }
 
 #[test]
@@ -675,7 +891,133 @@ fn emitted_skin_inverse_bind_matches_worlds_rebuilt_only_from_inspection_control
 }
 
 #[test]
-fn multi_node_multi_segment_preserves_ir_order_but_points_at_the_actual_root() {
+fn emitted_skin_motion_has_end_to_end_cpu_deformation_conformance() {
+    let half = std::f32::consts::FRAC_PI_4;
+    let animations = MdlAnimationSetV1 {
+        schema_version: 1,
+        clips: vec![MdlAnimationClipV1 {
+            name: "cpause1".to_owned(),
+            animation_root: "root".to_owned(),
+            length_seconds: 1.0,
+            transition_seconds: 0.25,
+            events: Vec::new(),
+            tracks: vec![
+                MdlAnimationTrackV1 {
+                    target_node_id: 40,
+                    path: MdlAnimationTrackPathV1::Translation,
+                    interpolation: MdlAnimationInterpolationV1::Linear,
+                    times_seconds: vec![0.0, 1.0],
+                    values: vec![vec![2.0, 3.0, 4.0], vec![3.0, 3.0, 4.0]],
+                },
+                MdlAnimationTrackV1 {
+                    target_node_id: 40,
+                    path: MdlAnimationTrackPathV1::Rotation,
+                    interpolation: MdlAnimationInterpolationV1::Linear,
+                    times_seconds: vec![0.0, 1.0],
+                    values: vec![
+                        vec![0.0, 0.0, half.sin(), half.cos()],
+                        vec![0.0, 0.0, half.sin(), half.cos()],
+                    ],
+                },
+            ],
+        }],
+    };
+    let artifact = write_binary_mdl_with_animations(&skin_creature(), &animations, &options())
+        .expect("animated skin artifact");
+
+    let bind =
+        evaluate_skin_deformation_v1(&artifact.inspection, "cpause1", 0.0).expect("bind sample");
+    assert_eq!((bind.skin_count, bind.vertex_count), (1, 3));
+    assert_eq!(bind.moved_vertex_count, 0);
+    assert!(bind.max_displacement <= 1.0e-5);
+
+    let moved =
+        evaluate_skin_deformation_v1(&artifact.inspection, "cpause1", 1.0).expect("motion sample");
+    assert_eq!(moved.moved_vertex_count, 3);
+    assert!((moved.max_displacement - 1.0).abs() <= 1.0e-5);
+    let vertices = &moved.skins[0].vertices;
+    for (actual, expected) in vertices.iter().map(|vertex| vertex.sampled_world).zip([
+        [1.0, 0.0, 0.0],
+        [1.75, 0.0, 0.0],
+        [0.6, 1.0, 0.0],
+    ]) {
+        for lane in 0..3 {
+            assert!(
+                (actual[lane] - expected[lane]).abs() <= 1.0e-5,
+                "actual {actual:?}, expected {expected:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn skin_deformation_oracle_slerps_wxyz_rotation_and_fails_closed_without_skin() {
+    let mut input = creature();
+    input.segments[0].deformation = RigSegmentDeformationV1::Skin;
+    input.segments[0].weights = vec![weight_row(&[(70, 1.0)]); 3];
+    let half = std::f32::consts::FRAC_PI_4;
+    let animations = MdlAnimationSetV1 {
+        schema_version: 1,
+        clips: vec![MdlAnimationClipV1 {
+            name: "cpause1".to_owned(),
+            animation_root: "root".to_owned(),
+            length_seconds: 1.0,
+            transition_seconds: 0.25,
+            events: Vec::new(),
+            tracks: vec![MdlAnimationTrackV1 {
+                target_node_id: 70,
+                path: MdlAnimationTrackPathV1::Rotation,
+                interpolation: MdlAnimationInterpolationV1::Linear,
+                times_seconds: vec![0.0, 1.0],
+                values: vec![
+                    vec![0.0, 0.0, 0.0, 1.0],
+                    vec![0.0, 0.0, half.sin(), half.cos()],
+                ],
+            }],
+        }],
+    };
+    let artifact = write_binary_mdl_with_animations(&input, &animations, &options())
+        .expect("rotating skin artifact");
+    let sample =
+        evaluate_skin_deformation_v1(&artifact.inspection, "cpause1", 0.5).expect("mid sample");
+    let diagonal = std::f32::consts::FRAC_1_SQRT_2;
+    for (actual, expected) in sample.skins[0]
+        .vertices
+        .iter()
+        .map(|vertex| vertex.sampled_world)
+        .zip([
+            [0.0, 0.0, 0.0],
+            [diagonal, diagonal, 0.0],
+            [-diagonal, diagonal, 0.0],
+        ])
+    {
+        for lane in 0..3 {
+            assert!(
+                (actual[lane] - expected[lane]).abs() <= 1.0e-5,
+                "actual {actual:?}, expected {expected:?}"
+            );
+        }
+    }
+
+    let rigid = write_binary_mdl_with_animations(&creature(), &cpause1_set(70), &options())
+        .expect("rigid animated control");
+    let error = evaluate_skin_deformation_v1(&rigid.inspection, "cpause1", 0.5)
+        .expect_err("rigid model must not produce a skin conformance sample");
+    assert_eq!(error.code, "M2A-MDL-SKIN-DEFORMATION-NO-SKIN");
+
+    let mut corrupt = artifact.inspection.clone();
+    corrupt.node_tree.roots[0].children[0]
+        .skin
+        .as_mut()
+        .expect("skin report")
+        .inverse_bone_rotations_raw[0] = [0.0; 4];
+    let error = evaluate_skin_deformation_v1(&corrupt, "cpause1", 0.5)
+        .expect_err("zero inverse-bind quaternion must fail closed");
+    assert_eq!(error.code, "M2A-MDL-SKIN-DEFORMATION-INVERSE-BIND");
+}
+
+#[test]
+fn multi_node_multi_segment_numbers_the_actual_root_zero_and_preserves_hierarchy() {
     let mut input = creature();
     input.nodes = vec![
         AuroraCreatureNodeV1 {
@@ -717,10 +1059,10 @@ fn multi_node_multi_segment_preserves_ir_order_but_points_at_the_actual_root() {
             .iter()
             .map(|node| (node.ir_node_id, node.part_number))
             .collect::<Vec<_>>(),
-        [(9, 0), (70, 1)]
+        [(70, 0), (9, 1)]
     );
     assert_eq!(artifact.inspection.node_tree.roots[0].name, "root");
-    assert_eq!(artifact.inspection.node_tree.roots[0].number, 1);
+    assert_eq!(artifact.inspection.node_tree.roots[0].number, 0);
     assert_eq!(artifact.inspection.node_tree.node_count, 4);
     assert_eq!(
         artifact.inspection.node_tree.roots[0].children[0].name,
@@ -764,7 +1106,7 @@ fn empty_animation_api_is_the_frozen_m4_wrapper_byte_for_byte() {
     assert_eq!(legacy.report.layout.raw_length, 104);
     assert_eq!(
         legacy.report.payload_sha256,
-        "e100130d1dfbd18657413cdb7a701396d466cee081683591fc9836bf0c11b4b2"
+        "257f30d79926e38922f1a8af375ac2c1869aedd41e8783420cca56ab647c25c1"
     );
     assert_eq!(legacy.inspection.model.animation_pointers_header.used, 0);
     assert!(legacy.report.animation.is_none());
@@ -785,7 +1127,7 @@ fn owned_cpause1_roundtrips_exact_animation_layout_events_and_linear_keys() {
             artifact.report.layout.file_length,
             artifact.payload.len(),
         ),
-        (1588, 104, 1704, 1704)
+        (1704, 104, 1820, 1820)
     );
     assert_eq!(
         (
@@ -821,7 +1163,7 @@ fn owned_cpause1_roundtrips_exact_animation_layout_events_and_linear_keys() {
         report.clips[0].event_array_core_offset,
         Some(report.clips[0].header_core_offset + 0xc4)
     );
-    assert_eq!(report.clips[0].nodes.len(), 1);
+    assert_eq!(report.clips[0].nodes.len(), 2);
     assert_eq!(
         report.clips[0].nodes[0]
             .tracks
@@ -829,6 +1171,10 @@ fn owned_cpause1_roundtrips_exact_animation_layout_events_and_linear_keys() {
             .map(|track| (track.controller_type, track.packed_byte))
             .collect::<Vec<_>>(),
         vec![(8, 3), (20, 4)]
+    );
+    assert!(
+        report.clips[0].nodes[1].ir_node_id.is_none() && report.clips[0].nodes[1].tracks.is_empty(),
+        "the second animation node is the retail mesh-identity dummy"
     );
     let clip = &artifact.inspection.animations[0];
     assert_eq!(clip.name, "cpause1");
@@ -873,8 +1219,14 @@ fn owned_cpause1_roundtrips_exact_animation_layout_events_and_linear_keys() {
         ),
         (0, 0, 0)
     );
-    assert_eq!((clip.runtime_68, clip.runtime_6c), (0, 0));
-    assert_eq!(clip.node_tree.node_count, 1);
+    assert_eq!((clip.runtime_68, clip.animation_type), (0, 5));
+    assert_eq!(clip.animation_type_padding, [0, 0, 0]);
+    let clip_absolute = 12 + clip.offset as usize;
+    assert_eq!(
+        &artifact.payload[clip_absolute + 0x6d..clip_absolute + 0x70],
+        &[0, 0, 0]
+    );
+    assert_eq!(clip.node_tree.node_count, 2);
     let root = &clip.node_tree.roots[0];
     assert_eq!(
         (root.number, root.name.as_str(), root.content_flags),
@@ -887,15 +1239,31 @@ fn owned_cpause1_roundtrips_exact_animation_layout_events_and_linear_keys() {
             root.children_header.used,
             root.children_header.allocated,
         ),
-        (0, 0, 0)
+        (
+            report.clips[0].nodes[0]
+                .children_array_core_offset
+                .expect("animation root must link its mesh-identity dummy") as u32,
+            1,
+            1,
+        )
     );
+    let mesh_dummy = &root.children[0];
+    assert_eq!(
+        (
+            mesh_dummy.number,
+            mesh_dummy.name.as_str(),
+            mesh_dummy.content_flags,
+        ),
+        (1, "m2a_seg_5", 0x01)
+    );
+    assert!(mesh_dummy.mesh.is_none() && mesh_dummy.skin.is_none());
     assert_eq!(
         (
             root.controller_keys_header.pointer,
             root.controller_keys_header.used,
             root.controller_keys_header.allocated,
         ),
-        (652, 2, 2)
+        (768, 2, 2)
     );
     assert_eq!(
         (
@@ -903,7 +1271,7 @@ fn owned_cpause1_roundtrips_exact_animation_layout_events_and_linear_keys() {
             root.controller_data_header.used,
             root.controller_data_header.allocated,
         ),
-        (676, 18, 18)
+        (792, 18, 18)
     );
     assert_eq!(
         (
@@ -912,7 +1280,7 @@ fn owned_cpause1_roundtrips_exact_animation_layout_events_and_linear_keys() {
             report.clips[0].nodes[0].controller_keys_core_offset,
             report.clips[0].nodes[0].controller_data_core_offset,
         ),
-        (540, None, Some(652), Some(676))
+        (540, Some(652), Some(768), Some(792))
     );
     assert_eq!(
         root.controllers
@@ -954,6 +1322,221 @@ fn owned_cpause1_roundtrips_exact_animation_layout_events_and_linear_keys() {
 }
 
 #[test]
+fn retail_rig_only_projection_keeps_skin_in_base_and_omits_it_from_type5_states() {
+    fn flatten(
+        node: &serde_json::Value,
+        parent_number: Option<u64>,
+        output: &mut Vec<(u64, String, Option<u64>, u64, bool, bool, Vec<i64>)>,
+    ) {
+        let number = node["number"].as_u64().expect("node number");
+        output.push((
+            number,
+            node["name"].as_str().expect("node name").to_owned(),
+            parent_number,
+            node["contentFlags"].as_u64().expect("content flags"),
+            !node["mesh"].is_null(),
+            !node["skin"].is_null(),
+            node["controllers"]
+                .as_array()
+                .expect("node controllers")
+                .iter()
+                .map(|controller| {
+                    controller["controllerType"]
+                        .as_i64()
+                        .expect("controller type")
+                })
+                .collect(),
+        ));
+        for child in node["children"].as_array().expect("node children") {
+            flatten(child, Some(number), output);
+        }
+    }
+
+    let input = skin_creature();
+    let animations = cpause1_set(20);
+    let mut rig_only_options = options();
+    rig_only_options.state_projection_profile =
+        MdlStateProjectionProfileV1::RetailDirectCreatureType5RigOnlyV1;
+
+    let artifact = write_binary_mdl_with_animations(&input, &animations, &rig_only_options)
+        .expect("retail rig-only state projection");
+    assert_eq!(artifact.inspection.node_tree.node_count, 6);
+    assert_eq!(artifact.inspection.animations.len(), 1);
+    assert_eq!(artifact.inspection.animations[0].animation_type, 5);
+    assert_eq!(artifact.inspection.animations[0].node_tree.node_count, 5);
+
+    let mut base = Vec::new();
+    flatten(
+        &serde_json::to_value(&artifact.inspection.node_tree.roots[0]).unwrap(),
+        None,
+        &mut base,
+    );
+    let renderable = base
+        .iter()
+        .filter(|(_, _, _, _, has_mesh, has_skin, _)| *has_mesh || *has_skin)
+        .collect::<Vec<_>>();
+    assert_eq!(renderable.len(), 1);
+    assert_eq!(renderable[0].1, "m2a_seg_5");
+    assert!(renderable[0].4 && renderable[0].5);
+
+    let mut state = Vec::new();
+    flatten(
+        &serde_json::to_value(&artifact.inspection.animations[0].node_tree.roots[0]).unwrap(),
+        None,
+        &mut state,
+    );
+    let expected_rig_identity = base
+        .iter()
+        .filter(|(_, _, _, _, has_mesh, has_skin, _)| !*has_mesh && !*has_skin)
+        .map(|(number, name, parent, _, _, _, _)| (*number, name.clone(), *parent))
+        .collect::<Vec<_>>();
+    let state_identity = state
+        .iter()
+        .map(|(number, name, parent, _, _, _, _)| (*number, name.clone(), *parent))
+        .collect::<Vec<_>>();
+    assert_eq!(state_identity, expected_rig_identity);
+    assert!(
+        state
+            .iter()
+            .all(|(_, name, _, flags, has_mesh, has_skin, _)| {
+                name != "m2a_seg_5" && *flags == 0x01 && !*has_mesh && !*has_skin
+            })
+    );
+
+    let animated_bone = state
+        .iter()
+        .find(|(_, name, _, _, _, _, _)| name == "bone_c")
+        .expect("animated bone_c");
+    assert_eq!(animated_bone.6, vec![8, 20]);
+
+    verify_direct_creature_state_projection_v1(
+        &artifact.inspection,
+        MdlStateProjectionProfileV1::RetailDirectCreatureType5RigOnlyV1,
+        None,
+    )
+    .expect("rig-only output must pass only its own conformance family");
+    let as_full_dummy = verify_direct_creature_state_projection_v1(
+        &artifact.inspection,
+        MdlStateProjectionProfileV1::RetailDirectCreatureType5DummyV1,
+        None,
+    )
+    .expect_err("rig-only output must fail the full-base dummy family");
+    assert_eq!(as_full_dummy.code, "M2A-MDL-CONFORMANCE-STATE-NODE-MISSING");
+
+    let full_dummy = write_binary_mdl_with_animations(&input, &animations, &options()).unwrap();
+    let as_rig_only = verify_direct_creature_state_projection_v1(
+        &full_dummy.inspection,
+        MdlStateProjectionProfileV1::RetailDirectCreatureType5RigOnlyV1,
+        None,
+    )
+    .expect_err("a state SkinMesh dummy must fail the rig-only family");
+    assert_eq!(
+        as_rig_only.code,
+        "M2A-MDL-CONFORMANCE-RIG-ONLY-STATE-NODE-COUNT"
+    );
+}
+
+#[test]
+fn cep_rigid_placeholder_is_an_explicit_provenance_bound_family() {
+    let animations = cpause1_set(70);
+    let mut cep_options = options();
+    let exact_provenance = cep_r3_provenance();
+    cep_options.state_projection_profile = MdlStateProjectionProfileV1::CepRigidPlaceholderV1;
+    cep_options.state_projection_provenance = Some(exact_provenance.clone());
+    let artifact = write_binary_mdl_with_animations(&creature(), &animations, &cep_options)
+        .expect("exact CEP R3 provenance admits the separate rigid-placeholder family");
+    assert_eq!(
+        artifact.report.state_projection_profile,
+        MdlStateProjectionProfileV1::CepRigidPlaceholderV1
+    );
+    let child = &artifact.inspection.animations[0].node_tree.roots[0].children[0];
+    assert_eq!(child.content_flags, 0x21);
+    let mesh = child.mesh.as_ref().expect("CEP state mesh placeholder");
+    assert_eq!(mesh.vertex_count, 0);
+    assert!(mesh.faces.is_empty() && mesh.raw_indices.is_empty() && child.skin.is_none());
+    let independently_declared_expected_provenance = cep_r3_provenance();
+    verify_direct_creature_state_projection_with_expected_provenance_v1(
+        &artifact.inspection,
+        MdlStateProjectionProfileV1::CepRigidPlaceholderV1,
+        Some(&exact_provenance),
+        Some(&independently_declared_expected_provenance),
+    )
+    .expect("CEP output must pass only its own conformance family");
+    let missing_runtime_provenance =
+        verify_direct_creature_state_projection_with_expected_provenance_v1(
+            &artifact.inspection,
+            MdlStateProjectionProfileV1::CepRigidPlaceholderV1,
+            None,
+            Some(&independently_declared_expected_provenance),
+        )
+        .expect_err("CEP-shaped readback without provenance must fail conformance");
+    assert_eq!(
+        missing_runtime_provenance.code,
+        "M2A-MDL-CONFORMANCE-PROVENANCE-MISSING"
+    );
+    let mut wrong_runtime_provenance = exact_provenance.clone();
+    wrong_runtime_provenance.resource_sha256 = "0".repeat(64);
+    let wrong_runtime_provenance_error =
+        verify_direct_creature_state_projection_with_expected_provenance_v1(
+            &artifact.inspection,
+            MdlStateProjectionProfileV1::CepRigidPlaceholderV1,
+            Some(&wrong_runtime_provenance),
+            Some(&independently_declared_expected_provenance),
+        )
+        .expect_err("CEP-shaped readback with wrong provenance must fail conformance");
+    assert_eq!(
+        wrong_runtime_provenance_error.code,
+        "M2A-MDL-CONFORMANCE-PROVENANCE-MISMATCH"
+    );
+    let missing_expected = verify_direct_creature_state_projection_v1(
+        &artifact.inspection,
+        MdlStateProjectionProfileV1::CepRigidPlaceholderV1,
+        Some(&exact_provenance),
+    )
+    .expect_err("CEP-shaped readback cannot declare its own expected provenance");
+    assert_eq!(
+        missing_expected.code,
+        "M2A-MDL-CONFORMANCE-EXPECTED-PROVENANCE-MISSING"
+    );
+    let mixed = verify_direct_creature_state_projection_v1(
+        &artifact.inspection,
+        MdlStateProjectionProfileV1::RetailDirectCreatureType5DummyV1,
+        None,
+    )
+    .expect_err("a CEP placeholder must fail the retail dummy profile");
+    assert_eq!(mixed.code, "M2A-MDL-CONFORMANCE-PROFILE-MIXED");
+
+    let mut missing = cep_options.clone();
+    missing.state_projection_provenance = None;
+    assert_code(
+        write_binary_mdl_with_animations(&creature(), &animations, &missing),
+        "M4A-STATE-PROJECTION-PROVENANCE-MISSING",
+    );
+
+    let mut wrong_hash = cep_options.clone();
+    wrong_hash
+        .state_projection_provenance
+        .as_mut()
+        .unwrap()
+        .resource_sha256 = "0".repeat(63);
+    assert_code(
+        write_binary_mdl_with_animations(&creature(), &animations, &wrong_hash),
+        "M4A-STATE-PROJECTION-PROVENANCE-MISMATCH",
+    );
+
+    let mut mixed_retail = options();
+    mixed_retail.state_projection_provenance = Some(cep_r3_provenance());
+    assert_code(
+        write_binary_mdl_with_animations(&creature(), &animations, &mixed_retail),
+        "M4A-STATE-PROJECTION-PROFILE-MIXED",
+    );
+
+    let error = write_binary_mdl_with_animations(&skin_creature(), &animations, &cep_options)
+        .expect_err("CEP rigid placeholder profile is not evidenced for skin");
+    assert_eq!(error.code, "M4A-STATE-PROJECTION-CEP-SKIN-UNPROVEN");
+}
+
+#[test]
 fn multiple_owned_clips_are_deterministic_and_do_not_mutate_inputs() {
     let input = skin_creature();
     let mut animation_set = cpause1_set(20);
@@ -987,16 +1570,214 @@ fn multiple_owned_clips_are_deterministic_and_do_not_mutate_inputs() {
     assert_eq!(first.inspection.animations[1].events_header.used, 0);
     assert_eq!(first.inspection.animations[1].events_header.pointer, 0);
     for clip in &first.inspection.animations {
-        assert_eq!(clip.node_tree.node_count, input.nodes.len());
-        fn assert_rig_only(node: &serde_json::Value) {
-            assert_eq!(node["contentFlags"], 1);
-            assert!(node["mesh"].is_null() && node["skin"].is_null());
-            for child in node["children"].as_array().unwrap() {
-                assert_rig_only(child);
+        assert_eq!(
+            clip.node_tree.node_count,
+            input.nodes.len() + input.segments.len()
+        );
+        fn assert_native_animation_tree(node: &serde_json::Value) -> usize {
+            if node["contentFlags"] == 0x21 {
+                assert_eq!(node["mesh"]["vertexCount"], 0);
+                assert!(node["mesh"]["faces"].as_array().unwrap().is_empty());
+                assert!(node["mesh"]["indexCounts"].as_array().unwrap().is_empty());
+                assert!(node["mesh"]["rawIndices"].as_array().unwrap().is_empty());
+                assert!(node["skin"].is_null());
+                1 + node["children"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(assert_native_animation_tree)
+                    .sum::<usize>()
+            } else {
+                assert_eq!(node["contentFlags"], 1);
+                assert!(node["mesh"].is_null() && node["skin"].is_null());
+                node["children"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(assert_native_animation_tree)
+                    .sum()
             }
         }
-        assert_rig_only(&serde_json::to_value(&clip.node_tree.roots[0]).unwrap());
+        assert_eq!(
+            assert_native_animation_tree(&serde_json::to_value(&clip.node_tree.roots[0]).unwrap()),
+            0,
+            "skin animation trees must remain generic until their placeholder profile is evidenced"
+        );
     }
+}
+
+#[test]
+fn full_creature_behavior_oracle_distinguishes_movement_and_terminal_death_offline() {
+    let stable_hold = |name: &str| matches!(name, "ccastoutlp" | "cgetmidlp" | "cdead");
+    let full = MdlAnimationSetV1 {
+        schema_version: 1,
+        clips: FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1
+            .iter()
+            .enumerate()
+            .map(|(index, name)| MdlAnimationClipV1 {
+                name: (*name).to_owned(),
+                animation_root: "owned_root".to_owned(),
+                length_seconds: 1.0,
+                transition_seconds: 0.25,
+                events: Vec::new(),
+                tracks: vec![MdlAnimationTrackV1 {
+                    target_node_id: 70,
+                    path: MdlAnimationTrackPathV1::Translation,
+                    interpolation: MdlAnimationInterpolationV1::Linear,
+                    times_seconds: vec![0.0, 1.0],
+                    values: vec![
+                        vec![0.0, 0.0, 0.0],
+                        vec![
+                            if stable_hold(name) {
+                                0.0
+                            } else {
+                                index as f32 + 1.0
+                            },
+                            0.0,
+                            0.0,
+                        ],
+                    ],
+                }],
+            })
+            .collect(),
+    };
+    let artifact = write_binary_mdl_with_animations(&creature(), &full, &options())
+        .expect("full behavior fixture");
+    let report = evaluate_direct_creature_animation_behavior_v1(&artifact.inspection);
+    assert!(report.full_namespace_complete);
+    assert!(report.all_required_content_present);
+    assert!(report.active_motion_complete);
+    assert!(report.walk_run_distinct);
+    assert!(report.essential_states_distinct);
+    assert!(report.death_transition_terminal_pose);
+    assert!(report.behavior_candidate_eligible);
+    assert!(report.violations.is_empty());
+
+    let mut indistinguishable = full.clone();
+    let walk_values = indistinguishable
+        .clips
+        .iter()
+        .find(|clip| clip.name == "cwalk")
+        .expect("cwalk")
+        .tracks[0]
+        .values
+        .clone();
+    indistinguishable
+        .clips
+        .iter_mut()
+        .find(|clip| clip.name == "crun")
+        .expect("crun")
+        .tracks[0]
+        .values = walk_values;
+    let artifact =
+        write_binary_mdl_with_animations(&creature(), &indistinguishable, &options()).unwrap();
+    let report = evaluate_direct_creature_animation_behavior_v1(&artifact.inspection);
+    assert!(!report.walk_run_distinct);
+    assert!(!report.behavior_candidate_eligible);
+    assert!(
+        report
+            .violations
+            .contains(&"WALK_RUN_NOT_DISTINCT".to_owned())
+    );
+
+    let mut aliased_damage = full.clone();
+    let attack_values = aliased_damage
+        .clips
+        .iter()
+        .find(|clip| clip.name == "ca1slashl")
+        .expect("ca1slashl")
+        .tracks[0]
+        .values
+        .clone();
+    let damage = aliased_damage
+        .clips
+        .iter_mut()
+        .find(|clip| clip.name == "cdamagel")
+        .expect("cdamagel");
+    damage.tracks[0].values = attack_values;
+    damage.transition_seconds = 0.75;
+    damage.events.push(MdlAnimationEventV1 {
+        time_seconds: 0.5,
+        name: "owned_damage_event".to_owned(),
+    });
+    let artifact =
+        write_binary_mdl_with_animations(&creature(), &aliased_damage, &options()).unwrap();
+    let report = evaluate_direct_creature_animation_behavior_v1(&artifact.inspection);
+    assert!(!report.essential_states_distinct);
+    assert!(!report.behavior_candidate_eligible);
+    assert!(
+        report
+            .violations
+            .contains(&"ESSENTIAL_STATES_NOT_DISTINCT".to_owned())
+    );
+
+    let mut static_death_transition = full.clone();
+    static_death_transition
+        .clips
+        .iter_mut()
+        .find(|clip| clip.name == "ckdbckdie")
+        .expect("ckdbckdie")
+        .tracks[0]
+        .values[1] = vec![0.0, 0.0, 0.0];
+    let artifact =
+        write_binary_mdl_with_animations(&creature(), &static_death_transition, &options())
+            .unwrap();
+    let report = evaluate_direct_creature_animation_behavior_v1(&artifact.inspection);
+    assert!(!report.death_transition_terminal_pose);
+    assert!(!report.active_motion_complete);
+    assert!(!report.behavior_candidate_eligible);
+    assert!(
+        report
+            .violations
+            .contains(&"ACTIVE_MOTION_MISSING:ckdbckdie".to_owned())
+    );
+    assert!(
+        report
+            .violations
+            .contains(&"DEATH_TRANSITION_TERMINAL_POSE_MISSING".to_owned())
+    );
+
+    let mut moving_dead_hold = full;
+    moving_dead_hold
+        .clips
+        .iter_mut()
+        .find(|clip| clip.name == "cdead")
+        .expect("cdead")
+        .tracks[0]
+        .values[1] = vec![99.0, 0.0, 0.0];
+    let artifact =
+        write_binary_mdl_with_animations(&creature(), &moving_dead_hold, &options()).unwrap();
+    let report = evaluate_direct_creature_animation_behavior_v1(&artifact.inspection);
+    assert!(
+        report.behavior_candidate_eligible,
+        "native families prove that cdead may be either a stable or moving populated state: {:?}",
+        report.violations
+    );
+
+    let mut missing_content = moving_dead_hold;
+    missing_content
+        .clips
+        .iter_mut()
+        .find(|clip| clip.name == "ctaunt")
+        .expect("ctaunt")
+        .tracks
+        .clear();
+    let artifact =
+        write_binary_mdl_with_animations(&creature(), &missing_content, &options()).unwrap();
+    let report = evaluate_direct_creature_animation_behavior_v1(&artifact.inspection);
+    assert!(!report.all_required_content_present);
+    assert!(!report.active_motion_complete);
+    assert!(!report.behavior_candidate_eligible);
+    assert!(
+        report
+            .violations
+            .contains(&"CLIP_CONTENT_MISSING:ctaunt".to_owned())
+    );
+    assert!(
+        report
+            .violations
+            .contains(&"ACTIVE_MOTION_MISSING:ctaunt".to_owned())
+    );
 }
 
 #[test]
@@ -1084,7 +1865,7 @@ fn arbitrary_zero_track_and_one_row_nonendpoint_clips_are_legal() {
 }
 
 #[test]
-fn duplicate_names_across_branches_are_legal_but_case_folded_siblings_are_ambiguous() {
+fn duplicate_output_node_names_are_rejected_globally_after_ascii_case_fold() {
     let mut branched = creature();
     branched.nodes.extend([
         AuroraCreatureNodeV1 {
@@ -1112,68 +1893,54 @@ fn duplicate_names_across_branches_are_legal_but_case_folded_siblings_are_ambigu
             bind_local_matrix: identity(),
         },
     ]);
-    let legal = MdlAnimationSetV1 {
-        schema_version: 1,
-        clips: vec![MdlAnimationClipV1 {
-            name: "owned_branch".to_owned(),
-            animation_root: "owned".to_owned(),
-            length_seconds: 1.0,
-            transition_seconds: 0.0,
-            events: Vec::new(),
-            tracks: vec![MdlAnimationTrackV1 {
-                target_node_id: 73,
-                path: MdlAnimationTrackPathV1::Translation,
-                interpolation: MdlAnimationInterpolationV1::Linear,
-                times_seconds: vec![0.5],
-                values: vec![vec![0.0, 0.0, 0.0]],
-            }],
-        }],
-    };
-    let artifact = write_binary_mdl_with_animations(&branched, &legal, &options())
-        .expect("global duplicate names in different branches are unambiguous");
-    assert_eq!(artifact.inspection.animations[0].node_tree.node_count, 5);
-    let animation_root = &artifact.inspection.animations[0].node_tree.roots[0];
-    let target = &animation_root.children[0].children[0];
-    assert_eq!(
-        [
-            animation_root.name.as_str(),
-            animation_root.children[0].name.as_str(),
-            target.name.as_str(),
-        ],
-        ["root", "left", "shared"]
-    );
-    assert_eq!(target.number, 3);
-    assert_eq!(
-        target
-            .controllers
-            .iter()
-            .map(|controller| controller.controller_type)
-            .collect::<Vec<_>>(),
-        [8]
-    );
-    let same_named_other_branch = &animation_root.children[1].children[0];
-    assert_eq!(same_named_other_branch.name, "shared");
-    assert!(same_named_other_branch.controllers.is_empty());
+    let error = write_binary_mdl(&branched, &options())
+        .expect_err("global duplicate names remain ambiguous across branches");
+    assert_eq!(error.code, "M4-NODE-NAME-DUPLICATE");
+    assert_eq!(error.path, "creature.nodes[4].name");
 
-    let mut ambiguous = creature();
-    ambiguous.nodes.extend([
+    let mut case_folded = creature();
+    case_folded.nodes.extend([
         AuroraCreatureNodeV1 {
             id: 71,
-            name: "Bone".to_owned(),
+            name: "left".to_owned(),
             parent_id: Some(70),
             bind_local_matrix: identity(),
         },
         AuroraCreatureNodeV1 {
             id: 72,
-            name: "bone".to_owned(),
+            name: "right".to_owned(),
             parent_id: Some(70),
             bind_local_matrix: identity(),
         },
+        AuroraCreatureNodeV1 {
+            id: 73,
+            name: "Bone".to_owned(),
+            parent_id: Some(71),
+            bind_local_matrix: identity(),
+        },
+        AuroraCreatureNodeV1 {
+            id: 74,
+            name: "bone".to_owned(),
+            parent_id: Some(72),
+            bind_local_matrix: identity(),
+        },
     ]);
-    let error = write_binary_mdl_with_animations(&ambiguous, &legal, &options())
-        .expect_err("Aurora child matching is ASCII case-insensitive");
-    assert_eq!(error.code, "M4A-TRACK-TARGET-AMBIGUOUS");
-    assert_eq!(error.path, "creature.nodes[2].name");
+    let error = write_binary_mdl(&case_folded, &options())
+        .expect_err("global node identity is ASCII case-insensitive");
+    assert_eq!(error.code, "M4-NODE-NAME-DUPLICATE");
+    assert_eq!(error.path, "creature.nodes[4].name");
+
+    let mut generated_mesh_collision = creature();
+    generated_mesh_collision.nodes.push(AuroraCreatureNodeV1 {
+        id: 71,
+        name: "M2A_SEG_5".to_owned(),
+        parent_id: Some(70),
+        bind_local_matrix: identity(),
+    });
+    let error = write_binary_mdl(&generated_mesh_collision, &options())
+        .expect_err("rig names must not collide with generated mesh names");
+    assert_eq!(error.code, "M4-NODE-NAME-DUPLICATE");
+    assert_eq!(error.path, "creature.segments[0].segmentId");
 }
 
 #[test]
@@ -1392,7 +2159,7 @@ fn animation_writer_negative_contract_has_stable_codes_and_paths() {
     });
     assert_eq!(error.code, "M4A-INTERPOLATION-UNSUPPORTED");
     let error = rejected(cpause1_set(70), |set| {
-        set.clips[0].tracks[0].path = MdlAnimationTrackPathV1::Scale
+        set.clips[0].tracks[0].path = MdlAnimationTrackPathV1::Weights
     });
     assert_eq!(error.code, "M4A-TRACK-PATH-UNSUPPORTED");
     let error = rejected(cpause1_set(70), |set| {
@@ -1686,6 +2453,17 @@ fn animation_reader_rejects_named_pointer_array_and_controller_mutations() {
     assert_eq!(inspected.animations[0].runtime_68, 7);
 
     let mut mutated = artifact.payload.clone();
+    mutated[core_absolute(clip.offset) + 0x6c] = 7;
+    let inspected = inspect_binary_mdl(&mutated).expect("animation type mutation remains visible");
+    assert_eq!(inspected.animations[0].animation_type, 7);
+
+    let mut mutated = artifact.payload.clone();
+    mutated[core_absolute(clip.offset) + 0x6d] = 1;
+    let inspected =
+        inspect_binary_mdl(&mutated).expect("animation padding mutation remains visible");
+    assert_eq!(inspected.animations[0].animation_type_padding, [1, 0, 0]);
+
+    let mut mutated = artifact.payload.clone();
     let name = core_absolute(root.offset) + 0x20;
     mutated[name..name + 32].fill(0);
     mutated[name..name + 7].copy_from_slice(b"changed");
@@ -1842,6 +2620,114 @@ fn hierarchy_transform_mesh_and_limit_failures_are_stable() {
         [0.0, f32::MAX, 0.0],
     ];
     assert_code(write_binary_mdl(&bad, &options()), "M4-MESH-INVALID");
+}
+
+#[test]
+fn face_surface_ids_roundtrip_and_require_one_value_per_triangle() {
+    let mut input = creature();
+    input.segments[0].face_surface_ids = vec![7];
+
+    let artifact = write_binary_mdl(&input, &options()).expect("surface-aware mesh must write");
+    let mesh = artifact.inspection.node_tree.roots[0].children[0]
+        .mesh
+        .as_ref()
+        .expect("mesh readback");
+    assert_eq!(mesh.faces.len(), 1);
+    assert_eq!(mesh.faces[0].surface_id, 7);
+
+    input.segments[0].indices.extend_from_slice(&[0, 1, 2]);
+    assert_code(write_binary_mdl(&input, &options()), "M4-MESH-INVALID");
+}
+
+#[test]
+fn nwn_ee_per_mesh_index_boundary_accepts_20k_and_rejects_21846_triangles() {
+    let mut stress = creature();
+    stress.profile_id = "synthetic-rigid-20k-triangle-stress".to_owned();
+    stress.segments[0].indices = [0_u32, 1, 2].repeat(20_000);
+
+    let artifact =
+        write_binary_mdl(&stress, &options()).expect("20,000 triangles must fit one EE mesh");
+    assert_eq!(artifact.report.projection.triangle_count, 20_000);
+    let mesh = artifact.inspection.node_tree.roots[0].children[0]
+        .mesh
+        .as_ref()
+        .expect("read back 20k mesh");
+    assert_eq!(mesh.faces.len(), 20_000);
+    assert_eq!(mesh.index_counts, [60_000]);
+    assert_eq!(mesh.raw_indices[0].len(), 60_000);
+
+    stress.segments[0].indices = [0_u32, 1, 2].repeat(NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1 + 1);
+    assert_code(write_binary_mdl(&stress, &options()), "M4-MESH-LIMIT");
+}
+
+#[test]
+fn placeable_shadow_adjacency_crosses_render_vertex_splits_at_uv_seams() {
+    let mut input = creature();
+    input.segments[0].positions = vec![
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [1.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+    ];
+    input.segments[0].normals = vec![
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+    ];
+    input.segments[0].uv0 = vec![
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [0.0, 1.0],
+        [0.0, 0.0],
+        [1.0, 1.0],
+        [0.0, 1.0],
+    ];
+    input.segments[0].indices = vec![0, 1, 2, 3, 4, 5];
+
+    let artifact = write_binary_mdl(&input, &placeable_options()).expect("placeable seam fixture");
+    let mesh = artifact.inspection.node_tree.roots[0].children[0]
+        .mesh
+        .as_ref()
+        .expect("mesh readback");
+
+    assert_eq!(mesh.faces[0].adjacent_faces, [-1, 1, -1]);
+    assert_eq!(mesh.faces[1].adjacent_faces, [-1, -1, 0]);
+    assert_eq!(mesh.raw_indices, [vec![0, 1, 2, 3, 4, 5]]);
+}
+
+#[test]
+fn placeable_shadow_adjacency_leaves_non_manifold_edges_open() {
+    let mut input = creature();
+    input.segments[0].positions = vec![
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, -1.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0],
+    ];
+    input.segments[0].normals = vec![[0.0, 0.0, 1.0]; 9];
+    input.segments[0].uv0 = vec![[0.0, 0.0]; 9];
+    input.segments[0].indices = (0_u32..9).collect();
+
+    let artifact =
+        write_binary_mdl(&input, &placeable_options()).expect("non-manifold seam fixture");
+    let mesh = artifact.inspection.node_tree.roots[0].children[0]
+        .mesh
+        .as_ref()
+        .expect("mesh readback");
+
+    assert_eq!(mesh.faces[0].adjacent_faces[0], -1);
+    assert_eq!(mesh.faces[1].adjacent_faces[0], -1);
+    assert_eq!(mesh.faces[2].adjacent_faces[0], -1);
 }
 
 #[test]

@@ -1,0 +1,19 @@
+{
+  "version": "aurora-toolset-binary-module-toolset-proof-profile/v1",
+  "id": "m2a-m0-r39-controllerless-identity-root-toolset-proof-v1",
+  "binaryProfile": {
+    "path": "C:\\Projects\\meshy2aurora\\proof-profiles\\m0-r39-controllerless-identity-root-binary-bootstrap-v1.json",
+    "sha256": "1b07ca363e16fdb30cbfbe0643030fb90afc5a783b3ab2738a61e3ecee7a1361"
+  },
+  "fixtureSelection": {
+    "fixtureId": "m0_fixture",
+    "treeObjectText": "Meshy M0 animated-donor fixture",
+    "occurrence": 0
+  },
+  "capture": {
+    "targetClass": "TScrollBox",
+    "allowUniformScene": false
+  },
+  "noSave": true,
+  "noLocalToolsetAdapter": true
+}

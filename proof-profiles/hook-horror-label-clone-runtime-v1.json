@@ -1,0 +1,33 @@
+{
+  "version": "aur-s07-runtime-profile/v1",
+  "id": "m2a-hook-horror-label-clone-runtime-v1",
+  "module": {
+    "sha256": "238d5c343928998c326bf8b18412491a04fff68efec005fcc7d7dbb6a83f8cbb",
+    "area": "m2a_vana01",
+    "entryPoint": [10, 10, 0]
+  },
+  "orderedHakList": [
+    {
+      "resref": "m2a_vanh01",
+      "sha256": "d2f968decdd3d0ad4cddef6f58d6309743e4943569a876aa97172472aef1d677"
+    }
+  ],
+  "geometryGate": {
+    "status": "verified",
+    "evidence": "C:\\Projects\\meshy2aurora\\proof-output\\hook-horror-label-clone-control-20260722\\hook-horror-clone-diagnostic-contract-v1.json"
+  },
+  "fixtures": [
+    {
+      "id": "hook_horror_clone",
+      "resref": "c_horror",
+      "templateResRef": "nw_dwarfmerc001",
+      "appearanceRow": 15219,
+      "position": [10, 14.5, 0]
+    }
+  ],
+  "launch": {
+    "mode": "user_owned_test_module_action",
+    "processName": "nwmain"
+  },
+  "noLocalSubstitute": true
+}

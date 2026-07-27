@@ -1,12 +1,47 @@
+export type ModelPackageLaneV1 =
+  | "H1_SKINNED_FULL_42"
+  | "SKINNED_PROCEDURAL_HUMANOID_42"
+  | "M0_STATIC_RIGID";
+
 export type StudioWorkerRequest =
   | { requestId: string; type: "INITIALIZE" }
-  | { requestId: string; type: "INSPECT_SOURCE"; sourceGlb: ArrayBuffer }
+  | {
+      requestId: string;
+      type: "INSPECT_SOURCE";
+      sourceGlb: ArrayBuffer;
+      target?: "CREATURE" | "PLACEABLE" | "TILE";
+    }
   | { requestId: string; type: "INSPECT_APPEARANCE"; appearanceTwoDa: ArrayBuffer }
   | {
       requestId: string;
       type: "BUILD_MODEL_PACKAGE";
       sourceGlb: ArrayBuffer;
       appearanceTwoDa: ArrayBuffer;
+      packageLane: ModelPackageLaneV1;
+    }
+  | {
+      requestId: string;
+      type: "BUILD_MODEL_PACKAGE";
+      sourceGlb: ArrayBuffer;
+      appearanceTwoDa: ArrayBuffer;
+      packageLane: "H1_SKINNED_FULL_42_EVENTS";
+      eventAuthoringJson: string;
+    }
+  | {
+      requestId: string;
+      type: "BUILD_PLACEABLE_PACKAGE";
+      sourceGlb: ArrayBuffer;
+      placeablesTwoDa: ArrayBuffer;
+      identityJson: string;
+      placementJson: string;
+      paletteId: number;
+      authoringJson?: string;
+    }
+  | {
+      requestId: string;
+      type: "BUILD_TILE_PACKAGE";
+      sourceGlb: ArrayBuffer;
+      optionsJson: string;
     }
   | { requestId: string; type: "VALIDATE_M7_CORPUS"; manifestJson: string }
   | {
@@ -26,7 +61,7 @@ export type StudioWorkerRequest =
 
 export interface WorkerArtifact {
   artifactId: string;
-  kind: "HAK" | "MODEL" | "MODULE" | "JSON_REPORT";
+  kind: "HAK" | "MODEL" | "MODULE" | "WOK" | "SET" | "TEXTURE" | "JSON_REPORT";
   fileName: string;
   mediaType: string;
   byteLength: number;
@@ -37,7 +72,13 @@ export interface WorkerArtifact {
 
 export type StudioWorkerSuccess =
   | { requestId: string; ok: true; type: "INITIALIZED" }
-  | { requestId: string; ok: true; type: "SOURCE_INSPECTED"; ingestJson: string }
+  | {
+      requestId: string;
+      ok: true;
+      type: "SOURCE_INSPECTED";
+      ingestJson: string;
+      placeableAuthoringJson?: string;
+    }
   | { requestId: string; ok: true; type: "APPEARANCE_INSPECTED"; inspectionJson: string }
   | {
       requestId: string;
@@ -48,6 +89,24 @@ export type StudioWorkerSuccess =
       manifestJson: string;
       summaryJson: string;
       readbackJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "PLACEABLE_PACKAGE_BUILT";
+      artifacts: WorkerArtifact[];
+      reportJson: string;
+      readbackJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "TILE_PACKAGE_BUILT";
+      artifacts: WorkerArtifact[];
+      reportJson: string;
+      modelReadbackJson: string;
+      wokReadbackJson: string;
+      setReadbackJson: string;
     }
   | {
       requestId: string;

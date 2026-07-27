@@ -14,30 +14,35 @@ if (generatedDirectory !== expectedGeneratedDirectory) {
 rmSync(generatedDirectory, { force: true, recursive: true });
 
 const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
-const result = spawnSync(cargo, [
-  "run",
-  "--quiet",
-  "--manifest-path",
-  "../../Cargo.toml",
-  "-p",
-  "m2a-core",
-  "--example",
-  "materialize_m6",
-  "--",
-  "--synthetic-owned-h1",
-  "--appearance-2da",
-  "tests/fixtures/appearance.2da",
-  "--output-dir",
-  "tests/.generated/owned-package",
-], {
-  cwd: resolve(testsDirectory, ".."),
-  encoding: "utf8",
-  stdio: ["ignore", "pipe", "pipe"],
-});
+for (const [sourceFlag, outputDirectory] of [
+  ["--synthetic-owned-h1", "tests/.generated/owned-package"],
+  ["--synthetic-owned-h1-full-42", "tests/.generated/owned-full42-package"],
+]) {
+  const result = spawnSync(cargo, [
+    "run",
+    "--quiet",
+    "--manifest-path",
+    "../../Cargo.toml",
+    "-p",
+    "m2a-core",
+    "--example",
+    "materialize_m6",
+    "--",
+    sourceFlag,
+    "--appearance-2da",
+    "tests/fixtures/appearance.2da",
+    "--output-dir",
+    outputDirectory,
+  ], {
+    cwd: resolve(testsDirectory, ".."),
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
 
-if (result.status !== 0) {
-  process.stderr.write(result.stderr);
-  throw new Error(`owned fixture generator exited with status ${result.status}`);
+  if (result.status !== 0) {
+    process.stderr.write(result.stderr);
+    throw new Error(`owned fixture generator exited with status ${result.status}`);
+  }
 }
 
-process.stdout.write("generated repo-owned synthetic Studio integration fixture\n");
+process.stdout.write("generated repo-owned synthetic Studio integration fixtures\n");

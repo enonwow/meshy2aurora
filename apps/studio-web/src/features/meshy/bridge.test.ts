@@ -4,6 +4,7 @@ import {
   MESHY_PROFILES,
   MeshyBridgeError,
   findMeshyProfile,
+  resolveLocalMeshyBridgeOrigin,
 } from "./bridge";
 
 describe("Meshy Lab profiles", () => {
@@ -29,9 +30,76 @@ describe("Meshy Lab profiles", () => {
       geometryTarget: "AURORA_PROOF",
     })).resolves.toMatchObject({});
   });
+
+  it("accepts image and multi-image preview contracts without inventing a text prompt", async () => {
+    const bridge = new InMemoryMeshyBridgeClient();
+    const { sessionToken } = await bridge.pair({ pairingCode: "local-proof" });
+    await expect(bridge.previewRun(sessionToken, {
+      profileId: "S1-static-prop/v1",
+      prompt: "",
+      geometryTarget: "BALANCED",
+      source: "IMAGE",
+      imageDataUrls: ["data:image/png;base64,AAAA"],
+    })).resolves.toMatchObject({ profile: { id: "S1-static-prop/v1" } });
+    await expect(bridge.previewRun(sessionToken, {
+      profileId: "S1-static-prop/v1",
+      prompt: "",
+      geometryTarget: "BALANCED",
+      source: "MULTI_IMAGE",
+      imageDataUrls: [],
+    })).rejects.toMatchObject({ code: "PREVIEW_NOT_FOUND" });
+  });
+});
+
+describe("local Bridge origin", () => {
+  it("allows the synthetic proof Bridge only in a development proof session", () => {
+    expect(resolveLocalMeshyBridgeOrigin({ configured: "http://127.0.0.1:43119", development: true, search: "?meshyProofBridge=1" }))
+      .toBe("http://127.0.0.1:43120");
+    expect(resolveLocalMeshyBridgeOrigin({ configured: "http://127.0.0.1:43119", development: false, search: "?meshyProofBridge=1" }))
+      .toBe("http://127.0.0.1:43119");
+  });
 });
 
 describe("InMemoryMeshyBridgeClient", () => {
+  it("keeps Material Matching behind a preview and one-time paid confirmation", async () => {
+    const bridge = new InMemoryMeshyBridgeClient({ availableCredits: 120 });
+    const { sessionToken } = await bridge.pair({ pairingCode: "local-proof" });
+    const preview = await bridge.previewRetexture(sessionToken, {
+      inputTaskId: "verified-refine-task",
+      textStylePrompt: "aged brass and green patina",
+      aiModel: "meshy-6",
+      enableOriginalUv: true,
+      enablePbr: true,
+      hdTexture: false,
+      removeLighting: true,
+      alphaThumbnail: false,
+    });
+    expect(preview.maximumCredits).toBe(10);
+    await expect(bridge.createRetexture(sessionToken, { previewId: preview.previewId, confirmationNonce: "" }))
+      .rejects.toMatchObject({ code: "CONFIRMATION_REQUIRED" });
+    await expect(bridge.createRetexture(sessionToken, { previewId: preview.previewId, confirmationNonce: "confirm-retexture" }))
+      .resolves.toMatchObject({ status: "QUEUED", inputTaskId: "verified-refine-task" });
+  });
+
+  it("requires an explicit confirmation for 2D generation and never echoes Image-to-Image input data", async () => {
+    const bridge = new InMemoryMeshyBridgeClient({ availableCredits: 20 });
+    const { sessionToken } = await bridge.pair({ pairingCode: "local-proof" });
+    const preview = await bridge.previewImageRun(sessionToken, {
+      mode: "IMAGE_TO_IMAGE",
+      prompt: "Turn this lantern into a clean game concept",
+      aiModel: "nano-banana",
+      generateMultiView: false,
+      aspectRatio: "1:1",
+      referenceImageDataUrls: ["data:image/png;base64,AAAA"],
+    });
+    expect(preview.maximumCredits).toBe(3);
+    expect(JSON.stringify(preview)).not.toContain("data:image");
+    await expect(bridge.createImageRun(sessionToken, { previewId: preview.previewId, confirmationNonce: "" }))
+      .rejects.toMatchObject({ code: "CONFIRMATION_REQUIRED" });
+    await expect(bridge.createImageRun(sessionToken, { previewId: preview.previewId, confirmationNonce: "confirm-image" }))
+      .resolves.toMatchObject({ status: "QUEUED", mode: "IMAGE_TO_IMAGE" });
+  });
+
   it("never returns a credential and requires a fresh confirmation nonce before creating a run", async () => {
     const bridge = new InMemoryMeshyBridgeClient({ availableCredits: 120 });
     const pairing = await bridge.pair({ pairingCode: "local-proof" });

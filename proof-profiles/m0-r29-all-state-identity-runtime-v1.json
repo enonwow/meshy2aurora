@@ -1,0 +1,33 @@
+{
+  "version": "aur-s07-runtime-profile/v1",
+  "id": "m2a-m0-r29-all-state-identity-runtime",
+  "module": {
+    "sha256": "c28af8aff97be895d80c9ac01d5aa5ec909ec6b2a96f8e6ffd0317ffb16931d4",
+    "area": "m2a_m0a29",
+    "entryPoint": [10.0, 10.0, 0.0]
+  },
+  "orderedHakList": [
+    {
+      "resref": "m2a_m0r29",
+      "sha256": "e8c007faace65255cca2e76845db435eadf19c06c1455dedada133a95ddaf9a3"
+    }
+  ],
+  "geometryGate": {
+    "status": "verified",
+    "evidence": "C:\\Projects\\meshy2aurora\\proof-output\\m0-r29-all-state-identity-20260721\\m0-r29-all-state-identity-lineage-contract-v1.json"
+  },
+  "fixtures": [
+    {
+      "id": "m0_fixture",
+      "resref": "m2a_m0p01",
+      "templateResRef": "nw_dwarfmerc001",
+      "appearanceRow": 848,
+      "position": [10.0, 14.5, 0.0]
+    }
+  ],
+  "launch": {
+    "mode": "user_owned_test_module_action",
+    "processName": "nwmain"
+  },
+  "noLocalSubstitute": true
+}

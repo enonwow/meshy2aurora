@@ -8,11 +8,14 @@ use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::profile_a::{
-    Bounds3V1, CreatureRigNodeV1, CreatureRigProfileV1, CreatureRigSegmentV1,
-    ProfileAAnimationClipMappingV1, ProfileAAnimationMappingV1, ProfileAAnimationNodeMappingV1,
-    RigProvenanceAttestationsV1, RigProvenanceKindV1, RigProvenanceV1, RigSegmentDeformationV1,
-    RigWeightInfluenceV1, canonical_profile_sha256,
+use crate::{
+    direct_creature_animation::FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1,
+    profile_a::{
+        Bounds3V1, CreatureRigNodeV1, CreatureRigProfileV1, CreatureRigSegmentV1,
+        ProfileAAnimationClipMappingV1, ProfileAAnimationMappingV1, ProfileAAnimationNodeMappingV1,
+        RigProvenanceAttestationsV1, RigProvenanceKindV1, RigProvenanceV1, RigSegmentDeformationV1,
+        RigWeightInfluenceV1, canonical_profile_sha256,
+    },
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -205,6 +208,177 @@ pub fn synthetic_owned_m6_glb_v1() -> Result<Vec<u8>, OwnedFixtureErrorV1> {
             {"name": "m6-decoy-image-zero", "bufferView": decoy_view, "mimeType": "image/png"},
             {"name": "m6-used-checker-image-one", "bufferView": checker_view, "mimeType": "image/png"}
         ],
+        "buffers": [{"byteLength": bin.len()}],
+        "bufferViews": views,
+        "accessors": accessors
+    });
+    make_glb(root, bin)
+}
+
+/// Expands the owned M6 source into 42 independently stored translation clips
+/// with the exact direct-creature namespace. Active states use deliberately
+/// simple, behavior-distinct motion while the three family-variable states
+/// retain a stable pose in this fixture. This proves mapping, binary readback, walk/run
+/// differentiation and the transition-to-dead-hold split without copying
+/// external animation payloads.
+pub fn synthetic_owned_m6_full_native_42_glb_v1() -> Result<Vec<u8>, OwnedFixtureErrorV1> {
+    let glb = synthetic_owned_m6_glb_v1()?;
+    let json_length = u32::from_le_bytes(
+        glb.get(12..16)
+            .and_then(|bytes| bytes.try_into().ok())
+            .ok_or_else(|| owned_fixture_layout_error("owned GLB JSON header is truncated"))?,
+    ) as usize;
+    let json_end = 20usize.checked_add(json_length).ok_or_else(|| {
+        owned_fixture_layout_error("owned GLB JSON range overflows the input length")
+    })?;
+    let bin_header_end = json_end
+        .checked_add(8)
+        .ok_or_else(|| owned_fixture_layout_error("owned GLB BIN header overflows"))?;
+    let bin_length = u32::from_le_bytes(
+        glb.get(json_end..json_end + 4)
+            .and_then(|bytes| bytes.try_into().ok())
+            .ok_or_else(|| owned_fixture_layout_error("owned GLB BIN header is truncated"))?,
+    ) as usize;
+    let bin_end = bin_header_end
+        .checked_add(bin_length)
+        .ok_or_else(|| owned_fixture_layout_error("owned GLB BIN range overflows"))?;
+    let mut root: Value = serde_json::from_slice(
+        glb.get(20..json_end)
+            .ok_or_else(|| owned_fixture_layout_error("owned GLB JSON range is invalid"))?,
+    )
+    .map_err(|error| OwnedFixtureErrorV1 {
+        schema_version: 1,
+        code: "M6-FIXTURE-JSON-FAILED".to_owned(),
+        message: error.to_string(),
+    })?;
+    let mut bin = glb
+        .get(bin_header_end..bin_end)
+        .ok_or_else(|| owned_fixture_layout_error("owned GLB BIN range is invalid"))?
+        .to_vec();
+    let template = root["animations"]
+        .as_array()
+        .and_then(|animations| animations.first())
+        .cloned()
+        .ok_or_else(|| owned_fixture_layout_error("owned GLB animation template is missing"))?;
+    let mut views = root["bufferViews"]
+        .take()
+        .as_array()
+        .cloned()
+        .ok_or_else(|| owned_fixture_layout_error("owned GLB bufferViews are missing"))?;
+    let mut accessors = root["accessors"]
+        .take()
+        .as_array()
+        .cloned()
+        .ok_or_else(|| owned_fixture_layout_error("owned GLB accessors are missing"))?;
+    let mut animations = Vec::with_capacity(FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1.len());
+    for (index, name) in FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1.iter().enumerate() {
+        let distance = if matches!(*name, "ccastoutlp" | "cgetmidlp" | "cdead") {
+            0.0
+        } else {
+            (index as f32 + 1.0) * 0.025
+        };
+        let translations = [
+            [0.0, 0.0, 0.0],
+            [distance * 0.5, distance * 0.1, 0.0],
+            [distance, 0.0, 0.0],
+        ];
+        let output_accessor =
+            push_f32x3_accessor(&mut bin, &mut views, &mut accessors, &translations, None);
+        let mut animation = template.clone();
+        animation["name"] = Value::String((*name).to_owned());
+        animation["samplers"][0]["output"] = json!(output_accessor);
+        animation["channels"][0]["target"]["node"] = json!(1);
+        animations.push(animation);
+    }
+    root["asset"]["generator"] =
+        Value::String("meshy2aurora-owned-synthetic-m6-full-native-42-v1".to_owned());
+    root["animations"] = Value::Array(animations);
+    root["bufferViews"] = Value::Array(views);
+    root["accessors"] = Value::Array(accessors);
+    root["buffers"][0]["byteLength"] = json!(bin.len());
+    make_glb(root, bin)
+}
+
+fn owned_fixture_layout_error(message: &str) -> OwnedFixtureErrorV1 {
+    OwnedFixtureErrorV1 {
+        schema_version: 1,
+        code: "M6-FIXTURE-LAYOUT-INVALID".to_owned(),
+        message: message.to_owned(),
+    }
+}
+
+/// Builds the owned, payload-small source for the hierarchy-only direct-creature
+/// experiment.  The three identity transforms form one ordered chain; the
+/// middle transform deliberately has no name so the profile's nullable-name
+/// rule is exercised.  There is one unskinned indexed primitive and no source
+/// animation, skin, ignored node, or reference-derived content.
+pub fn synthetic_owned_m0_hierarchy_experiment_glb_v1() -> Result<Vec<u8>, OwnedFixtureErrorV1> {
+    let positions = [
+        [-0.5_f32, 0.0, -0.5],
+        [0.5, 0.0, -0.5],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.5],
+    ];
+    let normals = [
+        [0.0_f32, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+    ];
+    let uv0 = [[0.0_f32, 0.0], [1.0, 0.0], [0.5, 1.0], [0.5, 0.5]];
+    let indices = [0_u16, 1, 2, 1, 3, 2, 3, 0, 2, 0, 3, 1];
+    let mut bin = Vec::new();
+    let mut views = Vec::new();
+    let mut accessors = Vec::new();
+    let position_accessor = push_f32x3_accessor(
+        &mut bin,
+        &mut views,
+        &mut accessors,
+        &positions,
+        Some(([-0.5, 0.0, -0.5], [0.5, 1.0, 0.5])),
+    );
+    let normal_accessor = push_f32x3_accessor(&mut bin, &mut views, &mut accessors, &normals, None);
+    let uv_accessor = push_f32x2_accessor(&mut bin, &mut views, &mut accessors, &uv0);
+    let index_accessor = push_u16_accessor(&mut bin, &mut views, &mut accessors, &indices);
+    let root = json!({
+        "asset": {
+            "version": "2.0",
+            "generator": "meshy2aurora-owned-hierarchy-experiment-v1",
+            "extras": {
+                "provenance": "SYNTHETIC",
+                "exportAllowed": true,
+                "noReferencePayloadCopied": true
+            }
+        },
+        "scene": 0,
+        "scenes": [{"name": "owned-hierarchy-experiment", "nodes": [0]}],
+        "nodes": [
+            {"name": "owned_root", "children": [1], "translation": [0.0, 0.0, 0.0]},
+            {"children": [2], "translation": [0.0, 0.0, 0.0]},
+            {"name": "owned_surface_parent", "mesh": 0, "translation": [0.0, 0.0, 0.0]}
+        ],
+        "meshes": [{
+            "name": "owned-rigid-tetrahedron",
+            "primitives": [{
+                "attributes": {
+                    "POSITION": position_accessor,
+                    "NORMAL": normal_accessor,
+                    "TEXCOORD_0": uv_accessor
+                },
+                "indices": index_accessor,
+                "material": 0,
+                "mode": 4
+            }]
+        }],
+        "materials": [{
+            "name": "owned-rigid-material",
+            "pbrMetallicRoughness": {
+                "baseColorFactor": [1.0, 1.0, 1.0, 1.0],
+                "metallicFactor": 0.0,
+                "roughnessFactor": 1.0
+            },
+            "doubleSided": true
+        }],
         "buffers": [{"byteLength": bin.len()}],
         "bufferViews": views,
         "accessors": accessors

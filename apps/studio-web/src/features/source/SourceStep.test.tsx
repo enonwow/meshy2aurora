@@ -15,8 +15,10 @@ function handlers() {
   return {
     onSelectSource: vi.fn(),
     onSelectAppearance: vi.fn(),
+    onSelectAnimationEvents: vi.fn(),
     onRemoveSource: vi.fn(),
     onRemoveAppearance: vi.fn(),
+    onRemoveAnimationEvents: vi.fn(),
     onClear: vi.fn(),
   };
 }
@@ -36,6 +38,21 @@ afterEach(async () => {
 });
 
 describe("SourceStep", () => {
+  it("hides Tile by default and exposes it only when explicitly enabled", async () => {
+    const callbacks = { ...handlers(), onTargetChange: vi.fn() };
+    const hidden = await render(
+      <SourceStep {...callbacks} onContinue={vi.fn()} />,
+    );
+    expect(hidden.querySelector('input[value="TILE"]')).toBeNull();
+    expect(hidden.textContent).toContain("choose Creature or Placeable");
+
+    const enabled = await render(
+      <SourceStep {...callbacks} tileTargetEnabled onContinue={vi.fn()} />,
+    );
+    expect(enabled.querySelector('input[value="TILE"]')).not.toBeNull();
+    expect(enabled.textContent).toContain("choose Creature, Placeable, or Tile");
+  });
+
   it("keeps Continue disabled for empty and partial selections and names the missing input", async () => {
     const emptyHandlers = handlers();
     const container = await render(<SourceStep {...emptyHandlers} onContinue={vi.fn()} />);
@@ -48,7 +65,9 @@ describe("SourceStep", () => {
     await act(async () => {
       rootRender(container, <SourceStep {...emptyHandlers} source={source()} onContinue={vi.fn()} />);
     });
-    expect(container.textContent).toContain("Select the base appearance.2da file to continue.");
+    expect(container.textContent).toContain(
+      "Select appearance.2da or placeables.2da to continue.",
+    );
   });
 
   it("shows neutral Selected metadata and enables Continue only when both inputs exist", async () => {
@@ -106,9 +125,42 @@ describe("SourceStep", () => {
     await act(async () => dropZone?.dispatchEvent(event));
     expect(callbacks.onSelectSource).toHaveBeenCalledWith(dropped);
   });
+
+  it("keeps the event JSON optional and routes it through a dedicated callback", async () => {
+    const callbacks = handlers();
+    const container = await render(
+      <SourceStep
+        {...callbacks}
+        source={source()}
+        appearance={appearance()}
+        onContinue={vi.fn()}
+      />,
+    );
+    const inputs = Array.from(container.querySelectorAll<HTMLInputElement>('input[type="file"]'));
+    expect(inputs).toHaveLength(3);
+    expect(inputs[2].required).toBe(false);
+
+    const events = new File(['{"schemaVersion":1,"clips":[]}'], "animation-events.json", {
+      type: "application/json",
+    });
+    Object.defineProperty(inputs[2], "files", { configurable: true, value: [events] });
+    await act(async () => {
+      inputs[2].dispatchEvent(new window.Event("change", { bubbles: true }));
+    });
+    expect(callbacks.onSelectAnimationEvents).toHaveBeenCalledWith(events);
+  });
 });
 
 describe("InputsPanel", () => {
+  it("omits Tile from the compact target selector unless explicitly enabled", async () => {
+    const callbacks = { ...handlers(), onTargetChange: vi.fn() };
+    const hidden = await render(<InputsPanel {...callbacks} />);
+    expect(hidden.querySelector('option[value="TILE"]')).toBeNull();
+
+    const enabled = await render(<InputsPanel {...callbacks} tileTargetEnabled />);
+    expect(enabled.querySelector('option[value="TILE"]')).not.toBeNull();
+  });
+
   it("exposes native file inputs and remove/clear actions", async () => {
     const callbacks = handlers();
     const container = await render(
@@ -116,7 +168,12 @@ describe("InputsPanel", () => {
     );
 
     const inputs = Array.from(container.querySelectorAll<HTMLInputElement>('input[type="file"]'));
-    expect(inputs.map((input) => input.accept)).toEqual([".glb,model/gltf-binary", ".2da"]);
+    expect(inputs.map((input) => input.accept)).toEqual([
+      ".glb,model/gltf-binary",
+      ".2da",
+      ".json,application/json",
+    ]);
+    expect(inputs.map((input) => input.required)).toEqual([true, true, false]);
 
     const removeSource = Array.from(container.querySelectorAll("button"))
       .find((button) => button.getAttribute("aria-label") === "Remove Meshy GLB model");

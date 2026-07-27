@@ -1,0 +1,84 @@
+{
+  "version": "aurora-model-proof-120s-profile/v1",
+  "id": "m2a-m0-r38-scale-normalized-skinmesh-model-proof-120s-v1",
+  "hardLimitMs": 120000,
+  "binaryProfile": {
+    "path": "C:\\Projects\\meshy2aurora\\proof-profiles\\m0-r38-scale-normalized-skinmesh-binary-bootstrap-v1.json",
+    "sha256": "c07ca8cc3804974c90f502e60ba32db914e7afaea2d9999ec64eb643cac3ff9b"
+  },
+  "toolsetProfile": {
+    "path": "C:\\Projects\\meshy2aurora\\proof-profiles\\m0-r38-scale-normalized-skinmesh-toolset-proof-v1.json",
+    "sha256": "78bb4aaf15e2f48b586b3b8297a8b8a8e75cffa277c93e13163a608533adecab"
+  },
+  "runtimeProfile": {
+    "path": "C:\\Projects\\meshy2aurora\\proof-profiles\\m0-r38-scale-normalized-skinmesh-runtime-v1.json",
+    "sha256": "45ccd4da9838d6b173695f1f3d92b7bb26294a427c141b6136a515e2c825ef38"
+  },
+  "routeManifest": {
+    "path": "C:\\Projects\\aurora-web\\skills\\aurora-model-proof-120s\\references\\route-manifest-v1.json",
+    "sha256": "41ea27ff899a65eae34a101c00739e402c09dfa6bb918e7b21a59d34b3f341ae"
+  },
+  "installedModule": {
+    "path": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\modules\\m2a_m0r38.mod",
+    "sha256": "f22625b291f2e43a0dfa738f514efd3adf58b38832f914158d38f6eafa4440dd",
+    "byteLength": 14729
+  },
+  "orderedHakList": [
+    {
+      "resref": "m2a_m0r38",
+      "path": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\hak\\m2a_m0r38.hak",
+      "sha256": "6e842d4b883867903e2cc29ce4efe9a8f5143d56691b7500aec4dc92855d6278",
+      "byteLength": 20134795
+    }
+  ],
+  "resources": {
+    "mdl": {
+      "resref": "m2a_m0p38",
+      "sha256": "039d07cd937430d83006c7d0176aa7659440265417fb7fe53bf73b405563c248"
+    },
+    "tga": {
+      "resref": "m2a_m0t01",
+      "sha256": "079bfedbb952ae3f3bbdd43f1bb244eb6247ca92a25d0acad2f3273f9aace59b"
+    },
+    "appearance2da": {
+      "resref": "appearance",
+      "row": 15100,
+      "sha256": "1dbc4a5af38e4ef688c05cfb93939f047d8231724d7c86f0caa185c03358d3c6"
+    }
+  },
+  "area": {
+    "resref": "m2a_m0a38",
+    "displayName": "Meshy2Aurora M0 binary vertical-slice area",
+    "entryPoint": [
+      10,
+      10,
+      0
+    ]
+  },
+  "fixture": {
+    "id": "m0_fixture",
+    "templateResRef": "nw_dwarfmerc001",
+    "treeObjectText": "Meshy M0 animated-donor fixture",
+    "occurrence": 0,
+    "appearanceRow": 15100,
+    "position": [
+      10,
+      14.5,
+      0
+    ]
+  },
+  "runtime": {
+    "loadingModuleResref": "m2a_m0r38",
+    "engineLogPath": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\logs\\nwclientLog1.txt"
+  },
+  "entryMode": "adopt-exact-clean",
+  "outputRoot": "C:\\Projects\\meshy2aurora\\proof-output\\m0-r38-scale-normalized-skinmesh-20260724\\live\\model-proof-120s-run-1",
+  "policy": {
+    "noSave": true,
+    "noBuild": true,
+    "noRepack": true,
+    "noFocus": true,
+    "noCamera": true,
+    "noRetry": true
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "version": "aurora-model-proof-120s-profile/v1",
+  "id": "m2a-m0-r31-hierarchy-only-model-proof-120s-run6-v1",
+  "hardLimitMs": 120000,
+  "binaryProfile": { "path": "C:\\Projects\\meshy2aurora\\proof-profiles\\m0-r31-hierarchy-only-binary-bootstrap-v1.json", "sha256": "7f62825f76ce3bd0022ba319e9015b61ca60b602d6f612afe1383d9bb7a523da" },
+  "toolsetProfile": { "path": "C:\\Projects\\meshy2aurora\\proof-profiles\\m0-r31-hierarchy-only-toolset-proof-v1.json", "sha256": "e1b99937e310d4badf753e5655d6b8f0104b38ba1e2a079131fe82ca5abeb23e" },
+  "runtimeProfile": { "path": "C:\\Projects\\meshy2aurora\\proof-profiles\\m0-r31-hierarchy-only-runtime-v1.json", "sha256": "77c8b0d47a9ccc40fcbcb9114e3c0ebd6314f49a5afedfbbbbca82a7f453dbf3" },
+  "routeManifest": { "path": "C:\\Projects\\aurora-web\\skills\\aurora-model-proof-120s\\references\\route-manifest-v1.json", "sha256": "bfb3e67c876a989db367e0d9cc72b12339f0892394c304620ae5bd023d80bcce" },
+  "installedModule": { "path": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\modules\\m2a_m0r31.mod", "sha256": "8575465ef683256a54c101a3f4445a4e22803194c9b899a0e43e3fd069fdeafd", "byteLength": 13173 },
+  "orderedHakList": [
+    { "resref": "m2a_m0r31", "path": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\hak\\m2a_m0r31.hak", "sha256": "ef26ae9a6a9df5cef9b3d8b1d33ab3cbe587af30e2ee0214d0b865e91ea5eb12", "byteLength": 19635900 }
+  ],
+  "resources": {
+    "mdl": { "resref": "m2a_m0p01", "sha256": "fcfbe7e329d51aef6ccb3ae87b4bfe7db7c5395cd5e8adf24159e73e556b5ab6" },
+    "tga": { "resref": "m2a_m0t01", "sha256": "079bfedbb952ae3f3bbdd43f1bb244eb6247ca92a25d0acad2f3273f9aace59b" },
+    "appearance2da": { "resref": "appearance", "row": 15100, "sha256": "48d313b75761809e2231c99ad51e17d67632c1ce10e70b87fa8b1ccdfbc474a6" }
+  },
+  "area": { "resref": "m2a_m0a31", "displayName": "Meshy2Aurora M0 binary vertical-slice area", "entryPoint": [10, 10, 0] },
+  "fixture": { "id": "m0_fixture", "templateResRef": "nw_dwarfmerc001", "treeObjectText": "Meshy M0 binary vertical-slice fixture", "occurrence": 0, "appearanceRow": 15100, "position": [10, 14.5, 0] },
+  "runtime": { "loadingModuleResref": "m2a_m0r31", "engineLogPath": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\logs\\nwclientLog1.txt" },
+  "entryMode": "adopt-exact-clean",
+  "outputRoot": "C:\\Projects\\meshy2aurora\\proof-output\\m0-r31-hierarchy-only-20260722\\live\\model-proof-120s-run-6",
+  "policy": { "noSave": true, "noBuild": true, "noRepack": true, "noFocus": true, "noCamera": true, "noRetry": true }
+}

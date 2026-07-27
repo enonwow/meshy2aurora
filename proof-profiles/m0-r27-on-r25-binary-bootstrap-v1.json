@@ -1,0 +1,44 @@
+{
+  "version": "aurora-toolset-binary-module-bootstrap-profile/v1",
+  "id": "m2a-m0-r27-on-r25-binary-bootstrap-v1",
+  "module": {
+    "resref": "m2a_m0r25",
+    "path": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\modules\\m2a_m0r25.mod",
+    "sha256": "4a4f98ce14c41940be215ae69739a397294b61f24db2b973a1d9aa8de2a4c257"
+  },
+  "area": {
+    "resref": "m2a_m0a25",
+    "width": 2,
+    "height": 2
+  },
+  "entryPoint": {
+    "area": "m2a_m0a25",
+    "position": [10, 10, 0]
+  },
+  "orderedHakList": [
+    {
+      "resref": "m2a_m0r27",
+      "path": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\hak\\m2a_m0r27.hak",
+      "sha256": "8714f7417ea06abc081a6d387dc2be14ac65e8f322292ae24f8ba9fa60984afd"
+    },
+    {
+      "resref": "m2a_m0r26",
+      "path": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\hak\\m2a_m0r26.hak",
+      "sha256": "6f805873420b5279b45dadc26d913fa7692374df9e0582c23b42c8a4b42d6bb0"
+    },
+    {
+      "resref": "m2a_m0r21",
+      "path": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\hak\\m2a_m0r21.hak",
+      "sha256": "25b753f6f1b16ed74615bf0243d4d91a245d5428de8963b49ad2b4d4ebd7c1d6"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "m0_fixture",
+      "templateResRef": "nw_dwarfmerc001",
+      "appearanceType": 848,
+      "position": [10, 14.5, 0]
+    }
+  ],
+  "noLocalToolsetAdapter": true
+}

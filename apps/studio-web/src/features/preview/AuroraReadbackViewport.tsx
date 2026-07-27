@@ -96,11 +96,25 @@ function slotBones(skin: ReadbackSkin, nodeOrder: readonly THREE.Bone[]): SkinSl
   if (skin.nodeToBoneMap.length !== nodeOrder.length) {
     throw new Error(`Canonical skin node-to-bone map has ${skin.nodeToBoneMap.length} entries, but the readback tree has ${nodeOrder.length} nodes`);
   }
+  const activeSlots = skin.nodeToBoneMap.filter((slot) => slot >= 0);
+  if (activeSlots.length === 0) throw new Error("Canonical skin declares no active bone slots");
+  const uniqueSlots = new Set(activeSlots);
+  const activeSlotCount = Math.max(...activeSlots) + 1;
+  if (
+    uniqueSlots.size !== activeSlots.length
+    || activeSlots.length !== activeSlotCount
+    || Array.from({ length: activeSlotCount }, (_, slot) => slot)
+      .some((slot) => !uniqueSlots.has(slot))
+  ) {
+    throw new Error("Canonical skin node-to-bone map does not define unique contiguous active slots");
+  }
+  if (skin.inlineMapping.length < activeSlotCount) {
+    throw new Error(`Canonical skin inline mapping has ${skin.inlineMapping.length} entries, but ${activeSlotCount} active slots are required`);
+  }
   const result: THREE.Bone[] = [];
   const treeOrdinals: number[] = [];
-  for (let slot = 0; slot < skin.inlineMapping.length; slot += 1) {
+  for (let slot = 0; slot < activeSlotCount; slot += 1) {
     const ordinal = skin.inlineMapping[slot] ?? -1;
-    if (ordinal < 0) break;
     const bone = nodeOrder[ordinal];
     if (!bone || skin.nodeToBoneMap[ordinal] !== slot) {
       throw new Error(`Canonical skin inline mapping disagrees with node-to-bone map at slot ${slot}`);
@@ -108,7 +122,6 @@ function slotBones(skin: ReadbackSkin, nodeOrder: readonly THREE.Bone[]): SkinSl
     result.push(bone);
     treeOrdinals.push(ordinal);
   }
-  if (result.length === 0) throw new Error("Canonical skin declares no active bone slots");
   return { bones: result, treeOrdinals };
 }
 

@@ -3,10 +3,10 @@ use std::collections::{HashMap, HashSet};
 use super::binary_reader::{BinaryReader, checked_array_size};
 use super::errors::{HEADER_INVALID, NODE_CYCLE, ParseError};
 use super::types::{
-    AnimationEventReport, AnimationReport, ArrayReport, ByteRangeReport, ControllerReport,
-    Diagnostic, FaceReport, FileHeaderReport, InspectionReport, MeshReport, ModelReport,
-    NodeReport, NodeTreeReport, ParserLimits, RawPointerReport, SkinReport, SkinVariant, Vec2,
-    Vec3,
+    AabbEntryReport, AabbTreeReport, AnimationEventReport, AnimationReport, ArrayReport,
+    ByteRangeReport, ControllerReport, Diagnostic, FaceReport, FileHeaderReport, InspectionReport,
+    MeshReport, ModelReport, NodeReport, NodeTreeReport, ParserLimits, RawPointerReport,
+    SkinReport, SkinVariant, Vec2, Vec3,
 };
 
 const FILE_HEADER_SIZE: usize = 0x0c;
@@ -15,6 +15,9 @@ const ANIMATION_HEADER_SIZE: usize = 0xc4;
 const ANIMATION_EVENT_SIZE: usize = 0x24;
 const NODE_HEADER_SIZE: usize = 0x70;
 const MESH_NODE_SIZE: usize = 0x270;
+const AABB_NODE_SIZE: usize = 0x274;
+const AABB_ROOT_POINTER_OFFSET: usize = 0x270;
+const AABB_ENTRY_SIZE: usize = 0x28;
 const SKIN_LEGACY17_SIZE: usize = 0x2d4;
 const SKIN_EXTENDED64_SIZE: usize = 0x330;
 const ARRAY_HEADER_SIZE: usize = 0x0c;
@@ -46,7 +49,7 @@ const FLAG_ANIMMESH: u32 = 0x080;
 const FLAG_DANGLY: u32 = 0x100;
 const FLAG_AABB: u32 = 0x200;
 const KNOWN_NODE_FLAGS: u32 = 0x3ff;
-const SUPPORTED_NODE_FLAGS: u32 = FLAG_HEADER | FLAG_MESH | FLAG_SKIN;
+const SUPPORTED_NODE_FLAGS: u32 = FLAG_HEADER | FLAG_MESH | FLAG_SKIN | FLAG_AABB;
 
 const MESH_FACES_OFFSET: usize = 0x78;
 const MESH_BOUNDS_MIN_OFFSET: usize = 0x84;
@@ -606,6 +609,7 @@ fn parse_node_tree(
                 controllers: node.controllers,
                 mesh: node.mesh,
                 skin: node.skin,
+                aabb: node.aabb,
                 children,
             },
         );
@@ -638,6 +642,7 @@ struct FlatNode {
     controllers: Vec<ControllerReport>,
     mesh: Option<MeshReport>,
     skin: Option<SkinReport>,
+    aabb: Option<AabbTreeReport>,
     child_offsets: Vec<u32>,
 }
 
@@ -709,7 +714,7 @@ fn read_node(
     let prefix_shifting_flags = FLAG_LIGHT | FLAG_EMITTER | FLAG_CAMERA | FLAG_REFERENCE;
     let mesh_decode_allowed = unknown_flags == 0 && content_flags & prefix_shifting_flags == 0;
     let (mesh, skin) = if mesh_decode_allowed && content_flags & FLAG_MESH != 0 {
-        let mesh = read_mesh(context, node_offset)?;
+        let mesh = read_mesh(context, node_offset, content_flags & FLAG_AABB != 0)?;
         let skin = if content_flags & FLAG_SKIN != 0 {
             Some(read_skin(context, node_offset, mesh.vertex_count)?)
         } else {
@@ -724,6 +729,27 @@ fn read_node(
             ));
         }
         (None, None)
+    };
+    if content_flags & FLAG_AABB != 0 && content_flags & FLAG_MESH == 0 {
+        return Err(ParseError::header(
+            absolute + NODE_CONTENT_OFFSET,
+            "AABB node is missing the required mesh family flag",
+        ));
+    }
+    if content_flags & FLAG_AABB != 0 && content_flags & FLAG_SKIN != 0 {
+        return Err(ParseError::header(
+            absolute + NODE_CONTENT_OFFSET,
+            "AABB and skin node families cannot share one V1 node",
+        ));
+    }
+    let aabb = if content_flags & FLAG_AABB != 0 {
+        Some(read_aabb_tree(
+            context,
+            node_offset,
+            mesh.as_ref().expect("AABB mesh was validated above"),
+        )?)
+    } else {
+        None
     };
 
     Ok(FlatNode {
@@ -740,8 +766,252 @@ fn read_node(
         controllers: controllers.controllers,
         mesh,
         skin,
+        aabb,
         child_offsets,
     })
+}
+
+fn read_aabb_tree(
+    context: &mut ParseContext<'_, '_>,
+    node_offset: u32,
+    mesh: &MeshReport,
+) -> Result<AabbTreeReport, ParseError> {
+    let absolute = context.core_absolute(node_offset, AABB_NODE_SIZE, "AABB mesh header")?;
+    let root_pointer = context
+        .reader
+        .read_u32(absolute + AABB_ROOT_POINTER_OFFSET, "AABB root pointer")?;
+    if root_pointer == 0 {
+        return Err(ParseError::pointer(
+            absolute + AABB_ROOT_POINTER_OFFSET,
+            "non-empty AABB mesh has a null tree root pointer",
+        ));
+    }
+    if mesh.faces.is_empty() {
+        return Err(ParseError::header(
+            absolute + MESH_FACES_OFFSET,
+            "AABB mesh must contain at least one face",
+        ));
+    }
+    let expected_entry_count = mesh
+        .faces
+        .len()
+        .checked_mul(2)
+        .and_then(|value| value.checked_sub(1))
+        .ok_or_else(|| ParseError::limit(absolute, "AABB entry count overflow"))?;
+    if expected_entry_count > context.limits.max_nodes.saturating_mul(2) {
+        return Err(ParseError::limit(
+            absolute + AABB_ROOT_POINTER_OFFSET,
+            "AABB entry count exceeds parser guardrail",
+        ));
+    }
+    let mut entries = Vec::new();
+    entries
+        .try_reserve_exact(expected_entry_count)
+        .map_err(|_| {
+            ParseError::limit(
+                absolute + AABB_ROOT_POINTER_OFFSET,
+                "AABB entry allocation failed after count preflight",
+            )
+        })?;
+    let mut seen = HashSet::new();
+    let mut active = HashSet::new();
+    let mut coverage = vec![0_u8; mesh.faces.len()];
+    read_aabb_entry(
+        context,
+        root_pointer,
+        None,
+        0,
+        &mut seen,
+        &mut active,
+        &mut coverage,
+        &mut entries,
+    )?;
+    if entries.len() != expected_entry_count {
+        return Err(ParseError::header(
+            absolute + AABB_ROOT_POINTER_OFFSET,
+            format!(
+                "AABB traversal produced {} entries; V1 requires exactly {expected_entry_count}",
+                entries.len()
+            ),
+        ));
+    }
+    if coverage.iter().any(|count| *count != 1) {
+        return Err(ParseError::header(
+            absolute + AABB_ROOT_POINTER_OFFSET,
+            "AABB leaves must cover every mesh face exactly once",
+        ));
+    }
+    let root = entries.first().expect("validated non-empty AABB traversal");
+    for (index, vertex) in mesh.vertices.iter().enumerate() {
+        if !point_in_aabb(*vertex, root.bounds_min, root.bounds_max) {
+            return Err(ParseError::header(
+                absolute + AABB_ROOT_POINTER_OFFSET,
+                format!("AABB root bounds do not contain mesh vertex {index}"),
+            ));
+        }
+    }
+    Ok(AabbTreeReport {
+        root_pointer,
+        entries,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn read_aabb_entry(
+    context: &mut ParseContext<'_, '_>,
+    pointer: u32,
+    parent_bounds: Option<(Vec3, Vec3)>,
+    depth: usize,
+    seen: &mut HashSet<u32>,
+    active: &mut HashSet<u32>,
+    coverage: &mut [u8],
+    entries: &mut Vec<AabbEntryReport>,
+) -> Result<(), ParseError> {
+    if depth > context.limits.max_depth {
+        return Err(ParseError::limit(
+            core_pointer(pointer)?,
+            "AABB tree depth exceeds parser guardrail",
+        ));
+    }
+    if active.contains(&pointer) {
+        return Err(ParseError::new(
+            NODE_CYCLE,
+            core_pointer(pointer)?,
+            "AABB child pointers form a cycle",
+        ));
+    }
+    if !seen.insert(pointer) {
+        return Err(ParseError::offset_type_conflict(
+            core_pointer(pointer)?,
+            "AABB entry is referenced by more than one parent",
+        ));
+    }
+    active.insert(pointer);
+    context.claim_core(pointer, AABB_ENTRY_SIZE, "aabb-entry")?;
+    let absolute = context.core_absolute(pointer, AABB_ENTRY_SIZE, "AABB entry")?;
+    let bounds_min = read_vec3(context.reader, absolute, "AABB bounds min")?;
+    let bounds_max = read_vec3(context.reader, absolute + 0x0c, "AABB bounds max")?;
+    validate_aabb_bounds(bounds_min, bounds_max, absolute)?;
+    if let Some((parent_min, parent_max)) = parent_bounds
+        && !aabb_contains(parent_min, parent_max, bounds_min, bounds_max)
+    {
+        return Err(ParseError::header(
+            absolute,
+            "AABB child bounds escape parent bounds",
+        ));
+    }
+    let left = context
+        .reader
+        .read_u32(absolute + 0x18, "AABB left child pointer")?;
+    let right = context
+        .reader
+        .read_u32(absolute + 0x1c, "AABB right child pointer")?;
+    let leaf_face_signed = context.reader.read_i32(absolute + 0x20, "AABB leaf face")?;
+    let plane = context.reader.read_u32(absolute + 0x24, "AABB plane")?;
+    let (left_pointer, right_pointer, leaf_face) = if leaf_face_signed == -1 {
+        if left == 0 || right == 0 {
+            return Err(ParseError::pointer(
+                absolute + 0x18,
+                "internal AABB entry requires two non-null child pointers",
+            ));
+        }
+        (Some(left), Some(right), None)
+    } else if leaf_face_signed >= 0 {
+        if left != 0 || right != 0 {
+            return Err(ParseError::header(
+                absolute + 0x18,
+                "AABB leaf must have null child pointers",
+            ));
+        }
+        let leaf_face = leaf_face_signed as usize;
+        let face_count = coverage.len();
+        let slot = coverage.get_mut(leaf_face).ok_or_else(|| {
+            ParseError::header(
+                absolute + 0x20,
+                format!(
+                    "AABB leaf face {leaf_face} exceeds mesh face count {}",
+                    face_count
+                ),
+            )
+        })?;
+        *slot = slot.checked_add(1).ok_or_else(|| {
+            ParseError::header(absolute + 0x20, "AABB leaf coverage counter overflow")
+        })?;
+        (None, None, Some(leaf_face as u32))
+    } else {
+        return Err(ParseError::header(
+            absolute + 0x20,
+            "AABB leaf face must be -1 for internal entries or a non-negative face index",
+        ));
+    };
+    entries.push(AabbEntryReport {
+        offset: pointer,
+        bounds_min,
+        bounds_max,
+        left_pointer,
+        right_pointer,
+        leaf_face,
+        plane,
+    });
+    if let (Some(left), Some(right)) = (left_pointer, right_pointer) {
+        read_aabb_entry(
+            context,
+            left,
+            Some((bounds_min, bounds_max)),
+            depth + 1,
+            seen,
+            active,
+            coverage,
+            entries,
+        )?;
+        read_aabb_entry(
+            context,
+            right,
+            Some((bounds_min, bounds_max)),
+            depth + 1,
+            seen,
+            active,
+            coverage,
+            entries,
+        )?;
+    }
+    active.remove(&pointer);
+    Ok(())
+}
+
+fn validate_aabb_bounds(min: Vec3, max: Vec3, offset: usize) -> Result<(), ParseError> {
+    for (axis, (minimum, maximum)) in [(min.x, max.x), (min.y, max.y), (min.z, max.z)]
+        .into_iter()
+        .enumerate()
+    {
+        if !minimum.is_finite() || !maximum.is_finite() || minimum > maximum {
+            return Err(ParseError::header(
+                offset + axis * 4,
+                "AABB bounds must be finite and ordered",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn aabb_contains(outer_min: Vec3, outer_max: Vec3, inner_min: Vec3, inner_max: Vec3) -> bool {
+    const EPSILON: f32 = 1.0e-5;
+    inner_min.x + EPSILON >= outer_min.x
+        && inner_min.y + EPSILON >= outer_min.y
+        && inner_min.z + EPSILON >= outer_min.z
+        && inner_max.x - EPSILON <= outer_max.x
+        && inner_max.y - EPSILON <= outer_max.y
+        && inner_max.z - EPSILON <= outer_max.z
+}
+
+fn point_in_aabb(point: Vec3, min: Vec3, max: Vec3) -> bool {
+    const EPSILON: f32 = 1.0e-5;
+    point.x + EPSILON >= min.x
+        && point.y + EPSILON >= min.y
+        && point.z + EPSILON >= min.z
+        && point.x - EPSILON <= max.x
+        && point.y - EPSILON <= max.y
+        && point.z - EPSILON <= max.z
 }
 
 struct ControllerBlockReport {
@@ -953,6 +1223,7 @@ fn controller_semantics(controller_type: i32) -> Option<(&'static str, usize)> {
 fn read_mesh(
     context: &mut ParseContext<'_, '_>,
     node_offset: u32,
+    is_aabb: bool,
 ) -> Result<MeshReport, ParseError> {
     context.claim_core(node_offset, MESH_NODE_SIZE, "mesh-node")?;
     let absolute = context.core_absolute(node_offset, MESH_NODE_SIZE, "mesh node")?;
@@ -1043,7 +1314,7 @@ fn read_mesh(
         absolute + MESH_UV0_RAW_OFFSET,
         "uv0",
         checked_array_size(vertex_count, 8, absolute, "mesh UV0")?,
-        vertex_count > 0,
+        vertex_count > 0 && !is_aabb,
         &mut validated_raw_pointers,
     )?;
     for index in 1..4 {
@@ -1065,10 +1336,10 @@ fn read_mesh(
         absolute + MESH_NORMALS_RAW_OFFSET,
         "normals",
         checked_array_size(vertex_count, 12, absolute, "mesh normals")?,
-        vertex_count > 0,
+        vertex_count > 0 && !is_aabb,
         &mut validated_raw_pointers,
     )?;
-    read_and_validate_raw_pointer(
+    let colors_pointer = read_and_validate_raw_pointer(
         context,
         absolute + MESH_COLORS_RAW_OFFSET,
         "colors",
@@ -1103,6 +1374,7 @@ fn read_mesh(
     let vertices = read_raw_vec3_values(context, vertices_pointer, vertex_count, "mesh vertices")?;
     let uv0 = read_raw_vec2_values(context, uv0_pointer, vertex_count, "mesh UV0")?;
     let normals = read_raw_vec3_values(context, normals_pointer, vertex_count, "mesh normals")?;
+    let vertex_colors = read_raw_rgba_values(context, colors_pointer, vertex_count, "mesh colors")?;
     Ok(MeshReport {
         textures,
         vertex_count,
@@ -1174,6 +1446,7 @@ fn read_mesh(
         vertices,
         uv0,
         normals,
+        vertex_colors,
         validated_raw_pointers,
     })
 }
@@ -1396,7 +1669,7 @@ fn read_skin(
     )?;
     let inverse_bone_rotations_raw = read_core_f32x4(context, q_header, "skin qBoneRefInv")?;
     let inverse_bone_translations = read_core_vec3(context, t_header, "skin tBoneRefInv")?;
-    let bone_constants = read_core_i16x2(context, constants_header, "skin bone constants")?;
+    let bone_constants = read_core_u32_values(context, constants_header, "skin bone constants")?;
     let mut inline_mapping = Vec::with_capacity(inline_count);
     for index in 0..inline_count {
         inline_mapping.push(context.reader.read_i16(
@@ -1507,9 +1780,18 @@ fn parse_animations(
             runtime_68: context
                 .reader
                 .read_u32(absolute + 0x68, "animation opaque runtime field 0x68")?,
-            runtime_6c: context
-                .reader
-                .read_u32(absolute + 0x6c, "animation opaque runtime field 0x6c")?,
+            animation_type: context.reader.read_u8(absolute + 0x6c, "animation type")?,
+            animation_type_padding: [
+                context
+                    .reader
+                    .read_u8(absolute + 0x6d, "animation type padding 0")?,
+                context
+                    .reader
+                    .read_u8(absolute + 0x6e, "animation type padding 1")?,
+                context
+                    .reader
+                    .read_u8(absolute + 0x6f, "animation type padding 2")?,
+            ],
             length: context
                 .reader
                 .read_f32(absolute + 0x70, "animation length")?,
@@ -1657,30 +1939,6 @@ fn read_core_vec3(
     Ok(values)
 }
 
-fn read_core_i16x2(
-    context: &ParseContext<'_, '_>,
-    header: ArrayHeader,
-    value_context: &str,
-) -> Result<Vec<[i16; 2]>, ParseError> {
-    if header.used == 0 {
-        return Ok(Vec::new());
-    }
-    let absolute = context.core_absolute(
-        header.pointer,
-        checked_array_size(header.used, 4, header.pointer as usize, value_context)?,
-        value_context,
-    )?;
-    let mut values = Vec::with_capacity(header.used);
-    for row in 0..header.used {
-        let base = absolute + row * 4;
-        values.push([
-            context.reader.read_i16(base, value_context)?,
-            context.reader.read_i16(base + 2, value_context)?,
-        ]);
-    }
-    Ok(values)
-}
-
 fn read_raw_vec3_values(
     context: &ParseContext<'_, '_>,
     absolute: Option<usize>,
@@ -1717,6 +1975,28 @@ fn read_raw_vec2_values(
             x: context.reader.read_f32(base, value_context)?,
             y: context.reader.read_f32(base + 4, value_context)?,
         });
+    }
+    Ok(values)
+}
+
+fn read_raw_rgba_values(
+    context: &ParseContext<'_, '_>,
+    absolute: Option<usize>,
+    count: usize,
+    value_context: &str,
+) -> Result<Vec<[u8; 4]>, ParseError> {
+    let Some(absolute) = absolute else {
+        return Ok(Vec::new());
+    };
+    let mut values = Vec::with_capacity(count);
+    for index in 0..count {
+        let base = absolute + index * 4;
+        values.push([
+            context.reader.read_u8(base, value_context)?,
+            context.reader.read_u8(base + 1, value_context)?,
+            context.reader.read_u8(base + 2, value_context)?,
+            context.reader.read_u8(base + 3, value_context)?,
+        ]);
     }
     Ok(values)
 }

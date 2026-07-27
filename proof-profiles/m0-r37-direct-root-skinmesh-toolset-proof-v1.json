@@ -1,0 +1,19 @@
+{
+  "version": "aurora-toolset-binary-module-toolset-proof-profile/v1",
+  "id": "m2a-m0-r37-direct-root-skinmesh-toolset-proof-v1",
+  "binaryProfile": {
+    "path": "C:\\Projects\\meshy2aurora\\proof-profiles\\m0-r37-direct-root-skinmesh-binary-bootstrap-v1.json",
+    "sha256": "b166d97e394bb9a0a755ef54f03f07196e0c864e5c854b6de3d0a51d8332287c"
+  },
+  "fixtureSelection": {
+    "fixtureId": "m0_fixture",
+    "treeObjectText": "Meshy M0 animated-donor fixture",
+    "occurrence": 0
+  },
+  "capture": {
+    "targetClass": "TScrollBox",
+    "allowUniformScene": false
+  },
+  "noSave": true,
+  "noLocalToolsetAdapter": true
+}

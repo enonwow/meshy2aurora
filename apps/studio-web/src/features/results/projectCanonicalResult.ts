@@ -22,6 +22,8 @@ export interface CanonicalResultSnapshot {
     resourceCount: number;
     artifactCount: number;
   };
+  animationEventEvidence?: CanonicalAnimationEventEvidence;
+  runtimeFixtureContract?: CanonicalM0RuntimeFixtureContract;
   artifacts: WorkerArtifact[];
   reportJson: string;
   summaryJson: string;
@@ -65,6 +67,56 @@ export interface CanonicalModelMetrics {
   animations: number;
 }
 
+export interface CanonicalAnimationEventEvidence {
+  schemaVersion: 1;
+  profile: string;
+  requiredPairCount: number;
+  satisfiedPairCount: number;
+  totalEventCount: number;
+  unknownEventNames: string[];
+  missingPairs: string[];
+  complete: true;
+  authoringCanonical: { byteLength: number; sha256: string };
+}
+
+export interface CanonicalM0RuntimeResource {
+  resref: string;
+  byteLength: number;
+  sha256: string;
+}
+
+export interface CanonicalM0RuntimeFixtureContract {
+  schemaVersion: 1;
+  lane: "M0_BINARY_VERTICAL_SLICE";
+  module: CanonicalM0RuntimeResource;
+  hak: CanonicalM0RuntimeResource;
+  model: CanonicalM0RuntimeResource;
+  texture: CanonicalM0RuntimeResource;
+  appearanceTwoDa: CanonicalM0RuntimeResource;
+  appearance: { physicalRow: number; label: string; modelType: string; race: string };
+  binaryScene: {
+    moduleResref: string;
+    areaResref: string;
+    orderedHakResrefs: string[];
+    entryPosition: { x: number; y: number; z: number };
+    entryDirection: { x: number; y: number };
+    fixture: {
+      templateResref: string;
+      appearanceRow: number;
+      position: { x: number; y: number; z: number };
+      orientation: { x: number; y: number };
+    };
+  };
+  meshEligibility: {
+    eligible: boolean;
+    checkedMeshCount: number;
+    eligibleMeshCount: number;
+    meshTypes: number[];
+    textureResrefs: string[];
+    rule: string;
+  };
+}
+
 type JsonRecord = Record<string, unknown>;
 
 const fail = (path: string): never => { throw new Error(`Canonical result field ${path} is missing or has the wrong type`); };
@@ -87,6 +139,85 @@ function identity(value: unknown, path: string) {
 
 function parseJson(json: string, path: string) {
   try { return record(JSON.parse(json), path); } catch { return fail(path); }
+}
+
+function runtimeResource(value: unknown, path: string): CanonicalM0RuntimeResource {
+  const item = record(value, path);
+  return { resref: string(item.resref, `${path}.resref`), ...identity(item, path) };
+}
+
+function position3(value: unknown, path: string) {
+  const item = record(value, path);
+  return {
+    x: number(item.x, `${path}.x`),
+    y: number(item.y, `${path}.y`),
+    z: number(item.z, `${path}.z`),
+  };
+}
+
+function direction2(value: unknown, path: string) {
+  const item = record(value, path);
+  return { x: number(item.x, `${path}.x`), y: number(item.y, `${path}.y`) };
+}
+
+function runtimeFixtureContractParser(value: unknown, path: string): CanonicalM0RuntimeFixtureContract {
+  const item = record(value, path);
+  if (integer(item.schemaVersion, `${path}.schemaVersion`) !== 1) fail(`${path}.schemaVersion`);
+  if (string(item.lane, `${path}.lane`) !== "M0_BINARY_VERTICAL_SLICE") fail(`${path}.lane`);
+  const appearance = record(item.appearance, `${path}.appearance`);
+  const binaryScene = record(item.binaryScene, `${path}.binaryScene`);
+  const fixture = record(binaryScene.fixture, `${path}.binaryScene.fixture`);
+  const meshEligibility = record(item.meshEligibility, `${path}.meshEligibility`);
+  const contract: CanonicalM0RuntimeFixtureContract = {
+    schemaVersion: 1,
+    lane: "M0_BINARY_VERTICAL_SLICE",
+    module: runtimeResource(item.module, `${path}.module`),
+    hak: runtimeResource(item.hak, `${path}.hak`),
+    model: runtimeResource(item.model, `${path}.model`),
+    texture: runtimeResource(item.texture, `${path}.texture`),
+    appearanceTwoDa: runtimeResource(item.appearanceTwoDa, `${path}.appearanceTwoDa`),
+    appearance: {
+      physicalRow: integer(appearance.physicalRow, `${path}.appearance.physicalRow`),
+      label: string(appearance.label, `${path}.appearance.label`),
+      modelType: string(appearance.modelType, `${path}.appearance.modelType`),
+      race: string(appearance.race, `${path}.appearance.race`),
+    },
+    binaryScene: {
+      moduleResref: string(binaryScene.moduleResref, `${path}.binaryScene.moduleResref`),
+      areaResref: string(binaryScene.areaResref, `${path}.binaryScene.areaResref`),
+      orderedHakResrefs: stringArray(binaryScene.orderedHakResrefs, `${path}.binaryScene.orderedHakResrefs`),
+      entryPosition: position3(binaryScene.entryPosition, `${path}.binaryScene.entryPosition`),
+      entryDirection: direction2(binaryScene.entryDirection, `${path}.binaryScene.entryDirection`),
+      fixture: {
+        templateResref: string(fixture.templateResref, `${path}.binaryScene.fixture.templateResref`),
+        appearanceRow: integer(fixture.appearanceRow, `${path}.binaryScene.fixture.appearanceRow`),
+        position: position3(fixture.position, `${path}.binaryScene.fixture.position`),
+        orientation: direction2(fixture.orientation, `${path}.binaryScene.fixture.orientation`),
+      },
+    },
+    meshEligibility: {
+      eligible: boolean(meshEligibility.eligible, `${path}.meshEligibility.eligible`),
+      checkedMeshCount: integer(meshEligibility.checkedMeshCount, `${path}.meshEligibility.checkedMeshCount`),
+      eligibleMeshCount: integer(meshEligibility.eligibleMeshCount, `${path}.meshEligibility.eligibleMeshCount`),
+      meshTypes: array(meshEligibility.meshTypes, `${path}.meshEligibility.meshTypes`).map((entry, index) => integer(entry, `${path}.meshEligibility.meshTypes[${index}]`)),
+      textureResrefs: stringArray(meshEligibility.textureResrefs, `${path}.meshEligibility.textureResrefs`),
+      rule: string(meshEligibility.rule, `${path}.meshEligibility.rule`),
+    },
+  };
+  if (contract.appearance.physicalRow !== contract.binaryScene.fixture.appearanceRow) {
+    throw new Error(`Canonical result identity mismatch at ${path}.appearance.physicalRow`);
+  }
+  if (contract.module.resref !== contract.binaryScene.moduleResref) {
+    throw new Error(`Canonical result identity mismatch at ${path}.module.resref`);
+  }
+  if (contract.binaryScene.orderedHakResrefs.length !== 1
+    || contract.hak.resref !== contract.binaryScene.orderedHakResrefs[0]) {
+    throw new Error(`Canonical result identity mismatch at ${path}.binaryScene.orderedHakResrefs`);
+  }
+  if (contract.meshEligibility.eligibleMeshCount > contract.meshEligibility.checkedMeshCount) {
+    throw new Error(`Canonical result identity mismatch at ${path}.meshEligibility.eligibleMeshCount`);
+  }
+  return contract;
 }
 
 function equal(actual: unknown, expected: unknown, path: string) {
@@ -132,7 +263,9 @@ export function projectCanonicalResult(
     if (integer(value.schemaVersion, `${path}.schemaVersion`) !== 1) fail(`${path}.schemaVersion`);
   }
   const status = string(summary.status, "summary.status");
-  if (status !== "M6_MODEL_PACKAGE_MATERIALIZED") fail("summary.status");
+  if (status !== "M6_MODEL_PACKAGE_MATERIALIZED" && status !== "M0_MESHY_STATIC_RIGID_PACKAGE_MATERIALIZED") {
+    fail("summary.status");
+  }
   equal(string(manifest.status, "manifest.status"), status, "manifest.status");
 
   const ingest = record(report.ingest, "report.ingest");
@@ -233,6 +366,67 @@ export function projectCanonicalResult(
   equal(integer(proofModuleJson.appearanceRow, "report.proofModule.appearanceRow"), appendedRow, "report.proofModule.appearanceRow");
   if (string(proofModuleJson.semanticReadbackStatus, "report.proofModule.semanticReadbackStatus") !== "PASS") fail("report.proofModule.semanticReadbackStatus");
 
+  let animationEventEvidence: CanonicalAnimationEventEvidence | undefined;
+  if (
+    report.animationEventConformance !== undefined
+    || report.animationEventAuthoringCanonical !== undefined
+  ) {
+    const eventConformance = record(
+      report.animationEventConformance,
+      "report.animationEventConformance",
+    );
+    if (
+      integer(
+        eventConformance.schemaVersion,
+        "report.animationEventConformance.schemaVersion",
+      ) !== 1
+    ) {
+      fail("report.animationEventConformance.schemaVersion");
+    }
+    const requiredPairCount = integer(
+      eventConformance.requiredPairCount,
+      "report.animationEventConformance.requiredPairCount",
+    );
+    const satisfiedPairCount = integer(
+      eventConformance.satisfiedPairCount,
+      "report.animationEventConformance.satisfiedPairCount",
+    );
+    const missingPairs = stringArray(
+      eventConformance.missingPairs,
+      "report.animationEventConformance.missingPairs",
+    );
+    if (
+      !boolean(eventConformance.complete, "report.animationEventConformance.complete")
+      || satisfiedPairCount !== requiredPairCount
+      || missingPairs.length !== 0
+    ) {
+      throw new Error("Canonical result identity mismatch at report.animationEventConformance");
+    }
+    animationEventEvidence = {
+      schemaVersion: 1,
+      profile: string(
+        eventConformance.profile,
+        "report.animationEventConformance.profile",
+      ),
+      requiredPairCount,
+      satisfiedPairCount,
+      totalEventCount: integer(
+        eventConformance.totalEventCount,
+        "report.animationEventConformance.totalEventCount",
+      ),
+      unknownEventNames: stringArray(
+        eventConformance.unknownEventNames,
+        "report.animationEventConformance.unknownEventNames",
+      ),
+      missingPairs,
+      complete: true,
+      authoringCanonical: identity(
+        report.animationEventAuthoringCanonical,
+        "report.animationEventAuthoringCanonical",
+      ),
+    };
+  }
+
   const packageManifest = record(manifest.packageManifest, "manifest.packageManifest");
   equal(sha256(packageManifest.packageSha256, "manifest.packageManifest.packageSha256"), hak.sha256, "manifest.packageManifest.packageSha256");
   const resources = array(packageManifest.resources, "manifest.packageManifest.resources").map((value, index) => {
@@ -264,6 +458,34 @@ export function projectCanonicalResult(
   equal(string(projection.modelResourceResref, "report.model.projection.modelResourceResref"), modelResource.resref, "report.model.projection.modelResourceResref");
   equal(textureResource.resref, string(summary.textureResref, "summary.textureResref"), "manifest.packageManifest.resources.TEXTURE.resref");
   equal(appearanceResource.resref, "appearance", "manifest.packageManifest.resources.APPEARANCE_TABLE.resref");
+
+  let runtimeFixtureContract: CanonicalM0RuntimeFixtureContract | undefined;
+  if (status === "M0_MESHY_STATIC_RIGID_PACKAGE_MATERIALIZED") {
+    const reportContract = runtimeFixtureContractParser(report.m0RuntimeFixtureContract, "report.m0RuntimeFixtureContract");
+    const summaryContract = runtimeFixtureContractParser(summary.m0RuntimeFixtureContract, "summary.m0RuntimeFixtureContract");
+    const manifestContract = runtimeFixtureContractParser(manifest.m0RuntimeFixtureContract, "manifest.m0RuntimeFixtureContract");
+    if (JSON.stringify(reportContract) !== JSON.stringify(summaryContract)
+      || JSON.stringify(reportContract) !== JSON.stringify(manifestContract)) {
+      throw new Error("Canonical result identity mismatch at m0RuntimeFixtureContract");
+    }
+    reconcile(reportContract.module, outputs.proofModule, "m0RuntimeFixtureContract.module");
+    reconcile(reportContract.hak, outputs.hak, "m0RuntimeFixtureContract.hak");
+    reconcile(reportContract.model, outputs.model, "m0RuntimeFixtureContract.model");
+    reconcile(reportContract.texture, outputs.texture, "m0RuntimeFixtureContract.texture");
+    reconcile(reportContract.appearanceTwoDa, outputs.appearanceTwoDa, "m0RuntimeFixtureContract.appearanceTwoDa");
+    equal(reportContract.model.resref, modelResource.resref, "m0RuntimeFixtureContract.model.resref");
+    equal(reportContract.texture.resref, textureResource.resref, "m0RuntimeFixtureContract.texture.resref");
+    equal(reportContract.appearanceTwoDa.resref, appearanceResource.resref, "m0RuntimeFixtureContract.appearanceTwoDa.resref");
+    equal(reportContract.appearance.physicalRow, appendedRow, "m0RuntimeFixtureContract.appearance.physicalRow");
+    if (!reportContract.meshEligibility.eligible) {
+      throw new Error("Canonical result identity mismatch at m0RuntimeFixtureContract.meshEligibility.eligible");
+    }
+    runtimeFixtureContract = reportContract;
+  } else if (report.m0RuntimeFixtureContract !== undefined
+    || summary.m0RuntimeFixtureContract !== undefined
+    || manifest.m0RuntimeFixtureContract !== undefined) {
+    fail("m0RuntimeFixtureContract");
+  }
 
   if (artifacts.length !== 6 || new Set(artifacts.map(({ artifactId }) => artifactId)).size !== artifacts.length) {
     throw new Error("Canonical result identity mismatch at artifact inventory");
@@ -327,6 +549,8 @@ export function projectCanonicalResult(
       resourceCount: resources.length,
       artifactCount: artifacts.length,
     },
+    animationEventEvidence,
+    runtimeFixtureContract,
     artifacts: [...artifacts],
     reportJson,
     summaryJson,

@@ -8,7 +8,7 @@ use m2a_core::{
     glb::{GlbLimits, IrNode, IrTransform, ingest_glb},
     mdl::{
         MdlAnimationTrackPathV1, MdlFormatProfileV1, MdlMaterialTextureBindingV1,
-        MdlWriterOptionsV1, write_binary_mdl_with_animations,
+        MdlStateProjectionProfileV1, MdlWriterOptionsV1, write_binary_mdl_with_animations,
     },
     profile_a::{
         Bounds3V1, CreatureRigNodeV1, CreatureRigProfileV1, CreatureRigSegmentV1,
@@ -156,6 +156,8 @@ fn animation_writer_options() -> MdlWriterOptionsV1 {
     MdlWriterOptionsV1 {
         schema_version: 1,
         format_profile: MdlFormatProfileV1::M4DirectCreatureExtended64V1,
+        state_projection_profile: MdlStateProjectionProfileV1::RetailDirectCreatureType5DummyV1,
+        state_projection_provenance: None,
         model_resource_resref: "m2a_anim".to_owned(),
         diffuse_texture_resref_by_material_slot: vec![MdlMaterialTextureBindingV1 {
             material_slot: 0,
@@ -783,6 +785,16 @@ fn mapped_animation_finite_translation_subtraction_overflow_is_fatal() {
 fn mapped_animation_rejects_nonunit_source_scale_and_nonrigid_target_bind() {
     let mapping = animation_mapping();
 
+    let mut exporter_noise = linear_animated_source();
+    exporter_noise.ir.nodes[1].transform.scale = Some([1.0000001, 1.0000002, 1.0000109]);
+    convert_profile_a_with_animations_v1(
+        &exporter_noise,
+        &animated_profile(),
+        &ProfileAOptionsV1::default(),
+        &mapping,
+    )
+    .expect("sub-1e-4 near-unit exporter noise is still a rigid rest transform");
+
     let mut scaled_source = linear_animated_source();
     scaled_source.ir.nodes[1].transform.scale = Some([1.0, 2.0, 1.0]);
     assert_animation_fatal(
@@ -1265,7 +1277,10 @@ fn skin_barycentric_interpolation_is_exhaustive_and_normalized() {
         &ProfileAOptionsV1::default(),
     )
     .unwrap();
-    assert_eq!(outcome.report.work.distance_evaluations, 12);
+    assert_eq!(
+        outcome.report.work.distance_evaluations, 6,
+        "a one-segment rig spends its distance budget only on weight projection"
+    );
     assert_eq!(outcome.report.weights.skinned_vertex_count, 3);
     assert_eq!(outcome.report.weights.normalized_vertex_count, 3);
     let segment = &outcome.creature.unwrap().segments[0];

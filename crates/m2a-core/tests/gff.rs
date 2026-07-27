@@ -497,6 +497,15 @@ fn physical_unused_field_and_list_indices_records_are_layout_fatal() {
             .code,
         "M6-GFF-LAYOUT-INVALID"
     );
+    let mut out_of_bounds_field = fields_artifact.payload.clone();
+    out_of_bounds_field[field_indices_offset + 4..field_indices_offset + 8]
+        .copy_from_slice(&u32::MAX.to_le_bytes());
+    assert_eq!(
+        read_gff_v32(&out_of_bounds_field, &GffLimitsV1::default())
+            .unwrap_err()
+            .code,
+        "M6-GFF-INDEX-OOB"
+    );
     let mut unused_field_index = fields_artifact.payload;
     let insert_at = fields_artifact.report.list_indices_offset as usize;
     unused_field_index.splice(insert_at..insert_at, 0u32.to_le_bytes());
@@ -529,7 +538,7 @@ fn physical_unused_field_and_list_indices_records_are_layout_fatal() {
 }
 
 #[test]
-fn swapped_field_indices_are_in_bounds_but_violate_canonical_encounter_order() {
+fn permuted_field_indices_define_logical_field_order() {
     let artifact = write_gff_v32(
         &document(vec![
             field("A", GffValueV1::Byte(1)),
@@ -543,15 +552,16 @@ fn swapped_field_indices_are_in_bounds_but_violate_canonical_encounter_order() {
     swapped[offset..offset + 4].copy_from_slice(&1u32.to_le_bytes());
     swapped[offset + 4..offset + 8].copy_from_slice(&0u32.to_le_bytes());
     assert_eq!(
-        read_gff_v32(&swapped, &GffLimitsV1::default())
-            .unwrap_err()
-            .code,
-        "M6-GFF-LAYOUT-INVALID"
+        read_gff_v32(&swapped, &GffLimitsV1::default()).unwrap(),
+        document(vec![
+            field("B", GffValueV1::Byte(2)),
+            field("A", GffValueV1::Byte(1)),
+        ])
     );
 }
 
 #[test]
-fn phase_nine_field_indices_layout_precedes_phase_ten_oversized_locstring_limit() {
+fn phase_nine_field_ownership_precedes_phase_ten_oversized_locstring_limit() {
     let artifact = write_gff_v32(
         &document(vec![
             field(
@@ -580,7 +590,7 @@ fn phase_nine_field_indices_layout_precedes_phase_ten_oversized_locstring_limit(
     swapped[offset + 4..offset + 8].copy_from_slice(&0u32.to_le_bytes());
     assert_eq!(
         read_gff_v32(&swapped, &limits).unwrap_err().code,
-        "M6-GFF-LAYOUT-INVALID"
+        "M6-GFF-LIMIT-EXCEEDED"
     );
 
     let mut reused = artifact.payload;

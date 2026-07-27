@@ -9,6 +9,10 @@
   min-height: 88px;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
 }
+.studio-shell__masthead--workspace { display: none; }
+.studio-shell--workspace { min-height: 100vh; padding: 0; background: #0d0f0d; }
+.studio-shell--workspace .studio-shell__workspace { min-height: 100vh; padding-top: 0; }
+.studio-shell--workspace .meshy-lab { min-height: 100vh; border: 0; border-radius: 0; }
 
 .studio-header {
   min-height: 64px;
@@ -80,6 +84,7 @@
 
 .studio-shell__primary { display: grid; }
 .studio-shell__workspace--wide-primary .studio-shell__primary { grid-column: 2 / 4; }
+.studio-shell__workspace--full-primary .studio-shell__primary { grid-column: 1 / -1; }
 
 .debug-drawer-placeholder {
   min-height: 58px;
@@ -100,6 +105,7 @@
   .workflow-stepper { position: static; overflow-x: auto; }
   .studio-shell__workspace { grid-template-columns: 240px minmax(0, 1fr); }
   .studio-shell__workspace--wide-primary .studio-shell__primary { grid-column: auto; }
+  .studio-shell__workspace--full-primary .studio-shell__primary { grid-column: 1 / -1; }
   .studio-shell__aside { grid-column: 1 / -1; }
 }
 

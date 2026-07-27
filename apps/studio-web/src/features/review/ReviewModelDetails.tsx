@@ -115,6 +115,28 @@ export function ReviewModelDetails({
       <ConversionReadiness result={result} readback={readback} />
 
       <div className="review-model__evidence" aria-label="Canonical evidence">
+        {result.runtimeFixtureContract && (
+          <article>
+            <span>M0 runtime fixture</span>
+            <strong data-status="pass">BOUND / NOT RUNTIME PROOF</strong>
+            <small>
+              {`${result.runtimeFixtureContract.binaryScene.areaResref} · row ${result.runtimeFixtureContract.appearance.physicalRow} · fixture [${result.runtimeFixtureContract.binaryScene.fixture.position.x}, ${result.runtimeFixtureContract.binaryScene.fixture.position.y}, ${result.runtimeFixtureContract.binaryScene.fixture.position.z}]`}
+            </small>
+          </article>
+        )}
+        {result.geometry.deformation === "SKIN" && (
+          <article>
+            <span>Creature gameplay events</span>
+            <strong data-status={result.animationEventEvidence ? "pass" : "unavailable"}>
+              {result.animationEventEvidence ? "PASS" : "NOT INCLUDED"}
+            </strong>
+            <small>
+              {result.animationEventEvidence
+                ? `${result.animationEventEvidence.satisfiedPairCount}/${result.animationEventEvidence.requiredPairCount} required hooks · ${result.animationEventEvidence.totalEventCount} total event(s) · canonical sidecar SHA-256 ${result.animationEventEvidence.authoringCanonical.sha256.slice(0, 12)}...`
+                : "This package did not use the caller-owned Full-42 event authoring lane."}
+            </small>
+          </article>
+        )}
         <article>
           <span>Binary readback</span>
           <strong data-status={readbackStatus.toLowerCase()}>{readbackStatusLabel}</strong>

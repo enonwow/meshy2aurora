@@ -112,7 +112,27 @@ pub struct NodeReport {
     pub controllers: Vec<ControllerReport>,
     pub mesh: Option<MeshReport>,
     pub skin: Option<SkinReport>,
+    pub aabb: Option<AabbTreeReport>,
     pub children: Vec<NodeReport>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AabbTreeReport {
+    pub root_pointer: u32,
+    pub entries: Vec<AabbEntryReport>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AabbEntryReport {
+    pub offset: u32,
+    pub bounds_min: Vec3,
+    pub bounds_max: Vec3,
+    pub left_pointer: Option<u32>,
+    pub right_pointer: Option<u32>,
+    pub leaf_face: Option<u32>,
+    pub plane: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -162,6 +182,7 @@ pub struct MeshReport {
     pub vertices: Vec<Vec3>,
     pub uv0: Vec<Vec2>,
     pub normals: Vec<Vec3>,
+    pub vertex_colors: Vec<[u8; 4]>,
     pub validated_raw_pointers: Vec<RawPointerReport>,
 }
 
@@ -206,7 +227,7 @@ pub struct SkinReport {
     pub node_to_bone_map: Vec<i16>,
     pub inverse_bone_rotations_raw: Vec<[f32; 4]>,
     pub inverse_bone_translations: Vec<Vec3>,
-    pub bone_constants: Vec<[i16; 2]>,
+    pub bone_constants: Vec<u32>,
     pub inline_mapping: Vec<i16>,
     pub vertex_weights: Vec<[f32; 4]>,
     pub bone_references: Vec<[u16; 4]>,
@@ -228,7 +249,8 @@ pub struct AnimationReport {
     pub geometry_array_50: ArrayReport,
     pub geometry_array_5c: ArrayReport,
     pub runtime_68: u32,
-    pub runtime_6c: u32,
+    pub animation_type: u8,
+    pub animation_type_padding: [u8; 3],
     pub length: f32,
     pub transition: f32,
     pub animation_root: String,

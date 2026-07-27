@@ -1,0 +1,76 @@
+{
+  "version": "aurora-model-proof-120s-profile/v1",
+  "id": "m2a-r31-tri-control-diagnostic-model-proof-120s-v1",
+  "hardLimitMs": 120000,
+  "binaryProfile": {
+    "path": "C:\\Projects\\meshy2aurora\\proof-profiles\\m0-r31-tri-control-diagnostic-binary-bootstrap-v1.json",
+    "sha256": "6844c41b1cf790da850d8f3233b4603555a08b6880d27b136c65276fe3c4e150"
+  },
+  "toolsetProfile": {
+    "path": "C:\\Projects\\meshy2aurora\\proof-profiles\\m0-r31-tri-control-diagnostic-toolset-proof-v1.json",
+    "sha256": "6f1130ab29755718dfbc268f4ea73cf4613d9437b087b7bf6d09e78e520c4522"
+  },
+  "runtimeProfile": {
+    "path": "C:\\Projects\\meshy2aurora\\proof-profiles\\m0-r31-tri-control-diagnostic-runtime-v1.json",
+    "sha256": "786cd2b4ccc8d0a794f1d66416289b4dd4d32d1bb15250792f8789c1fa1a0752"
+  },
+  "routeManifest": {
+    "path": "C:\\Projects\\aurora-web\\skills\\aurora-model-proof-120s\\references\\route-manifest-v1.json",
+    "sha256": "bfb3e67c876a989db367e0d9cc72b12339f0892394c304620ae5bd023d80bcce"
+  },
+  "installedModule": {
+    "path": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\modules\\m2a_diag01.mod",
+    "sha256": "40282440091c8d778b8b21f715ad9f4c5f9bff998c4605a1769f5fd156a00ff3",
+    "byteLength": 21053
+  },
+  "orderedHakList": [
+    {
+      "resref": "m2a_diagh01",
+      "path": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\hak\\m2a_diagh01.hak",
+      "sha256": "f538734743a76d20ef1fc7c294f4029940073d76d50ded174ac3b30a6fc74d6d",
+      "byteLength": 32776373
+    }
+  ],
+  "resources": {
+    "mdl": {
+      "resref": "m2a_m0p01",
+      "sha256": "fcfbe7e329d51aef6ccb3ae87b4bfe7db7c5395cd5e8adf24159e73e556b5ab6"
+    },
+    "tga": {
+      "resref": "m2a_m0t01",
+      "sha256": "079bfedbb952ae3f3bbdd43f1bb244eb6247ca92a25d0acad2f3273f9aace59b"
+    },
+    "appearance2da": {
+      "resref": "appearance",
+      "row": 15100,
+      "sha256": "3f7e7f6115e3f2a9917aadccb7e16b9708efb9d87b372cc84b4c56dc991d0448"
+    }
+  },
+  "area": {
+    "resref": "m2a_diaga01",
+    "displayName": "Meshy2Aurora M0 binary vertical-slice area",
+    "entryPoint": [10, 10, 0]
+  },
+  "fixture": {
+    "id": "candidate_m0",
+    "templateResRef": "m2a_d_m0",
+    "treeObjectText": "Exact r31 M0 candidate",
+    "occurrence": 0,
+    "appearanceRow": 15100,
+    "position": [10, 14.5, 0]
+  },
+  "runtime": {
+    "loadingModuleResref": "m2a_diag01",
+    "engineLogPath": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\logs\\nwclientLog1.txt"
+  },
+  "entryMode": "adopt-exact-clean",
+  "outputRoot": "C:\\Projects\\meshy2aurora\\proof-output\\m0-r31-tri-control-diagnostic-20260722\\live\\model-proof-120s-run-1",
+  "policy": {
+    "noSave": true,
+    "noBuild": true,
+    "noRepack": true,
+    "noFocus": true,
+    "noCamera": true,
+    "noRetry": true
+  }
+}

@@ -29,7 +29,7 @@ vi.mock("./SceneViewport", () => ({
   },
 }));
 
-import { AuroraReadbackViewport } from "./AuroraReadbackViewport";
+import { AuroraReadbackViewport, buildAuroraReadbackAsset } from "./AuroraReadbackViewport";
 
 const roots: Root[] = [];
 
@@ -88,6 +88,18 @@ afterEach(async () => {
 });
 
 describe("AuroraReadbackViewport", () => {
+  it("accepts native zero-filled unused extended64 inline slots", () => {
+    const zeroTerminated = structuredClone(readback);
+    const skin = zeroTerminated.nodeTree.roots[0]?.skin;
+    if (!skin) throw new Error("test skin unavailable");
+    skin.inlineMapping = [1, ...Array.from({ length: 63 }, () => 0)];
+
+    const asset = buildAuroraReadbackAsset(zeroTerminated);
+    const skinned = asset.root.getObjectByProperty("isSkinnedMesh", true) as THREE.SkinnedMesh;
+    expect(skinned).toBeInstanceOf(THREE.SkinnedMesh);
+    expect(skinned.skeleton.bones.map((bone) => bone.name)).toEqual(["arm"]);
+  });
+
   it("plays decoded converted-MDL controller data through the same viewport player", async () => {
     const container = document.createElement("div");
     document.body.append(container);

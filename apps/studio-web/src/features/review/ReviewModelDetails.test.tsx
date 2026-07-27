@@ -130,6 +130,51 @@ describe("ReviewModelDetails", () => {
     expect(container.textContent).toContain("mesh[0].faces differs");
   });
 
+  it("distinguishes an event-complete creature package from a non-eventful skin package", async () => {
+    const eventful = resultFixture();
+    eventful.animationEventEvidence = {
+      schemaVersion: 1,
+      profile: "COMMON_NATIVE_GAMEPLAY_HOOKS_EXPLICIT_V1",
+      requiredPairCount: 23,
+      satisfiedPairCount: 23,
+      totalEventCount: 24,
+      unknownEventNames: ["owned_marker"],
+      missingPairs: [],
+      complete: true,
+      authoringCanonical: { byteLength: 1_024, sha256: "8".repeat(64) },
+    };
+    const eventfulContainer = await render(
+      <ReviewModelDetails
+        result={eventful}
+        readback={readbackFixture}
+        activeViewport="CONVERTED"
+        onViewportChange={vi.fn()}
+        onInspectBinary={vi.fn()}
+        sourceViewport={<div />}
+        convertedReadbackViewport={<div />}
+      />,
+    );
+    expect(eventfulContainer.textContent).toContain("Creature gameplay events");
+    expect(eventfulContainer.textContent).toContain("23/23 required hooks");
+    expect(eventfulContainer.textContent).toContain("canonical sidecar SHA-256 888888888888...");
+
+    const nonEventfulContainer = await render(
+      <ReviewModelDetails
+        result={resultFixture()}
+        readback={readbackFixture}
+        activeViewport="CONVERTED"
+        onViewportChange={vi.fn()}
+        onInspectBinary={vi.fn()}
+        sourceViewport={<div />}
+        convertedReadbackViewport={<div />}
+      />,
+    );
+    expect(nonEventfulContainer.textContent).toContain("NOT INCLUDED");
+    expect(nonEventfulContainer.textContent).toContain(
+      "did not use the caller-owned Full-42 event authoring lane",
+    );
+  });
+
   it.each([
     ["PASS", "Verified by binary readback"],
     ["WARNING", "Binary readback has warnings"],
@@ -151,7 +196,9 @@ describe("ReviewModelDetails", () => {
       />,
     );
     expect(container.textContent).toContain(label);
-    expect(container.querySelector(".review-model__evidence strong")?.textContent).toBe(status);
+    const binaryReadback = [...container.querySelectorAll(".review-model__evidence article")]
+      .find((article) => article.querySelector("span")?.textContent === "Binary readback");
+    expect(binaryReadback?.querySelector("strong")?.textContent).toBe(status);
   });
 
   it("shows unavailable rather than PASS when validation evidence is absent", async () => {

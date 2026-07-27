@@ -38,9 +38,38 @@ async function main() {
   const prompt = required("MESHY_REAL_E2E_PROMPT");
   const geometryTarget = process.env.MESHY_REAL_E2E_GEOMETRY_TARGET ?? "AURORA_PROOF";
   const outputPath = process.env.MESHY_REAL_E2E_OUTPUT_PATH;
+  const targetPolycount = process.env.MESHY_REAL_E2E_TARGET_POLYCOUNT === undefined
+    ? undefined
+    : Number(process.env.MESHY_REAL_E2E_TARGET_POLYCOUNT);
   if (!Number.isFinite(maxCredits) || maxCredits <= 0) throw new Error("MESHY_MAX_CREDITS must be a positive number.");
   if (!profiles.has(profileId)) throw new Error("MESHY_REAL_E2E_PROFILE must be H1-humanoid-animated/v1, N1-quadruped/v1, or S1-static-prop/v1.");
   if (!geometryTargets.has(geometryTarget)) throw new Error("MESHY_REAL_E2E_GEOMETRY_TARGET must be AURORA_PROOF, LOWER_DETAIL, BALANCED, or HIGHER_DETAIL.");
+  if (targetPolycount !== undefined && (!Number.isInteger(targetPolycount) || targetPolycount < 100 || targetPolycount > 300_000)) {
+    throw new Error("MESHY_REAL_E2E_TARGET_POLYCOUNT must be an integer in 100..=300000.");
+  }
+  const apiOptions = targetPolycount === undefined ? undefined : {
+    modelType: "standard",
+    aiModel: "meshy-6",
+    shouldRemesh: true,
+    topology: "triangle",
+    targetPolycount,
+    poseMode: "",
+    moderation: true,
+    targetFormats: ["glb"],
+    alphaThumbnail: false,
+    autoSize: true,
+    originAt: "bottom",
+    enablePbr: true,
+    shouldTexture: true,
+    hdTexture: false,
+    texturePrompt: "",
+    textureImageUrl: "",
+    removeLighting: true,
+    imageEnhancement: true,
+    multiViewThumbnails: false,
+    rigHumanoid: false,
+    rigHeightMeters: 1.7,
+  };
 
   const localOrigin = "http://127.0.0.1";
   const bridge = createLocalBridge({
@@ -71,7 +100,7 @@ async function main() {
       : {};
     const previewResponse = await request("/v1/runs/preview", {
       method: "POST", headers: sessionHeaders,
-      body: JSON.stringify({ profileId, prompt, geometryTarget, ...preflight }),
+      body: JSON.stringify({ profileId, prompt, geometryTarget, ...preflight, ...(apiOptions ? { apiOptions } : {}) }),
     });
     if (!previewResponse.ok) throw new Error("Local Bridge rejected the E2E preview request.");
     const preview = await previewResponse.json();
@@ -103,7 +132,7 @@ async function main() {
       await mkdir(dirname(absoluteOutputPath), { recursive: true });
       await writeFile(absoluteOutputPath, artifact, { flag: "wx" });
     }
-    process.stdout.write(`${JSON.stringify({ profileId, geometryTarget, runId: run.id, taskIds: provenance.taskIds, sha256: provenance.sha256, byteLength: artifact.byteLength, triangles, ...(outputPath ? { savedTo: resolve(outputPath) } : {}) }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ profileId, geometryTarget, ...(targetPolycount === undefined ? {} : { targetPolycount }), runId: run.id, taskIds: provenance.taskIds, sha256: provenance.sha256, byteLength: artifact.byteLength, triangles, ...(outputPath ? { savedTo: resolve(outputPath) } : {}) }, null, 2)}\n`);
   } finally {
     await bridge.close();
   }

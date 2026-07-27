@@ -1,14 +1,17 @@
 use std::collections::HashMap;
 
 use super::types::{
-    ArrayReport, InspectionReport, MeshReport, NodeReport, SkinReport, SkinVariant, Vec2, Vec3,
+    AabbTreeReport, ArrayReport, InspectionReport, MeshReport, NodeReport, SkinReport, SkinVariant,
+    Vec2, Vec3,
 };
 
 pub(crate) struct ExpectedReadback {
     pub model_name: String,
+    pub supermodel_name: String,
     pub model_bounds_min: [f32; 3],
     pub model_bounds_max: [f32; 3],
     pub model_radius: f32,
+    pub classification: u8,
     pub root_part_number: u32,
     pub nodes: Vec<ExpectedNode>,
     pub animation_pointers_header: ArrayReport,
@@ -18,6 +21,7 @@ pub(crate) struct ExpectedReadback {
 pub(crate) struct ExpectedAnimation {
     pub offset: u32,
     pub name: String,
+    pub animation_type: u8,
     pub length: f32,
     pub transition: f32,
     pub animation_root: String,
@@ -36,6 +40,7 @@ pub(crate) struct ExpectedAnimationNode {
     pub controller_keys_header: ArrayReport,
     pub controller_data_header: ArrayReport,
     pub controllers: Vec<ExpectedAnimationController>,
+    pub mesh_placeholder: bool,
 }
 
 pub(crate) struct ExpectedAnimationController {
@@ -55,9 +60,27 @@ pub(crate) struct ExpectedNode {
     pub name: String,
     pub parent_part_number: Option<u32>,
     pub bind_matrix: Option<[f32; 16]>,
+    pub controllerless_identity: bool,
+    pub mesh_bind_matrix: Option<[f32; 16]>,
     pub content_flags: u32,
     pub mesh: Option<ExpectedMesh>,
     pub skin: Option<ExpectedSkin>,
+    pub aabb: Option<ExpectedAabbTree>,
+}
+
+pub(crate) struct ExpectedAabbTree {
+    pub root_pointer: u32,
+    pub entries: Vec<ExpectedAabbEntry>,
+}
+
+pub(crate) struct ExpectedAabbEntry {
+    pub offset: u32,
+    pub bounds_min: [f32; 3],
+    pub bounds_max: [f32; 3],
+    pub left_pointer: Option<u32>,
+    pub right_pointer: Option<u32>,
+    pub leaf_face: Option<u32>,
+    pub plane: u32,
 }
 
 pub(crate) struct ExpectedSkin {
@@ -70,7 +93,7 @@ pub(crate) struct ExpectedSkin {
     pub inline_reverse: Vec<i16>,
     pub inverse_rotations_wxyz: Vec<[f32; 4]>,
     pub inverse_translations: Vec<[f32; 3]>,
-    pub bone_constants: Vec<[i16; 2]>,
+    pub bone_constants: Vec<u32>,
     pub vertex_weights: Vec<[f32; 4]>,
     pub vertex_refs: Vec<[u16; 4]>,
     pub resolved_ir_ids: Vec<[Option<u32>; 4]>,
@@ -78,14 +101,17 @@ pub(crate) struct ExpectedSkin {
 
 pub(crate) struct ExpectedMesh {
     pub texture_resref: String,
+    pub mesh_type: u32,
     pub positions: Vec<[f32; 3]>,
     pub normals: Vec<[f32; 3]>,
     pub uv0: Vec<[f32; 2]>,
+    pub vertex_colors: Vec<[u8; 4]>,
     pub indices: Vec<u16>,
     pub bounds_min: [f32; 3],
     pub bounds_max: [f32; 3],
     pub radius: f32,
     pub average: [f32; 3],
+    pub shadow: u32,
     pub raw_index_offset: i32,
     pub faces: Vec<ExpectedFace>,
 }
@@ -93,6 +119,8 @@ pub(crate) struct ExpectedMesh {
 pub(crate) struct ExpectedFace {
     pub normal: [f32; 3],
     pub distance: f32,
+    pub surface_id: i32,
+    pub adjacent_faces: [i16; 3],
     pub vertex_indices: [u16; 3],
 }
 
@@ -134,11 +162,11 @@ pub(crate) fn semantic_diff(expected: &ExpectedReadback, actual: &InspectionRepo
         actual.model.radius,
         &mut diff,
     );
-    if actual.model.classification != 4
+    if actual.model.classification != expected.classification
         || actual.model.fog != 1
         || actual.model.child_model_count != 0
         || actual.model.animation_scale != 1.0
-        || actual.model.supermodel_name != "null"
+        || actual.model.supermodel_name != expected.supermodel_name
     {
         diff.push("model.profileDefaults".to_owned());
     }
@@ -190,15 +218,40 @@ pub(crate) fn semantic_diff(expected: &ExpectedReadback, actual: &InspectionRepo
         if actual_parent != expected_node.parent_part_number {
             diff.push(format!("{path}.parent"));
         }
+        match (&expected_node.aabb, &actual_node.aabb) {
+            (Some(expected_aabb), Some(actual_aabb)) => {
+                compare_aabb(&path, expected_aabb, actual_aabb, &mut diff)
+            }
+            (None, None) => {}
+            _ => diff.push(format!("{path}.aabb")),
+        }
         match (&expected_node.bind_matrix, &expected_node.mesh) {
             (Some(matrix), None) => {
                 if expected_node.skin.is_some() {
                     diff.push(format!("{path}.kind"));
                 }
-                compare_bind_matrix(&path, *matrix, actual_node, &mut diff)
+                if expected_node.controllerless_identity {
+                    if !actual_node.controllers.is_empty()
+                        || actual_node.controller_keys_header.pointer != 0
+                        || actual_node.controller_keys_header.used != 0
+                        || actual_node.controller_keys_header.allocated != 0
+                        || actual_node.controller_data_header.pointer != 0
+                        || actual_node.controller_data_header.used != 0
+                        || actual_node.controller_data_header.allocated != 0
+                    {
+                        diff.push(format!("{path}.bindControllers"));
+                    }
+                } else {
+                    compare_bind_matrix(&path, *matrix, actual_node, false, &mut diff)
+                }
             }
             (None, Some(mesh)) => {
-                if !actual_node.controllers.is_empty() {
+                if expected_node.controllerless_identity {
+                    diff.push(format!("{path}.kind"));
+                }
+                if let Some(matrix) = expected_node.mesh_bind_matrix {
+                    compare_bind_matrix(&path, matrix, actual_node, true, &mut diff);
+                } else if !actual_node.controllers.is_empty() {
                     diff.push(format!("{path}.controllers"));
                 }
                 let Some(actual_mesh) = actual_node.mesh.as_ref() else {
@@ -226,6 +279,35 @@ pub(crate) fn semantic_diff(expected: &ExpectedReadback, actual: &InspectionRepo
     diff
 }
 
+fn compare_aabb(
+    path: &str,
+    expected: &ExpectedAabbTree,
+    actual: &AabbTreeReport,
+    diff: &mut Vec<String>,
+) {
+    let path = format!("{path}.aabb");
+    if actual.root_pointer != expected.root_pointer
+        || actual.entries.len() != expected.entries.len()
+    {
+        diff.push(format!("{path}.layout"));
+        return;
+    }
+    for (index, (expected_entry, actual_entry)) in
+        expected.entries.iter().zip(&actual.entries).enumerate()
+    {
+        if actual_entry.offset != expected_entry.offset
+            || actual_entry.left_pointer != expected_entry.left_pointer
+            || actual_entry.right_pointer != expected_entry.right_pointer
+            || actual_entry.leaf_face != expected_entry.leaf_face
+            || actual_entry.plane != expected_entry.plane
+            || !vec3_approx(expected_entry.bounds_min, actual_entry.bounds_min)
+            || !vec3_approx(expected_entry.bounds_max, actual_entry.bounds_max)
+        {
+            diff.push(format!("{path}.entries[{index}]"));
+        }
+    }
+}
+
 fn compare_animations(
     expected: &[ExpectedAnimation],
     actual: &InspectionReport,
@@ -248,7 +330,8 @@ fn compare_animations(
             || actual_clip.geometry_array_5c.used != 0
             || actual_clip.geometry_array_5c.allocated != 0
             || actual_clip.runtime_68 != 0
-            || actual_clip.runtime_6c != 0
+            || actual_clip.animation_type != expected_clip.animation_type
+            || actual_clip.animation_type_padding != [0, 0, 0]
             || actual_clip.length.to_bits() != expected_clip.length.to_bits()
             || actual_clip.transition.to_bits() != expected_clip.transition.to_bits()
             || actual_clip.animation_root != expected_clip.animation_root
@@ -300,13 +383,26 @@ fn compare_animations(
             let actual_parent = actual_node
                 .parent_offset
                 .and_then(|offset| offsets.get(&offset).copied());
+            let expected_content_flags = if expected_node.mesh_placeholder {
+                0x21
+            } else {
+                0x01
+            };
+            let valid_mesh_payload = if expected_node.mesh_placeholder {
+                actual_node
+                    .mesh
+                    .as_ref()
+                    .is_some_and(is_zero_geometry_animation_mesh_placeholder)
+            } else {
+                actual_node.mesh.is_none()
+            };
             if actual_node.offset != expected_node.offset
                 || actual_node.number != expected_node.part_number
                 || actual_node.name != expected_node.name
                 || actual_parent != expected_node.parent_part_number
                 || actual_node.inherit_color != 0
-                || actual_node.content_flags != 0x01
-                || actual_node.mesh.is_some()
+                || actual_node.content_flags != expected_content_flags
+                || !valid_mesh_payload
                 || actual_node.skin.is_some()
             {
                 diff.push(format!("{node_path}.header"));
@@ -364,6 +460,17 @@ fn compare_animations(
             }
         }
     }
+}
+
+fn is_zero_geometry_animation_mesh_placeholder(mesh: &MeshReport) -> bool {
+    mesh.vertex_count == 0
+        && mesh.vertices.is_empty()
+        && mesh.faces.is_empty()
+        && mesh.index_counts.is_empty()
+        && mesh.raw_index_offsets.is_empty()
+        && mesh.raw_indices.is_empty()
+        && mesh.textures.iter().all(String::is_empty)
+        && mesh.start_mdx == 0
 }
 
 fn compare_array(path: &str, expected: &ArrayReport, actual: &ArrayReport, diff: &mut Vec<String>) {
@@ -515,8 +622,14 @@ fn flatten<'a>(node: &'a NodeReport, output: &mut Vec<&'a NodeReport>) {
     }
 }
 
-fn compare_bind_matrix(path: &str, expected: [f32; 16], node: &NodeReport, diff: &mut Vec<String>) {
-    if node.mesh.is_some() || node.controllers.len() != 2 {
+fn compare_bind_matrix(
+    path: &str,
+    expected: [f32; 16],
+    node: &NodeReport,
+    allow_mesh: bool,
+    diff: &mut Vec<String>,
+) {
+    if (!allow_mesh && node.mesh.is_some()) || node.controllers.len() != 2 {
         diff.push(format!("{path}.bindControllers"));
         return;
     }
@@ -593,6 +706,9 @@ fn compare_mesh(path: &str, expected: &ExpectedMesh, actual: &MeshReport, diff: 
     {
         diff.push(format!("{path}.uv0"));
     }
+    if actual.vertex_colors != expected.vertex_colors {
+        diff.push(format!("{path}.vertexColors"));
+    }
     let face_indices = actual
         .faces
         .iter()
@@ -618,8 +734,8 @@ fn compare_mesh(path: &str, expected: &ExpectedMesh, actual: &MeshReport, diff: 
         {
             if !vec3_approx(expected_face.normal, actual_face.normal)
                 || !finite_approx(expected_face.distance, actual_face.distance)
-                || actual_face.surface_id != 0
-                || actual_face.adjacent_faces != [-1, -1, -1]
+                || actual_face.surface_id != expected_face.surface_id
+                || actual_face.adjacent_faces != expected_face.adjacent_faces
                 || actual_face.vertex_indices != expected_face.vertex_indices
             {
                 diff.push(format!("{path}.faces[{index}]"));
@@ -659,13 +775,13 @@ fn compare_mesh(path: &str, expected: &ExpectedMesh, actual: &MeshReport, diff: 
         || actual.ambient != [1.0, 1.0, 1.0]
         || actual.specular != [0.0, 0.0, 0.0]
         || actual.shininess != 1.0
-        || actual.shadow != 1
+        || actual.shadow != expected.shadow
         || actual.beaming != 0
         || actual.render != 1
         || actual.transparency != 0
         || actual.render_hint != 0
         || actual.tile_fade != 0
-        || actual.mesh_type != 3
+        || actual.mesh_type != expected.mesh_type
         || actual.start_mdx != 0
     {
         diff.push(format!("{path}.profileDefaults"));

@@ -1,0 +1,76 @@
+name: meshy2aurora
+
+services:
+  studio:
+    build:
+      context: .
+      target: studio-dev
+    command:
+      - sh
+      - -ec
+      - |
+        test -f crates/m2a-wasm/pkg/m2a_wasm.js || npm --prefix apps/studio-web run build:wasm
+        cd apps/studio-web
+        npm exec vite -- --host 0.0.0.0
+    environment:
+      CHOKIDAR_USEPOLLING: ${M2A_DOCKER_POLLING:-true}
+      VITE_MESHY_LAB: ${M2A_MESHY_LAB:-1}
+    ports:
+      - "127.0.0.1:${M2A_STUDIO_PORT:-5174}:5173"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - .:/workspace
+      - studio_node_modules:/workspace/apps/studio-web/node_modules
+      - cargo_registry:/usr/local/cargo/registry
+      - cargo_git:/usr/local/cargo/git
+      - rust_target:/workspace/target
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  quality:
+    profiles: ["quality"]
+    build:
+      context: .
+      target: quality
+    command: ["true"]
+    network_mode: none
+
+  meshy-bridge:
+    profiles: ["meshy"]
+    build:
+      context: .
+      target: studio-dev
+    command: node tools/meshy-local-bridge/index.mjs
+    environment:
+      MESHY_API_KEY: ${MESHY_API_KEY:-}
+      MESHY_BRIDGE_ALLOWED_ORIGIN: http://localhost:${M2A_STUDIO_PORT:-5174}
+      MESHY_BRIDGE_BIND_HOST: "0.0.0.0"
+      # Docker's loopback is not reachable through a published port. The port
+      # is still explicitly published only on the host loopback below.
+      MESHY_BRIDGE_ALLOW_CONTAINER_BIND: "1"
+      # The Bridge can exit after an exact-origin restart request; Compose
+      # immediately recreates it and prints a fresh one-use pairing code.
+      MESHY_BRIDGE_RESTARTABLE: "1"
+      # Exact-origin automatic pairing is limited to this local Compose Studio;
+      # API keys and manual pairing codes never reach the browser.
+      MESHY_BRIDGE_AUTOMATIC_PAIRING: "1"
+      MESHY_BRIDGE_PORT: "43119"
+    ports:
+      - "127.0.0.1:43119:43119"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - .:/workspace:ro
+
+volumes:
+  studio_node_modules:
+  cargo_registry:
+  cargo_git:
+  rust_target:

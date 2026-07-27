@@ -122,6 +122,133 @@ describe("canonical result projector", () => {
     ]);
   });
 
+  it("accepts the separately identified static M0 runtime package", () => {
+    const value = fixture();
+    const contract = {
+      schemaVersion: 1,
+      lane: "M0_BINARY_VERTICAL_SLICE",
+      module: { resref: "m2a_bm0p1", ...id(4, "7") },
+      hak: { resref: "m2a_m0_proof", ...id(3, "a") },
+      model: { resref: "m2a_model", ...id(2, "b") },
+      texture: { resref: "m2a_texture", ...id(60, "d") },
+      appearanceTwoDa: { resref: "appearance", ...id(7, "e") },
+      appearance: { physicalRow: 1, label: "M2A_M0_MESHY_RIGID", modelType: "S", race: "m2a_model" },
+      binaryScene: {
+        moduleResref: "m2a_bm0p1",
+        areaResref: "m2a_bm0a1",
+        orderedHakResrefs: ["m2a_m0_proof"],
+        entryPosition: { x: 10, y: 10, z: 0 },
+        entryDirection: { x: 0, y: 1 },
+        fixture: {
+          templateResref: "nw_dwarfmerc001",
+          appearanceRow: 1,
+          position: { x: 10, y: 14.5, z: 0 },
+          orientation: { x: 1, y: 0 },
+        },
+      },
+      meshEligibility: {
+        eligible: true,
+        checkedMeshCount: 1,
+        eligibleMeshCount: 1,
+        meshTypes: [3],
+        textureResrefs: ["m2a_texture"],
+        rule: "render == 1 && meshType == 3 && vertexCount > 0 && faces.nonEmpty && faceIndicesMatchSingleRawIndexStream && positions.len == vertexCount",
+      },
+    };
+    (value.report as Record<string, unknown>).m0RuntimeFixtureContract = contract;
+    (value.summary as Record<string, unknown>).m0RuntimeFixtureContract = contract;
+    (value.manifest as Record<string, unknown>).m0RuntimeFixtureContract = contract;
+    value.summary.status = "M0_MESHY_STATIC_RIGID_PACKAGE_MATERIALIZED";
+    value.manifest.status = "M0_MESHY_STATIC_RIGID_PACKAGE_MATERIALIZED";
+    const reportJson = JSON.stringify(value.report);
+    value.summary.outputs.report.byteLength = bytes(reportJson).byteLength;
+    const summaryJson = JSON.stringify(value.summary);
+    const manifestJson = JSON.stringify(value.manifest);
+    for (const [artifactId, json] of [["report-json", reportJson], ["summary-json", summaryJson], ["manifest-json", manifestJson]] as const) {
+      const artifact = value.artifacts.find((candidate) => candidate.artifactId === artifactId)!;
+      artifact.bytes = bytes(json);
+      artifact.byteLength = artifact.bytes.byteLength;
+    }
+    const result = projectCanonicalResult(
+      reportJson,
+      summaryJson,
+      manifestJson,
+      value.artifacts,
+    );
+    expect(result.status).toBe("M0_MESHY_STATIC_RIGID_PACKAGE_MATERIALIZED");
+
+    (value.summary as Record<string, unknown>).m0RuntimeFixtureContract = {
+      ...contract,
+      appearance: { ...contract.appearance, race: "stale_resref" },
+    };
+    const staleSummaryJson = JSON.stringify(value.summary);
+    const summaryArtifact = value.artifacts.find((candidate) => candidate.artifactId === "summary-json")!;
+    summaryArtifact.bytes = bytes(staleSummaryJson);
+    summaryArtifact.byteLength = summaryArtifact.bytes.byteLength;
+    expect(() => projectCanonicalResult(
+      reportJson,
+      staleSummaryJson,
+      manifestJson,
+      value.artifacts,
+    )).toThrow("Canonical result identity mismatch at m0RuntimeFixtureContract");
+  });
+
+  it("projects only complete binary-readback creature event evidence with canonical identity", () => {
+    const value = fixture();
+    Object.assign(value.report, {
+      animationEventConformance: {
+        schemaVersion: 1,
+        profile: "COMMON_NATIVE_GAMEPLAY_HOOKS_EXPLICIT_V1",
+        requiredPairCount: 23,
+        satisfiedPairCount: 23,
+        totalEventCount: 24,
+        unknownEventNames: ["owned_marker"],
+        missingPairs: [],
+        complete: true,
+      },
+      animationEventAuthoringCanonical: id(1_024, "8"),
+    });
+    const reportJson = JSON.stringify(value.report);
+    value.summary.outputs.report.byteLength = bytes(reportJson).byteLength;
+    const summaryJson = JSON.stringify(value.summary);
+    const reportArtifact = value.artifacts.find(({ artifactId }) => artifactId === "report-json")!;
+    reportArtifact.bytes = bytes(reportJson);
+    reportArtifact.byteLength = reportArtifact.bytes.byteLength;
+    const summaryArtifact = value.artifacts.find(({ artifactId }) => artifactId === "summary-json")!;
+    summaryArtifact.bytes = bytes(summaryJson);
+    summaryArtifact.byteLength = summaryArtifact.bytes.byteLength;
+
+    const result = projectCanonicalResult(
+      reportJson,
+      summaryJson,
+      value.manifestJson,
+      value.artifacts,
+    );
+    expect(result.animationEventEvidence).toEqual({
+      schemaVersion: 1,
+      profile: "COMMON_NATIVE_GAMEPLAY_HOOKS_EXPLICIT_V1",
+      requiredPairCount: 23,
+      satisfiedPairCount: 23,
+      totalEventCount: 24,
+      unknownEventNames: ["owned_marker"],
+      missingPairs: [],
+      complete: true,
+      authoringCanonical: id(1_024, "8"),
+    });
+
+    (
+      value.report as typeof value.report & {
+        animationEventConformance: { complete: boolean };
+      }
+    ).animationEventConformance.complete = false;
+    expect(() => projectCanonicalResult(
+      JSON.stringify(value.report),
+      summaryJson,
+      value.manifestJson,
+      value.artifacts,
+    )).toThrow("Canonical result identity mismatch at report.animationEventConformance");
+  });
+
   it.each(["report", "summary", "manifest", "artifact"] as const)("rejects malformed %s input without fallback values", (part) => {
     const value = fixture();
     if (part === "report") delete (value.report as { geometry?: unknown }).geometry;

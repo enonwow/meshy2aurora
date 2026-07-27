@@ -1,4 +1,13 @@
 import { useId, type ChangeEvent } from "react";
+import type { StudioTarget } from "../../app/studioSession";
+
+export type TileSurface = "DIRT" | "GRASS" | "STONE" | "WOOD";
+
+export interface TileAuthoringOptions {
+  readonly terrainName: string;
+  readonly surface: TileSurface;
+  readonly interior: boolean;
+}
 
 export interface FileIdentity {
   sha256?: string | null;
@@ -7,17 +16,26 @@ export interface FileIdentity {
 export type FileIdentityValue = FileIdentity | string | null;
 
 export interface SourceInputProps {
+  target?: StudioTarget;
+  tileTargetEnabled?: boolean;
+  tileOptions?: TileAuthoringOptions;
   source?: File;
   appearance?: File;
+  animationEvents?: File;
   sourceIdentity?: FileIdentityValue;
   appearanceIdentity?: FileIdentityValue;
   sourceError?: string;
   appearanceError?: string;
+  animationEventsError?: string;
   onSelectSource: (file: File) => void;
   onSelectAppearance: (file: File) => void;
+  onSelectAnimationEvents: (file: File) => void;
   onRemoveSource: () => void;
   onRemoveAppearance: () => void;
+  onRemoveAnimationEvents: () => void;
   onClear: () => void;
+  onTargetChange?: (target: StudioTarget) => void;
+  onTileOptionsChange?: (options: TileAuthoringOptions) => void;
 }
 
 interface InputRowProps {
@@ -30,6 +48,7 @@ interface InputRowProps {
   label: string;
   onRemove: () => void;
   onSelect: (file: File) => void;
+  required?: boolean;
 }
 
 export function formatFileSize(size: number): string {
@@ -59,6 +78,7 @@ function InputRow({
   label,
   onRemove,
   onSelect,
+  required = true,
 }: InputRowProps) {
   const detailsId = `${inputId}-details`;
   const errorId = `${inputId}-error`;
@@ -90,7 +110,7 @@ function InputRow({
           className="source-file-input"
           type="file"
           accept={accept}
-          required
+          required={required}
           aria-describedby={`${detailsId}${error ? ` ${errorId}` : ""}`}
           aria-invalid={error ? true : undefined}
           onClick={(event) => { event.currentTarget.value = ""; }}
@@ -107,22 +127,30 @@ function InputRow({
 }
 
 export function InputsPanel({
+  target = "CREATURE",
+  tileTargetEnabled = false,
   source,
   appearance,
+  animationEvents,
   sourceIdentity,
   appearanceIdentity,
   sourceError,
   appearanceError,
+  animationEventsError,
   onSelectSource,
   onSelectAppearance,
+  onSelectAnimationEvents,
   onRemoveSource,
   onRemoveAppearance,
+  onRemoveAnimationEvents,
   onClear,
+  onTargetChange,
 }: SourceInputProps) {
   const headingId = useId();
   const sourceInputId = useId();
   const appearanceInputId = useId();
-  const hasSelection = Boolean(source || appearance);
+  const animationEventsInputId = useId();
+  const hasSelection = Boolean(source || appearance || animationEvents);
 
   return (
     <aside className="panel inputs-panel" aria-labelledby={headingId}>
@@ -132,6 +160,21 @@ export function InputsPanel({
           Clear
         </button>
       </header>
+
+      {onTargetChange ? (
+        <label>
+          Conversion target
+          <select
+            aria-label="Conversion target"
+            value={target}
+            onChange={(event) => onTargetChange(event.currentTarget.value as StudioTarget)}
+          >
+            <option value="CREATURE">Creature</option>
+            <option value="PLACEABLE">Placeable</option>
+            {tileTargetEnabled ? <option value="TILE">Tile</option> : null}
+          </select>
+        </label>
+      ) : null}
 
       <ul className="inputs-panel__list">
         <InputRow
@@ -145,21 +188,34 @@ export function InputsPanel({
           onSelect={onSelectSource}
           onRemove={onRemoveSource}
         />
-        <InputRow
+        {target !== "TILE" ? <InputRow
           inputId={appearanceInputId}
-          label="Base appearance table"
-          description="appearance.2da required"
+          label="Base model table"
+          description="appearance.2da for creatures or placeables.2da for placeables"
           accept=".2da"
           file={appearance}
           identity={appearanceIdentity}
           error={appearanceError}
           onSelect={onSelectAppearance}
           onRemove={onRemoveAppearance}
-        />
+        /> : null}
+        {target === "CREATURE" ? <InputRow
+          inputId={animationEventsInputId}
+          label="Creature animation events"
+          description="optional strict V1 JSON with caller-owned event timings for exact 42-state creatures"
+          accept=".json,application/json"
+          file={animationEvents}
+          error={animationEventsError}
+          onSelect={onSelectAnimationEvents}
+          onRemove={onRemoveAnimationEvents}
+          required={false}
+        /> : null}
       </ul>
 
       {!hasSelection ? (
-        <p className="inputs-panel__empty">No files selected yet. Add the two required local inputs to get started.</p>
+        <p className="inputs-panel__empty">
+          No files selected yet. Add the required local {target === "TILE" ? "GLB" : "inputs"} to get started.
+        </p>
       ) : null}
     </aside>
   );

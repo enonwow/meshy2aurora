@@ -2,16 +2,58 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import sourceUrl from "../.generated/owned-package/generated/source.glb?url";
-import expectedHakUrl from "../.generated/owned-package/generated/m2a_codex_aproof.hak?url";
+import fullNative42SourceUrl from "../.generated/owned-full42-package/generated/source.glb?url";
+import proceduralHumanoidSourceUrl from "../../../../test-assets/meshy/incoming/h2-clockwork-sentinel-1500.glb?url";
 import appearanceUrl from "../fixtures/appearance.2da?url";
+import placeablesUrl from "../fixtures/placeables.2da?url";
 import { buildM7PayloadEnvelope } from "../../src/features/m7/envelope";
 import { projectCanonicalResult } from "../../src/features/results/projectCanonicalResult";
+import { projectPlaceableResult } from "../../src/features/results/projectPlaceableResult";
+import { projectTileResult } from "../../src/features/results/projectTileResult";
 import { projectCanonicalReadback } from "../../src/features/results/projectReadback";
 import { StudioWorkerClient } from "../../src/worker/client";
 import { App } from "../../src/App";
 
 const clients: StudioWorkerClient[] = [];
 const roots: Root[] = [];
+const COMMON_NATIVE_DIRECT_CREATURE_EVENT_PAIRS_V1 = [
+  ["ca1slashl", "hit"],
+  ["ca1slashr", "hit"],
+  ["ca1stab", "hit"],
+  ["ca1stab", "snd_footstep"],
+  ["ccastout", "cast"],
+  ["ccloseh", "hit"],
+  ["cclosel", "hit"],
+  ["ccturnr", "snd_footstep"],
+  ["ccwalkb", "snd_footstep"],
+  ["ccwalkf", "snd_footstep"],
+  ["ccwalkl", "snd_footstep"],
+  ["ccwalkr", "snd_footstep"],
+  ["cdamagel", "snd_footstep"],
+  ["cdamager", "snd_footstep"],
+  ["cdamages", "snd_footstep"],
+  ["cdodgelr", "snd_footstep"],
+  ["cdodges", "snd_footstep"],
+  ["ckdbck", "snd_hitground"],
+  ["creach", "hit"],
+  ["creach", "snd_footstep"],
+  ["crun", "snd_footstep"],
+  ["ctaunt", "snd_footstep"],
+  ["cwalk", "snd_footstep"],
+] as const;
+
+function commonNativeEventAuthoringJson(): string {
+  const clips = new Map<string, Array<{ timeSeconds: number; name: string }>>();
+  for (const [clipName, name] of COMMON_NATIVE_DIRECT_CREATURE_EVENT_PAIRS_V1) {
+    const events = clips.get(clipName) ?? [];
+    events.push({ timeSeconds: 0.5, name });
+    clips.set(clipName, events);
+  }
+  return JSON.stringify({
+    schemaVersion: 1,
+    clips: [...clips].map(([clipName, events]) => ({ clipName, events })),
+  });
+}
 
 async function fetchBytes(url: string): Promise<ArrayBuffer> {
   const response = await fetch(url);
@@ -89,6 +131,39 @@ function withoutRigAndAnimations(glb: ArrayBuffer): ArrayBuffer {
   return result.buffer;
 }
 
+function asStaticPlaceable(glb: ArrayBuffer): ArrayBuffer {
+  const input = new Uint8Array(glb);
+  const view = new DataView(glb);
+  const jsonLength = view.getUint32(12, true);
+  const jsonEnd = 20 + jsonLength;
+  const root = JSON.parse(new TextDecoder().decode(input.slice(20, jsonEnd))) as {
+    skins: unknown[];
+    animations: unknown[];
+    scenes: Array<{ nodes: number[] }>;
+    nodes: Array<Record<string, unknown>>;
+    meshes: Array<{ primitives: Array<{ attributes: Record<string, unknown> }> }>;
+  };
+  root.skins = [];
+  root.animations = [];
+  root.scenes[0].nodes = [0];
+  root.nodes = [{ name: "placeable-source-root", mesh: 0 }];
+  delete root.meshes[0].primitives[0].attributes.JOINTS_0;
+  delete root.meshes[0].primitives[0].attributes.WEIGHTS_0;
+  const json = new TextEncoder().encode(JSON.stringify(root));
+  const paddedLength = (json.byteLength + 3) & ~3;
+  const result = new Uint8Array(20 + paddedLength + input.byteLength - jsonEnd);
+  result.set(new TextEncoder().encode("glTF"), 0);
+  const outputView = new DataView(result.buffer);
+  outputView.setUint32(4, 2, true);
+  outputView.setUint32(8, result.byteLength, true);
+  outputView.setUint32(12, paddedLength, true);
+  result.set(new TextEncoder().encode("JSON"), 16);
+  result.fill(0x20, 20, 20 + paddedLength);
+  result.set(json, 20);
+  result.set(input.slice(jsonEnd), 20 + paddedLength);
+  return result.buffer;
+}
+
 const provenance = (providerTaskId: string) => ({
   provider: "MESHY",
   providerTaskId,
@@ -107,10 +182,13 @@ afterEach(async () => {
 });
 
 describe("local file to canonical web-WASM Worker integration", () => {
-  it("materializes the owned synthetic GLB as the native-identical HAK and reports", async () => {
-    const source = await fixtureFile(sourceUrl, "source-owned.synthetic.glb", "model/gltf-binary");
+  it("materializes the owned single-idle H2 through the procedural 42-state Worker lane", async () => {
+    const source = await fixtureFile(
+      proceduralHumanoidSourceUrl,
+      "h2-clockwork-sentinel-1500.glb",
+      "model/gltf-binary",
+    );
     const appearance = await fixtureFile(appearanceUrl, "appearance.2da", "text/plain");
-    const expectedHak = await fetchBytes(expectedHakUrl);
     const sourceGlb = await source.arrayBuffer();
     const appearanceTwoDa = await appearance.arrayBuffer();
     const client = new StudioWorkerClient();
@@ -121,10 +199,11 @@ describe("local file to canonical web-WASM Worker integration", () => {
 
     const response = await client.request(
       {
-        requestId: "integration-build",
+        requestId: "integration-procedural-humanoid-build",
         type: "BUILD_MODEL_PACKAGE",
         sourceGlb,
         appearanceTwoDa,
+        packageLane: "SKINNED_PROCEDURAL_HUMANOID_42",
       },
       [sourceGlb, appearanceTwoDa],
     );
@@ -144,14 +223,28 @@ describe("local file to canonical web-WASM Worker integration", () => {
     expect(hak).toBeDefined();
     expect(reportArtifact).toBeDefined();
     expect(hak?.provenance).toBe("M2A_WASM_WORKER");
-    expect(new Uint8Array(hak!.bytes)).toEqual(new Uint8Array(expectedHak));
     expect(new TextDecoder().decode(hak!.bytes.slice(0, 8))).toBe("HAK V1.0");
     expect(hak?.byteLength).toBe(hak?.bytes.byteLength);
     expect(hak?.sha256).toBe(await sha256(hak!.bytes));
 
     const report = JSON.parse(response.reportJson) as {
-      geometry?: { triangleCount?: number };
+      geometry?: {
+        triangleCount?: number;
+        activeJointCount?: number;
+        outputSegmentDeformation?: string;
+      };
       texture?: { width?: number; height?: number };
+      animationCompleteness?: {
+        profile?: string;
+        requiredClipCount?: number;
+        explicitClipCount?: number;
+        proceduralClipCount?: number;
+        fallbackAliasCount?: number;
+        complete?: boolean;
+      };
+      animationBehavior?: { behaviorCandidateEligible?: boolean };
+      animationEventConformance?: { requiredPairCount?: number; complete?: boolean };
+      skinAnimationConformance?: { requiredClipCount?: number; complete?: boolean };
     };
     const summary = JSON.parse(response.summaryJson) as {
       status?: string;
@@ -161,14 +254,46 @@ describe("local file to canonical web-WASM Worker integration", () => {
       packageManifest?: { resources?: unknown[] };
     };
     const readback = JSON.parse(response.readbackJson) as {
-      nodeTree?: { roots?: unknown[] };
+      nodeTree?: { roots?: Array<{ name?: string; controllers?: unknown[] }> };
+      animations?: Array<{
+        name?: string;
+        animationType?: number;
+        nodeTree?: { roots?: unknown[] };
+      }>;
     };
     expect(report.geometry?.triangleCount).toBeGreaterThan(1);
-    expect(report.texture).toMatchObject({ width: 2, height: 2 });
+    expect(report.geometry?.activeJointCount).toBeGreaterThan(1);
+    expect(report.geometry?.outputSegmentDeformation).toBe("SKIN");
+    expect(report.animationCompleteness).toMatchObject({
+      profile: "FULL_NATIVE42_PROCEDURAL_HUMANOID_V1",
+      requiredClipCount: 42,
+      explicitClipCount: 1,
+      proceduralClipCount: 41,
+      fallbackAliasCount: 0,
+      complete: true,
+    });
+    expect(report.animationBehavior?.behaviorCandidateEligible).toBe(true);
+    expect(report.animationEventConformance).toMatchObject({
+      requiredPairCount: 23,
+      complete: true,
+    });
+    expect(report.skinAnimationConformance).toMatchObject({
+      requiredClipCount: 5,
+      complete: true,
+    });
     expect(summary.status).toBe("M6_MODEL_PACKAGE_MATERIALIZED");
     expect(summary.inputGlb?.byteLength).toBe(source.size);
     expect(manifest.packageManifest?.resources).toHaveLength(3);
-    expect(readback.nodeTree?.roots?.length).toBeGreaterThan(0);
+    expect(readback.nodeTree?.roots).toHaveLength(1);
+    expect(readback.nodeTree?.roots?.[0]).toMatchObject({
+      name: "m2a_m6p01",
+      controllers: [],
+    });
+    expect(readback.animations).toHaveLength(42);
+    expect(readback.animations?.every((animation) => animation.animationType === 5)).toBe(true);
+    expect(readback.animations?.every(
+      (animation) => animation.nodeTree?.roots?.length === 1,
+    )).toBe(true);
     expect(new TextDecoder().decode(reportArtifact!.bytes)).toBe(response.reportJson);
     const snapshot = projectCanonicalResult(
       response.reportJson,
@@ -176,21 +301,296 @@ describe("local file to canonical web-WASM Worker integration", () => {
       response.manifestJson,
       response.artifacts,
     );
-    expect(snapshot).toMatchObject({
-      status: "M6_MODEL_PACKAGE_MATERIALIZED",
-      geometry: { vertices: 24, triangles: 12, joints: 2, deformation: "SKIN" },
-      animation: {
-        sourceName: "owned-linear-pause",
-        outputName: "cpause1",
-        durationSeconds: 1.25,
-        hasMotion: true,
-      },
-      texture: { width: 2, height: 2, pixelFormat: "RGBA8", byteLength: 60 },
-      resrefs: { model: "m2a_m6p01", texture: "m2a_m6t01" },
-      appearance: { appendedRow: 1, sourcePrefixPreserved: true },
-      hak: { entryCount: 3 },
-    });
+    expect(snapshot.status).toBe("M6_MODEL_PACKAGE_MATERIALIZED");
+    expect(snapshot.geometry).toMatchObject({ joints: report.geometry?.activeJointCount, deformation: "SKIN" });
+    expect(snapshot.resrefs).toMatchObject({ model: "m2a_m6p01", texture: "m2a_m6t01" });
+    expect(snapshot.hak.entryCount).toBe(3);
     expect(projectCanonicalReadback(response.readbackJson).nodeTree.roots.length).toBeGreaterThan(0);
+  }, 60_000);
+
+  it("rejects the quarantined corrupt-draw H1 lane without producing artifacts", async () => {
+    const sourceGlb = await fetchBytes(sourceUrl);
+    const appearanceTwoDa = await fetchBytes(appearanceUrl);
+    const client = new StudioWorkerClient();
+    clients.push(client);
+
+    await expect(client.request(
+      {
+        requestId: "legacy-corrupt-draw-lane-rejected",
+        type: "BUILD_MODEL_PACKAGE",
+        sourceGlb,
+        appearanceTwoDa,
+        packageLane: "H1_SKINNED" as never,
+      },
+      [sourceGlb, appearanceTwoDa],
+    )).rejects.toThrow("Unsupported model package lane: H1_SKINNED");
+  });
+
+  it("carries caller-owned gameplay events through the real Full-42 WASM Worker lane", async () => {
+    const sourceGlb = await fetchBytes(fullNative42SourceUrl);
+    const appearanceTwoDa = await fetchBytes(appearanceUrl);
+    const client = new StudioWorkerClient();
+    clients.push(client);
+    const response = await client.request(
+      {
+        requestId: "integration-full42-events",
+        type: "BUILD_MODEL_PACKAGE",
+        sourceGlb,
+        appearanceTwoDa,
+        packageLane: "H1_SKINNED_FULL_42_EVENTS",
+        eventAuthoringJson: commonNativeEventAuthoringJson(),
+      },
+      [sourceGlb, appearanceTwoDa],
+    );
+
+    expect(response).toMatchObject({ ok: true, type: "MODEL_PACKAGE_BUILT" });
+    if (!response.ok || response.type !== "MODEL_PACKAGE_BUILT") {
+      throw new Error("real Worker did not return an eventful Full-42 package");
+    }
+    const report = JSON.parse(response.reportJson) as {
+      animationEventConformance?: {
+        requiredPairCount?: number;
+        satisfiedPairCount?: number;
+        totalEventCount?: number;
+        complete?: boolean;
+      };
+      animationEventAuthoringCanonical?: {
+        byteLength?: number;
+        sha256?: string;
+      };
+    };
+    expect(report.animationEventConformance).toMatchObject({
+      requiredPairCount: 23,
+      satisfiedPairCount: 23,
+      totalEventCount: 23,
+      complete: true,
+    });
+    expect(report.animationEventAuthoringCanonical?.byteLength).toBeGreaterThan(0);
+    expect(report.animationEventAuthoringCanonical?.sha256).toMatch(/^[0-9a-f]{64}$/);
+    const snapshot = projectCanonicalResult(
+      response.reportJson,
+      response.summaryJson,
+      response.manifestJson,
+      response.artifacts,
+    );
+    expect(snapshot.animationEventEvidence).toMatchObject({
+      requiredPairCount: 23,
+      satisfiedPairCount: 23,
+      totalEventCount: 23,
+      complete: true,
+    });
+    const readback = JSON.parse(response.readbackJson) as {
+      animations?: Array<{ name?: string; events?: Array<{ time?: number; name?: string }> }>;
+    };
+    const cast = readback.animations
+      ?.find(({ name }) => name === "ccastout")
+      ?.events?.find(({ name }) => name === "cast");
+    expect(cast).toEqual({ time: 0.5, name: "cast" });
+
+    const malformedSource = await fetchBytes(fullNative42SourceUrl);
+    const malformedAppearance = await fetchBytes(appearanceUrl);
+    await expect(client.request(
+      {
+        requestId: "integration-full42-events-malformed",
+        type: "BUILD_MODEL_PACKAGE",
+        sourceGlb: malformedSource,
+        appearanceTwoDa: malformedAppearance,
+        packageLane: "H1_SKINNED_FULL_42_EVENTS",
+        eventAuthoringJson: "{",
+      },
+      [malformedSource, malformedAppearance],
+    )).rejects.toThrow("M6-ANIMATION-EVENT-AUTHORING-JSON");
+  }, 30_000);
+
+  it("materializes a static placeable through the real WASM Worker without a creature fork", async () => {
+    const client = new StudioWorkerClient();
+    clients.push(client);
+    const inspectionSource = asStaticPlaceable(await fetchBytes(sourceUrl));
+    const inspectionResponse = await client.request({
+      requestId: "placeable-authoring-inspection",
+      type: "INSPECT_SOURCE",
+      sourceGlb: inspectionSource,
+      target: "PLACEABLE",
+    }, [inspectionSource]);
+    expect(inspectionResponse).toMatchObject({ ok: true, type: "SOURCE_INSPECTED" });
+    if (!inspectionResponse.ok || inspectionResponse.type !== "SOURCE_INSPECTED") {
+      throw new Error("real Worker did not return placeable authoring inspection");
+    }
+    const authoring = JSON.parse(inspectionResponse.placeableAuthoringJson!) as {
+      document: {
+        elements: Array<{
+          transform: {
+            translation: [number, number, number];
+            scale: [number, number, number];
+          };
+        }>;
+      };
+    };
+    authoring.document.elements[0].transform.translation = [0.25, 0, 0];
+    authoring.document.elements[0].transform.scale = [1.2, 1.2, 1.2];
+
+    const sourceGlb = asStaticPlaceable(await fetchBytes(sourceUrl));
+    const placeablesTwoDa = await fetchBytes(placeablesUrl);
+    const identity = {
+      moduleResref: "m2a_s1_plc_mod",
+      moduleFileName: "m2a_s1_plc_mod.mod",
+      moduleDisplayName: "Meshy2Aurora S1 Placeable Proof",
+      areaResref: "m2a_s1_plc_ar",
+      areaName: "Meshy2Aurora S1 Ritual Pedestal",
+      hakResref: "m2a_s1_plc_hak",
+      hakFileName: "m2a_s1_plc_hak.hak",
+      modelResref: "m2a_s1_plc_ped",
+      textureResref: "m2a_s1_plc_tex",
+      blueprintResref: "m2a_s1_plc_utp",
+      objectTag: "m2a_s1_ritual_pedestal",
+      displayName: "Meshy Ritual Pedestal",
+    };
+    const response = await client.request({
+      requestId: "placeable-build",
+      type: "BUILD_PLACEABLE_PACKAGE",
+      sourceGlb,
+      placeablesTwoDa,
+      identityJson: JSON.stringify(identity),
+      placementJson: JSON.stringify({ x: 10, y: 14.5, z: 0, bearing: 0 }),
+      paletteId: 7,
+      authoringJson: JSON.stringify(authoring.document),
+    }, [sourceGlb, placeablesTwoDa]);
+
+    expect(sourceGlb.byteLength).toBe(0);
+    expect(placeablesTwoDa.byteLength).toBe(0);
+    expect(response).toMatchObject({ ok: true, type: "PLACEABLE_PACKAGE_BUILT" });
+    if (!response.ok || response.type !== "PLACEABLE_PACKAGE_BUILT") {
+      throw new Error("real Worker did not return a placeable package");
+    }
+    const result = projectPlaceableResult(response.reportJson, response.artifacts);
+    expect(result).toMatchObject({
+      status: "OFFLINE_ADMISSION_PASSED",
+      profile: "STATIC_PLACEABLE",
+      appearanceRow: 1,
+      modelResref: "m2a_s1_plc_ped",
+      blueprintResref: "m2a_s1_plc_utp",
+      modelVisibility: "not_tested",
+      proofCompleteness: "missing",
+      authoring: expect.objectContaining({
+        renderableElementCount: 1,
+        collisionElementCount: 1,
+        shadowElementCount: 1,
+      }),
+    });
+    expect(result.resources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: "MODEL", resourceType: 2002 }),
+      expect.objectContaining({ role: "PLACEABLES_2DA", resourceType: 2017 }),
+      expect.objectContaining({ role: "PLACEABLE_BLUEPRINT", resourceType: 2044 }),
+      expect.objectContaining({ role: "PLACEABLE_PALETTE", resourceType: 2030 }),
+    ]));
+    const hak = response.artifacts.find(({ kind }) => kind === "HAK");
+    const module = response.artifacts.find(({ kind }) => kind === "MODULE");
+    expect(new TextDecoder().decode(hak!.bytes.slice(0, 8))).toBe("HAK V1.0");
+    expect(new TextDecoder().decode(module!.bytes.slice(0, 8))).toBe("MOD V1.0");
+    expect(hak!.sha256).toBe(await sha256(hak!.bytes));
+    expect(module!.sha256).toBe(await sha256(module!.bytes));
+    await expectExactJsonArtifact(
+      response.artifacts,
+      "placeable-materialization-report.json",
+      response.reportJson,
+    );
+  }, 30_000);
+
+  it("materializes TileStaticV1 with MDL, semantic AABB, WOK, SET, HAK and 2x2 MOD in the real Worker", async () => {
+    const sourceGlb = asStaticPlaceable(await fetchBytes(sourceUrl));
+    const client = new StudioWorkerClient();
+    clients.push(client);
+    const response = await client.request({
+      requestId: "tile-build",
+      type: "BUILD_TILE_PACKAGE",
+      sourceGlb,
+      optionsJson: JSON.stringify({
+        schemaVersion: 1,
+        identity: {
+          moduleResref: "m2atilestv1",
+          moduleFileName: "m2a_tile_static_v1.mod",
+          moduleDisplayName: "Meshy2Aurora Tile Static V1",
+          areaResref: "m2atilearea",
+          areaName: "M2A Tile Static 2x2",
+          hakResref: "m2atilestv1",
+          hakFileName: "m2a_tile_static_v1.hak",
+          tilesetResref: "m2atilesetv1",
+          modelResref: "m2atilemdl1",
+          textureResref: "m2atiletex1",
+          imageMapResref: "m2atilemap1",
+        },
+        interior: false,
+        terrainName: "Grass",
+        surface: "GRASS",
+      }),
+    }, [sourceGlb]);
+
+    expect(sourceGlb.byteLength).toBe(0);
+    expect(response).toMatchObject({ ok: true, type: "TILE_PACKAGE_BUILT" });
+    if (!response.ok || response.type !== "TILE_PACKAGE_BUILT") {
+      throw new Error("real Worker did not return a tile package");
+    }
+    const result = projectTileResult(
+      response.reportJson,
+      response.wokReadbackJson,
+      response.setReadbackJson,
+      response.artifacts,
+    );
+    expect(result).toMatchObject({
+      status: "ready_for_owner_proof",
+      profile: "TileStaticV1",
+      moduleFileName: "m2a_tile_static_v1.mod",
+      moduleDisplayName: "Meshy2Aurora Tile Static V1",
+      areaName: "M2A Tile Static 2x2",
+      areaSize: [2, 2],
+      areaTileCount: 4,
+      entryPosition: [5, 5, 0],
+      tileId: 0,
+      modelResref: "m2atilemdl1",
+      wokResref: "m2atilemdl1",
+      walkmeshClassToken: "msb01",
+      surfaceId: 3,
+      modelVisibility: "not_tested",
+      proofCompleteness: "missing",
+      navigationSpawnWalkable: "offline_verified",
+      navigationSeamWalkable: "offline_verified",
+    });
+    expect(result.modelTriangleCount).toBeGreaterThan(0);
+    expect(result.wokTriangleCount).toBe(8);
+    expect(result.aabbEntryCount).toBe(15);
+    expect(response.artifacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "HAK", fileName: "m2a_tile_static_v1.hak" }),
+      expect.objectContaining({ kind: "MODULE", fileName: "m2a_tile_static_v1.mod" }),
+      expect.objectContaining({ kind: "MODEL", fileName: "m2atilemdl1.mdl" }),
+      expect.objectContaining({ kind: "WOK", fileName: "m2atilemdl1.wok" }),
+      expect.objectContaining({ kind: "SET", fileName: "m2atilesetv1.set" }),
+      expect.objectContaining({ kind: "TEXTURE", fileName: "m2atiletex1.tga" }),
+    ]));
+    const modelReadback = JSON.parse(response.modelReadbackJson) as {
+      model?: { classification?: number };
+      nodeTree?: {
+        roots?: Array<{
+          contentFlags?: number;
+          aabb?: { entries?: unknown[] };
+          children?: Array<{ contentFlags?: number; aabb?: { entries?: unknown[] } }>;
+        }>;
+      };
+    };
+    const readbackNodes = (modelReadback.nodeTree?.roots ?? []).flatMap(
+      (node) => [node, ...(node.children ?? [])],
+    );
+    expect(modelReadback.model?.classification).toBe(2);
+    expect(readbackNodes.some(({ contentFlags, aabb }) =>
+      contentFlags === 0x221 && aabb?.entries?.length === 15
+    )).toBe(true);
+    expect(response.wokReadbackJson).toContain('"surfaceId":3');
+    expect(response.setReadbackJson).toContain('"Model","m2atilemdl1"');
+    expect(response.setReadbackJson).toContain('"WalkMesh","msb01"');
+    await expectExactJsonArtifact(
+      response.artifacts,
+      "tile-materialization-report.json",
+      response.reportJson,
+    );
   }, 30_000);
 
   it("returns deterministic deferred M7 JSON from local Files without claiming completion", async () => {
@@ -306,7 +706,11 @@ describe("local file to canonical web-WASM Worker integration", () => {
   }, 30_000);
 
   it("renders and resets the production App canonical result from local files", async () => {
-    const source = await fixtureFile(sourceUrl, "source-owned.synthetic.glb", "model/gltf-binary");
+    const source = await fixtureFile(
+      proceduralHumanoidSourceUrl,
+      "h2-clockwork-sentinel-1500.glb",
+      "model/gltf-binary",
+    );
     const appearance = await fixtureFile(appearanceUrl, "appearance.2da", "text/plain");
     const container = document.createElement("div");
     document.body.append(container);
@@ -334,15 +738,23 @@ describe("local file to canonical web-WASM Worker integration", () => {
 
     const workspace = container.querySelector<HTMLElement>(".review-model")!;
     expect(workspace.textContent).toContain("Conversion Readiness");
-    expect(workspace.textContent).toContain("24");
-    expect(workspace.textContent).toContain("12");
+    expect(workspace.textContent).toContain("Animation clips");
+    expect(workspace.textContent).toContain("42");
+    expect(workspace.textContent).toContain("23/23");
     expect(workspace.textContent).toContain("OPEN_M6");
     expect(workspace.textContent).toContain("Verified by binary readback");
     expect(workspace.textContent).toContain("Metrics available in both canonical snapshots");
     expect(container.querySelector('[aria-label="Canonical Worker artifact downloads"]')?.textContent)
       .toContain("GENERATED ARTIFACTS");
 
-    await select(sourceInput, new File([await fetchBytes(sourceUrl)], "replacement.glb", { type: "model/gltf-binary" }));
+    await select(
+      sourceInput,
+      new File(
+        [await fetchBytes(proceduralHumanoidSourceUrl)],
+        "replacement.glb",
+        { type: "model/gltf-binary" },
+      ),
+    );
     await expect.poll(() => container.querySelector("#review-model-heading")).toBeNull();
   }, 30_000);
 });

@@ -95,7 +95,36 @@ fn parses_both_explicit_skin_variants_without_using_map_count_as_classifier() {
     assert_eq!(legacy.vertex_weights.len(), 3);
     assert_eq!(extended.bone_references.len(), 3);
     assert_eq!(legacy.inverse_bone_rotations_raw[0], [1.0, 0.0, 0.0, 0.0]);
-    assert_eq!(extended.bone_constants[0], [7, 8]);
+    assert_eq!(extended.bone_constants[0], 0x0008_0007);
+}
+
+#[test]
+fn skin_bone_constants_preserve_the_complete_u32_word() {
+    let mut bytes = build_skin_binary_mdl(true);
+    let constants_pointer = inspect_binary_mdl(&bytes)
+        .expect("baseline skin fixture")
+        .node_tree
+        .roots[0]
+        .skin
+        .as_ref()
+        .expect("skin report")
+        .constants_header
+        .pointer as usize;
+    write_u32(
+        &mut bytes,
+        FILE_HEADER_SIZE + constants_pointer,
+        0x89ab_cdef,
+    );
+
+    let report = inspect_binary_mdl(&bytes).expect("full-width bone constant must parse");
+    assert_eq!(
+        report.node_tree.roots[0]
+            .skin
+            .as_ref()
+            .expect("skin report")
+            .bone_constants[0],
+        0x89ab_cdef
+    );
 }
 
 #[test]
@@ -494,8 +523,11 @@ fn bone_reference_uses_map_count_not_profile_width() {
 }
 
 #[test]
-fn additive_trailing_families_keep_common_mesh_prefix_and_only_report_unsupported() {
-    for deferred in [0x080_u32, 0x100, 0x200] {
+fn additive_unsupported_trailing_families_keep_common_mesh_prefix() {
+    // AnimMesh and DanglyMesh remain deferred families. AABB (0x200) is
+    // intentionally excluded: it is now a supported family and therefore
+    // requires a valid tree root instead of being reported as unsupported.
+    for deferred in [0x080_u32, 0x100] {
         let mut bytes = build_deep_binary_mdl();
         write_u32(&mut bytes, ROOT_NODE_ABSOLUTE + 0x6c, 0x021 | deferred);
         let report = inspect_binary_mdl(&bytes).expect("trailing family keeps mesh prefix");

@@ -1,0 +1,8 @@
+[package]
+name = "m2a-win32-noreplace"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lints.rust]
+unsafe_code = "deny"

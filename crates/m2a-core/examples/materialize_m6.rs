@@ -3,9 +3,12 @@ use std::{env, fs, path::PathBuf, process::ExitCode};
 use m2a_core::{
     erf::{ErfArchive, ErfFileType},
     model_pipeline::{
-        build_m6_model_package_v1, build_meshy_h1_model_package_v1, write_m6_proof_packet_v1,
+        DirectCreatureAnimationProfileV1, build_m6_model_package_v1,
+        build_meshy_h1_model_package_v1, build_meshy_h1_model_package_v2,
+        build_meshy_h1_rigid_runtime_diagnostic_package_v1, build_meshy_m0_static_rigid_package_v1,
+        write_m0_proof_packet_v1, write_m6_proof_packet_v1,
     },
-    owned_fixture::synthetic_owned_m6_glb_v1,
+    owned_fixture::{synthetic_owned_m6_full_native_42_glb_v1, synthetic_owned_m6_glb_v1},
 };
 
 #[derive(Debug)]
@@ -18,7 +21,10 @@ enum AppearanceInput {
 enum SourceInput {
     SyntheticOwned,
     SyntheticOwnedH1,
+    SyntheticOwnedH1Full42,
     MeshyH1(PathBuf),
+    MeshyH1RigidRuntimeDiagnostic(PathBuf),
+    MeshyM0StaticIsolated(PathBuf),
 }
 
 #[derive(Debug)]
@@ -57,23 +63,62 @@ fn run() -> Result<(), String> {
             fs::read(&path).map_err(|error| format!("M6-INPUT-READ-FAILED: {error}"))?
         }
     };
-    let artifact = match arguments.source {
+    let (artifact_result, m0_packet_kind) = match arguments.source {
         SourceInput::SyntheticOwned => {
             let source_glb = synthetic_owned_m6_glb_v1().map_err(|error| error.to_string())?;
-            build_m6_model_package_v1(&source_glb, &appearance)
+            (build_m6_model_package_v1(&source_glb, &appearance), None)
         }
         SourceInput::SyntheticOwnedH1 => {
             let source_glb = synthetic_owned_m6_glb_v1().map_err(|error| error.to_string())?;
-            build_meshy_h1_model_package_v1(&source_glb, &appearance)
+            (
+                build_meshy_h1_model_package_v1(&source_glb, &appearance),
+                None,
+            )
+        }
+        SourceInput::SyntheticOwnedH1Full42 => {
+            let source_glb =
+                synthetic_owned_m6_full_native_42_glb_v1().map_err(|error| error.to_string())?;
+            (
+                build_meshy_h1_model_package_v2(
+                    &source_glb,
+                    &appearance,
+                    DirectCreatureAnimationProfileV1::FullNative42ExplicitV1,
+                ),
+                None,
+            )
         }
         SourceInput::MeshyH1(path) => {
             let source_glb =
                 fs::read(&path).map_err(|error| format!("M6-INPUT-READ-FAILED: {error}"))?;
-            build_meshy_h1_model_package_v1(&source_glb, &appearance)
+            (
+                build_meshy_h1_model_package_v1(&source_glb, &appearance),
+                None,
+            )
         }
-    }
-    .map_err(|error| serde_json::to_string(&error).unwrap_or_else(|_| error.to_string()))?;
-    write_m6_proof_packet_v1(&arguments.output_dir, &artifact)
+        SourceInput::MeshyH1RigidRuntimeDiagnostic(path) => {
+            let source_glb =
+                fs::read(&path).map_err(|error| format!("M6-INPUT-READ-FAILED: {error}"))?;
+            (
+                build_meshy_h1_rigid_runtime_diagnostic_package_v1(&source_glb, &appearance),
+                None,
+            )
+        }
+        SourceInput::MeshyM0StaticIsolated(path) => {
+            let source_glb =
+                fs::read(&path).map_err(|error| format!("M6-INPUT-READ-FAILED: {error}"))?;
+            (
+                build_meshy_m0_static_rigid_package_v1(&source_glb, &appearance),
+                Some(()),
+            )
+        }
+    };
+    let artifact = artifact_result
+        .map_err(|error| serde_json::to_string(&error).unwrap_or_else(|_| error.to_string()))?;
+    let write_result = match m0_packet_kind {
+        Some(()) => write_m0_proof_packet_v1(&arguments.output_dir, &artifact),
+        None => write_m6_proof_packet_v1(&arguments.output_dir, &artifact),
+    };
+    write_result
         .map_err(|error| serde_json::to_string(&error).unwrap_or_else(|_| error.to_string()))?;
     println!("{}", String::from_utf8_lossy(&artifact.summary_json).trim());
     Ok(())
@@ -88,9 +133,30 @@ fn parse_arguments(arguments: impl IntoIterator<Item = String>) -> Result<Argume
         match argument.as_str() {
             "--synthetic-owned" => set_source(&mut source, SourceInput::SyntheticOwned)?,
             "--synthetic-owned-h1" => set_source(&mut source, SourceInput::SyntheticOwnedH1)?,
+            "--synthetic-owned-h1-full-42" => {
+                set_source(&mut source, SourceInput::SyntheticOwnedH1Full42)?
+            }
             "--meshy-h1-source" => {
                 let path = required_value(&mut iterator, "--meshy-h1-source")?;
                 set_source(&mut source, SourceInput::MeshyH1(path.into()))?;
+            }
+            "--meshy-h1-rigid-runtime-diagnostic-source" => {
+                let path =
+                    required_value(&mut iterator, "--meshy-h1-rigid-runtime-diagnostic-source")?;
+                set_source(
+                    &mut source,
+                    SourceInput::MeshyH1RigidRuntimeDiagnostic(path.into()),
+                )?;
+            }
+            "--meshy-m0-static-source" => {
+                return Err(
+                    "M0-LEGACY-RUNTIME-ADMISSION-FORBIDDEN: use the explicit V2 materializer with a caller-owned runtime profile"
+                        .to_owned(),
+                );
+            }
+            "--meshy-m0-static-isolated-source" => {
+                let path = required_value(&mut iterator, "--meshy-m0-static-isolated-source")?;
+                set_source(&mut source, SourceInput::MeshyM0StaticIsolated(path.into()))?;
             }
             "--appearance-hak" => {
                 let path = required_value(&mut iterator, "--appearance-hak")?;
@@ -150,5 +216,28 @@ fn set_appearance(
 }
 
 fn usage() -> String {
-    "usage: materialize_m6 (--synthetic-owned | --synthetic-owned-h1 | --meshy-h1-source <path>) (--appearance-hak <path> | --appearance-2da <path>) --output-dir <path>".to_owned()
+    "usage: materialize_m6 (--synthetic-owned | --synthetic-owned-h1 | --synthetic-owned-h1-full-42 | --meshy-h1-source <path> | --meshy-h1-rigid-runtime-diagnostic-source <path> | --meshy-m0-static-isolated-source <path>) (--appearance-hak <path> | --appearance-2da <path>) --output-dir <path>".to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_arguments;
+
+    #[test]
+    fn legacy_m0_canonical_cli_route_is_rejected_before_any_emission() {
+        let error = parse_arguments(
+            [
+                "--meshy-m0-static-source",
+                "source.glb",
+                "--appearance-2da",
+                "appearance.2da",
+                "--output-dir",
+                "must-not-exist",
+            ]
+            .into_iter()
+            .map(str::to_owned),
+        )
+        .expect_err("legacy canonical M0 CLI mode must be executable-dead");
+        assert!(error.starts_with("M0-LEGACY-RUNTIME-ADMISSION-FORBIDDEN"));
+    }
 }

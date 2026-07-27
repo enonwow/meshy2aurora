@@ -5,27 +5,36 @@ use std::{
 
 use sha2::{Digest, Sha256};
 
-use crate::profile_a::{AuroraCreatureIrV1, AuroraCreatureSegmentV1, RigSegmentDeformationV1};
+use crate::{
+    model_ir::AuroraModelIrV1,
+    profile_a::{AuroraCreatureIrV1, AuroraCreatureSegmentV1, RigSegmentDeformationV1},
+    walkmesh::{AabbTreeV1, TileNavigationIrV1, validate_tile_navigation_v1},
+};
 
 use super::inspect_binary_mdl;
 use super::semantic_readback::{
-    ExpectedAnimation, ExpectedAnimationController, ExpectedAnimationNode, ExpectedFace,
-    ExpectedMesh, ExpectedNode, ExpectedReadback, ExpectedSkin, semantic_diff,
+    ExpectedAabbEntry, ExpectedAabbTree, ExpectedAnimation, ExpectedAnimationController,
+    ExpectedAnimationNode, ExpectedFace, ExpectedMesh, ExpectedNode, ExpectedReadback,
+    ExpectedSkin, semantic_diff,
 };
 use super::types::{ArrayReport, ParserLimits};
 use super::writer_types::{
-    BinaryMdlArtifactV1, M4_WRITER_SCHEMA_VERSION, M4SemanticProjectionV1,
+    BinaryMdlArtifactV1, M4_WRITER_SCHEMA_VERSION, M4SemanticProjectionV1, MdlAabbNodeLayoutV1,
     MdlAnimationClipLayoutV1, MdlAnimationEventV1, MdlAnimationInterpolationV1,
     MdlAnimationNodeLayoutV1, MdlAnimationSetV1, MdlAnimationTrackLayoutV1,
     MdlAnimationTrackPathV1, MdlAnimationTrackV1, MdlAnimationWriterReportV1, MdlFormatProfileV1,
-    MdlLayoutReportV1, MdlMeshNodeLayoutV1, MdlRigNodeLayoutV1, MdlWriteError,
-    MdlWriterDeviationV1, MdlWriterOptionsV1, MdlWriterReportV1,
+    MdlLayoutReportV1, MdlMeshNodeLayoutV1, MdlRigNodeLayoutV1, MdlStateProjectionProfileV1,
+    MdlStateProjectionProvenanceV1, MdlWriteError, MdlWriterDeviationV1, MdlWriterOptionsV1,
+    MdlWriterReportV1, NWN_EE_MAX_MESH_INDEX_COUNT_V1,
+    is_well_formed_state_projection_provenance_v1,
 };
 
 const FILE_HEADER_SIZE: usize = 0x0c;
 const MODEL_HEADER_SIZE: usize = 0xe8;
 const NODE_HEADER_SIZE: usize = 0x70;
 const MESH_HEADER_SIZE: usize = 0x270;
+const AABB_HEADER_SIZE: usize = 0x274;
+const AABB_ENTRY_SIZE: usize = 0x28;
 const SKIN_HEADER_SIZE: usize = 0x330;
 const SKIN_INLINE_COUNT: usize = 64;
 const FACE_SIZE: usize = 0x20;
@@ -36,11 +45,20 @@ const ANIMATION_HEADER_SIZE: usize = 0xc4;
 const ANIMATION_EVENT_SIZE: usize = 0x24;
 const EPSILON: f32 = 1.0e-5;
 
+// Versioned product policy for the historical direct-creature culling
+// envelope. Mesh-level bounds remain derived from caller-owned source geometry
+// below; witness identities and payloads are not embedded in production code.
+const DIRECT_CREATURE_MODEL_BOUNDS_MIN: [f32; 3] = [-5.0, -5.0, -1.0];
+const DIRECT_CREATURE_MODEL_BOUNDS_MAX: [f32; 3] = [5.0, 5.0, 10.0];
+const DIRECT_CREATURE_MODEL_RADIUS: f32 = 7.0;
+
 struct RigPlan {
+    source_index: usize,
     id: u32,
     part: u32,
     offset: usize,
     parent_part: Option<u32>,
+    emit_bind_controllers: bool,
     children_offsets: Vec<u32>,
     children_array: Option<usize>,
     keys: usize,
@@ -53,12 +71,15 @@ struct MeshPlan {
     part: u32,
     offset: usize,
     parent_part: u32,
+    bind_controller_keys: Option<usize>,
+    bind_controller_data: Option<usize>,
     faces: usize,
     index_count: usize,
     index_offset: usize,
     raw_positions: usize,
     raw_uv0: usize,
     raw_normals: usize,
+    raw_colors: Option<usize>,
     raw_indices: usize,
     skin: Option<SkinPlan>,
     bounds_min: [f32; 3],
@@ -83,16 +104,39 @@ struct SkinPlan {
     resolved_ir_ids: Vec<[Option<u32>; 4]>,
 }
 
+struct AabbMeshPlan {
+    part: u32,
+    offset: usize,
+    parent_part: u32,
+    faces: usize,
+    index_count: usize,
+    index_offset: usize,
+    entry_offsets: Vec<usize>,
+    raw_positions: usize,
+    raw_uv0: usize,
+    raw_normals: usize,
+    raw_colors: Option<usize>,
+    raw_indices: usize,
+    bounds_min: [f32; 3],
+    bounds_max: [f32; 3],
+    radius: f32,
+    average: [f32; 3],
+}
+
 struct Plan {
     core_length: usize,
     raw_length: usize,
     file_length: usize,
     root_offset: usize,
     rig: Vec<RigPlan>,
+    source_to_part: Vec<u32>,
     mesh: Vec<MeshPlan>,
+    aabb: Option<AabbMeshPlan>,
     model_bounds_min: [f32; 3],
     model_bounds_max: [f32; 3],
     model_radius: f32,
+    mesh_type: u32,
+    emit_vertex_colors: bool,
     textures: HashMap<u32, String>,
     deviations: Vec<MdlWriterDeviationV1>,
     animation_pointer_array: Option<usize>,
@@ -110,7 +154,7 @@ struct AnimationPlan {
 }
 
 struct AnimationNodePlan {
-    rig_index: usize,
+    kind: AnimationNodeKind,
     offset: usize,
     children_array: Option<usize>,
     children_offsets: Vec<u32>,
@@ -118,6 +162,26 @@ struct AnimationNodePlan {
     data: Option<usize>,
     tracks: Vec<AnimationTrackPlan>,
     data_values: Vec<f32>,
+}
+
+#[derive(Clone, Copy)]
+enum AnimationNodeKind {
+    Rig(usize),
+    RigidMeshPlaceholder(usize),
+    MeshDummy(usize),
+}
+
+impl AnimationNodeKind {
+    fn mesh_index(self) -> Option<usize> {
+        match self {
+            Self::Rig(_) => None,
+            Self::RigidMeshPlaceholder(index) | Self::MeshDummy(index) => Some(index),
+        }
+    }
+
+    fn uses_zero_geometry_mesh_placeholder(self) -> bool {
+        matches!(self, Self::RigidMeshPlaceholder(_))
+    }
 }
 
 struct AnimationTrackPlan {
@@ -146,24 +210,97 @@ struct MeshMetrics {
 /// Emits one deterministic structural Profile-A binary MDL with appended MDX
 /// and immediately validates it with the project's own reader.
 pub fn write_binary_mdl(
-    creature: &AuroraCreatureIrV1,
+    creature: &AuroraModelIrV1,
     options: &MdlWriterOptionsV1,
 ) -> Result<BinaryMdlArtifactV1, MdlWriteError> {
     write_binary_mdl_with_animations(creature, &MdlAnimationSetV1::empty(), options)
 }
 
+/// Emits a model that inherits animation state from an existing compatible
+/// supermodel. The caller remains responsible for providing an independently
+/// owned/user-provided rig whose ordered node topology matches that
+/// supermodel; this function never opens or copies the reference model.
+pub fn write_binary_mdl_with_supermodel(
+    creature: &AuroraModelIrV1,
+    supermodel_resref: &str,
+    options: &MdlWriterOptionsV1,
+) -> Result<BinaryMdlArtifactV1, MdlWriteError> {
+    write_binary_mdl_internal(
+        creature,
+        &MdlAnimationSetV1::empty(),
+        supermodel_resref,
+        options,
+        None,
+    )
+}
+
 pub fn write_binary_mdl_with_animations(
-    creature: &AuroraCreatureIrV1,
+    creature: &AuroraModelIrV1,
     animations: &MdlAnimationSetV1,
     options: &MdlWriterOptionsV1,
 ) -> Result<BinaryMdlArtifactV1, MdlWriteError> {
-    let plan = plan(creature, animations, options)?;
+    write_binary_mdl_internal(creature, animations, "NULL", options, None)
+}
+
+pub fn write_binary_mdl_with_animations_and_supermodel(
+    creature: &AuroraModelIrV1,
+    animations: &MdlAnimationSetV1,
+    supermodel_resref: &str,
+    options: &MdlWriterOptionsV1,
+) -> Result<BinaryMdlArtifactV1, MdlWriteError> {
+    write_binary_mdl_internal(creature, animations, supermodel_resref, options, None)
+}
+
+/// Emits the tile profile through the same binary MDL writer used by creature
+/// and placeable routes. The extra navigation IR supplies only the AABB mesh;
+/// render meshes still come from `AuroraModelIrV1`.
+pub fn write_binary_tile_mdl_v1(
+    model: &AuroraModelIrV1,
+    navigation: &TileNavigationIrV1,
+    options: &MdlWriterOptionsV1,
+) -> Result<BinaryMdlArtifactV1, MdlWriteError> {
+    if options.format_profile != MdlFormatProfileV1::TileStaticV1 {
+        return Err(error(
+            "TILE-MDL-PROFILE-REQUIRED",
+            "options.formatProfile",
+            "tile entry point requires TileStaticV1",
+        ));
+    }
+    write_binary_mdl_internal(
+        model,
+        &MdlAnimationSetV1::empty(),
+        "NULL",
+        options,
+        Some(navigation),
+    )
+}
+
+fn write_binary_mdl_internal(
+    creature: &AuroraModelIrV1,
+    animations: &MdlAnimationSetV1,
+    supermodel_resref: &str,
+    options: &MdlWriterOptionsV1,
+    navigation: Option<&TileNavigationIrV1>,
+) -> Result<BinaryMdlArtifactV1, MdlWriteError> {
+    if supermodel_resref != "NULL" {
+        validate_resref(supermodel_resref, "options.supermodelResref")?;
+    }
+    let plan = plan(creature, animations, options, navigation)?;
     let mut core = zeroed(plan.core_length, "layout.coreLength")?;
     let mut raw = zeroed(plan.raw_length, "layout.rawLength")?;
-    emit_model(&mut core, creature, options, &plan)?;
+    emit_model(&mut core, creature, options, supermodel_resref, &plan)?;
     emit_nodes(&mut core, creature, &plan)?;
-    emit_meshes(&mut core, &mut raw, creature, &plan)?;
-    emit_animations(&mut core, creature, animations, &plan)?;
+    emit_meshes(&mut core, &mut raw, creature, &plan, options)?;
+    if let (Some(navigation), Some(aabb)) = (navigation, plan.aabb.as_ref()) {
+        emit_aabb_mesh(&mut core, &mut raw, navigation, aabb, plan.mesh_type)?;
+    }
+    emit_animations(
+        &mut core,
+        creature,
+        animations,
+        &plan,
+        options.state_projection_profile,
+    )?;
 
     let mut payload = Vec::new();
     payload.try_reserve_exact(plan.file_length).map_err(|_| {
@@ -206,7 +343,14 @@ pub fn write_binary_mdl_with_animations(
             format!("own reader rejected emitted payload: {source}"),
         )
     })?;
-    let expected = expected_readback(creature, animations, options, &plan)?;
+    let expected = expected_readback(
+        creature,
+        animations,
+        options,
+        supermodel_resref,
+        &plan,
+        navigation,
+    )?;
     let differences = semantic_diff(&expected, &inspection);
     if !differences.is_empty() {
         return Err(error(
@@ -255,10 +399,32 @@ pub fn write_binary_mdl_with_animations(
             })
         })
         .collect::<Result<Vec<_>, MdlWriteError>>()?;
-    let animation_report = animation_writer_report(animations, &plan)?;
+    let animation_report = animation_writer_report(creature, animations, &plan)?;
+    let aabb_node = plan
+        .aabb
+        .as_ref()
+        .map(|node| {
+            Ok(MdlAabbNodeLayoutV1 {
+                part_number: node.part,
+                core_offset: as_u32(node.offset, "report.layout.aabbNode.coreOffset")?,
+                root_entry_core_offset: navigation
+                    .and_then(|navigation| {
+                        node.entry_offsets
+                            .get(navigation.aabb_tree.root_index as usize)
+                            .copied()
+                    })
+                    .map(|offset| as_u32(offset, "report.layout.aabbNode.rootEntryCoreOffset"))
+                    .transpose()?
+                    .unwrap_or(0),
+                entry_count: node.entry_offsets.len(),
+            })
+        })
+        .transpose()?;
     let report = MdlWriterReportV1 {
         schema_version: M4_WRITER_SCHEMA_VERSION,
         format_profile: options.format_profile,
+        state_projection_profile: options.state_projection_profile,
+        state_projection_provenance: options.state_projection_provenance.clone(),
         payload_sha256,
         layout: MdlLayoutReportV1 {
             core_length: plan.core_length,
@@ -266,6 +432,7 @@ pub fn write_binary_mdl_with_animations(
             file_length: plan.file_length,
             rig_nodes,
             mesh_nodes,
+            aabb_node,
         },
         projection: M4SemanticProjectionV1 {
             model_resource_resref: options.model_resource_resref.clone(),
@@ -289,14 +456,79 @@ fn plan(
     creature: &AuroraCreatureIrV1,
     animations: &MdlAnimationSetV1,
     options: &MdlWriterOptionsV1,
+    navigation: Option<&TileNavigationIrV1>,
 ) -> Result<Plan, MdlWriteError> {
     validate_public_contract(creature, options)?;
+    match (options.format_profile, navigation) {
+        (MdlFormatProfileV1::TileStaticV1, Some(navigation)) => {
+            validate_tile_navigation_v1(navigation).map_err(|source| {
+                error(
+                    &source.code,
+                    &source.path,
+                    format!("tile navigation validation failed: {}", source.message),
+                )
+            })?;
+            if navigation.model_resref != options.model_resource_resref {
+                return Err(error(
+                    "TILE-MDL-WOK-RESREF-MISMATCH",
+                    "navigation.modelResref",
+                    "tile navigation/WOK resref must equal the binary MDL resref",
+                ));
+            }
+            if !animations.clips.is_empty() {
+                return Err(error(
+                    "TILE-MDL-ANIMATION-UNSUPPORTED",
+                    "animations",
+                    "TileStaticV1 cannot emit local animations",
+                ));
+            }
+        }
+        (MdlFormatProfileV1::TileStaticV1, None) => {
+            return Err(error(
+                "TILE-MDL-NAVIGATION-MISSING",
+                "navigation",
+                "TileStaticV1 requires TileNavigationIrV1 for its AABB node",
+            ));
+        }
+        (_, Some(_)) => {
+            return Err(error(
+                "TILE-MDL-PROFILE-REQUIRED",
+                "options.formatProfile",
+                "navigation IR is accepted only by TileStaticV1",
+            ));
+        }
+        (_, None) => {}
+    }
+    let mesh_type = match options.format_profile {
+        MdlFormatProfileV1::M4DirectCreatureExtended64V1
+        | MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedV2
+        | MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedControllerlessRootV3 => 3,
+        MdlFormatProfileV1::M0StaticRigidNativeV1 => 3,
+        MdlFormatProfileV1::PlaceableStaticRigidNativeV1 => 3,
+        MdlFormatProfileV1::TileStaticV1 => 3,
+        MdlFormatProfileV1::SourceTopologyPreservingRigidExperimentV1 => 3,
+        MdlFormatProfileV1::SourceTopologyPreservingRigidCandidateV1 => 3,
+        MdlFormatProfileV1::Legacy17V1 => unreachable!("validated unsupported profile"),
+    };
+    let emit_vertex_colors = matches!(
+        options.format_profile,
+        MdlFormatProfileV1::M0StaticRigidNativeV1
+            | MdlFormatProfileV1::PlaceableStaticRigidNativeV1
+            | MdlFormatProfileV1::TileStaticV1
+            | MdlFormatProfileV1::SourceTopologyPreservingRigidExperimentV1
+            | MdlFormatProfileV1::SourceTopologyPreservingRigidCandidateV1
+    );
     let textures = validate_materials(creature, options)?;
     let node_count = creature.nodes.len();
-    let total_nodes = add(node_count, creature.segments.len(), "creature.nodes")?;
+    let total_nodes = add(
+        add(node_count, creature.segments.len(), "creature.nodes")?,
+        usize::from(navigation.is_some()),
+        "creature.nodes",
+    )?;
     let _ = as_u32(total_nodes, "creature.nodes")?;
 
     let mut id_to_index = HashMap::with_capacity(node_count);
+    let mut output_node_names = HashSet::with_capacity(total_nodes);
     for (index, node) in creature.nodes.iter().enumerate() {
         if id_to_index.insert(node.id, index).is_some() {
             return Err(error(
@@ -306,6 +538,32 @@ fn plan(
             ));
         }
         validate_node_name(&node.name, &format!("creature.nodes[{index}].name"))?;
+        if !output_node_names.insert(node.name.to_ascii_lowercase()) {
+            return Err(error(
+                "M4-NODE-NAME-DUPLICATE",
+                &format!("creature.nodes[{index}].name"),
+                "output node names must be globally unique after ASCII case-fold",
+            ));
+        }
+    }
+    for (index, segment) in creature.segments.iter().enumerate() {
+        let generated_name = format!("m2a_seg_{}", segment.segment_id);
+        if !output_node_names.insert(generated_name.to_ascii_lowercase()) {
+            return Err(error(
+                "M4-NODE-NAME-DUPLICATE",
+                &format!("creature.segments[{index}].segmentId"),
+                "generated mesh node name collides after ASCII case-fold",
+            ));
+        }
+    }
+    if let Some(navigation) = navigation
+        && !output_node_names.insert(navigation.node_name.to_ascii_lowercase())
+    {
+        return Err(error(
+            "M4-NODE-NAME-DUPLICATE",
+            "navigation.nodeName",
+            "AABB node name collides after ASCII case-fold",
+        ));
     }
     let roots = creature
         .nodes
@@ -321,6 +579,15 @@ fn plan(
             "rig must contain exactly one root",
         ));
     }
+    let controllerless_root_index = if matches!(
+        options.format_profile,
+        MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedControllerlessRootV3
+    ) {
+        validate_controllerless_identity_root(creature, options, roots[0])?;
+        Some(roots[0])
+    } else {
+        None
+    };
     let mut parent_indices = Vec::with_capacity(node_count);
     for (index, node) in creature.nodes.iter().enumerate() {
         let parent = match node.parent_id {
@@ -359,34 +626,63 @@ fn plan(
             rig_children[*parent].push(child);
         }
     }
+    let mut rig_order = Vec::with_capacity(node_count);
+    let mut pending = vec![roots[0]];
+    while let Some(source_index) = pending.pop() {
+        rig_order.push(source_index);
+        pending.extend(rig_children[source_index].iter().rev().copied());
+    }
+    if rig_order.len() != node_count {
+        return Err(error(
+            "M4-HIERARCHY-INVALID",
+            "creature.nodes",
+            "rig hierarchy is not fully reachable from its single root",
+        ));
+    }
+    let mut source_to_part = vec![0; node_count];
+    for (part, &source_index) in rig_order.iter().enumerate() {
+        source_to_part[source_index] = as_u32(part, "layout.partNumber")?;
+    }
     let (animation_pointer_array, animation_plans) = plan_animations(
         creature,
         animations,
         roots[0],
         &id_to_index,
         &rig_children,
+        &creature.segments,
+        options,
         &mut cursor,
     )?;
     let mut rig = Vec::with_capacity(node_count);
-    for (index, node) in creature.nodes.iter().enumerate() {
+    for &source_index in &rig_order {
+        let node = &creature.nodes[source_index];
         let offset = take(&mut cursor, NODE_HEADER_SIZE, "layout.rigNodes")?;
         rig.push(RigPlan {
+            source_index,
             id: node.id,
-            part: as_u32(index, "layout.partNumber")?,
+            part: source_to_part[source_index],
             offset,
-            parent_part: parent_indices[index]
-                .map(|value| as_u32(value, "layout.parentPartNumber"))
-                .transpose()?,
+            parent_part: parent_indices[source_index].map(|parent| source_to_part[parent]),
+            emit_bind_controllers: controllerless_root_index != Some(source_index),
             children_offsets: Vec::new(),
             children_array: None,
             keys: 0,
             data: 0,
-            quaternion: quaternions[index],
+            quaternion: quaternions[source_index],
         });
     }
 
     let mut segment_ids = HashSet::new();
     let mut mesh = Vec::with_capacity(creature.segments.len());
+    let unused_inline_value = if matches!(
+        options.format_profile,
+        MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedV2
+            | MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedControllerlessRootV3
+    ) {
+        0
+    } else {
+        -1
+    };
     for (index, segment) in creature.segments.iter().enumerate() {
         validate_segment(segment, index, &id_to_index)?;
         if !segment_ids.insert(segment.segment_id) {
@@ -421,7 +717,7 @@ fn plan(
                 raw_weights: 0,
                 raw_refs: 0,
                 forward: Vec::new(),
-                inline_reverse: [-1; SKIN_INLINE_COUNT],
+                inline_reverse: [unused_inline_value; SKIN_INLINE_COUNT],
                 inverse_rotations_wxyz: Vec::new(),
                 inverse_translations: Vec::new(),
                 vertex_weights: Vec::new(),
@@ -440,13 +736,16 @@ fn plan(
                 "layout.partNumber",
             )?,
             offset,
-            parent_part: as_u32(parent_index, "layout.parentPartNumber")?,
+            parent_part: source_to_part[parent_index],
+            bind_controller_keys: None,
+            bind_controller_data: None,
             faces: 0,
             index_count: 0,
             index_offset: 0,
             raw_positions: 0,
             raw_uv0: 0,
             raw_normals: 0,
+            raw_colors: None,
             raw_indices: 0,
             skin,
             bounds_min: metrics.bounds_min,
@@ -455,11 +754,39 @@ fn plan(
             average: metrics.average,
         });
     }
+    let mut aabb = if let Some(navigation) = navigation {
+        let metrics = mesh_metrics(&navigation.vertices)?;
+        Some(AabbMeshPlan {
+            part: as_u32(
+                add(node_count, creature.segments.len(), "layout.partNumber")?,
+                "layout.partNumber",
+            )?,
+            offset: take(&mut cursor, AABB_HEADER_SIZE, "layout.aabbNode")?,
+            parent_part: source_to_part[roots[0]],
+            faces: 0,
+            index_count: 0,
+            index_offset: 0,
+            entry_offsets: Vec::new(),
+            raw_positions: 0,
+            raw_uv0: 0,
+            raw_normals: 0,
+            raw_colors: None,
+            raw_indices: 0,
+            bounds_min: metrics.bounds_min,
+            bounds_max: metrics.bounds_max,
+            radius: metrics.radius,
+            average: metrics.average,
+        })
+    } else {
+        None
+    };
 
-    for child_index in 0..rig.len() {
-        if let Some(parent_index) = parent_indices[child_index] {
-            let child_offset = as_u32(rig[child_index].offset, "layout.childOffset")?;
-            rig[parent_index].children_offsets.push(child_offset);
+    for child_part in 0..rig.len() {
+        if let Some(parent_part) = rig[child_part].parent_part {
+            let child_offset = as_u32(rig[child_part].offset, "layout.childOffset")?;
+            rig[parent_part as usize]
+                .children_offsets
+                .push(child_offset);
         }
     }
     for item in &mesh {
@@ -467,6 +794,11 @@ fn plan(
         rig[item.parent_part as usize]
             .children_offsets
             .push(child_offset);
+    }
+    if let Some(aabb) = &aabb {
+        rig[aabb.parent_part as usize]
+            .children_offsets
+            .push(as_u32(aabb.offset, "layout.childOffset")?);
     }
     for node in &mut rig {
         if !node.children_offsets.is_empty() {
@@ -480,22 +812,48 @@ fn plan(
     }
     cursor = align4(cursor, "layout.controllerKeys")?;
     for node in &mut rig {
-        node.keys = take(
-            &mut cursor,
-            mul(
-                CONTROLLER_KEY_COUNT,
-                CONTROLLER_KEY_SIZE,
+        if node.emit_bind_controllers {
+            node.keys = take(
+                &mut cursor,
+                mul(
+                    CONTROLLER_KEY_COUNT,
+                    CONTROLLER_KEY_SIZE,
+                    "layout.controllerKeys",
+                )?,
                 "layout.controllerKeys",
-            )?,
-            "layout.controllerKeys",
-        )?;
+            )?;
+        }
+    }
+    for item in &mut mesh {
+        if item.skin.is_some() {
+            item.bind_controller_keys = Some(take(
+                &mut cursor,
+                mul(
+                    CONTROLLER_KEY_COUNT,
+                    CONTROLLER_KEY_SIZE,
+                    "layout.skinBindControllerKeys",
+                )?,
+                "layout.skinBindControllerKeys",
+            )?);
+        }
     }
     for node in &mut rig {
-        node.data = take(
-            &mut cursor,
-            mul(CONTROLLER_DATA_COUNT, 4, "layout.controllerData")?,
-            "layout.controllerData",
-        )?;
+        if node.emit_bind_controllers {
+            node.data = take(
+                &mut cursor,
+                mul(CONTROLLER_DATA_COUNT, 4, "layout.controllerData")?,
+                "layout.controllerData",
+            )?;
+        }
+    }
+    for item in &mut mesh {
+        if item.skin.is_some() {
+            item.bind_controller_data = Some(take(
+                &mut cursor,
+                mul(CONTROLLER_DATA_COUNT, 4, "layout.skinBindControllerData")?,
+                "layout.skinBindControllerData",
+            )?);
+        }
     }
     for item in &mut mesh {
         let segment = &creature.segments[item.segment_index];
@@ -505,11 +863,24 @@ fn plan(
             "layout.faces",
         )?;
     }
+    if let (Some(aabb), Some(navigation)) = (aabb.as_mut(), navigation) {
+        aabb.faces = take(
+            &mut cursor,
+            mul(navigation.faces.len(), FACE_SIZE, "layout.aabb.faces")?,
+            "layout.aabb.faces",
+        )?;
+    }
     for item in &mut mesh {
         item.index_count = take(&mut cursor, 4, "layout.indexCounts")?;
     }
+    if let Some(aabb) = aabb.as_mut() {
+        aabb.index_count = take(&mut cursor, 4, "layout.aabb.indexCount")?;
+    }
     for item in &mut mesh {
         item.index_offset = take(&mut cursor, 4, "layout.indexOffsets")?;
+    }
+    if let Some(aabb) = aabb.as_mut() {
+        aabb.index_offset = take(&mut cursor, 4, "layout.aabb.indexOffset")?;
     }
     for item in &mut mesh {
         if let Some(skin) = &mut item.skin {
@@ -538,6 +909,13 @@ fn plan(
             )?;
         }
     }
+    if let (Some(aabb), Some(navigation)) = (aabb.as_mut(), navigation) {
+        aabb.entry_offsets = Vec::with_capacity(navigation.aabb_tree.entries.len());
+        for _ in &navigation.aabb_tree.entries {
+            aabb.entry_offsets
+                .push(take(&mut cursor, AABB_ENTRY_SIZE, "layout.aabb.entries")?);
+        }
+    }
     let core_length = align4(cursor, "layout.coreLength")?;
     let _ = as_u32(core_length, "layout.coreLength")?;
     validate_skin_signed_fields(&mesh, total_nodes)?;
@@ -560,6 +938,13 @@ fn plan(
             mul(segment.normals.len(), 12, "layout.rawNormals")?,
             "layout.rawNormals",
         )?;
+        if emit_vertex_colors {
+            item.raw_colors = Some(take(
+                &mut raw_cursor,
+                mul(segment.positions.len(), 4, "layout.rawColors")?,
+                "layout.rawColors",
+            )?);
+        }
         item.raw_indices = take(
             &mut raw_cursor,
             mul(segment.indices.len(), 2, "layout.rawIndices")?,
@@ -580,16 +965,62 @@ fn plan(
         }
         raw_cursor = align4(raw_cursor, "layout.rawAlignment")?;
     }
+    if let (Some(aabb), Some(navigation)) = (aabb.as_mut(), navigation) {
+        aabb.raw_positions = take(
+            &mut raw_cursor,
+            mul(navigation.vertices.len(), 12, "layout.aabb.rawPositions")?,
+            "layout.aabb.rawPositions",
+        )?;
+        aabb.raw_uv0 = take(
+            &mut raw_cursor,
+            mul(navigation.vertices.len(), 8, "layout.aabb.rawUv0")?,
+            "layout.aabb.rawUv0",
+        )?;
+        aabb.raw_normals = take(
+            &mut raw_cursor,
+            mul(navigation.vertices.len(), 12, "layout.aabb.rawNormals")?,
+            "layout.aabb.rawNormals",
+        )?;
+        if emit_vertex_colors {
+            aabb.raw_colors = Some(take(
+                &mut raw_cursor,
+                mul(navigation.vertices.len(), 4, "layout.aabb.rawColors")?,
+                "layout.aabb.rawColors",
+            )?);
+        }
+        aabb.raw_indices = take(
+            &mut raw_cursor,
+            mul(navigation.faces.len(), 6, "layout.aabb.rawIndices")?,
+            "layout.aabb.rawIndices",
+        )?;
+        raw_cursor = align4(raw_cursor, "layout.aabb.rawAlignment")?;
+    }
     let raw_length = raw_cursor;
     let _ = as_u32(raw_length, "layout.rawLength")?;
     for item in &mesh {
         let _ = as_i32(item.raw_positions, "layout.rawPositions")?;
         let _ = as_i32(item.raw_uv0, "layout.rawUv0")?;
         let _ = as_i32(item.raw_normals, "layout.rawNormals")?;
+        if let Some(raw_colors) = item.raw_colors {
+            let _ = as_i32(raw_colors, "layout.rawColors")?;
+        }
         let _ = as_i32(item.raw_indices, "layout.rawIndices")?;
         if let Some(skin) = &item.skin {
             let _ = as_i32(skin.raw_weights, "layout.skin.rawWeights")?;
             let _ = as_i32(skin.raw_refs, "layout.skin.rawRefs")?;
+        }
+    }
+    if let Some(aabb) = &aabb {
+        for (value, path) in [
+            (aabb.raw_positions, "layout.aabb.rawPositions"),
+            (aabb.raw_uv0, "layout.aabb.rawUv0"),
+            (aabb.raw_normals, "layout.aabb.rawNormals"),
+            (aabb.raw_indices, "layout.aabb.rawIndices"),
+        ] {
+            let _ = as_i32(value, path)?;
+        }
+        if let Some(colors) = aabb.raw_colors {
+            let _ = as_i32(colors, "layout.aabb.rawColors")?;
         }
     }
     let file_length = add(
@@ -599,16 +1030,24 @@ fn plan(
     )?;
 
     let worlds = world_matrices(creature, &parent_indices)?;
-    let (part_to_tree_ordinal, ordinal_parts) =
-        tree_ordinals(rig[roots[0]].part as usize, &rig, &mesh)?;
+    let (part_to_tree_ordinal, ordinal_parts) = tree_ordinals(
+        source_to_part[roots[0]] as usize,
+        &rig,
+        &mesh,
+        aabb.as_ref(),
+    )?;
     if mesh.iter().any(|item| item.skin.is_some()) {
         let rig_skin_worlds = world_matrices_f64(creature, &parent_indices, &quaternions)?;
         let mut binary_skin_worlds = Vec::with_capacity(total_nodes);
-        binary_skin_worlds.extend_from_slice(&rig_skin_worlds);
+        binary_skin_worlds.extend(rig.iter().map(|node| rig_skin_worlds[node.source_index]));
         binary_skin_worlds.extend(
             mesh.iter()
-                .map(|item| rig_skin_worlds[item.parent_part as usize]),
+                .map(|item| rig_skin_worlds[rig[item.parent_part as usize].source_index]),
         );
+        let id_to_part = rig
+            .iter()
+            .map(|node| (node.id, node.part as usize))
+            .collect::<HashMap<_, _>>();
         for item in &mut mesh {
             let Some(skin) = &mut item.skin else {
                 continue;
@@ -618,7 +1057,7 @@ fn plan(
                 &creature.segments[item.segment_index],
                 item.segment_index,
                 item.parent_part as usize,
-                &id_to_index,
+                &id_to_part,
                 &part_to_tree_ordinal,
                 &ordinal_parts,
                 &binary_skin_worlds,
@@ -631,7 +1070,7 @@ fn plan(
     let mut model_radius = 0.0_f32;
     for item in &mesh {
         let segment = &creature.segments[item.segment_index];
-        let world = worlds[item.parent_part as usize];
+        let world = worlds[rig[item.parent_part as usize].source_index];
         for &position in &segment.positions {
             let point = transform_point(world, position);
             if !finite3(point) {
@@ -650,6 +1089,30 @@ fn plan(
                     "M4-MESH-INVALID",
                     &format!("creature.segments[{}].positions", item.segment_index),
                     "model radius overflowed to a non-finite value",
+                )
+            })?);
+        }
+    }
+    if let Some(navigation) = navigation {
+        let world = worlds[roots[0]];
+        for &position in &navigation.vertices {
+            let point = transform_point(world, position);
+            if !finite3(point) {
+                return Err(error(
+                    "TILE-MDL-NAVIGATION-INVALID",
+                    "navigation.vertices",
+                    "world-space navigation geometry overflowed to a non-finite value",
+                ));
+            }
+            for axis in 0..3 {
+                model_min[axis] = model_min[axis].min(point[axis]);
+                model_max[axis] = model_max[axis].max(point[axis]);
+            }
+            model_radius = model_radius.max(checked_length3(point).ok_or_else(|| {
+                error(
+                    "TILE-MDL-NAVIGATION-INVALID",
+                    "navigation.vertices",
+                    "navigation radius overflowed to a non-finite value",
                 )
             })?);
         }
@@ -673,8 +1136,17 @@ fn plan(
         }
     }
     if mesh.iter().any(|item| item.skin.is_some()) {
+        if !matches!(
+            options.format_profile,
+            MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedV2
+                | MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedControllerlessRootV3
+        ) {
+            deviations.push(deviation(
+                "M4-SKIN-INLINE-UNUSED-OPEN-M6",
+                "skin.inlineReverse.unused",
+            ));
+        }
         deviations.extend([
-            deviation("M4-SKIN-INLINE-UNUSED-OPEN-M6", "skin.inlineReverse.unused"),
             deviation("M4-SKIN-SLOT-BOUNDARY-OPEN-M6", "skin.activeSlots"),
             deviation("M4-SKIN-CONSTANTS-MEANING-OPEN-M6", "skin.boneConstants"),
             deviation("M4-SKIN-WXYZ-DEFORMATION-OPEN-M6", "skin.qInverse"),
@@ -687,8 +1159,8 @@ fn plan(
     if !animation_plans.is_empty() {
         deviations.extend([
             deviation(
-                "M4A-RUNTIME-OPAQUE-ZERO-OPEN-M6",
-                "animations.runtimeFields",
+                "M4A-RUNTIME-FIELD-68-OPAQUE-ZERO-OPEN-M6",
+                "animations.runtimeField68",
             ),
             deviation(
                 "M4A-RUNTIME-ANIM-TREE-PROFILE-OPEN-M6",
@@ -709,16 +1181,33 @@ fn plan(
         ]);
     }
 
+    let (model_bounds_min, model_bounds_max, model_radius) = if matches!(
+        options.format_profile,
+        MdlFormatProfileV1::PlaceableStaticRigidNativeV1 | MdlFormatProfileV1::TileStaticV1
+    ) {
+        (model_min, model_max, model_radius)
+    } else {
+        (
+            DIRECT_CREATURE_MODEL_BOUNDS_MIN,
+            DIRECT_CREATURE_MODEL_BOUNDS_MAX,
+            DIRECT_CREATURE_MODEL_RADIUS,
+        )
+    };
+
     Ok(Plan {
         core_length,
         raw_length,
         file_length,
-        root_offset: rig[roots[0]].offset,
+        root_offset: rig[source_to_part[roots[0]] as usize].offset,
         rig,
+        source_to_part,
         mesh,
-        model_bounds_min: model_min,
-        model_bounds_max: model_max,
+        aabb,
+        model_bounds_min,
+        model_bounds_max,
         model_radius,
+        mesh_type,
+        emit_vertex_colors,
         textures,
         deviations,
         animation_pointer_array,
@@ -732,6 +1221,8 @@ fn plan_animations(
     root_index: usize,
     id_to_index: &HashMap<u32, usize>,
     rig_children: &[Vec<usize>],
+    segments: &[AuroraCreatureSegmentV1],
+    options: &MdlWriterOptionsV1,
     cursor: &mut usize,
 ) -> Result<(Option<usize>, Vec<AnimationPlan>), MdlWriteError> {
     if animation_set.schema_version != 1 {
@@ -777,15 +1268,29 @@ fn plan_animations(
         );
     }
 
-    for children in rig_children {
-        let mut names = HashSet::new();
-        for &child in children {
-            if !names.insert(creature.nodes[child].name.to_ascii_lowercase()) {
-                return Err(error(
-                    "M4A-TRACK-TARGET-AMBIGUOUS",
-                    &format!("creature.nodes[{child}].name"),
-                    "animation tree matching requires unique direct-child names",
-                ));
+    let mut mesh_children = vec![Vec::new(); creature.nodes.len()];
+    for (segment_index, segment) in segments.iter().enumerate() {
+        let parent_index = *id_to_index.get(&segment.parent_node_id).ok_or_else(|| {
+            error(
+                "M4-HIERARCHY-INVALID",
+                &format!("creature.segments[{segment_index}].parentNodeId"),
+                "segment parent node id is absent from the output rig",
+            )
+        })?;
+        match options.state_projection_profile {
+            // This family mirrors every base part as a plain dummy. Geometry
+            // remains exclusively in the base tree/MDX.
+            MdlStateProjectionProfileV1::RetailDirectCreatureType5DummyV1 => {
+                mesh_children[parent_index].push(AnimationNodeKind::MeshDummy(segment_index));
+            }
+            // This family projects only the ordered rig. Renderable leaves are
+            // present in the base tree and deliberately absent from states.
+            MdlStateProjectionProfileV1::RetailDirectCreatureType5RigOnlyV1
+            | MdlStateProjectionProfileV1::OwnedRuntimePositiveType0RigOnlyV1 => {}
+            MdlStateProjectionProfileV1::CepRigidPlaceholderV1 => {
+                debug_assert_eq!(segment.deformation, RigSegmentDeformationV1::Rigid);
+                mesh_children[parent_index]
+                    .push(AnimationNodeKind::RigidMeshPlaceholder(segment_index));
             }
         }
     }
@@ -906,10 +1411,11 @@ fn plan_animations(
                 "layout.animations.events",
             )?)
         };
-        let mut nodes = Vec::with_capacity(creature.nodes.len());
+        let mut nodes = Vec::with_capacity(creature.nodes.len() + segments.len());
         let root = plan_animation_node(
-            root_index,
+            AnimationNodeKind::Rig(root_index),
             rig_children,
+            &mesh_children,
             &mut tracks_by_node,
             &mut nodes,
             cursor,
@@ -1012,16 +1518,24 @@ fn prepare_animation_track(
 }
 
 fn plan_animation_node(
-    rig_index: usize,
+    kind: AnimationNodeKind,
     rig_children: &[Vec<usize>],
+    mesh_children: &[Vec<AnimationNodeKind>],
     tracks_by_node: &mut [Vec<PreparedAnimationTrack>],
     nodes: &mut Vec<AnimationNodePlan>,
     cursor: &mut usize,
 ) -> Result<usize, MdlWriteError> {
-    let offset = animation_take(cursor, NODE_HEADER_SIZE, "layout.animations.nodes")?;
+    let node_size = match kind {
+        AnimationNodeKind::Rig(_) => NODE_HEADER_SIZE,
+        // Recorded direct-creature animation trees retain a zero-geometry
+        // trimesh-shaped marker for rigid base meshes, not a generic dummy.
+        AnimationNodeKind::RigidMeshPlaceholder(_) => MESH_HEADER_SIZE,
+        AnimationNodeKind::MeshDummy(_) => NODE_HEADER_SIZE,
+    };
+    let offset = animation_take(cursor, node_size, "layout.animations.nodes")?;
     let plan_index = nodes.len();
     nodes.push(AnimationNodePlan {
-        rig_index,
+        kind,
         offset,
         children_array: None,
         children_offsets: Vec::new(),
@@ -1030,29 +1544,44 @@ fn plan_animation_node(
         tracks: Vec::new(),
         data_values: Vec::new(),
     });
-    let children_array = if rig_children[rig_index].is_empty() {
+    let children = match kind {
+        AnimationNodeKind::Rig(rig_index) => rig_children[rig_index]
+            .iter()
+            .copied()
+            .map(AnimationNodeKind::Rig)
+            .chain(mesh_children[rig_index].iter().copied())
+            .collect::<Vec<_>>(),
+        AnimationNodeKind::RigidMeshPlaceholder(_) | AnimationNodeKind::MeshDummy(_) => Vec::new(),
+    };
+    let children_array = if children.is_empty() {
         None
     } else {
         Some(animation_take(
             cursor,
-            animation_mul(
-                rig_children[rig_index].len(),
-                4,
-                "layout.animations.children",
-            )?,
+            animation_mul(children.len(), 4, "layout.animations.children")?,
             "layout.animations.children",
         )?)
     };
-    let mut children_offsets = Vec::with_capacity(rig_children[rig_index].len());
-    for &child in &rig_children[rig_index] {
-        let child_offset = plan_animation_node(child, rig_children, tracks_by_node, nodes, cursor)?;
+    let mut children_offsets = Vec::with_capacity(children.len());
+    for child in children {
+        let child_offset = plan_animation_node(
+            child,
+            rig_children,
+            mesh_children,
+            tracks_by_node,
+            nodes,
+            cursor,
+        )?;
         children_offsets.push(animation_as_u32(
             child_offset,
             "layout.animations.childOffset",
         )?);
     }
 
-    let prepared_tracks = std::mem::take(&mut tracks_by_node[rig_index]);
+    let prepared_tracks = match kind {
+        AnimationNodeKind::Rig(rig_index) => std::mem::take(&mut tracks_by_node[rig_index]),
+        AnimationNodeKind::RigidMeshPlaceholder(_) | AnimationNodeKind::MeshDummy(_) => Vec::new(),
+    };
     let mut data_values = Vec::new();
     let mut tracks = Vec::with_capacity(prepared_tracks.len());
     for track in prepared_tracks {
@@ -1108,7 +1637,7 @@ fn plan_animation_node(
         )?)
     };
     nodes[plan_index] = AnimationNodePlan {
-        rig_index,
+        kind,
         offset,
         children_array,
         children_offsets,
@@ -1219,11 +1748,40 @@ fn validate_public_contract(
             "writer options and AuroraCreatureIrV1 must use schema version 1",
         ));
     }
-    if options.format_profile != MdlFormatProfileV1::M4DirectCreatureExtended64V1 {
+    if !matches!(
+        options.format_profile,
+        MdlFormatProfileV1::M4DirectCreatureExtended64V1
+            | MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedV2
+            | MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedControllerlessRootV3
+            | MdlFormatProfileV1::M0StaticRigidNativeV1
+            | MdlFormatProfileV1::PlaceableStaticRigidNativeV1
+            | MdlFormatProfileV1::TileStaticV1
+            | MdlFormatProfileV1::SourceTopologyPreservingRigidExperimentV1
+            | MdlFormatProfileV1::SourceTopologyPreservingRigidCandidateV1
+    ) {
         return Err(error(
             "M4-UNSUPPORTED-PROFILE",
             "options.formatProfile",
-            "only M4_DIRECT_CREATURE_EXTENDED64_V1 is emitted",
+            "only the M4 direct-creature and M0 static-rigid profiles are emitted",
+        ));
+    }
+    validate_state_projection_profile(creature, options)?;
+    if matches!(
+        options.format_profile,
+        MdlFormatProfileV1::M0StaticRigidNativeV1
+            | MdlFormatProfileV1::PlaceableStaticRigidNativeV1
+            | MdlFormatProfileV1::TileStaticV1
+            | MdlFormatProfileV1::SourceTopologyPreservingRigidExperimentV1
+            | MdlFormatProfileV1::SourceTopologyPreservingRigidCandidateV1
+    ) && creature
+        .segments
+        .iter()
+        .any(|segment| segment.deformation != RigSegmentDeformationV1::Rigid)
+    {
+        return Err(error(
+            "M0-STATIC-RIGID-SKIN-INVALID",
+            "creature.segments",
+            "M0 static-rigid profile accepts only RIGID segments",
         ));
     }
     validate_resref(
@@ -1235,6 +1793,111 @@ fn validate_public_contract(
             "M4-HIERARCHY-INVALID",
             "creature",
             "rig nodes and rigid segments must be non-empty",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_controllerless_identity_root(
+    creature: &AuroraCreatureIrV1,
+    options: &MdlWriterOptionsV1,
+    root_index: usize,
+) -> Result<(), MdlWriteError> {
+    let root = &creature.nodes[root_index];
+    let path = format!("creature.nodes[{root_index}]");
+    if root.name != options.model_resource_resref {
+        return Err(error(
+            "M4-CONTROLLERLESS-ROOT-INVALID",
+            &format!("{path}.name"),
+            "controllerless root must be named exactly like the model resource resref",
+        ));
+    }
+    let identity = [
+        1.0, 0.0, 0.0, 0.0, //
+        0.0, 1.0, 0.0, 0.0, //
+        0.0, 0.0, 1.0, 0.0, //
+        0.0, 0.0, 0.0, 1.0,
+    ];
+    if root
+        .bind_local_matrix
+        .iter()
+        .zip(identity)
+        .any(|(actual, expected)| !actual.is_finite() || (*actual - expected).abs() > EPSILON)
+    {
+        return Err(error(
+            "M4-CONTROLLERLESS-ROOT-INVALID",
+            &format!("{path}.bindLocalMatrix"),
+            "controllerless root must have an exact identity bind transform within writer tolerance",
+        ));
+    }
+    if let Some((segment_index, _)) = creature.segments.iter().enumerate().find(|(_, segment)| {
+        segment
+            .weights
+            .iter()
+            .flat_map(|row| row.bone_node_ids)
+            .any(|bone| bone == Some(root.id))
+    }) {
+        return Err(error(
+            "M4-CONTROLLERLESS-ROOT-INVALID",
+            &format!("creature.segments[{segment_index}].weights"),
+            "controllerless root must not be referenced by skin weights",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_state_projection_profile(
+    creature: &AuroraCreatureIrV1,
+    options: &MdlWriterOptionsV1,
+) -> Result<(), MdlWriteError> {
+    match options.state_projection_profile {
+        MdlStateProjectionProfileV1::RetailDirectCreatureType5DummyV1
+        | MdlStateProjectionProfileV1::RetailDirectCreatureType5RigOnlyV1
+        | MdlStateProjectionProfileV1::OwnedRuntimePositiveType0RigOnlyV1 => {
+            if options.state_projection_provenance.is_some() {
+                return Err(error(
+                    "M4A-STATE-PROJECTION-PROFILE-MIXED",
+                    "options.stateProjectionProvenance",
+                    "retail state-projection families must not carry CEP placeholder provenance",
+                ));
+            }
+        }
+        MdlStateProjectionProfileV1::CepRigidPlaceholderV1 => {
+            if creature
+                .segments
+                .iter()
+                .any(|segment| segment.deformation != RigSegmentDeformationV1::Rigid)
+            {
+                return Err(error(
+                    "M4A-STATE-PROJECTION-CEP-SKIN-UNPROVEN",
+                    "creature.segments",
+                    "CEP_RIGID_PLACEHOLDER_V1 is evidenced only for rigid base meshes",
+                ));
+            }
+            let provenance = options
+                .state_projection_provenance
+                .as_ref()
+                .ok_or_else(|| {
+                    error(
+                        "M4A-STATE-PROJECTION-PROVENANCE-MISSING",
+                        "options.stateProjectionProvenance",
+                        "CEP_RIGID_PLACEHOLDER_V1 requires an exact audited R3 witness binding",
+                    )
+                })?;
+            require_cep_r3_projection_provenance(provenance)?;
+        }
+    }
+    Ok(())
+}
+
+fn require_cep_r3_projection_provenance(
+    provenance: &MdlStateProjectionProvenanceV1,
+) -> Result<(), MdlWriteError> {
+    if !is_well_formed_state_projection_provenance_v1(provenance) {
+        return Err(error(
+            "M4A-STATE-PROJECTION-PROVENANCE-MISMATCH",
+            "options.stateProjectionProvenance",
+            "CEP placeholder output requires explicit well-formed caller-owned provenance; runtime admission must compare it with an independent expected binding",
         ));
     }
     Ok(())
@@ -1296,18 +1959,20 @@ fn validate_segment(
     }
     if segment.positions.is_empty()
         || segment.positions.len() > usize::from(u16::MAX)
-        || segment.indices.len() > u32::MAX as usize
+        || segment.indices.len() > NWN_EE_MAX_MESH_INDEX_COUNT_V1
     {
         return Err(error(
             "M4-MESH-LIMIT",
             &path,
-            "each rigid mesh is limited to non-empty u16 vertices and indices",
+            "each mesh is limited to non-empty u16 vertices and at most 65535 index entries (21845 triangles)",
         ));
     }
     if segment.normals.len() != segment.positions.len()
         || segment.uv0.len() != segment.positions.len()
         || segment.indices.is_empty()
         || !segment.indices.len().is_multiple_of(3)
+        || (!segment.face_surface_ids.is_empty()
+            && segment.face_surface_ids.len() != segment.indices.len() / 3)
         || segment
             .indices
             .iter()
@@ -1441,6 +2106,7 @@ fn emit_model(
     core: &mut [u8],
     creature: &AuroraCreatureIrV1,
     options: &MdlWriterOptionsV1,
+    supermodel_resref: &str,
     plan: &Plan,
 ) -> Result<(), MdlWriteError> {
     write_c_string(core, 0x08, 64, &options.model_resource_resref)?;
@@ -1449,7 +2115,11 @@ fn emit_model(
         core,
         0x4c,
         as_u32(
-            add(plan.rig.len(), plan.mesh.len(), "model.nodeCount")?,
+            add(
+                add(plan.rig.len(), plan.mesh.len(), "model.nodeCount")?,
+                usize::from(plan.aabb.is_some()),
+                "model.nodeCount",
+            )?,
             "model.nodeCount",
         )?,
     )?;
@@ -1464,13 +2134,20 @@ fn emit_model(
             )?;
         }
     }
-    core[0x72] = 4;
+    core[0x72] = if options.format_profile == MdlFormatProfileV1::TileStaticV1 {
+        2
+    } else {
+        4
+    };
     core[0x73] = 1;
     write_vec3(core, 0x88, plan.model_bounds_min)?;
     write_vec3(core, 0x94, plan.model_bounds_max)?;
     write_f32(core, 0xa0, plan.model_radius)?;
     write_f32(core, 0xa4, 1.0)?;
-    write_c_string(core, 0xa8, 64, "null")?;
+    // Self-contained profiles pass the uppercase `NULL` sentinel. The
+    // reference-supermodel route passes an exact validated resref while
+    // retaining the same native binary field.
+    write_c_string(core, 0xa8, 64, supermodel_resref)?;
     let _ = creature;
     Ok(())
 }
@@ -1480,6 +2157,7 @@ fn emit_animations(
     creature: &AuroraCreatureIrV1,
     animation_set: &MdlAnimationSetV1,
     plan: &Plan,
+    state_projection_profile: MdlStateProjectionProfileV1,
 ) -> Result<(), MdlWriteError> {
     for animation in &plan.animations {
         let clip = &animation_set.clips[animation.clip_index];
@@ -1494,6 +2172,16 @@ fn emit_animations(
             animation.header + 0x4c,
             animation_as_u32(animation.nodes.len(), "animations.nodeCount")?,
         )?;
+        // Binary local-animation headers use a one-byte type followed by
+        // three padding bytes. The owned H1 v20 corrupt-draw witness uses
+        // historical type 0; audited retail profiles use type 5.
+        let animation_type = match state_projection_profile {
+            MdlStateProjectionProfileV1::OwnedRuntimePositiveType0RigOnlyV1 => 0,
+            MdlStateProjectionProfileV1::RetailDirectCreatureType5DummyV1
+            | MdlStateProjectionProfileV1::RetailDirectCreatureType5RigOnlyV1
+            | MdlStateProjectionProfileV1::CepRigidPlaceholderV1 => 5,
+        };
+        write_u32(core, animation.header + 0x6c, animation_type)?;
         write_f32(core, animation.header + 0x70, clip.length_seconds)?;
         write_f32(core, animation.header + 0x74, clip.transition_seconds)?;
         write_c_string(core, animation.header + 0x78, 64, &clip.animation_root)?;
@@ -1511,13 +2199,30 @@ fn emit_animations(
             }
         }
         for node in &animation.nodes {
-            let source = &creature.nodes[node.rig_index];
-            write_u32(
-                core,
-                node.offset + 0x1c,
-                animation_as_u32(node.rig_index, "animations.nodes.partNumber")?,
-            )?;
-            write_c_string(core, node.offset + 0x20, 32, &source.name)?;
+            let (part_number, node_name) = if let AnimationNodeKind::Rig(rig_index) = node.kind {
+                (
+                    plan.source_to_part[rig_index],
+                    creature.nodes[rig_index].name.clone(),
+                )
+            } else {
+                let mesh_index = node
+                    .kind
+                    .mesh_index()
+                    .expect("non-rig animation kind must identify a mesh segment");
+                (
+                    animation_as_u32(
+                        animation_add(
+                            creature.nodes.len(),
+                            mesh_index,
+                            "animations.nodes.partNumber",
+                        )?,
+                        "animations.nodes.partNumber",
+                    )?,
+                    format!("m2a_seg_{}", creature.segments[mesh_index].segment_id),
+                )
+            };
+            write_u32(core, node.offset + 0x1c, part_number)?;
+            write_c_string(core, node.offset + 0x20, 32, &node_name)?;
             if let Some(children) = node.children_array {
                 write_array(
                     core,
@@ -1545,7 +2250,15 @@ fn emit_animations(
                     write_f32(core, data + value_index * 4, value)?;
                 }
             }
-            write_u32(core, node.offset + 0x6c, 0x01)?;
+            write_u32(
+                core,
+                node.offset + 0x6c,
+                if node.kind.uses_zero_geometry_mesh_placeholder() {
+                    0x21
+                } else {
+                    0x01
+                },
+            )?;
         }
     }
     Ok(())
@@ -1576,8 +2289,8 @@ fn emit_nodes(
     creature: &AuroraCreatureIrV1,
     plan: &Plan,
 ) -> Result<(), MdlWriteError> {
-    for (index, item) in plan.rig.iter().enumerate() {
-        let node = &creature.nodes[index];
+    for item in &plan.rig {
+        let node = &creature.nodes[item.source_index];
         write_u32(core, item.offset + 0x1c, item.part)?;
         write_c_string(core, item.offset + 0x20, 32, &node.name)?;
         if let Some(children) = item.children_array {
@@ -1591,27 +2304,29 @@ fn emit_nodes(
                 write_u32(core, children + child_index * 4, child)?;
             }
         }
-        write_array(core, item.offset + 0x54, item.keys, CONTROLLER_KEY_COUNT)?;
-        write_array(core, item.offset + 0x60, item.data, CONTROLLER_DATA_COUNT)?;
         write_u32(core, item.offset + 0x6c, 0x01)?;
-        write_controller_key(core, item.keys, 8, 0, 1, 3)?;
-        write_controller_key(core, item.keys + CONTROLLER_KEY_SIZE, 20, 4, 5, 4)?;
-        let matrix = node.bind_local_matrix;
-        for (data_index, value) in [
-            0.0,
-            matrix[12],
-            matrix[13],
-            matrix[14],
-            0.0,
-            item.quaternion[0],
-            item.quaternion[1],
-            item.quaternion[2],
-            item.quaternion[3],
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            write_f32(core, item.data + data_index * 4, value)?;
+        if item.emit_bind_controllers {
+            write_array(core, item.offset + 0x54, item.keys, CONTROLLER_KEY_COUNT)?;
+            write_array(core, item.offset + 0x60, item.data, CONTROLLER_DATA_COUNT)?;
+            write_controller_key(core, item.keys, 8, 0, 1, 3)?;
+            write_controller_key(core, item.keys + CONTROLLER_KEY_SIZE, 20, 4, 5, 4)?;
+            let matrix = node.bind_local_matrix;
+            for (data_index, value) in [
+                0.0,
+                matrix[12],
+                matrix[13],
+                matrix[14],
+                0.0,
+                item.quaternion[0],
+                item.quaternion[1],
+                item.quaternion[2],
+                item.quaternion[3],
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                write_f32(core, item.data + data_index * 4, value)?;
+            }
         }
     }
     Ok(())
@@ -1622,6 +2337,7 @@ fn emit_meshes(
     raw: &mut [u8],
     creature: &AuroraCreatureIrV1,
     plan: &Plan,
+    options: &MdlWriterOptionsV1,
 ) -> Result<(), MdlWriteError> {
     for item in &plan.mesh {
         let segment = &creature.segments[item.segment_index];
@@ -1638,6 +2354,18 @@ fn emit_meshes(
             base + 0x6c,
             if item.skin.is_some() { 0x61 } else { 0x21 },
         )?;
+        if let (Some(keys), Some(data)) = (item.bind_controller_keys, item.bind_controller_data) {
+            write_array(core, base + 0x54, keys, CONTROLLER_KEY_COUNT)?;
+            write_array(core, base + 0x60, data, CONTROLLER_DATA_COUNT)?;
+            write_controller_key(core, keys, 8, 0, 1, 3)?;
+            write_controller_key(core, keys + CONTROLLER_KEY_SIZE, 20, 4, 5, 4)?;
+            for (data_index, value) in [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+                .into_iter()
+                .enumerate()
+            {
+                write_f32(core, data + data_index * 4, value)?;
+            }
+        }
         write_array(core, base + 0x78, item.faces, segment.indices.len() / 3)?;
         write_vec3(core, base + 0x84, item.bounds_min)?;
         write_vec3(core, base + 0x90, item.bounds_max)?;
@@ -1647,7 +2375,7 @@ fn emit_meshes(
         write_vec3(core, base + 0xb8, [1.0, 1.0, 1.0])?;
         write_vec3(core, base + 0xc4, [0.0, 0.0, 0.0])?;
         write_f32(core, base + 0xd0, 1.0)?;
-        write_u32(core, base + 0xd4, 1)?;
+        write_u32(core, base + 0xd4, u32::from(segment.cast_shadow))?;
         write_u32(core, base + 0xdc, 1)?;
         write_c_string(
             core,
@@ -1658,7 +2386,10 @@ fn emit_meshes(
         write_array(core, base + 0x204, item.index_count, 1)?;
         write_array(core, base + 0x210, item.index_offset, 1)?;
         write_i32(core, base + 0x21c, -1)?;
-        core[base + 0x224] = 3;
+        // Aurora passes this four-byte field to the renderer. Every non-empty
+        // triangle mesh in the bounded native corpus uses value 3, for both
+        // M4 extended64 skin and M0 static-rigid direct-creature profiles.
+        write_u32(core, base + 0x224, plan.mesh_type)?;
         write_i32(core, base + 0x228, 0)?;
         write_i32(
             core,
@@ -1676,7 +2407,15 @@ fn emit_meshes(
             base + 0x244,
             as_i32(item.raw_normals, "mesh.normals")?,
         )?;
-        for offset in [0x248, 0x24c, 0x250, 0x254, 0x258, 0x25c, 0x260] {
+        write_i32(
+            core,
+            base + 0x248,
+            item.raw_colors
+                .map(|offset| as_i32(offset, "mesh.colors"))
+                .transpose()?
+                .unwrap_or(-1),
+        )?;
+        for offset in [0x24c, 0x250, 0x254, 0x258, 0x25c, 0x260] {
             write_i32(core, base + offset, -1)?;
         }
         write_u32(
@@ -1699,6 +2438,12 @@ fn emit_meshes(
         }
         for (vertex, &value) in segment.normals.iter().enumerate() {
             write_vec3(raw, item.raw_normals + vertex * 12, value)?;
+        }
+        if let Some(raw_colors) = item.raw_colors {
+            for vertex in 0..segment.positions.len() {
+                raw[raw_colors + vertex * 4..raw_colors + vertex * 4 + 4]
+                    .copy_from_slice(&[255, 255, 255, 255]);
+            }
         }
         for (index, &value) in segment.indices.iter().enumerate() {
             write_u16(raw, item.raw_indices + index * 2, value as u16)?;
@@ -1749,8 +2494,7 @@ fn emit_meshes(
                 write_vec3(core, skin.t_offset + index * 12, translation)?;
             }
             for index in 0..skin.forward.len() {
-                write_i16(core, skin.constants_offset + index * 4, 0)?;
-                write_i16(core, skin.constants_offset + index * 4 + 2, 0)?;
+                write_u32(core, skin.constants_offset + index * 4, 0)?;
             }
             for (vertex, &weights) in skin.vertex_weights.iter().enumerate() {
                 for (lane, value) in weights.into_iter().enumerate() {
@@ -1763,6 +2507,12 @@ fn emit_meshes(
                 }
             }
         }
+        let face_adjacency = face_adjacency_for_profile(
+            &segment.positions,
+            &segment.indices,
+            options.format_profile,
+            &format!("creature.segments[{}].indices", item.segment_index),
+        )?;
         for (face_index, triangle) in segment.indices.chunks_exact(3).enumerate() {
             let a = segment.positions[triangle[0] as usize];
             let (normal, distance) = checked_face_plane(
@@ -1774,9 +2524,17 @@ fn emit_meshes(
             let face = item.faces + face_index * FACE_SIZE;
             write_vec3(core, face, normal)?;
             write_f32(core, face + 0x0c, distance)?;
-            write_i32(core, face + 0x10, 0)?;
-            for offset in [0x14, 0x16, 0x18] {
-                write_i16(core, face + offset, -1)?;
+            write_i32(
+                core,
+                face + 0x10,
+                segment
+                    .face_surface_ids
+                    .get(face_index)
+                    .copied()
+                    .unwrap_or(0),
+            )?;
+            for (edge_index, offset) in [0x14, 0x16, 0x18].into_iter().enumerate() {
+                write_i16(core, face + offset, face_adjacency[face_index][edge_index])?;
             }
             write_u16(core, face + 0x1a, triangle[0] as u16)?;
             write_u16(core, face + 0x1c, triangle[1] as u16)?;
@@ -1786,23 +2544,265 @@ fn emit_meshes(
     Ok(())
 }
 
+fn emit_aabb_mesh(
+    core: &mut [u8],
+    raw: &mut [u8],
+    navigation: &TileNavigationIrV1,
+    item: &AabbMeshPlan,
+    mesh_type: u32,
+) -> Result<(), MdlWriteError> {
+    let base = item.offset;
+    write_u32(core, base + 0x1c, item.part)?;
+    write_c_string(core, base + 0x20, 32, &navigation.node_name)?;
+    write_u32(core, base + 0x6c, 0x221)?;
+    write_array(core, base + 0x78, item.faces, navigation.faces.len())?;
+    write_vec3(core, base + 0x84, item.bounds_min)?;
+    write_vec3(core, base + 0x90, item.bounds_max)?;
+    write_f32(core, base + 0x9c, item.radius)?;
+    write_vec3(core, base + 0xa0, item.average)?;
+    write_vec3(core, base + 0xac, [1.0, 1.0, 1.0])?;
+    write_vec3(core, base + 0xb8, [1.0, 1.0, 1.0])?;
+    write_vec3(core, base + 0xc4, [0.0, 0.0, 0.0])?;
+    write_f32(core, base + 0xd0, 1.0)?;
+    write_u32(core, base + 0xd4, 1)?;
+    write_u32(core, base + 0xdc, 1)?;
+    write_array(core, base + 0x204, item.index_count, 1)?;
+    write_array(core, base + 0x210, item.index_offset, 1)?;
+    write_i32(core, base + 0x21c, -1)?;
+    write_u32(core, base + 0x224, mesh_type)?;
+    write_i32(core, base + 0x228, 0)?;
+    write_i32(
+        core,
+        base + 0x22c,
+        as_i32(item.raw_positions, "aabb.vertices")?,
+    )?;
+    write_u16(
+        core,
+        base + 0x230,
+        u16::try_from(navigation.vertices.len()).map_err(|_| {
+            error(
+                "TILE-MDL-NAVIGATION-INVALID",
+                "navigation.vertices",
+                "AABB vertex count exceeds u16",
+            )
+        })?,
+    )?;
+    write_u16(core, base + 0x232, 1)?;
+    write_i32(core, base + 0x234, as_i32(item.raw_uv0, "aabb.uv0")?)?;
+    for offset in [0x238, 0x23c, 0x240] {
+        write_i32(core, base + offset, -1)?;
+    }
+    write_i32(
+        core,
+        base + 0x244,
+        as_i32(item.raw_normals, "aabb.normals")?,
+    )?;
+    write_i32(
+        core,
+        base + 0x248,
+        item.raw_colors
+            .map(|offset| as_i32(offset, "aabb.colors"))
+            .transpose()?
+            .unwrap_or(-1),
+    )?;
+    for offset in [0x24c, 0x250, 0x254, 0x258, 0x25c, 0x260] {
+        write_i32(core, base + offset, -1)?;
+    }
+    let index_length = navigation.faces.len().checked_mul(3).ok_or_else(|| {
+        error(
+            "TILE-MDL-LAYOUT-OVERFLOW",
+            "navigation.faces",
+            "AABB index count overflow",
+        )
+    })?;
+    write_u32(
+        core,
+        item.index_count,
+        as_u32(index_length, "aabb.indexCount")?,
+    )?;
+    write_i32(
+        core,
+        item.index_offset,
+        as_i32(item.raw_indices, "aabb.indexOffset")?,
+    )?;
+    for (vertex, &position) in navigation.vertices.iter().enumerate() {
+        write_vec3(raw, item.raw_positions + vertex * 12, position)?;
+        write_f32(raw, item.raw_uv0 + vertex * 8, (position[0] + 5.0) / 10.0)?;
+        write_f32(
+            raw,
+            item.raw_uv0 + vertex * 8 + 4,
+            (position[1] + 5.0) / 10.0,
+        )?;
+        write_vec3(raw, item.raw_normals + vertex * 12, [0.0, 0.0, 1.0])?;
+        if let Some(colors) = item.raw_colors {
+            raw[colors + vertex * 4..colors + vertex * 4 + 4]
+                .copy_from_slice(&[255, 255, 255, 255]);
+        }
+    }
+    for (face_index, face) in navigation.faces.iter().enumerate() {
+        for (lane, index) in face.vertex_indices.into_iter().enumerate() {
+            write_u16(
+                raw,
+                item.raw_indices + (face_index * 3 + lane) * 2,
+                u16::try_from(index).map_err(|_| {
+                    error(
+                        "TILE-MDL-NAVIGATION-INVALID",
+                        &format!("navigation.faces[{face_index}].vertexIndices[{lane}]"),
+                        "AABB vertex index exceeds u16",
+                    )
+                })?,
+            )?;
+        }
+        let a = navigation.vertices[face.vertex_indices[0] as usize];
+        let b = navigation.vertices[face.vertex_indices[1] as usize];
+        let c = navigation.vertices[face.vertex_indices[2] as usize];
+        let (normal, distance) =
+            checked_face_plane(a, b, c, &format!("navigation.faces[{face_index}]"))?;
+        let offset = item.faces + face_index * FACE_SIZE;
+        write_vec3(core, offset, normal)?;
+        write_f32(core, offset + 0x0c, distance)?;
+        write_i32(core, offset + 0x10, face.surface_id)?;
+        for (edge, field) in [0x14, 0x16, 0x18].into_iter().enumerate() {
+            write_i16(
+                core,
+                offset + field,
+                i16::try_from(face.adjacent_faces[edge]).map_err(|_| {
+                    error(
+                        "TILE-MDL-NAVIGATION-INVALID",
+                        &format!("navigation.faces[{face_index}].adjacentFaces[{edge}]"),
+                        "AABB adjacency exceeds i16",
+                    )
+                })?,
+            )?;
+        }
+        write_u16(core, offset + 0x1a, face.vertex_indices[0] as u16)?;
+        write_u16(core, offset + 0x1c, face.vertex_indices[1] as u16)?;
+        write_u16(core, offset + 0x1e, face.vertex_indices[2] as u16)?;
+    }
+    let root_offset = *item
+        .entry_offsets
+        .get(navigation.aabb_tree.root_index as usize)
+        .ok_or_else(|| {
+            error(
+                "TILE-AABB-ROOT-OOB",
+                "navigation.aabbTree.rootIndex",
+                "AABB root index exceeds planned entry offsets",
+            )
+        })?;
+    write_u32(core, base + 0x270, as_u32(root_offset, "aabb.root")?)?;
+    emit_aabb_entries(
+        core,
+        &navigation.aabb_tree,
+        &item.entry_offsets,
+        "navigation.aabbTree",
+    )
+}
+
+fn emit_aabb_entries(
+    core: &mut [u8],
+    tree: &AabbTreeV1,
+    offsets: &[usize],
+    path: &str,
+) -> Result<(), MdlWriteError> {
+    if offsets.len() != tree.entries.len() {
+        return Err(error(
+            "TILE-AABB-LAYOUT-OVERFLOW",
+            path,
+            "planned AABB entry offsets differ from tree entry count",
+        ));
+    }
+    for (index, entry) in tree.entries.iter().enumerate() {
+        let offset = offsets[index];
+        write_vec3(core, offset, entry.bounds_min)?;
+        write_vec3(core, offset + 0x0c, entry.bounds_max)?;
+        write_u32(
+            core,
+            offset + 0x18,
+            entry
+                .left
+                .map(|child| {
+                    offsets
+                        .get(child as usize)
+                        .copied()
+                        .ok_or_else(|| {
+                            error(
+                                "TILE-AABB-CHILD-OOB",
+                                &format!("{path}.entries[{index}].left"),
+                                "left child exceeds entry array",
+                            )
+                        })
+                        .and_then(|value| as_u32(value, "aabb.left"))
+                })
+                .transpose()?
+                .unwrap_or(0),
+        )?;
+        write_u32(
+            core,
+            offset + 0x1c,
+            entry
+                .right
+                .map(|child| {
+                    offsets
+                        .get(child as usize)
+                        .copied()
+                        .ok_or_else(|| {
+                            error(
+                                "TILE-AABB-CHILD-OOB",
+                                &format!("{path}.entries[{index}].right"),
+                                "right child exceeds entry array",
+                            )
+                        })
+                        .and_then(|value| as_u32(value, "aabb.right"))
+                })
+                .transpose()?
+                .unwrap_or(0),
+        )?;
+        write_i32(
+            core,
+            offset + 0x20,
+            entry
+                .leaf_face
+                .map(|face| {
+                    i32::try_from(face).map_err(|_| {
+                        error(
+                            "TILE-AABB-LEAF-FACE-OOB",
+                            &format!("{path}.entries[{index}].leafFace"),
+                            "leaf face exceeds i32",
+                        )
+                    })
+                })
+                .transpose()?
+                .unwrap_or(-1),
+        )?;
+        write_u32(core, offset + 0x24, entry.plane)?;
+    }
+    Ok(())
+}
+
 fn expected_readback(
     creature: &AuroraCreatureIrV1,
     animation_set: &MdlAnimationSetV1,
     options: &MdlWriterOptionsV1,
+    supermodel_resref: &str,
     plan: &Plan,
+    navigation: Option<&TileNavigationIrV1>,
 ) -> Result<ExpectedReadback, MdlWriteError> {
-    let mut nodes = Vec::with_capacity(plan.rig.len() + plan.mesh.len());
-    for (index, item) in plan.rig.iter().enumerate() {
+    let mut nodes =
+        Vec::with_capacity(plan.rig.len() + plan.mesh.len() + usize::from(plan.aabb.is_some()));
+    for item in &plan.rig {
+        let index = item.source_index;
         nodes.push(ExpectedNode {
             ir_node_id: Some(item.id),
             part_number: item.part,
             name: creature.nodes[index].name.clone(),
             parent_part_number: item.parent_part,
             bind_matrix: Some(creature.nodes[index].bind_local_matrix),
+            controllerless_identity: !item.emit_bind_controllers,
+            mesh_bind_matrix: None,
             content_flags: 0x01,
             mesh: None,
             skin: None,
+            aabb: None,
         });
     }
     for item in &plan.mesh {
@@ -1827,35 +2827,58 @@ fn expected_readback(
                     inline_reverse: skin.inline_reverse.to_vec(),
                     inverse_rotations_wxyz: skin.inverse_rotations_wxyz.clone(),
                     inverse_translations: skin.inverse_translations.clone(),
-                    bone_constants: vec![[0, 0]; skin.forward.len()],
+                    bone_constants: vec![0; skin.forward.len()],
                     vertex_weights: skin.vertex_weights.clone(),
                     vertex_refs: skin.vertex_refs.clone(),
                     resolved_ir_ids: skin.resolved_ir_ids.clone(),
                 })
             })
             .transpose()?;
+        let face_adjacency = face_adjacency_for_profile(
+            &segment.positions,
+            &segment.indices,
+            options.format_profile,
+            "semantic.faces.adjacentFaces",
+        )?;
         nodes.push(ExpectedNode {
             ir_node_id: None,
             part_number: item.part,
             name: format!("m2a_seg_{}", segment.segment_id),
             parent_part_number: Some(item.parent_part),
             bind_matrix: None,
+            controllerless_identity: false,
+            mesh_bind_matrix: item.skin.as_ref().map(|_| {
+                [
+                    1.0, 0.0, 0.0, 0.0, //
+                    0.0, 1.0, 0.0, 0.0, //
+                    0.0, 0.0, 1.0, 0.0, //
+                    0.0, 0.0, 0.0, 1.0,
+                ]
+            }),
             content_flags: if item.skin.is_some() { 0x61 } else { 0x21 },
             mesh: Some(ExpectedMesh {
                 texture_resref: plan.textures[&segment.material_slot].clone(),
+                mesh_type: plan.mesh_type,
                 positions: segment.positions.clone(),
                 normals: segment.normals.clone(),
                 uv0: segment.uv0.clone(),
+                vertex_colors: if plan.emit_vertex_colors {
+                    vec![[255, 255, 255, 255]; segment.positions.len()]
+                } else {
+                    Vec::new()
+                },
                 indices: segment.indices.iter().map(|value| *value as u16).collect(),
                 bounds_min: item.bounds_min,
                 bounds_max: item.bounds_max,
                 radius: item.radius,
                 average: item.average,
+                shadow: u32::from(segment.cast_shadow),
                 raw_index_offset: as_i32(item.raw_indices, "mesh.indexOffset")?,
                 faces: segment
                     .indices
                     .chunks_exact(3)
-                    .map(|triangle| {
+                    .enumerate()
+                    .map(|(face_index, triangle)| {
                         let (normal, distance) = checked_face_plane(
                             segment.positions[triangle[0] as usize],
                             segment.positions[triangle[1] as usize],
@@ -1865,6 +2888,12 @@ fn expected_readback(
                         Ok(ExpectedFace {
                             normal,
                             distance,
+                            surface_id: segment
+                                .face_surface_ids
+                                .get(face_index)
+                                .copied()
+                                .unwrap_or(0),
+                            adjacent_faces: face_adjacency[face_index],
                             vertex_indices: [
                                 triangle[0] as u16,
                                 triangle[1] as u16,
@@ -1875,20 +2904,154 @@ fn expected_readback(
                     .collect::<Result<Vec<_>, MdlWriteError>>()?,
             }),
             skin: expected_skin,
+            aabb: None,
         });
     }
-    let id_to_part = creature
-        .nodes
+    if let (Some(aabb), Some(navigation)) = (plan.aabb.as_ref(), navigation) {
+        let indices = navigation
+            .faces
+            .iter()
+            .flat_map(|face| face.vertex_indices)
+            .map(|index| index as u16)
+            .collect::<Vec<_>>();
+        let faces = navigation
+            .faces
+            .iter()
+            .enumerate()
+            .map(|(face_index, face)| {
+                let (normal, distance) = checked_face_plane(
+                    navigation.vertices[face.vertex_indices[0] as usize],
+                    navigation.vertices[face.vertex_indices[1] as usize],
+                    navigation.vertices[face.vertex_indices[2] as usize],
+                    &format!("semantic.aabb.faces[{face_index}]"),
+                )?;
+                Ok(ExpectedFace {
+                    normal,
+                    distance,
+                    surface_id: face.surface_id,
+                    adjacent_faces: [
+                        face.adjacent_faces[0] as i16,
+                        face.adjacent_faces[1] as i16,
+                        face.adjacent_faces[2] as i16,
+                    ],
+                    vertex_indices: [
+                        face.vertex_indices[0] as u16,
+                        face.vertex_indices[1] as u16,
+                        face.vertex_indices[2] as u16,
+                    ],
+                })
+            })
+            .collect::<Result<Vec<_>, MdlWriteError>>()?;
+        let expected_aabb = ExpectedAabbTree {
+            root_pointer: as_u32(
+                aabb.entry_offsets[navigation.aabb_tree.root_index as usize],
+                "semantic.aabb.root",
+            )?,
+            entries: navigation
+                .aabb_tree
+                .entries
+                .iter()
+                .enumerate()
+                .map(|(index, entry)| {
+                    Ok(ExpectedAabbEntry {
+                        offset: as_u32(aabb.entry_offsets[index], "semantic.aabb.entry")?,
+                        bounds_min: entry.bounds_min,
+                        bounds_max: entry.bounds_max,
+                        left_pointer: entry
+                            .left
+                            .map(|child| {
+                                as_u32(aabb.entry_offsets[child as usize], "semantic.aabb.left")
+                            })
+                            .transpose()?,
+                        right_pointer: entry
+                            .right
+                            .map(|child| {
+                                as_u32(aabb.entry_offsets[child as usize], "semantic.aabb.right")
+                            })
+                            .transpose()?,
+                        leaf_face: entry.leaf_face,
+                        plane: entry.plane,
+                    })
+                })
+                .collect::<Result<Vec<_>, MdlWriteError>>()?,
+        };
+        nodes.push(ExpectedNode {
+            ir_node_id: None,
+            part_number: aabb.part,
+            name: navigation.node_name.clone(),
+            parent_part_number: Some(aabb.parent_part),
+            bind_matrix: None,
+            controllerless_identity: false,
+            mesh_bind_matrix: None,
+            content_flags: 0x221,
+            mesh: Some(ExpectedMesh {
+                texture_resref: String::new(),
+                mesh_type: plan.mesh_type,
+                positions: navigation.vertices.clone(),
+                normals: vec![[0.0, 0.0, 1.0]; navigation.vertices.len()],
+                uv0: navigation
+                    .vertices
+                    .iter()
+                    .map(|position| [(position[0] + 5.0) / 10.0, (position[1] + 5.0) / 10.0])
+                    .collect(),
+                vertex_colors: if plan.emit_vertex_colors {
+                    vec![[255, 255, 255, 255]; navigation.vertices.len()]
+                } else {
+                    Vec::new()
+                },
+                indices,
+                bounds_min: aabb.bounds_min,
+                bounds_max: aabb.bounds_max,
+                radius: aabb.radius,
+                average: aabb.average,
+                shadow: 1,
+                raw_index_offset: as_i32(aabb.raw_indices, "aabb.indexOffset")?,
+                faces,
+            }),
+            skin: None,
+            aabb: Some(expected_aabb),
+        });
+    }
+    let id_to_part = plan
+        .rig
         .iter()
-        .enumerate()
-        .map(|(index, node)| (node.id, index as u32))
+        .map(|node| (node.id, node.part))
         .collect::<HashMap<_, _>>();
     let mut animations = Vec::with_capacity(plan.animations.len());
     for animation in &plan.animations {
         let clip = &animation_set.clips[animation.clip_index];
         let mut animation_nodes = Vec::with_capacity(animation.nodes.len());
         for node in &animation.nodes {
-            let source = &creature.nodes[node.rig_index];
+            let (part_number, name, parent_part_number) =
+                if let AnimationNodeKind::Rig(rig_index) = node.kind {
+                    let source = &creature.nodes[rig_index];
+                    (
+                        plan.source_to_part[rig_index],
+                        source.name.clone(),
+                        source.parent_id.map(|parent| id_to_part[&parent]),
+                    )
+                } else {
+                    let mesh_index = node
+                        .kind
+                        .mesh_index()
+                        .expect("non-rig animation kind must identify a mesh segment");
+                    let segment = &creature.segments[mesh_index];
+                    let parent_part_number = *id_to_part
+                        .get(&segment.parent_node_id)
+                        .expect("validated mesh parent exists in output rig");
+                    (
+                        animation_as_u32(
+                            animation_add(
+                                creature.nodes.len(),
+                                mesh_index,
+                                "semantic.animations.partNumber",
+                            )?,
+                            "semantic.animations.partNumber",
+                        )?,
+                        format!("m2a_seg_{}", segment.segment_id),
+                        Some(parent_part_number),
+                    )
+                };
             let mut controllers = Vec::with_capacity(node.tracks.len());
             for (track_index, track) in node.tracks.iter().enumerate() {
                 let columns = usize::from(track.packed_byte & 0x0f);
@@ -1918,9 +3081,9 @@ fn expected_readback(
             }
             animation_nodes.push(ExpectedAnimationNode {
                 offset: animation_as_u32(node.offset, "semantic.animations.node")?,
-                part_number: node.rig_index as u32,
-                name: source.name.clone(),
-                parent_part_number: source.parent_id.map(|parent| id_to_part[&parent]),
+                part_number,
+                name,
+                parent_part_number,
                 children_header: array_report(
                     node.children_array,
                     node.children_offsets.len(),
@@ -1937,11 +3100,18 @@ fn expected_readback(
                     "semantic.animations.controllerData",
                 )?,
                 controllers,
+                mesh_placeholder: node.kind.uses_zero_geometry_mesh_placeholder(),
             });
         }
         animations.push(ExpectedAnimation {
             offset: animation_as_u32(animation.header, "semantic.animations.header")?,
             name: clip.name.clone(),
+            animation_type: match options.state_projection_profile {
+                MdlStateProjectionProfileV1::OwnedRuntimePositiveType0RigOnlyV1 => 0,
+                MdlStateProjectionProfileV1::RetailDirectCreatureType5DummyV1
+                | MdlStateProjectionProfileV1::RetailDirectCreatureType5RigOnlyV1
+                | MdlStateProjectionProfileV1::CepRigidPlaceholderV1 => 5,
+            },
             length: clip.length_seconds,
             transition: clip.transition_seconds,
             animation_root: clip.animation_root.clone(),
@@ -1955,15 +3125,30 @@ fn expected_readback(
                 .iter()
                 .map(|event| (event.time_seconds, event.name.clone()))
                 .collect(),
-            root_part_number: animation.nodes[0].rig_index as u32,
+            root_part_number: match animation.nodes[0].kind {
+                AnimationNodeKind::Rig(rig_index) => plan.source_to_part[rig_index],
+                AnimationNodeKind::RigidMeshPlaceholder(_) | AnimationNodeKind::MeshDummy(_) => {
+                    return Err(error(
+                        "M4A-LAYOUT-OVERFLOW",
+                        "semantic.animations.rootPartNumber",
+                        "an animation root must be a rig node",
+                    ));
+                }
+            },
             nodes: animation_nodes,
         });
     }
     Ok(ExpectedReadback {
         model_name: options.model_resource_resref.clone(),
+        supermodel_name: supermodel_resref.to_owned(),
         model_bounds_min: plan.model_bounds_min,
         model_bounds_max: plan.model_bounds_max,
         model_radius: plan.model_radius,
+        classification: if options.format_profile == MdlFormatProfileV1::TileStaticV1 {
+            2
+        } else {
+            4
+        },
         root_part_number: plan
             .rig
             .iter()
@@ -1981,6 +3166,7 @@ fn expected_readback(
 }
 
 fn animation_writer_report(
+    creature: &AuroraCreatureIrV1,
     animation_set: &MdlAnimationSetV1,
     plan: &Plan,
 ) -> Result<Option<MdlAnimationWriterReportV1>, MdlWriteError> {
@@ -2005,6 +3191,27 @@ fn animation_writer_report(
                 .nodes
                 .iter()
                 .map(|node| {
+                    let (ir_node_id, part_number) =
+                        if let AnimationNodeKind::Rig(rig_index) = node.kind {
+                            let part = plan.source_to_part[rig_index] as usize;
+                            (Some(plan.rig[part].id), plan.source_to_part[rig_index])
+                        } else {
+                            let mesh_index = node
+                                .kind
+                                .mesh_index()
+                                .expect("non-rig animation kind must identify a mesh segment");
+                            (
+                                None,
+                                animation_as_u32(
+                                    animation_add(
+                                        creature.nodes.len(),
+                                        mesh_index,
+                                        "report.animation.node.partNumber",
+                                    )?,
+                                    "report.animation.node.partNumber",
+                                )?,
+                            )
+                        };
                     let key_base = if node.tracks.is_empty() {
                         0
                     } else {
@@ -2021,8 +3228,21 @@ fn animation_writer_report(
                         .iter()
                         .enumerate()
                         .map(|(track_index, track)| {
+                            let target_node_id = match node.kind {
+                                AnimationNodeKind::Rig(rig_index) => {
+                                    plan.rig[plan.source_to_part[rig_index] as usize].id
+                                }
+                                AnimationNodeKind::RigidMeshPlaceholder(_)
+                                | AnimationNodeKind::MeshDummy(_) => {
+                                    return Err(error(
+                                        "M4A-LAYOUT-OVERFLOW",
+                                        "report.animation.node.tracks",
+                                        "a virtual mesh animation dummy cannot own tracks",
+                                    ));
+                                }
+                            };
                             Ok(MdlAnimationTrackLayoutV1 {
-                                target_node_id: plan.rig[node.rig_index].id,
+                                target_node_id,
                                 path: match track.controller_type {
                                     8 => MdlAnimationTrackPathV1::Translation,
                                     20 => MdlAnimationTrackPathV1::Rotation,
@@ -2044,8 +3264,8 @@ fn animation_writer_report(
                         })
                         .collect::<Result<Vec<_>, MdlWriteError>>()?;
                     Ok(MdlAnimationNodeLayoutV1 {
-                        ir_node_id: plan.rig[node.rig_index].id,
-                        part_number: node.rig_index as u32,
+                        ir_node_id,
+                        part_number,
                         core_offset: animation_as_u32(
                             node.offset,
                             "report.animation.node.coreOffset",
@@ -2133,8 +3353,13 @@ fn tree_ordinals(
     root_part: usize,
     rig: &[RigPlan],
     mesh: &[MeshPlan],
+    aabb: Option<&AabbMeshPlan>,
 ) -> Result<(Vec<usize>, Vec<usize>), MdlWriteError> {
-    let total = add(rig.len(), mesh.len(), "layout.treeOrdinals")?;
+    let total = add(
+        add(rig.len(), mesh.len(), "layout.treeOrdinals")?,
+        usize::from(aabb.is_some()),
+        "layout.treeOrdinals",
+    )?;
     let mut children = vec![Vec::<usize>::new(); rig.len()];
     for (child, node) in rig.iter().enumerate() {
         if let Some(parent) = node.parent_part {
@@ -2143,6 +3368,9 @@ fn tree_ordinals(
     }
     for (mesh_index, item) in mesh.iter().enumerate() {
         children[item.parent_part as usize].push(rig.len() + mesh_index);
+    }
+    if let Some(aabb) = aabb {
+        children[aabb.parent_part as usize].push(aabb.part as usize);
     }
     let mut ordinal_parts = Vec::with_capacity(total);
     let mut pending = vec![root_part];
@@ -2174,7 +3402,7 @@ fn build_skin_plan(
     segment: &AuroraCreatureSegmentV1,
     segment_index: usize,
     parent_part: usize,
-    id_to_index: &HashMap<u32, usize>,
+    id_to_part: &HashMap<u32, usize>,
     part_to_tree_ordinal: &[usize],
     ordinal_parts: &[usize],
     binary_worlds: &[[f64; 16]],
@@ -2183,7 +3411,7 @@ fn build_skin_plan(
         .weights
         .iter()
         .flat_map(|row| row.bone_node_ids.iter().flatten().copied())
-        .map(|id| part_to_tree_ordinal[id_to_index[&id]])
+        .map(|id| part_to_tree_ordinal[id_to_part[&id]])
         .collect::<Vec<_>>();
     active_ordinals.sort_unstable();
     active_ordinals.dedup();
@@ -2252,7 +3480,7 @@ fn build_skin_plan(
         let mut resolved = [None; 4];
         for lane in 0..usize::from(row.influence_count) {
             let id = row.bone_node_ids[lane].unwrap_or_default();
-            let ordinal = part_to_tree_ordinal[id_to_index[&id]];
+            let ordinal = part_to_tree_ordinal[id_to_part[&id]];
             refs[lane] = ordinal_to_slot[&ordinal];
             resolved[lane] = Some(id);
         }
@@ -2910,6 +4138,128 @@ fn checked_face_plane(
     Ok((normal, distance as f32))
 }
 
+type FaceAdjacencyPositionKey = [u32; 3];
+type FaceAdjacencyEdgeKey = (FaceAdjacencyPositionKey, FaceAdjacencyPositionKey);
+
+#[derive(Clone, Copy)]
+enum FaceAdjacencyEdgeUses {
+    One((usize, usize)),
+    Two((usize, usize), (usize, usize)),
+    NonManifold,
+}
+
+fn face_adjacency_position_key(position: [f32; 3]) -> FaceAdjacencyPositionKey {
+    position.map(|value| if value == 0.0 { 0 } else { value.to_bits() })
+}
+
+fn checked_face_adjacency(
+    positions: &[[f32; 3]],
+    indices: &[u32],
+    path: &str,
+) -> Result<Vec<[i16; 3]>, MdlWriteError> {
+    if !indices.len().is_multiple_of(3) {
+        return Err(error(
+            "M4-MESH-INVALID",
+            path,
+            "triangle index count must be divisible by three",
+        ));
+    }
+    let face_count = indices.len() / 3;
+    if face_count > i16::MAX as usize {
+        return Err(error(
+            "M4-MESH-INVALID",
+            path,
+            "face adjacency indices exceed the signed 16-bit face range",
+        ));
+    }
+
+    let mut adjacency = vec![[-1_i16; 3]; face_count];
+    let mut edge_uses = HashMap::<FaceAdjacencyEdgeKey, FaceAdjacencyEdgeUses>::new();
+    for (face_index, triangle) in indices.chunks_exact(3).enumerate() {
+        let edges = [
+            (triangle[0], triangle[1]),
+            (triangle[1], triangle[2]),
+            (triangle[2], triangle[0]),
+        ];
+        for (edge_index, (start, end)) in edges.into_iter().enumerate() {
+            let start_position = positions.get(start as usize).copied().ok_or_else(|| {
+                error(
+                    "M4-MESH-INVALID",
+                    path,
+                    format!(
+                        "face {face_index} edge {edge_index} start index {start} is out of bounds"
+                    ),
+                )
+            })?;
+            let end_position = positions.get(end as usize).copied().ok_or_else(|| {
+                error(
+                    "M4-MESH-INVALID",
+                    path,
+                    format!("face {face_index} edge {edge_index} end index {end} is out of bounds"),
+                )
+            })?;
+            let start_key = face_adjacency_position_key(start_position);
+            let end_key = face_adjacency_position_key(end_position);
+            if start_key == end_key {
+                return Err(error(
+                    "M4-MESH-INVALID",
+                    path,
+                    format!(
+                        "face {face_index} edge {edge_index} collapses to one geometric position"
+                    ),
+                ));
+            }
+            let key = if start_key < end_key {
+                (start_key, end_key)
+            } else {
+                (end_key, start_key)
+            };
+            use std::collections::hash_map::Entry;
+            match edge_uses.entry(key) {
+                Entry::Vacant(entry) => {
+                    entry.insert(FaceAdjacencyEdgeUses::One((face_index, edge_index)));
+                }
+                Entry::Occupied(mut entry) => {
+                    let next = match *entry.get() {
+                        FaceAdjacencyEdgeUses::One(first) => {
+                            FaceAdjacencyEdgeUses::Two(first, (face_index, edge_index))
+                        }
+                        FaceAdjacencyEdgeUses::Two(_, _) | FaceAdjacencyEdgeUses::NonManifold => {
+                            FaceAdjacencyEdgeUses::NonManifold
+                        }
+                    };
+                    entry.insert(next);
+                }
+            }
+        }
+    }
+    for uses in edge_uses.into_values() {
+        if let FaceAdjacencyEdgeUses::Two((first_face, first_edge), (second_face, second_edge)) =
+            uses
+        {
+            adjacency[first_face][first_edge] = second_face as i16;
+            adjacency[second_face][second_edge] = first_face as i16;
+        }
+    }
+    Ok(adjacency)
+}
+
+fn face_adjacency_for_profile(
+    positions: &[[f32; 3]],
+    indices: &[u32],
+    profile: MdlFormatProfileV1,
+    path: &str,
+) -> Result<Vec<[i16; 3]>, MdlWriteError> {
+    if matches!(
+        profile,
+        MdlFormatProfileV1::PlaceableStaticRigidNativeV1 | MdlFormatProfileV1::TileStaticV1
+    ) {
+        checked_face_adjacency(positions, indices, path)
+    } else {
+        Ok(vec![[-1_i16; 3]; indices.len() / 3])
+    }
+}
+
 fn finite3(value: [f32; 3]) -> bool {
     value.iter().all(|item| item.is_finite())
 }
@@ -2962,7 +4312,7 @@ mod tests {
     use super::super::writer_types::{
         MdlAnimationClipV1, MdlAnimationEventV1, MdlAnimationInterpolationV1, MdlAnimationSetV1,
         MdlAnimationTrackPathV1, MdlAnimationTrackV1, MdlFormatProfileV1,
-        MdlMaterialTextureBindingV1, MdlWriterOptionsV1,
+        MdlMaterialTextureBindingV1, MdlStateProjectionProfileV1, MdlWriterOptionsV1,
     };
     use super::{
         ANIMATION_EVENT_SIZE, CONTROLLER_KEY_SIZE, add, as_i32, expected_readback,
@@ -2988,8 +4338,9 @@ mod tests {
         let options = skin_options();
         let artifact = write_binary_mdl(&input, &options).unwrap();
         let animations = MdlAnimationSetV1::empty();
-        let plan = plan(&input, &animations, &options).unwrap();
-        let expected = expected_readback(&input, &animations, &options, &plan).unwrap();
+        let plan = plan(&input, &animations, &options, None).unwrap();
+        let expected =
+            expected_readback(&input, &animations, &options, "NULL", &plan, None).unwrap();
         let skin_node = artifact.inspection.node_tree.roots[0]
             .children
             .last()
@@ -3008,9 +4359,18 @@ mod tests {
             ["nodes[3].skin.qInverse"]
         );
 
+        let mut mesh_type = artifact.payload.clone();
+        mesh_type[node_absolute + 0x224..node_absolute + 0x228]
+            .copy_from_slice(&0_u32.to_le_bytes());
+        assert_eq!(
+            semantic_diff(&expected, &inspect_binary_mdl(&mesh_type).unwrap()),
+            ["nodes[3].profileDefaults"]
+        );
+
         let mut constant = artifact.payload.clone();
         let constant_absolute = 12 + skin.constants_header.pointer as usize;
-        constant[constant_absolute..constant_absolute + 2].copy_from_slice(&1_i16.to_le_bytes());
+        constant[constant_absolute + 2..constant_absolute + 4]
+            .copy_from_slice(&1_u16.to_le_bytes());
         assert_eq!(
             semantic_diff(&expected, &inspect_binary_mdl(&constant).unwrap()),
             ["nodes[3].skin.constants"]
@@ -3143,8 +4503,8 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![
                 (
-                    "M4A-RUNTIME-OPAQUE-ZERO-OPEN-M6",
-                    "animations.runtimeFields"
+                    "M4A-RUNTIME-FIELD-68-OPAQUE-ZERO-OPEN-M6",
+                    "animations.runtimeField68"
                 ),
                 (
                     "M4A-RUNTIME-ANIM-TREE-PROFILE-OPEN-M6",
@@ -3164,8 +4524,9 @@ mod tests {
                 ),
             ]
         );
-        let layout = plan(&input, &animations, &options).unwrap();
-        let expected = expected_readback(&input, &animations, &options, &layout).unwrap();
+        let layout = plan(&input, &animations, &options, None).unwrap();
+        let expected =
+            expected_readback(&input, &animations, &options, "NULL", &layout, None).unwrap();
         let clip = &artifact.inspection.animations[0];
         let root = &clip.node_tree.roots[0];
         let absolute = |offset: u32| 12 + offset as usize;
@@ -3238,6 +4599,14 @@ mod tests {
             ["animations[0].header"]
         );
 
+        let mut animation_type = artifact.payload.clone();
+        animation_type[absolute(clip.offset) + 0x6c..absolute(clip.offset) + 0x70]
+            .copy_from_slice(&0_u32.to_le_bytes());
+        assert_eq!(
+            semantic_diff(&expected, &inspect_binary_mdl(&animation_type).unwrap()),
+            ["animations[0].header"]
+        );
+
         let mut animroot = artifact.payload.clone();
         animroot[absolute(clip.offset) + 0x78] = b'x';
         assert_eq!(
@@ -3247,7 +4616,7 @@ mod tests {
 
         let mut budget = artifact.payload.clone();
         budget[absolute(clip.offset) + 0x4c..absolute(clip.offset) + 0x50]
-            .copy_from_slice(&4_u32.to_le_bytes());
+            .copy_from_slice(&(clip.node_tree.declared_node_count as u32 + 1).to_le_bytes());
         assert_eq!(
             semantic_diff(&expected, &inspect_binary_mdl(&budget).unwrap()),
             ["animations[0].nodes.countOrRoot"]
@@ -3318,7 +4687,7 @@ mod tests {
     #[test]
     fn internal_skin_layout_drift_uses_the_stable_layout_error() {
         let input = skin_input();
-        let mut layout = plan(&input, &MdlAnimationSetV1::empty(), &skin_options()).unwrap();
+        let mut layout = plan(&input, &MdlAnimationSetV1::empty(), &skin_options(), None).unwrap();
         layout.mesh[0].skin.as_mut().unwrap().forward_offset += 4;
         let error = validate_skin_layout(&layout.mesh, input.nodes.len() + input.segments.len())
             .unwrap_err();
@@ -3329,7 +4698,7 @@ mod tests {
     #[test]
     fn signed_skin_fields_are_rejected_by_preallocation_validation() {
         let input = skin_input();
-        let mut layout = plan(&input, &MdlAnimationSetV1::empty(), &skin_options()).unwrap();
+        let mut layout = plan(&input, &MdlAnimationSetV1::empty(), &skin_options(), None).unwrap();
         let over = i32::MAX as usize + 1;
         let error = validate_skin_signed_fields(&layout.mesh, over).unwrap_err();
         assert_eq!(error.code, "M4-LAYOUT-OVERFLOW");
@@ -3393,11 +4762,13 @@ mod tests {
                 material_slot: 0,
                 deformation: RigSegmentDeformationV1::Skin,
                 parent_node_id: 10,
+                cast_shadow: true,
                 positions: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
                 normals: vec![[0.0, 0.0, 1.0]; 3],
                 tangents: None,
                 uv0: vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
                 indices: vec![0, 1, 2],
+                face_surface_ids: Vec::new(),
                 weights: rows,
             }],
         }
@@ -3407,6 +4778,8 @@ mod tests {
         MdlWriterOptionsV1 {
             schema_version: 1,
             format_profile: MdlFormatProfileV1::M4DirectCreatureExtended64V1,
+            state_projection_profile: MdlStateProjectionProfileV1::RetailDirectCreatureType5DummyV1,
+            state_projection_provenance: None,
             model_resource_resref: "skin_unit".to_owned(),
             diffuse_texture_resref_by_material_slot: vec![MdlMaterialTextureBindingV1 {
                 material_slot: 0,

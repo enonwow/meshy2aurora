@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/m2a-core", "crates/m2a-wasm"]
+members = ["crates/m2a-core", "crates/m2a-wasm", "crates/m2a-win32-noreplace"]
 resolver = "3"
 
 [workspace.package]

@@ -46,7 +46,19 @@ use crate::{
     },
 };
 
+// Backward-compatible creature names now alias the shared model-kind-neutral
+// IR. Existing creature callers retain their public API while placeable and
+// future tile routes feed the exact same model writer representation.
+pub use crate::model_ir::{
+    AuroraMaterialSourceBindingV1 as MaterialSourceBindingV1,
+    AuroraModelIrV1 as AuroraCreatureIrV1, AuroraModelNodeV1 as AuroraCreatureNodeV1,
+    AuroraModelSegmentV1 as AuroraCreatureSegmentV1,
+    AuroraSegmentDeformationV1 as RigSegmentDeformationV1, AuroraVertexWeightsV1,
+};
+
 pub const PROFILE_A_SCHEMA_VERSION: u32 = 1;
+pub const PROFILE_A_PLACEABLE_TRIANGLE_WARNING_ABOVE_V1: u64 = 10_000;
+pub const PROFILE_A_PLACEABLE_TRIANGLE_BLOCKING_ABOVE_V1: u64 = 21_845;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -82,13 +94,6 @@ pub struct CreatureRigNodeV1 {
     pub parent_id: Option<u32>,
     /// Column-major affine bind matrix.
     pub bind_local_matrix: [f32; 16],
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum RigSegmentDeformationV1 {
-    Skin,
-    Rigid,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -153,7 +158,14 @@ locked_policy!(ProfileANormalPolicyV1, RequireSource);
 locked_policy!(ProfileABasisPolicyV1, GltfToAuroraXzy);
 locked_policy!(ProfileAUvPolicyV1, FlipVOnce);
 locked_policy!(ProfileAWindingPolicyV1, ReverseOnce);
-locked_policy!(ProfileAMaterialPolicyV1, SingleSourceSlot);
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ProfileAMaterialPolicyV1 {
+    SingleSourceSlot,
+    BoundedSourceSlots,
+}
+
+pub const PROFILE_A_HARD_MAX_UNIQUE_MATERIALS_V1: u64 = 256;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -423,13 +435,6 @@ pub struct ProfileATransformReportV1 {
     pub translation: Option<[f32; 3]>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct MaterialSourceBindingV1 {
-    pub slot: u32,
-    pub source_material_id: Option<u32>,
-    pub source_material_name: Option<String>,
-}
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileAMaterialsReportV1 {
@@ -509,52 +514,6 @@ pub struct ProfileAConversionOutcomeV1 {
 pub struct ProfileAAnimatedOutcomeV1 {
     pub base: ProfileAConversionOutcomeV1,
     pub animations: Option<MdlAnimationSetV1>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AuroraCreatureIrV1 {
-    pub schema_version: u32,
-    pub profile_id: String,
-    pub source_sha256: String,
-    pub basis_status: String,
-    pub engine_facing_proof: String,
-    pub uv_runtime_proof: String,
-    pub nodes: Vec<AuroraCreatureNodeV1>,
-    pub material_source_bindings: Vec<MaterialSourceBindingV1>,
-    pub segments: Vec<AuroraCreatureSegmentV1>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AuroraCreatureNodeV1 {
-    pub id: u32,
-    pub name: String,
-    pub parent_id: Option<u32>,
-    pub bind_local_matrix: [f32; 16],
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AuroraCreatureSegmentV1 {
-    pub segment_id: u32,
-    pub material_slot: u32,
-    pub deformation: RigSegmentDeformationV1,
-    pub parent_node_id: u32,
-    pub positions: Vec<[f32; 3]>,
-    pub normals: Vec<[f32; 3]>,
-    pub tangents: Option<Vec<[f32; 4]>>,
-    pub uv0: Vec<[f32; 2]>,
-    pub indices: Vec<u32>,
-    pub weights: Vec<AuroraVertexWeightsV1>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AuroraVertexWeightsV1 {
-    pub bone_node_ids: [Option<u32>; 4],
-    pub values: [f32; 4],
-    pub influence_count: u8,
 }
 
 #[derive(Clone, Copy)]
@@ -999,6 +958,240 @@ pub fn derive_meshy_h1_profile_and_mapping_v1(
     ))
 }
 
+/// Derives the intentionally narrow M0 control route from one static Meshy
+/// prop.  M0 is a runtime diagnostic, not a fallback for the animated H1
+/// lane: it accepts no source skin or source animation and emits exactly one
+/// clean-room rigid segment. Multiple primitives on that one static mesh are
+/// accepted so authored placeable elements can retain material/shadow buckets
+/// while still using the same Profile A geometry conversion.
+pub fn derive_meshy_m0_static_rigid_profile_v1(
+    source: &GlbIngestResult,
+) -> Result<CreatureRigProfileV1, ProfileAConversionFatalError> {
+    if !source.ir.skins.is_empty()
+        || source.ir.nodes.iter().any(|node| node.skin_id.is_some())
+        || !source.ir.animations.is_empty()
+    {
+        return Err(fatal(
+            "M4A-MESHY-M0-SOURCE-INVALID",
+            "source.ir",
+            "M0 requires an unskinned Meshy GLB with no source animations",
+        ));
+    }
+    let mesh_nodes = source
+        .ir
+        .nodes
+        .iter()
+        .filter(|node| node.mesh_id.is_some())
+        .collect::<Vec<_>>();
+    if mesh_nodes.len() != 1 {
+        return Err(fatal(
+            "M4A-MESHY-M0-SOURCE-INVALID",
+            "source.ir.nodes",
+            "M0 requires exactly one mesh node",
+        ));
+    }
+    let mesh_node = mesh_nodes[0];
+    let mesh_id = mesh_node.mesh_id.ok_or_else(|| {
+        fatal(
+            "M4A-MESHY-M0-SOURCE-INVALID",
+            "source.ir.nodes.meshId",
+            "selected M0 mesh node is missing meshId",
+        )
+    })?;
+    let mesh = source
+        .ir
+        .meshes
+        .iter()
+        .find(|mesh| mesh.id == mesh_id)
+        .ok_or_else(|| {
+            fatal(
+                "M4A-MESHY-M0-SOURCE-INVALID",
+                "source.ir.nodes.meshId",
+                "selected M0 mesh is missing",
+            )
+        })?;
+    if mesh.primitive_ids.is_empty() {
+        return Err(fatal(
+            "M4A-MESHY-M0-SOURCE-INVALID",
+            "source.ir.meshes.primitiveIds",
+            "M0 requires at least one mesh primitive",
+        ));
+    }
+    let mut primitives = Vec::with_capacity(mesh.primitive_ids.len());
+    for primitive_id in &mesh.primitive_ids {
+        let primitive = source
+            .ir
+            .primitives
+            .iter()
+            .find(|primitive| primitive.id == *primitive_id)
+            .ok_or_else(|| {
+                fatal(
+                    "M4A-MESHY-M0-SOURCE-INVALID",
+                    "source.ir.meshes.primitiveIds",
+                    "selected M0 primitive is missing",
+                )
+            })?;
+        if primitive.positions.is_empty()
+            || primitive.normals.len() != primitive.positions.len()
+            || primitive.uv0.len() != primitive.positions.len()
+            || primitive.indices.is_empty()
+            || !primitive.indices.len().is_multiple_of(3)
+        {
+            return Err(fatal(
+                "M4A-MESHY-M0-SOURCE-INVALID",
+                &format!("source.ir.primitives[{primitive_id}]"),
+                "M0 requires indexed primitives with normals and UVs",
+            ));
+        }
+        primitives.push(primitive);
+    }
+
+    let options = ProfileAOptionsV1::default();
+    let selection = match select_default_scene(source, &options.limits, 0) {
+        Ok(value) => value,
+        Err(error) => match *error {
+            SourceSelectionError::Gate(gate) => {
+                return Err(fatal(
+                    "M4A-MESHY-M0-SOURCE-INVALID",
+                    &gate.path,
+                    gate.message,
+                ));
+            }
+            SourceSelectionError::Fatal(error) => return Err(error),
+        },
+    };
+    if !selection
+        .ordered_nodes
+        .iter()
+        .any(|node| node.id == mesh_node.id)
+    {
+        return Err(fatal(
+            "M4A-MESHY-M0-SOURCE-INVALID",
+            "source.ir.defaultSceneId",
+            "selected M0 mesh node is not reachable from the default scene",
+        ));
+    }
+    let mesh_world = selection
+        .worlds
+        .get(mesh_node.id as usize)
+        .copied()
+        .flatten()
+        .ok_or_else(|| {
+            fatal(
+                "M4A-MESHY-M0-SOURCE-INVALID",
+                "source.ir.nodes",
+                "selected M0 mesh world transform is missing",
+            )
+        })?;
+    let basis = basis_matrix();
+    let surface_transform = basis.mul(mesh_world);
+    let mut surface_positions = Vec::new();
+    let mut surface_indices = Vec::new();
+    for primitive in primitives {
+        let base = u32::try_from(surface_positions.len()).map_err(|_| {
+            fatal(
+                "M4A-MESHY-M0-SOURCE-INVALID",
+                "source.ir.primitives.positions",
+                "combined M0 reference surface exceeds u32 indices",
+            )
+        })?;
+        let transformed = primitive
+            .positions
+            .iter()
+            .copied()
+            .map(|position| surface_transform.transform_point(position))
+            .collect::<Result<Vec<_>, _>>()?;
+        for triangle in primitive.indices.chunks_exact(3) {
+            let a = transformed[triangle[0] as usize];
+            let b = transformed[triangle[1] as usize];
+            let c = transformed[triangle[2] as usize];
+            if length_sq(cross(sub3(b, a), sub3(c, a))) > 1.0e-10 {
+                surface_indices.extend(
+                    triangle
+                        .iter()
+                        .map(|index| base.checked_add(*index))
+                        .collect::<Option<Vec<_>>>()
+                        .ok_or_else(|| {
+                            fatal(
+                                "M4A-MESHY-M0-SOURCE-INVALID",
+                                "source.ir.primitives.indices",
+                                "combined M0 reference indices overflow u32",
+                            )
+                        })?,
+                );
+            }
+        }
+        surface_positions.extend(transformed);
+    }
+    if surface_indices.is_empty() {
+        return Err(fatal(
+            "M4A-MESHY-M0-SOURCE-INVALID",
+            "source.ir.primitives.indices",
+            "M0 source contains no non-degenerate triangles",
+        ));
+    }
+    let mut target_bounds = Bounds3V1::empty();
+    for &position in &surface_positions {
+        target_bounds.include(position);
+    }
+    target_bounds = target_bounds.ensure_nonempty("source.ir.primitives.positions")?;
+    if target_bounds.max[2] - target_bounds.min[2] <= f32::EPSILON {
+        return Err(fatal(
+            "M4A-MESHY-M0-SOURCE-INVALID",
+            "source.ir.primitives.positions",
+            "M0 source height must be positive after Aurora basis conversion",
+        ));
+    }
+    let provenance = RigProvenanceV1 {
+        kind: RigProvenanceKindV1::UserProvided,
+        export_allowed: true,
+        attestations: RigProvenanceAttestationsV1 {
+            controlled_construction: true,
+            no_reference_payload_copied: true,
+            rights_confirmed: true,
+        },
+    };
+    // Aurora treats the creature's world Z as its ground contact. Meshy M0
+    // sources may be centred on their origin, so move the target space's
+    // bottom centre to the profile origin before emitting its rigid geometry.
+    let source_anchor = bottom_center(target_bounds);
+    let grounded_translation = [-source_anchor[0], -source_anchor[1], -source_anchor[2]];
+    let grounded_bounds = Bounds3V1 {
+        min: add3(target_bounds.min, grounded_translation),
+        max: add3(target_bounds.max, grounded_translation),
+    }
+    .ensure_nonempty("source.ir.primitives.positions")?;
+    for position in &mut surface_positions {
+        *position = add3(*position, grounded_translation);
+    }
+    let mut profile = CreatureRigProfileV1 {
+        schema_version: PROFILE_A_SCHEMA_VERSION,
+        profile_id: "meshy-m0-static-rigid-user-profile-v1".to_owned(),
+        content_sha256: String::new(),
+        provenance,
+        target_bounds: grounded_bounds,
+        alignment_anchor: [0.0, 0.0, 0.0],
+        nodes: vec![CreatureRigNodeV1 {
+            id: mesh_node.id,
+            name: "meshy_m0_rigid_root".to_owned(),
+            parent_id: None,
+            bind_local_matrix: Mat4::identity().0,
+        }],
+        segments: vec![CreatureRigSegmentV1 {
+            id: 1,
+            name: "meshy_m0_rigid_surface".to_owned(),
+            deformation: RigSegmentDeformationV1::Rigid,
+            parent_node_id: mesh_node.id,
+            surface_positions,
+            surface_indices,
+            allowed_bone_node_ids: Vec::new(),
+            reference_weights: Vec::new(),
+        }],
+    };
+    profile.content_sha256 = canonical_profile_sha256(&profile)?;
+    Ok(profile)
+}
+
 fn meshy_h1_container_scale(
     source_nodes: &BTreeMap<u32, &IrNode>,
     skeleton_root: u32,
@@ -1396,19 +1589,11 @@ fn convert_profile_a_impl(
             )?;
         }
     }
-    let mut first_material_key = None::<Option<u32>>;
-    let mut multiple_material_keys = false;
-    for instance in &instances {
-        let key = instance.primitive.material_id;
-        if let Some(first) = first_material_key {
-            if first != key {
-                multiple_material_keys = true;
-            }
-        } else {
-            first_material_key = Some(key);
-        }
-    }
-    if multiple_material_keys {
+    let unique_material_keys = instances
+        .iter()
+        .map(|instance| instance.primitive.material_id)
+        .collect::<BTreeSet<_>>();
+    if usize_u64(unique_material_keys.len()) > options.limits.max_unique_materials {
         push_gate_checked(
             &mut gates,
             gate(
@@ -1531,6 +1716,7 @@ fn convert_profile_a_impl(
     transform_report.translation = Some(translation);
 
     let rig_worlds = rig_bind_worlds(rig)?;
+    validate_rig_world_surfaces(rig, &rig_worlds)?;
     let assignment_plan = plan_triangle_assignments(
         &instances,
         conversion,
@@ -1584,6 +1770,7 @@ fn convert_profile_a_impl(
     let buckets = emit_assigned_geometry(
         &instances,
         &assignment_plan,
+        &material_bindings,
         conversion,
         rig,
         &rig_worlds,
@@ -2202,6 +2389,8 @@ fn source_rest_pose(
     node: &IrNode,
     mapping_index: usize,
 ) -> Result<AnimationRestPose, ProfileAAnimationFatalError> {
+    const SOURCE_UNIT_SCALE_TOLERANCE: f32 = 1.0e-4;
+
     let path = format!("mapping.nodeMappings[{mapping_index}].sourceNodeId");
     if node.transform.kind != "TRS" || node.transform.matrix.is_some() {
         return Err(animation_fatal(
@@ -2215,7 +2404,7 @@ fn source_rest_pose(
     if translation.iter().any(|value| !value.is_finite())
         || scale
             .iter()
-            .any(|value| !value.is_finite() || (*value - 1.0).abs() > 1.0e-5)
+            .any(|value| !value.is_finite() || (*value - 1.0).abs() > SOURCE_UNIT_SCALE_TOLERANCE)
     {
         return Err(animation_fatal(
             "M4A-MAPPER-BASIS-INVALID",
@@ -3124,6 +3313,17 @@ fn validate_options(options: &ProfileAOptionsV1) -> Result<(), ProfileAConversio
     }
     let limits = &options.limits;
     let hard = ProfileALimitsV1::default();
+    let triangle_thresholds_are_compiled_profile = matches!(
+        (
+            limits.triangle_warning_above,
+            limits.triangle_blocking_above
+        ),
+        (5_000, 10_000)
+            | (
+                PROFILE_A_PLACEABLE_TRIANGLE_WARNING_ABOVE_V1,
+                PROFILE_A_PLACEABLE_TRIANGLE_BLOCKING_ABOVE_V1
+            )
+    );
     let pairs = [
         (limits.max_rig_nodes, hard.max_rig_nodes),
         (limits.max_segments, hard.max_segments),
@@ -3137,16 +3337,17 @@ fn validate_options(options: &ProfileAOptionsV1) -> Result<(), ProfileAConversio
         ),
         (limits.max_work_bytes, hard.max_work_bytes),
         (limits.max_diagnostics, hard.max_diagnostics),
-        (limits.max_unique_materials, hard.max_unique_materials),
-        (limits.triangle_warning_above, hard.triangle_warning_above),
-        (limits.triangle_blocking_above, hard.triangle_blocking_above),
     ];
     if pairs
         .iter()
         .any(|(value, maximum)| *value == 0 || value > maximum)
-        || limits.triangle_warning_above != hard.triangle_warning_above
-        || limits.triangle_blocking_above != hard.triangle_blocking_above
-        || limits.max_unique_materials != 1
+        || !triangle_thresholds_are_compiled_profile
+        || limits.max_unique_materials == 0
+        || limits.max_unique_materials > PROFILE_A_HARD_MAX_UNIQUE_MATERIALS_V1
+        || matches!(
+            options.material_policy,
+            ProfileAMaterialPolicyV1::SingleSourceSlot
+        ) && limits.max_unique_materials != 1
     {
         return Err(fatal(
             "M3A-OPTIONS-INVALID",
@@ -4568,16 +4769,24 @@ fn plan_triangle_assignments(
                 "surface triangle count overflow",
             )
         })?;
-    let assignment_evaluations = usize_u64(triangle_count)
-        .checked_mul(3)
-        .and_then(|value| value.checked_mul(surface_triangles))
-        .ok_or_else(|| {
-            fatal(
-                "M3A-INTEGER-OVERFLOW",
-                "distanceEvaluations",
-                "assignment evaluation product overflow",
-            )
-        })?;
+    // A single-segment rig has only one valid assignment. Scanning its entire
+    // reference surface for every source-triangle corner cannot change the
+    // result and can consume the bounded distance budget before the actual
+    // skin-weight projection starts.
+    let assignment_evaluations = if rig.segments.len() == 1 {
+        0
+    } else {
+        usize_u64(triangle_count)
+            .checked_mul(3)
+            .and_then(|value| value.checked_mul(surface_triangles))
+            .ok_or_else(|| {
+                fatal(
+                    "M3A-INTEGER-OVERFLOW",
+                    "distanceEvaluations",
+                    "assignment evaluation product overflow",
+                )
+            })?
+    };
     if assignment_evaluations > limits.max_distance_evaluations {
         return Err(fatal(
             "M3A-LIMIT-EXCEEDED",
@@ -4629,56 +4838,63 @@ fn plan_triangle_assignments(
                 target_matrix.transform_point(primitive.positions[triangle[1] as usize])?,
                 target_matrix.transform_point(primitive.positions[triangle[2] as usize])?,
             ];
-            let mut best: Option<(f64, u32, usize)> = None;
-            for (segment_index, segment) in rig.segments.iter().enumerate() {
-                let surface_world = *rig_worlds.get(&segment.parent_node_id).ok_or_else(|| {
+            let segment_index = if rig.segments.len() == 1 {
+                0
+            } else {
+                let mut best: Option<(f64, u32, usize)> = None;
+                for (segment_index, segment) in rig.segments.iter().enumerate() {
+                    let surface_world =
+                        *rig_worlds.get(&segment.parent_node_id).ok_or_else(|| {
+                            fatal(
+                                "M3A-INTERNAL-CONTRACT",
+                                "rig.segments.parentNodeId",
+                                "validated rig parent is missing",
+                            )
+                        })?;
+                    let mut score = 0.0_f64;
+                    for point in target {
+                        let mut nearest = f64::INFINITY;
+                        for surface_triangle in segment.surface_indices.chunks_exact(3) {
+                            let a = surface_world.transform_point(
+                                segment.surface_positions[surface_triangle[0] as usize],
+                            )?;
+                            let b = surface_world.transform_point(
+                                segment.surface_positions[surface_triangle[1] as usize],
+                            )?;
+                            let c = surface_world.transform_point(
+                                segment.surface_positions[surface_triangle[2] as usize],
+                            )?;
+                            let (distance, _) = evaluated_point_triangle(
+                                point,
+                                a,
+                                b,
+                                c,
+                                &mut counters.distance_evaluations,
+                                limits,
+                            )?;
+                            if distance < nearest {
+                                nearest = distance;
+                            }
+                        }
+                        score += nearest;
+                    }
+                    let candidate = (score, segment.id, segment_index);
+                    if best.is_none_or(|current| {
+                        candidate.0 < current.0
+                            || (candidate.0 == current.0 && candidate.1 < current.1)
+                    }) {
+                        best = Some(candidate);
+                    }
+                }
+                let (_, _, segment_index) = best.ok_or_else(|| {
                     fatal(
                         "M3A-INTERNAL-CONTRACT",
-                        "rig.segments.parentNodeId",
-                        "validated rig parent is missing",
+                        "rig.segments",
+                        "validated rig has no assignment candidate",
                     )
                 })?;
-                let mut score = 0.0_f64;
-                for point in target {
-                    let mut nearest = f64::INFINITY;
-                    for surface_triangle in segment.surface_indices.chunks_exact(3) {
-                        let a = surface_world.transform_point(
-                            segment.surface_positions[surface_triangle[0] as usize],
-                        )?;
-                        let b = surface_world.transform_point(
-                            segment.surface_positions[surface_triangle[1] as usize],
-                        )?;
-                        let c = surface_world.transform_point(
-                            segment.surface_positions[surface_triangle[2] as usize],
-                        )?;
-                        let (distance, _) = evaluated_point_triangle(
-                            point,
-                            a,
-                            b,
-                            c,
-                            &mut counters.distance_evaluations,
-                            limits,
-                        )?;
-                        if distance < nearest {
-                            nearest = distance;
-                        }
-                    }
-                    score += nearest;
-                }
-                let candidate = (score, segment.id, segment_index);
-                if best.is_none_or(|current| {
-                    candidate.0 < current.0 || (candidate.0 == current.0 && candidate.1 < current.1)
-                }) {
-                    best = Some(candidate);
-                }
-            }
-            let (_, _, segment_index) = best.ok_or_else(|| {
-                fatal(
-                    "M3A-INTERNAL-CONTRACT",
-                    "rig.segments",
-                    "validated rig has no assignment candidate",
-                )
-            })?;
+                segment_index
+            };
             assignments.push(segment_index);
             let segment = &rig.segments[segment_index];
             let plan = buckets
@@ -5040,6 +5256,7 @@ fn material_slot_for(
 fn emit_assigned_geometry(
     instances: &[GeometryInstance<'_>],
     plan: &AssignmentPlan,
+    material_bindings: &[MaterialSourceBindingV1],
     conversion: Mat4,
     rig: &CreatureRigProfileV1,
     rig_worlds: &BTreeMap<u32, Mat4>,
@@ -5049,18 +5266,47 @@ fn emit_assigned_geometry(
 ) -> Result<BTreeMap<(u32, u32), AuroraCreatureSegmentV1>, ProfileAConversionFatalError> {
     counters.work_bytes_peak = counters.work_bytes_peak.max(plan.work_bytes_peak);
     let mut buckets = BTreeMap::new();
+    let mut used_output_segment_ids = BTreeSet::new();
+    let mut next_output_segment_id = u64::from(
+        rig.segments
+            .iter()
+            .map(|segment| segment.id)
+            .max()
+            .unwrap_or(0),
+    ) + 1;
     for (&key, bucket_plan) in &plan.buckets {
         let segment = &rig.segments[bucket_plan.segment_index];
+        let segment_id = if used_output_segment_ids.insert(segment.id) {
+            segment.id
+        } else {
+            while next_output_segment_id <= u64::from(u32::MAX)
+                && used_output_segment_ids.contains(&(next_output_segment_id as u32))
+            {
+                next_output_segment_id += 1;
+            }
+            let value = u32::try_from(next_output_segment_id).map_err(|_| {
+                fatal(
+                    "M3A-INTEGER-OVERFLOW",
+                    "creature.segments.segmentId",
+                    "output segment id overflow",
+                )
+            })?;
+            used_output_segment_ids.insert(value);
+            next_output_segment_id += 1;
+            value
+        };
         let mut bucket = AuroraCreatureSegmentV1 {
-            segment_id: segment.id,
+            segment_id,
             material_slot: key.1,
             deformation: segment.deformation.clone(),
             parent_node_id: segment.parent_node_id,
+            cast_shadow: true,
             positions: Vec::new(),
             normals: Vec::new(),
             tangents: bucket_plan.tangent_present.then(Vec::new),
             uv0: Vec::new(),
             indices: Vec::new(),
+            face_surface_ids: Vec::new(),
             weights: Vec::new(),
         };
         bucket
@@ -5138,18 +5384,7 @@ fn emit_assigned_geometry(
             .filter(|index| assignments.contains(index))
         {
             let segment = &rig.segments[segment_index];
-            let material_slot = plan
-                .buckets
-                .keys()
-                .find(|key| key.0 == segment.id)
-                .map(|key| key.1)
-                .ok_or_else(|| {
-                    fatal(
-                        "M3A-INTERNAL-CONTRACT",
-                        "materials.bindings",
-                        "planned material slot is missing",
-                    )
-                })?;
+            let material_slot = material_slot_for(primitive.material_id, material_bindings)?;
             let key = (segment.id, material_slot);
             let bucket = buckets.get_mut(&key).ok_or_else(|| {
                 fatal(
@@ -5457,6 +5692,31 @@ fn transfer_skin_weights(
     Ok(result)
 }
 
+fn validate_rig_world_surfaces(
+    rig: &CreatureRigProfileV1,
+    rig_worlds: &BTreeMap<u32, Mat4>,
+) -> Result<(), ProfileAConversionFatalError> {
+    for segment in &rig.segments {
+        let parent_world = *rig_worlds.get(&segment.parent_node_id).ok_or_else(|| {
+            fatal(
+                "M3A-INTERNAL-CONTRACT",
+                "rig.segments.parentNodeId",
+                "validated rig parent is missing",
+            )
+        })?;
+        for triangle in segment.surface_indices.chunks_exact(3) {
+            let a =
+                parent_world.transform_point(segment.surface_positions[triangle[0] as usize])?;
+            let b =
+                parent_world.transform_point(segment.surface_positions[triangle[1] as usize])?;
+            let c =
+                parent_world.transform_point(segment.surface_positions[triangle[2] as usize])?;
+            validate_target_world_triangle(a, b, c)?;
+        }
+    }
+    Ok(())
+}
+
 fn evaluated_point_triangle(
     point: [f32; 3],
     a: [f32; 3],
@@ -5489,6 +5749,7 @@ fn closest_point_triangle(
     b: [f32; 3],
     c: [f32; 3],
 ) -> Result<(f64, [f64; 3]), ProfileAConversionFatalError> {
+    validate_target_world_triangle(a, b, c)?;
     let p = point.map(f64::from);
     let a = a.map(f64::from);
     let b = b.map(f64::from);
@@ -5506,19 +5767,6 @@ fn closest_point_triangle(
     };
     let ab = sub(b, a);
     let ac = sub(c, a);
-    let area = [
-        ab[1] * ac[2] - ab[2] * ac[1],
-        ab[2] * ac[0] - ab[0] * ac[2],
-        ab[0] * ac[1] - ab[1] * ac[0],
-    ];
-    let area_sq = dot(area, area);
-    if !area_sq.is_finite() || area_sq == 0.0 {
-        return Err(fatal(
-            "M3A-PROFILE-SEGMENT-INVALID",
-            "rig.segments.surfacePositions",
-            "reference surface triangle degenerates in target world",
-        ));
-    }
     let ap = sub(p, a);
     let d1 = dot(ab, ap);
     let d2 = dot(ac, ap);
@@ -5564,6 +5812,32 @@ fn closest_point_triangle(
         ));
     }
     Ok(result)
+}
+
+fn validate_target_world_triangle(
+    a: [f32; 3],
+    b: [f32; 3],
+    c: [f32; 3],
+) -> Result<(), ProfileAConversionFatalError> {
+    let a = a.map(f64::from);
+    let b = b.map(f64::from);
+    let c = c.map(f64::from);
+    let ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    let ac = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    let area = [
+        ab[1] * ac[2] - ab[2] * ac[1],
+        ab[2] * ac[0] - ab[0] * ac[2],
+        ab[0] * ac[1] - ab[1] * ac[0],
+    ];
+    let area_sq = area[0] * area[0] + area[1] * area[1] + area[2] * area[2];
+    if !area_sq.is_finite() || area_sq == 0.0 {
+        return Err(fatal(
+            "M3A-PROFILE-SEGMENT-INVALID",
+            "rig.segments.surfacePositions",
+            "reference surface triangle degenerates in target world",
+        ));
+    }
+    Ok(())
 }
 
 fn matrix_from_transform(transform: &IrTransform) -> Result<Mat4, ProfileAConversionFatalError> {

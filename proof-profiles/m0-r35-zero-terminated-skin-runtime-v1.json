@@ -1,0 +1,41 @@
+{
+  "version": "aur-s07-runtime-profile/v1",
+  "id": "m2a-m0-r35-zero-terminated-skin-runtime",
+  "module": {
+    "sha256": "da2049dc4426bfdeb6c59bd21b59b1c20d58740a0c3578fcaba79f33fd36d7b7",
+    "area": "m2a_m0a35",
+    "entryPoint": [
+      10.0,
+      10.0,
+      0.0
+    ]
+  },
+  "orderedHakList": [
+    {
+      "resref": "m2a_m0r35",
+      "sha256": "0a3bf8310cd184918e25584a0e27457e7dff7eb953660069f2d652d0f9f48e79"
+    }
+  ],
+  "geometryGate": {
+    "status": "verified",
+    "evidence": "C:\\Projects\\meshy2aurora\\proof-output\\m0-r35-zero-terminated-skin-20260724\\m0-r35-zero-terminated-skin-lineage-contract-v1.json"
+  },
+  "fixtures": [
+    {
+      "id": "m0_fixture",
+      "resref": "m2a_m0p35",
+      "templateResRef": "nw_dwarfmerc001",
+      "appearanceRow": 15100,
+      "position": [
+        10.0,
+        14.5,
+        0.0
+      ]
+    }
+  ],
+  "launch": {
+    "mode": "user_owned_test_module_action",
+    "processName": "nwmain"
+  },
+  "noLocalSubstitute": true
+}

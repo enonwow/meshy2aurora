@@ -1,0 +1,19 @@
+{
+  "version": "aurora-toolset-binary-module-toolset-proof-profile/v1",
+  "id": "m2a-last-city-appearance-diag02-toolset-proof-v1",
+  "binaryProfile": {
+    "path": "C:\\Projects\\meshy2aurora\\proof-profiles\\m0-last-city-appearance-diag02-binary-bootstrap-v1.json",
+    "sha256": "18e102c02a834d110347ed127f5cca1d474bf5dc5560773a57e6ce6a7eb47a13"
+  },
+  "fixtureSelection": {
+    "fixtureId": "candidate_m0",
+    "treeObjectText": "Exact r31 M0 candidate",
+    "occurrence": 0
+  },
+  "capture": {
+    "targetClass": "TScrollBox",
+    "allowUniformScene": false
+  },
+  "noSave": true,
+  "noLocalToolsetAdapter": true
+}

@@ -5,6 +5,9 @@ function extension(kind: WorkerArtifact["kind"]) {
     case "HAK": return ".hak";
     case "MODEL": return ".mdl";
     case "MODULE": return ".mod";
+    case "WOK": return ".wok";
+    case "SET": return ".set";
+    case "TEXTURE": return ".tga";
     case "JSON_REPORT": return ".json";
   }
 }

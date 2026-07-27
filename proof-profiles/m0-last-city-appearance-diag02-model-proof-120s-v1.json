@@ -1,0 +1,76 @@
+{
+  "version": "aurora-model-proof-120s-profile/v1",
+  "id": "m2a-last-city-appearance-diag02-model-proof-120s-v1",
+  "hardLimitMs": 120000,
+  "binaryProfile": {
+    "path": "C:\\Projects\\meshy2aurora\\proof-profiles\\m0-last-city-appearance-diag02-binary-bootstrap-v1.json",
+    "sha256": "18e102c02a834d110347ed127f5cca1d474bf5dc5560773a57e6ce6a7eb47a13"
+  },
+  "toolsetProfile": {
+    "path": "C:\\Projects\\meshy2aurora\\proof-profiles\\m0-last-city-appearance-diag02-toolset-proof-v1.json",
+    "sha256": "75e4e9496ba0927094ea70ea1f39f5e827d54d4ffe0b32f769e10fcb38baf42b"
+  },
+  "runtimeProfile": {
+    "path": "C:\\Projects\\meshy2aurora\\proof-profiles\\m0-last-city-appearance-diag02-runtime-v1.json",
+    "sha256": "03218874e5c64b73c286ef73f66c54a3cfd82dc1f0fa81d5a1924afc8a32cf2a"
+  },
+  "routeManifest": {
+    "path": "C:\\Projects\\aurora-web\\skills\\aurora-model-proof-120s\\references\\route-manifest-v1.json",
+    "sha256": "bfb3e67c876a989db367e0d9cc72b12339f0892394c304620ae5bd023d80bcce"
+  },
+  "installedModule": {
+    "path": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\modules\\m2a_diag02.mod",
+    "sha256": "0334dc33cf51f1489698db5d005b07cd2de3ed0125e31414c7d3a31b05b851bd",
+    "byteLength": 25821
+  },
+  "orderedHakList": [
+    {
+      "resref": "m2a_diagh02",
+      "path": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\hak\\m2a_diagh02.hak",
+      "sha256": "88e477851a838ba154b16a7ccaa8235a2e6ee81544e59a1ba8c51d8b378bb3e2",
+      "byteLength": 33530540
+    }
+  ],
+  "resources": {
+    "mdl": {
+      "resref": "m2a_m0p01",
+      "sha256": "fcfbe7e329d51aef6ccb3ae87b4bfe7db7c5395cd5e8adf24159e73e556b5ab6"
+    },
+    "tga": {
+      "resref": "m2a_m0t01",
+      "sha256": "079bfedbb952ae3f3bbdd43f1bb244eb6247ca92a25d0acad2f3273f9aace59b"
+    },
+    "appearance2da": {
+      "resref": "appearance",
+      "row": 15219,
+      "sha256": "f45437470d554d7ecd5e8fef15db0bbd799621308d625fad388950cf5f276c43"
+    }
+  },
+  "area": {
+    "resref": "m2a_diaga02",
+    "displayName": "Meshy2Aurora M0 binary vertical-slice area",
+    "entryPoint": [10, 10, 0]
+  },
+  "fixture": {
+    "id": "candidate_m0",
+    "templateResRef": "m2a_d_m0",
+    "treeObjectText": "Exact r31 M0 candidate",
+    "occurrence": 0,
+    "appearanceRow": 15219,
+    "position": [10, 14.5, 0]
+  },
+  "runtime": {
+    "loadingModuleResref": "m2a_diag02",
+    "engineLogPath": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\logs\\nwclientLog1.txt"
+  },
+  "entryMode": "adopt-exact-clean",
+  "outputRoot": "C:\\Projects\\meshy2aurora\\proof-output\\m0-last-city-appearance-diag02-20260722\\live\\model-proof-120s-run-1",
+  "policy": {
+    "noSave": true,
+    "noBuild": true,
+    "noRepack": true,
+    "noFocus": true,
+    "noCamera": true,
+    "noRetry": true
+  }
+}
