@@ -25,10 +25,26 @@ function readyBuildState<TResult = unknown>() {
   const inspect = studioSessionReducer(selected, { type: "CONTINUE_TO_INSPECT" });
   const inspected: StudioSessionState<{ nodes: number }, TResult, { columns: number }> = {
     ...inspect,
+    source: {
+      ...inspect.source!,
+      sha256: "a".repeat(64),
+      parse: { kind: "VALID" },
+    },
     sourceInspection: { revision: inspect.revision, value: { nodes: 4 } },
     appearanceInspection: { revision: inspect.revision, value: { columns: 12 } },
   };
-  return studioSessionReducer(inspected, { type: "CONTINUE_TO_BUILD" });
+  const mapping = studioSessionReducer(inspected, {
+    type: "CONTINUE_TO_ANIMATION_MAPPING",
+  });
+  const validated = studioSessionReducer(mapping, {
+    type: "ANIMATION_MAPPING_VALIDATED",
+    revision: mapping.revision,
+    authoringRevision: mapping.animationMapping!.value.authoringRevision,
+    authoringFingerprintSha256: "f".repeat(64),
+    status: "READY",
+    diagnostics: [],
+  });
+  return studioSessionReducer(validated, { type: "CONTINUE_TO_BUILD" });
 }
 
 describe("Studio session reducer", () => {
@@ -154,6 +170,11 @@ describe("Studio session reducer", () => {
 
     const inspected: StudioSessionState<{ eligible: boolean }> = {
       ...inspect,
+      source: {
+        ...inspect.source!,
+        sha256: "a".repeat(64),
+        parse: { kind: "VALID" },
+      },
       sourceInspection: {
         revision: inspect.revision,
         value: { eligible: true },
@@ -163,7 +184,42 @@ describe("Studio session reducer", () => {
         value: { columns: 12 },
       },
     };
-    expect(studioSessionReducer(inspected, { type: "CONTINUE_TO_BUILD" })).toMatchObject({
+    expect(studioSessionReducer(inspected, { type: "CONTINUE_TO_BUILD" })).toBe(inspected);
+    const mapping = studioSessionReducer(inspected, {
+      type: "CONTINUE_TO_ANIMATION_MAPPING",
+    });
+    expect(mapping).toMatchObject({
+      currentStep: "ANIMATION_MAPPING",
+      lastAvailableStep: "ANIMATION_MAPPING",
+      animationMapping: {
+        revision: inspected.revision,
+        value: {
+          sourceRevision: "a".repeat(64),
+          modelType: "S",
+        },
+      },
+    });
+    expect(studioSessionReducer(mapping, { type: "CONTINUE_TO_BUILD" })).toBe(mapping);
+    const uiOnlyValidation = studioSessionReducer(mapping, {
+      type: "ANIMATION_MAPPING_VALIDATED",
+      revision: mapping.revision,
+      authoringRevision: mapping.animationMapping!.value.authoringRevision,
+      status: "READY",
+      diagnostics: [],
+    });
+    expect(studioSessionReducer(
+      uiOnlyValidation,
+      { type: "CONTINUE_TO_BUILD" },
+    )).toBe(uiOnlyValidation);
+    const validated = studioSessionReducer(mapping, {
+      type: "ANIMATION_MAPPING_VALIDATED",
+      revision: mapping.revision,
+      authoringRevision: mapping.animationMapping!.value.authoringRevision,
+      authoringFingerprintSha256: "f".repeat(64),
+      status: "READY",
+      diagnostics: [],
+    });
+    expect(studioSessionReducer(validated, { type: "CONTINUE_TO_BUILD" })).toMatchObject({
       currentStep: "BUILD",
       lastAvailableStep: "BUILD",
     });

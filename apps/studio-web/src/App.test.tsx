@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { InMemoryMeshyBridgeClient, type MeshyBridgeClient } from "./features/meshy/bridge";
+import { getDirectCreatureBaseCatalogV1 } from "./features/animation-mapping/catalog";
 import { FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1 } from "./features/source/directCreatureAnimationProfile";
 import type { StudioWorkerRequest, StudioWorkerResponse, WorkerArtifact } from "./worker/types";
 
@@ -143,7 +144,7 @@ function singleIdleSkinnedSourceInspectionJson() {
       };
     };
   };
-  value.ir.skins = [{ jointNodeIds: [1, 2] }];
+  value.ir.skins = [{ jointNodeIds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] }];
   value.ir.animations = [{
     id: 0,
     name: "cpause1",
@@ -152,7 +153,7 @@ function singleIdleSkinnedSourceInspectionJson() {
     channels: [],
   }];
   value.report.inventory.skinCount = 1;
-  value.report.inventory.jointReferenceCount = 2;
+  value.report.inventory.jointReferenceCount = 11;
   value.report.inventory.animationCount = 1;
   return JSON.stringify(value);
 }
@@ -392,7 +393,7 @@ async function renderApp(
   return container;
 }
 
-async function driveToBuild(
+async function driveToAnimationMapping(
   container: HTMLElement,
   sourceJson = sourceInspectionJson(),
   eventAuthoringJson?: string,
@@ -417,6 +418,55 @@ async function driveToBuild(
     await Promise.resolve();
   });
   await act(async () => button(container, "Continue to Inspect")?.click());
+  await act(async () => button(container, "Continue to Build")?.click());
+  await settle();
+  return { sourceInput, worker };
+}
+
+async function driveToBuild(
+  container: HTMLElement,
+  sourceJson = fullNativeSourceInspectionJson(),
+  eventAuthoringJson?: string,
+) {
+  const { sourceInput, worker } = await driveToAnimationMapping(
+    container,
+    sourceJson,
+    eventAuthoringJson,
+  );
+  const generated = button(container, "Use generated Base 42");
+  await act(async () => {
+    if (generated && !generated.disabled) generated.click();
+    else button(container, "Apply safe suggestions")?.click();
+  });
+  await settle();
+  const validation = worker.requests
+    .filter((request) => request.type === "VALIDATE_CREATURE_ANIMATION_MAPPING")
+    .at(-1)!;
+  await act(async () => {
+    worker.emit({
+      requestId: validation.requestId,
+      ok: true,
+      type: "CREATURE_ANIMATION_MAPPING_VALIDATED",
+      validationJson: JSON.stringify({
+        schemaVersion: 1,
+        status: "READY",
+        mappedBaseSlotCount: 42,
+        reviewCount: 0,
+        blockingCount: 0,
+        customAnimationCount: 0,
+        authoringFingerprintSha256: "f".repeat(64),
+        diagnostics: [],
+      }),
+      resolutionJson: JSON.stringify({
+        schemaVersion: 1,
+        ok: true,
+        validation: null,
+        mapping: null,
+      }),
+      catalogJson: JSON.stringify(getDirectCreatureBaseCatalogV1()),
+    });
+    await Promise.resolve();
+  });
   await act(async () => button(container, "Continue to Build")?.click());
   await act(async () => button(container, "Build Package")?.click());
   await settle();
@@ -510,17 +560,13 @@ describe("Studio workflow", () => {
     expect(container.textContent).toContain("choose Creature or Placeable");
   });
 
-  it("moves inspected local inputs through Build into a readback-verified review", async () => {
+  it("keeps the legacy static M0 route behind the required Base 42 mapping gate", async () => {
     const container = await renderApp();
-    const { build, worker } = await driveToBuild(container);
-    expect(build.packageLane).toBe("M0_STATIC_RIGID");
-    await act(async () => { worker.emit(builtResponse(build.requestId)); await Promise.resolve(); });
-
-    expect(container.querySelector("#review-model-heading")?.textContent).toBe("Model Details");
-    expect(container.textContent).toContain("Verified by binary readback");
-    expect(container.textContent).toContain("Conversion Readiness");
-    expect(container.querySelector('[aria-label="Canonical Worker artifact downloads"]')?.textContent)
-      .toContain("package-hak.bin");
+    const { worker } = await driveToAnimationMapping(container, sourceInspectionJson());
+    expect(container.querySelector("h1")?.textContent).toBe("Creature Animation Mapping");
+    expect(button(container, "Continue to Build")?.disabled).toBe(true);
+    expect(worker.requests.find((request) => request.type === "BUILD_MODEL_PACKAGE"))
+      .toBeUndefined();
   });
 
   it("offers Tile authoring and reviews the Worker package with WOK/AABB bindings", async () => {
@@ -547,19 +593,32 @@ describe("Studio workflow", () => {
     expect(container.querySelector('[aria-label="Tile preview overlays"]')).not.toBeNull();
   });
 
-  it("routes an exact 42-name skinned source through the full H1 V2 lane", async () => {
+  it("routes an exact 42-name skinned source through the authored H1 V4 lane", async () => {
     const container = await renderApp();
     const { build } = await driveToBuild(container, fullNativeSourceInspectionJson());
-    expect(build.packageLane).toBe("H1_SKINNED_FULL_42");
+    expect(build.packageLane).toBe("H1_SKINNED_FULL_42_AUTHORED");
+    if (build.type !== "BUILD_MODEL_PACKAGE"
+      || build.packageLane !== "H1_SKINNED_FULL_42_AUTHORED") {
+      throw new Error("authored model request unavailable");
+    }
+    expect(JSON.parse(build.animationAuthoringJson).assignments).toHaveLength(42);
   });
 
-  it("routes a one-idle skinned Meshy humanoid through the procedural 42-state lane", async () => {
+  it("routes a one-idle skinned Meshy humanoid through authored procedural assignments", async () => {
     const container = await renderApp();
     const { build } = await driveToBuild(container, singleIdleSkinnedSourceInspectionJson());
-    expect(build.packageLane).toBe("SKINNED_PROCEDURAL_HUMANOID_42");
+    expect(build.packageLane).toBe("H1_SKINNED_FULL_42_AUTHORED");
+    if (build.type !== "BUILD_MODEL_PACKAGE"
+      || build.packageLane !== "H1_SKINNED_FULL_42_AUTHORED") {
+      throw new Error("authored model request unavailable");
+    }
+    expect(JSON.parse(build.animationAuthoringJson).assignments)
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ sourceKind: "PROCEDURAL", targetSlot: "cpause1" }),
+      ]));
   });
 
-  it("routes caller-owned event JSON through the explicit full H1 V3 lane", async () => {
+  it("routes caller-owned event JSON alongside the authored H1 V4 document", async () => {
     const container = await renderApp();
     const eventAuthoringJson = JSON.stringify({ schemaVersion: 1, clips: [] });
     const { build } = await driveToBuild(
@@ -567,9 +626,9 @@ describe("Studio workflow", () => {
       fullNativeSourceInspectionJson(),
       eventAuthoringJson,
     );
-    expect(build.packageLane).toBe("H1_SKINNED_FULL_42_EVENTS");
+    expect(build.packageLane).toBe("H1_SKINNED_FULL_42_AUTHORED");
     if (build.type !== "BUILD_MODEL_PACKAGE"
-      || build.packageLane !== "H1_SKINNED_FULL_42_EVENTS") {
+      || build.packageLane !== "H1_SKINNED_FULL_42_AUTHORED") {
       throw new Error("eventful model request unavailable");
     }
     expect(build.eventAuthoringJson).toBe(eventAuthoringJson);

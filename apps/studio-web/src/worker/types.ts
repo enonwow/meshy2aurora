@@ -1,5 +1,6 @@
 export type ModelPackageLaneV1 =
   | "H1_SKINNED_FULL_42"
+  | "H1_SKINNED_FULL_42_AUTHORED"
   | "SKINNED_PROCEDURAL_HUMANOID_42"
   | "M0_STATIC_RIGID";
 
@@ -14,10 +15,15 @@ export type StudioWorkerRequest =
   | { requestId: string; type: "INSPECT_APPEARANCE"; appearanceTwoDa: ArrayBuffer }
   | {
       requestId: string;
+      type: "VALIDATE_CREATURE_ANIMATION_MAPPING";
+      animationAuthoringJson: string;
+    }
+  | {
+      requestId: string;
       type: "BUILD_MODEL_PACKAGE";
       sourceGlb: ArrayBuffer;
       appearanceTwoDa: ArrayBuffer;
-      packageLane: ModelPackageLaneV1;
+      packageLane: Exclude<ModelPackageLaneV1, "H1_SKINNED_FULL_42_AUTHORED">;
     }
   | {
       requestId: string;
@@ -26,6 +32,15 @@ export type StudioWorkerRequest =
       appearanceTwoDa: ArrayBuffer;
       packageLane: "H1_SKINNED_FULL_42_EVENTS";
       eventAuthoringJson: string;
+    }
+  | {
+      requestId: string;
+      type: "BUILD_MODEL_PACKAGE";
+      sourceGlb: ArrayBuffer;
+      appearanceTwoDa: ArrayBuffer;
+      packageLane: "H1_SKINNED_FULL_42_AUTHORED";
+      animationAuthoringJson: string;
+      eventAuthoringJson?: string;
     }
   | {
       requestId: string;
@@ -80,6 +95,14 @@ export type StudioWorkerSuccess =
       placeableAuthoringJson?: string;
     }
   | { requestId: string; ok: true; type: "APPEARANCE_INSPECTED"; inspectionJson: string }
+  | {
+      requestId: string;
+      ok: true;
+      type: "CREATURE_ANIMATION_MAPPING_VALIDATED";
+      validationJson: string;
+      resolutionJson: string;
+      catalogJson: string;
+    }
   | {
       requestId: string;
       ok: true;

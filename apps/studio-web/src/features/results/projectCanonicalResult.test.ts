@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";
+import { FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1 } from "../source/directCreatureAnimationProfile";
 import type { WorkerArtifact } from "../../worker/types";
 import { projectCanonicalResult } from "./projectCanonicalResult";
 
@@ -247,6 +248,96 @@ describe("canonical result projector", () => {
       value.manifestJson,
       value.artifacts,
     )).toThrow("Canonical result identity mismatch at report.animationEventConformance");
+  });
+
+  it("reconciles authored Base 42 evidence between report and manifest", () => {
+    const value = fixture();
+    const slots = FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1;
+    const animationAuthoring = {
+      schemaVersion: 1,
+      profile: "DIRECT_CREATURE_S_L_BASE_42_AUTHORING_V1",
+      sourceRevision: "a".repeat(64),
+      authoringRevision: 9,
+      authoringFingerprintSha256: "8".repeat(64),
+      baseAnimations: slots.map((slot) => ({
+        targetSlot: slot,
+        resolvedSourceSlot: slot,
+        assignment: {
+          targetSlot: slot,
+          sourceKind: "SOURCE_CLIP",
+          sourceClipName: `source_${slot}`,
+          customAnimationId: null,
+          provenance: {
+            provider: "SOURCE_GLB",
+            assetId: "fixture-source",
+            ownership: "USER_OWNED",
+          },
+        },
+        viaFallbackSlots: [],
+      })),
+      customAnimations: [],
+    };
+    const authoredAnimationConformance = {
+      schemaVersion: 1,
+      status: "READY",
+      expectedBaseSlotCount: 42,
+      materializedBaseSlotCount: 42,
+      expectedCustomClipNames: [],
+      materializedCustomClipNames: [],
+      diagnostics: [],
+    };
+    Object.assign(value.report, {
+      animationAuthoring,
+      authoredAnimationConformance,
+    });
+    Object.assign(value.manifest, {
+      animationAuthoring,
+      authoredAnimationConformance,
+    });
+    const reportJson = JSON.stringify(value.report);
+    value.summary.outputs.report.byteLength = bytes(reportJson).byteLength;
+    const summaryJson = JSON.stringify(value.summary);
+    const manifestJson = JSON.stringify(value.manifest);
+    for (const [artifactId, json] of [
+      ["report-json", reportJson],
+      ["summary-json", summaryJson],
+      ["manifest-json", manifestJson],
+    ] as const) {
+      const artifact = value.artifacts.find((candidate) => candidate.artifactId === artifactId)!;
+      artifact.bytes = bytes(json);
+      artifact.byteLength = artifact.bytes.byteLength;
+    }
+
+    const result = projectCanonicalResult(
+      reportJson,
+      summaryJson,
+      manifestJson,
+      value.artifacts,
+    );
+    expect(result.animationMappingEvidence).toMatchObject({
+      authoringRevision: 9,
+      authoringFingerprintSha256: "8".repeat(64),
+      conformance: {
+        status: "READY",
+        expectedBaseSlotCount: 42,
+        materializedBaseSlotCount: 42,
+      },
+    });
+    expect(result.animationMappingEvidence?.baseAnimations).toHaveLength(42);
+
+    (value.manifest as typeof value.manifest & {
+      animationAuthoring: { authoringRevision: number };
+    }).animationAuthoring.authoringRevision = 10;
+    const staleManifestJson = JSON.stringify(value.manifest);
+    const manifestArtifact = value.artifacts.find(({ artifactId }) => artifactId === "manifest-json")!;
+    manifestArtifact.bytes = bytes(staleManifestJson);
+    manifestArtifact.byteLength = manifestArtifact.bytes.byteLength;
+    expect(() => projectCanonicalResult(
+      reportJson,
+      summaryJson,
+      staleManifestJson,
+      value.artifacts,
+    )).toThrow("Canonical result identity mismatch at animationMappingEvidence");
   });
 
   it.each(["report", "summary", "manifest", "artifact"] as const)("rejects malformed %s input without fallback values", (part) => {

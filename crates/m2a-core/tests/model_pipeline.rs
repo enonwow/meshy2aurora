@@ -5,6 +5,12 @@ use std::{
 };
 
 use m2a_core::{
+    creature_animation_mapping::{
+        AnimationMappingProvenanceV1, AnimationOwnershipV1, AnimationProviderV1,
+        AnimationSourceAssignmentV1, AnimationSourceKindV1,
+        CREATURE_ANIMATION_AUTHORING_PROFILE_V1, CreatureAnimationAuthoringV1,
+        DirectCreatureBaseSlotV1, DirectCreatureModelTypeV1,
+    },
     direct_creature_animation::{
         COMMON_NATIVE_DIRECT_CREATURE_EVENT_PAIRS_V1, DirectCreatureAnimationEventProfileV1,
         DirectCreatureClipEventAuthoringV1, DirectCreatureEventAuthoringV1,
@@ -35,6 +41,7 @@ use m2a_core::{
         build_m6_model_package_v1, build_m6_model_package_with_profile_v1,
         build_m6_model_package_with_profile_v2, build_m6_model_package_with_profile_v3,
         build_meshy_h1_model_package_v2, build_meshy_h1_model_package_v3,
+        build_meshy_h1_model_package_v4, build_meshy_h1_model_package_v4_with_identity,
         build_meshy_h1_rigid_runtime_diagnostic_package_v1,
         build_meshy_m0_canonical_runtime_package_v1,
         build_meshy_m0_canonical_runtime_package_with_identity_and_profile_v2,
@@ -65,6 +72,9 @@ use m2a_core::{
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+
+#[path = "support/canonical_workspace.rs"]
+mod canonical_workspace;
 
 fn appearance_fixture() -> Vec<u8> {
     b"2DA V2.0\r\n\r\nLABEL MOVERATE MODELTYPE RACE PORTRAIT ENVMAP DefaultPhenoType BLOODCOLR WEAPONSCALE SIZECATEGORY STRING_REF NAME WING_TAIL_SCALE HELMET_SCALE_M HELMET_SCALE_F WALKDIST RUNDIST PERSPACE CREPERSPACE HEIGHT HITDIST PREFATCKDIST TARGETHEIGHT ABORTONPARRY RACIALTYPE HASLEGS HASARMS PERCEPTIONDIST FOOTSTEPTYPE SOUNDAPPTYPE HEADTRACK HEAD_ARC_H HEAD_ARC_V HEAD_NAME BODY_BAG TARGETABLE\r\n0 Existing NORM S c_horror po_Horror **** 0 G **** 4 **** Hook_Horror 1 1 1 2.33 3.5 0.6 1 1 0.4 2.1 H 1 1 1 1 9 4 6 1 60 30 head 0 1\r\n".to_vec()
@@ -230,11 +240,7 @@ fn full_native_creature_profile_requires_all_42_explicit_clips_without_idle_fall
 
 #[test]
 fn procedural_humanoid_profile_authors_a_distinct_owned_42_state_set_from_h2_idle() {
-    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(std::path::Path::parent)
-        .expect("canonical repository root")
-        .to_path_buf();
+    let repo = canonical_workspace::canonical_repository_root();
     let h2 = fs::read(repo.join("sample-3d/h2-clockwork-sentinel-1500/source.glb"))
         .expect("owned H2 humanoid source");
 
@@ -785,6 +791,97 @@ fn automatic_h1_v2_accepts_exactly_named_full_source_and_rejects_idle_only_sourc
             .animation_event_conformance
             .as_ref()
             .is_some_and(|report| report.complete)
+    );
+    let authored = CreatureAnimationAuthoringV1 {
+        schema_version: 1,
+        profile: CREATURE_ANIMATION_AUTHORING_PROFILE_V1.to_owned(),
+        model_type: DirectCreatureModelTypeV1::Simple,
+        source_revision: hex_sha256(&full_source),
+        authoring_revision: 7,
+        assignments: FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1
+            .iter()
+            .map(|slot| AnimationSourceAssignmentV1 {
+                target_slot: DirectCreatureBaseSlotV1::try_from(*slot).expect("base slot"),
+                source_kind: AnimationSourceKindV1::SourceClip,
+                source_clip_name: Some((*slot).to_owned()),
+                custom_animation_id: None,
+                provenance: AnimationMappingProvenanceV1 {
+                    provider: AnimationProviderV1::SourceGlb,
+                    asset_id: "owned-full-42-fixture".to_owned(),
+                    ownership: AnimationOwnershipV1::UserOwned,
+                },
+            })
+            .collect(),
+        fallbacks: Vec::new(),
+        custom_animations: Vec::new(),
+    };
+    let v4 = build_meshy_h1_model_package_v4(&full_source, &appearance_fixture(), &authored)
+        .expect("authored H1 V4 must materialize the exact ready mapping");
+    assert_eq!(
+        v4.report
+            .animation_authoring
+            .as_ref()
+            .expect("report authoring")
+            .authoring_revision,
+        7
+    );
+    assert_eq!(
+        v4.manifest
+            .authored_animation_conformance
+            .as_ref()
+            .expect("manifest conformance")
+            .materialized_base_slot_count,
+        42
+    );
+    assert_eq!(v4.model, full.model, "authored V4 binary MDL drift");
+    assert_eq!(v4.texture, full.texture, "authored V4 TGA drift");
+    assert_eq!(
+        v4.appearance_two_da, full.appearance_two_da,
+        "authored V4 2DA drift"
+    );
+    assert_eq!(v4.hak, full.hak, "authored V4 HAK drift");
+    assert_eq!(v4.proof_module, full.proof_module, "authored V4 MOD drift");
+    let custom_identity = ProceduralCreaturePackageIdentityV1 {
+        model_resref: "m2a_v4mdl".to_owned(),
+        texture_resref: "m2a_v4tex".to_owned(),
+        module: BinaryCreatureModuleIdentityV1 {
+            module_resref: "m2a_v4mod".to_owned(),
+            area_resref: "m2a_v4area".to_owned(),
+            hak_resref: "m2a_v4hak".to_owned(),
+        },
+        creature_resref: "m2a_v4utc".to_owned(),
+    };
+    let custom_v4 = build_meshy_h1_model_package_v4_with_identity(
+        &full_source,
+        &appearance_fixture(),
+        &authored,
+        &custom_identity,
+    )
+    .expect("authored V4 must freeze a caller-owned runtime identity");
+    assert_eq!(custom_v4.summary.model_resref, custom_identity.model_resref);
+    assert!(
+        ErfArchive::parse(&custom_v4.hak)
+            .expect("custom V4 HAK")
+            .find(&custom_identity.model_resref, 2002)
+            .is_ok()
+    );
+    let custom_module = inspect_binary_creature_profile_matrix_module_v2(&custom_v4.proof_module)
+        .expect("custom V4 module");
+    assert_eq!(
+        custom_module.scene.module_resref,
+        custom_identity.module.module_resref
+    );
+    assert_eq!(
+        custom_module.scene.area_resref,
+        custom_identity.module.area_resref
+    );
+    assert_eq!(
+        custom_module.scene.ordered_hak_resrefs,
+        [custom_identity.module.hak_resref]
+    );
+    assert_eq!(
+        custom_module.scene.fixtures[0].template_resref,
+        custom_identity.creature_resref
     );
 
     let indistinguishable_movement = mutate_glb(full_source.clone(), |root| {
@@ -1505,7 +1602,7 @@ fn static_meshy_m0_materializes_in_a_self_contained_valid_vertical_slice() {
 
 #[test]
 fn exact_r29_adds_only_six_identity_root_stream_pairs_to_the_r28_model() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let repo_root = canonical_workspace::canonical_repository_root();
     let r28_model = fs::read(
         repo_root.join("proof-output/m0-r27-animation-type5-20260721/generated/m2a_m0p01.mdl"),
     )
@@ -1588,7 +1685,7 @@ fn exact_r29_adds_only_six_identity_root_stream_pairs_to_the_r28_model() {
 
 #[test]
 fn retail_state_projection_preserves_exact_r29_mesh_material_texture_and_raw_mdx() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let repo_root = canonical_workspace::canonical_repository_root();
     let lineage = repo_root.join("proof-output/m0-r29-all-state-identity-20260721/generated");
     let source = fs::read(lineage.join("source.glb")).expect("preserved owned Meshy source GLB");
     let r29_model = fs::read(lineage.join("m2a_m0p01.mdl")).expect("preserved r29 model");
@@ -1809,7 +1906,7 @@ fn static_meshy_m0_materializes_in_the_one_canonical_runtime_package() {
     verify_test_m0_runtime_contract_v2(runtime_contract, &first.proof_module, &first.hak)
         .expect("canonical M0 contract must verify the full table prefix and fixture row");
 
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let repo_root = canonical_workspace::canonical_repository_root();
     let mixed_model = fs::read(
         repo_root.join("proof-output/m0-r29-all-state-identity-20260721/generated/m2a_m0p01.mdl"),
     )
@@ -2416,8 +2513,8 @@ fn exact_last_city_direct_s_donor_is_cloned_full_width_with_only_label_and_race_
         Ok("1"),
         "set M2A_REQUIRE_RUNTIME_WITNESSES=1 for the in-place reference test"
     );
-    let table_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
-        "../../proof-output/lc-hd-animals-c-squirrel-reference-audit-2026-07-18/source-copies/appearance.2da",
+    let table_path = canonical_workspace::canonical_repository_root().join(
+        "proof-output/lc-hd-animals-c-squirrel-reference-audit-2026-07-18/source-copies/appearance.2da",
     );
     let table = fs::read(&table_path).expect("exact read-only Last City appearance table");
     let artifact =

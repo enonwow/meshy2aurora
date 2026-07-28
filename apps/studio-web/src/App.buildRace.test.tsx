@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import { getDirectCreatureBaseCatalogV1 } from "./features/animation-mapping/catalog";
 import type { StudioWorkerRequest, StudioWorkerResponse } from "./worker/types";
 
 const projectionSpy = vi.hoisted(() => vi.fn());
@@ -107,8 +108,14 @@ function sourceInspectionJson() {
       textures: [],
       samplers: [],
       images: [],
-      skins: [],
-      animations: [],
+      skins: [{ jointNodeIds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] }],
+      animations: [{
+        id: 0,
+        name: "cpause1",
+        durationSeconds: 1,
+        samplers: [],
+        channels: [],
+      }],
     },
     report: {
       schemaVersion: 1,
@@ -123,9 +130,9 @@ function sourceInspectionJson() {
         textureCount: 0,
         samplerCount: 0,
         imageCount: 0,
-        skinCount: 0,
-        jointReferenceCount: 0,
-        animationCount: 0,
+        skinCount: 1,
+        jointReferenceCount: 11,
+        animationCount: 1,
         keyframeCount: 0,
       },
       statistics: {
@@ -198,6 +205,38 @@ async function renderRunningBuild() {
   });
 
   await act(async () => button(container, "Continue to Inspect")?.click());
+  await act(async () => button(container, "Continue to Build")?.click());
+  await act(async () => button(container, "Use generated Base 42")?.click());
+  await settle();
+  const validationRequest = worker.requests
+    .filter((request) => request.type === "VALIDATE_CREATURE_ANIMATION_MAPPING")
+    .at(-1);
+  if (!validationRequest) throw new Error("animation validation request missing");
+  await act(async () => {
+    worker.emit({
+      requestId: validationRequest.requestId,
+      ok: true,
+      type: "CREATURE_ANIMATION_MAPPING_VALIDATED",
+      validationJson: JSON.stringify({
+        schemaVersion: 1,
+        status: "READY",
+        mappedBaseSlotCount: 42,
+        reviewCount: 0,
+        blockingCount: 0,
+        customAnimationCount: 0,
+        authoringFingerprintSha256: "f".repeat(64),
+        diagnostics: [],
+      }),
+      resolutionJson: JSON.stringify({
+        schemaVersion: 1,
+        ok: true,
+        validation: null,
+        mapping: null,
+      }),
+      catalogJson: JSON.stringify(getDirectCreatureBaseCatalogV1()),
+    });
+    await Promise.resolve();
+  });
   await act(async () => button(container, "Continue to Build")?.click());
   await act(async () => button(container, "Build Package")?.click());
   await settle();

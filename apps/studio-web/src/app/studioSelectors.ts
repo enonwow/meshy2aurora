@@ -1,5 +1,10 @@
 import type { StudioSessionState } from "./studioSession";
-import { compareWorkflowSteps, WORKFLOW_STEPS, type WorkflowStep } from "./workflow";
+import {
+  compareWorkflowSteps,
+  getWorkflowStepsForTarget,
+  type WorkflowStep,
+} from "./workflow";
+import { isAnimationMappingCurrentV1 } from "../features/animation-mapping/state";
 
 export type InputReadiness = "EMPTY" | "PARTIAL" | "READY";
 export type WorkflowStepStatus = "LOCKED" | "AVAILABLE" | "ACTIVE" | "COMPLETE";
@@ -14,8 +19,25 @@ export function canContinueToInspect(state: StudioSessionState): boolean {
   return Boolean(state.source && state.appearance);
 }
 
+export function canContinueToAnimationMapping(state: StudioSessionState): boolean {
+  return state.target === "CREATURE"
+    && Boolean(state.source && state.appearance)
+    && state.sourceInspection?.revision === state.revision
+    && state.appearanceInspection?.revision === state.revision
+    && Boolean(state.source?.sha256);
+}
+
+export function canContinueFromAnimationMapping(state: StudioSessionState): boolean {
+  return isAnimationMappingCurrentV1(state)
+    && state.animationMappingValidation?.revision === state.revision
+    && state.animationMappingValidation.value.authoringRevision
+      === state.animationMapping?.value.authoringRevision
+    && state.animationMappingValidation.value.status === "READY";
+}
+
 export function canNavigateToStep(state: StudioSessionState, step: WorkflowStep): boolean {
-  return compareWorkflowSteps(step, state.lastAvailableStep) <= 0;
+  return getWorkflowStepsForTarget(state.target).includes(step)
+    && compareWorkflowSteps(step, state.lastAvailableStep) <= 0;
 }
 
 export function getWorkflowStepStatus(
@@ -29,5 +51,6 @@ export function getWorkflowStepStatus(
 }
 
 export function getUnlockedWorkflowSteps(state: StudioSessionState): readonly WorkflowStep[] {
-  return WORKFLOW_STEPS.filter((step) => canNavigateToStep(state, step));
+  return getWorkflowStepsForTarget(state.target)
+    .filter((step) => canNavigateToStep(state, step));
 }

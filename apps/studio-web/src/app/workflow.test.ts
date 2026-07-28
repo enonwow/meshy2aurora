@@ -1,19 +1,32 @@
 import { describe, expect, it } from "vitest";
-import { WORKFLOW_STEPS, compareWorkflowSteps, isWorkflowStep } from "./workflow";
+import {
+  WORKFLOW_STEPS,
+  compareWorkflowSteps,
+  getWorkflowStepsForTarget,
+  isWorkflowStep,
+} from "./workflow";
 
 describe("Studio workflow", () => {
-  it("defines the five ordered V1 steps", () => {
+  it("defines the six ordered creature steps", () => {
     expect(WORKFLOW_STEPS).toEqual([
       "SOURCE",
       "INSPECT",
+      "ANIMATION_MAPPING",
       "BUILD",
       "REVIEW",
       "DOWNLOAD",
     ]);
+    expect(getWorkflowStepsForTarget("CREATURE")).toEqual(WORKFLOW_STEPS);
+    expect(getWorkflowStepsForTarget("PLACEABLE")).toEqual([
+      "SOURCE", "INSPECT", "BUILD", "REVIEW", "DOWNLOAD",
+    ]);
+    expect(getWorkflowStepsForTarget("TILE")).not.toContain("ANIMATION_MAPPING");
   });
 
   it("compares steps using workflow order", () => {
     expect(compareWorkflowSteps("SOURCE", "SOURCE")).toBe(0);
+    expect(compareWorkflowSteps("INSPECT", "ANIMATION_MAPPING")).toBeLessThan(0);
+    expect(compareWorkflowSteps("ANIMATION_MAPPING", "BUILD")).toBeLessThan(0);
     expect(compareWorkflowSteps("INSPECT", "BUILD")).toBeLessThan(0);
     expect(compareWorkflowSteps("DOWNLOAD", "REVIEW")).toBeGreaterThan(0);
   });

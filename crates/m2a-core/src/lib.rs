@@ -2,6 +2,7 @@
 
 pub mod animated_donor;
 pub mod animated_donor_candidate;
+pub mod creature_animation_mapping;
 pub mod creature_visibility_gate;
 pub mod direct_creature_animation;
 pub mod direct_creature_contract;

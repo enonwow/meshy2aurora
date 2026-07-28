@@ -1,7 +1,11 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { StudioHeader } from "./app/StudioHeader";
 import { StudioShell } from "./app/StudioShell";
-import { getUnlockedWorkflowSteps, getWorkflowStepStatus } from "./app/studioSelectors";
+import {
+  canContinueFromAnimationMapping,
+  getUnlockedWorkflowSteps,
+  getWorkflowStepStatus,
+} from "./app/studioSelectors";
 import {
   createInitialStudioSession,
   studioSessionReducer,
@@ -9,7 +13,7 @@ import {
   type StudioSessionState,
   type StudioTarget,
 } from "./app/studioSession";
-import { WORKFLOW_STEPS } from "./app/workflow";
+import { getWorkflowStepsForTarget } from "./app/workflow";
 import { WorkflowStepper } from "./app/WorkflowStepper";
 import { BuildStep, type BuildStepState } from "./features/build/BuildStep";
 import { ArtifactDownloads } from "./features/downloads/ArtifactDownloads";
@@ -59,7 +63,36 @@ import {
   type TileAuthoringOptions,
 } from "./features/source/InputsPanel";
 import { SourceStep } from "./features/source/SourceStep";
-import { hasFullNativeDirectCreatureProfileV1 } from "./features/source/directCreatureAnimationProfile";
+import { canOfferGeneratedHumanoidProfileV1 } from "./features/source/directCreatureAnimationProfile";
+import { CreatureAnimationMappingStep } from "./features/animation-mapping/CreatureAnimationMappingStep";
+import type { AnimationMappingSaveStateV1 } from "./features/animation-mapping/AnimationMappingStatusBar";
+import {
+  applyHighConfidenceAssignmentsV1,
+  proposeCreatureAnimationMappingV1,
+} from "./features/animation-mapping/autoMap";
+import {
+  assertDirectCreatureCatalogParityV1,
+  getAuroraAnimationStateCatalogV1,
+} from "./features/animation-mapping/catalog";
+import {
+  loadCreatureAnimationDraftV1,
+  saveCreatureAnimationDraftV1,
+} from "./features/animation-mapping/persistence";
+import {
+  getCreatureAnimationMappingStatusV1,
+  validateCreatureAnimationAuthoringV1,
+} from "./features/animation-mapping/readiness";
+import {
+  assertCreatureAnimationBuildInputCurrentV1,
+  createCreatureAnimationBuildInputV1,
+  reconcileAuthoredAndBuiltAnimationsV1,
+  type AuthoredBuiltAnimationReconciliationV1,
+  type CreatureAnimationBuildInputV1,
+} from "./features/animation-mapping/buildIntegration";
+import {
+  mergeUiAndCoreAnimationDiagnosticsV1,
+  projectCoreCreatureAnimationValidationV1,
+} from "./features/animation-mapping/coreValidation";
 import { LocalMeshyBridgeClient, type MeshyArtifactProvenance, type MeshyBridgeClient } from "./features/meshy/bridge";
 import { isMeshyLabEnabled } from "./features/meshy/feature";
 import { MeshyLab } from "./features/meshy/MeshyLab";
@@ -73,6 +106,8 @@ interface StudioModelBuildResult {
   readonly canonical: CanonicalResultSnapshot;
   readonly readback: BinaryMdlInspectionReport;
   readonly readbackJson: string;
+  readonly animationBuildInput: CreatureAnimationBuildInputV1;
+  readonly animationReconciliation: AuthoredBuiltAnimationReconciliationV1;
 }
 
 interface StudioPlaceableBuildResult {
@@ -263,6 +298,8 @@ export function App({
   const [sourceError, setSourceError] = useState<string>();
   const [appearanceError, setAppearanceError] = useState<string>();
   const [animationEventsError, setAnimationEventsError] = useState<string>();
+  const [animationMappingSaveState, setAnimationMappingSaveState] =
+    useState<AnimationMappingSaveStateV1>({ kind: "IDLE" });
   const [tileOptions, setTileOptions] = useState<TileAuthoringOptions>(DEFAULT_TILE_OPTIONS);
   const [placeableAuthoring, setPlaceableAuthoring] = useState<PlaceableAuthoringBootstrap>();
   const placeableAuthoringRef = useRef<PlaceableAuthoringBootstrap | undefined>(undefined);
@@ -272,6 +309,7 @@ export function App({
   const [showMeshyLab, setShowMeshyLab] = useState(false);
   const [meshyProvenance, setMeshyProvenance] = useState<MeshyArtifactProvenance>();
   const meshyBridgeRef = useRef<MeshyBridgeClient | undefined>(undefined);
+  const coreAnimationValidationRequestRef = useRef<string | undefined>(undefined);
 
   if (!meshyBridgeRef.current) meshyBridgeRef.current = meshyBridge ?? new LocalMeshyBridgeClient();
 
@@ -539,27 +577,31 @@ export function App({
     const placeableAuthoringJson = placeableLane && placeableAuthoringRef.current
       ? JSON.stringify(placeableAuthoringRef.current.document)
       : undefined;
-    const fullNativeProfile = hasFullNativeDirectCreatureProfileV1(
-      current.sourceInspection.value.clips,
-    );
-    if (animationEvents && (tileLane || placeableLane || !fullNativeProfile)) {
+    let animationBuildInput: CreatureAnimationBuildInputV1 | undefined;
+    if (current.target === "CREATURE") {
+      try {
+        animationBuildInput = createCreatureAnimationBuildInputV1(current);
+      } catch (error) {
+        setAnimationEventsError(error instanceof Error ? error.message : String(error));
+        return;
+      }
+    }
+    if (animationEvents && (tileLane || placeableLane)) {
       setAnimationEventsError(
         tileLane
           ? "Creature animation events cannot be used with tiles."
-          : placeableLane
-          ? "Creature animation events cannot be used with placeables.2da."
-          : "Creature animation events require an exact source clip for every state in the 42-state profile.",
+          : "Creature animation events cannot be used with placeables.2da.",
       );
       return;
     }
-    const packageLane = current.sourceInspection.value.inventory.skinCount === 0
-      && current.sourceInspection.value.clips.length === 0
-      ? "M0_STATIC_RIGID" as const
-      : fullNativeProfile
-        ? animationEvents
-          ? "H1_SKINNED_FULL_42_EVENTS" as const
-          : "H1_SKINNED_FULL_42" as const
-        : "SKINNED_PROCEDURAL_HUMANOID_42" as const;
+    const packageLane = current.target === "CREATURE"
+      ? "H1_SKINNED_FULL_42_AUTHORED" as const
+      : "M0_STATIC_RIGID" as const;
+    const animationAuthoringJson = animationBuildInput?.animationAuthoringJson;
+    if (current.target === "CREATURE" && !animationAuthoringJson) {
+      setAnimationEventsError("Creature build requires the current animation mapping document.");
+      return;
+    }
     setDebugDrawerMessage(undefined);
     dispatch({ type: "BUILD_STARTED", requestId: buildRequestId, revision: buildRevision });
 
@@ -570,6 +612,12 @@ export function App({
     ])
       .then(([sourceGlb, appearanceTwoDa, eventAuthoringJson]) => {
         if (workerRef.current !== worker) return undefined;
+        if (animationBuildInput) {
+          assertCreatureAnimationBuildInputCurrentV1(
+            sessionRef.current,
+            animationBuildInput,
+          );
+        }
         if (tileLane) {
           return worker.request(
             {
@@ -602,7 +650,7 @@ export function App({
               },
               [sourceGlb, appearanceTwoDa],
             )
-          : packageLane === "H1_SKINNED_FULL_42_EVENTS"
+          : packageLane === "H1_SKINNED_FULL_42_AUTHORED"
             ? worker.request(
                 {
                   requestId: buildRequestId,
@@ -610,7 +658,8 @@ export function App({
                   sourceGlb,
                   appearanceTwoDa,
                   packageLane,
-                  eventAuthoringJson: eventAuthoringJson ?? "",
+                  animationAuthoringJson: animationAuthoringJson ?? "",
+                  eventAuthoringJson,
                 },
                 [sourceGlb, appearanceTwoDa],
               )
@@ -648,6 +697,43 @@ export function App({
         const readback = projectCanonicalReadback(readbackJson);
         setReviewViewport("CONVERTED");
         setSelectedReadbackPart(undefined);
+        const canonical = response.type === "MODEL_PACKAGE_BUILT"
+          ? projectCanonicalResult(
+              response.reportJson,
+              response.summaryJson,
+              response.manifestJson,
+              response.artifacts,
+            )
+          : undefined;
+        let animationReconciliation: AuthoredBuiltAnimationReconciliationV1 | undefined;
+        if (canonical) {
+          if (!animationBuildInput) {
+            throw new Error("Authored creature build snapshot is unavailable");
+          }
+          const builtEvidence = canonical.animationMappingEvidence;
+          if (
+            !builtEvidence
+            || builtEvidence.authoringRevision !== animationBuildInput.authoringRevision
+            || builtEvidence.sourceRevision !== animationBuildInput.sourceRevision
+            || builtEvidence.authoringFingerprintSha256
+              !== animationBuildInput.authoringFingerprintSha256
+          ) {
+            throw new Error(
+              "Canonical build animation evidence does not match the frozen authoring snapshot",
+            );
+          }
+          animationReconciliation = reconcileAuthoredAndBuiltAnimationsV1(
+            animationBuildInput.authoring,
+            readback,
+          );
+          if (!animationReconciliation.matches) {
+            throw new Error(
+              `Authored/readback animation mismatch: ${
+                animationReconciliation.diagnostics.map(({ code }) => code).join(", ")
+              }`,
+            );
+          }
+        }
         const result: StudioBuildResult = response.type === "PLACEABLE_PACKAGE_BUILT"
           ? {
               kind: "PLACEABLE",
@@ -670,14 +756,11 @@ export function App({
           : response.type === "MODEL_PACKAGE_BUILT"
             ? {
                 kind: "MODEL",
-                canonical: projectCanonicalResult(
-                  response.reportJson,
-                  response.summaryJson,
-                  response.manifestJson,
-                  response.artifacts,
-                ),
+                canonical: canonical!,
                 readback,
                 readbackJson: response.readbackJson,
+                animationBuildInput: animationBuildInput!,
+                animationReconciliation: animationReconciliation!,
               }
             : (() => { throw new Error("Unexpected package build response"); })();
         dispatch({
@@ -717,11 +800,12 @@ export function App({
     replaceWorker();
   };
 
+  const workflowSteps = getWorkflowStepsForTarget(session.target);
   const unlockedSteps = getUnlockedWorkflowSteps(session);
-  const completedSteps = WORKFLOW_STEPS.filter(
+  const completedSteps = workflowSteps.filter(
     (step) => getWorkflowStepStatus(session, step) === "COMPLETE",
   );
-  const blockedSteps = WORKFLOW_STEPS.filter(
+  const blockedSteps = workflowSteps.filter(
     (step) => getWorkflowStepStatus(session, step) === "LOCKED",
   );
   const sourceIdentity = session.source?.sha256 ? { sha256: session.source.sha256 } : undefined;
@@ -732,6 +816,206 @@ export function App({
   const appearanceInspection = session.appearanceInspection?.revision === session.revision
     ? session.appearanceInspection.value
     : undefined;
+  const animationInspection = useMemo(() => ({
+    sourceClips: (sourceInspection?.clips ?? []).map((clip, index) => ({
+      clipId: `source-clip:${clip.id}`,
+      name: clip.name ?? `Unnamed clip ${index + 1}`,
+      durationSeconds: clip.durationSeconds,
+      trackCount: clip.channelCount,
+      targetNodeIds: clip.targetNodeIds,
+      targetPaths: clip.targetPaths,
+    })),
+  }), [sourceInspection]);
+  const animationDiagnostics = useMemo(() => (
+    session.animationMapping
+      ? validateCreatureAnimationAuthoringV1(
+          session.animationMapping.value,
+          animationInspection,
+        )
+      : []
+  ), [animationInspection, session.animationMapping]);
+  const animationMappingStatus = getCreatureAnimationMappingStatusV1(
+    animationDiagnostics,
+  );
+
+  useEffect(() => {
+    const mapping = session.animationMapping;
+    if (
+      session.currentStep !== "ANIMATION_MAPPING"
+      || !mapping
+      || mapping.revision !== session.revision
+    ) return;
+    const current = session.animationMappingValidation?.value;
+    if (current?.authoringRevision === mapping.value.authoringRevision) return;
+    dispatch({
+      type: "ANIMATION_MAPPING_VALIDATED",
+      revision: session.revision,
+      authoringRevision: mapping.value.authoringRevision,
+      status: animationMappingStatus,
+      diagnostics: animationDiagnostics,
+    });
+  }, [
+    animationDiagnostics,
+    animationMappingStatus,
+    session.animationMapping,
+    session.animationMappingValidation,
+    session.currentStep,
+    session.revision,
+  ]);
+
+  useEffect(() => {
+    const mapping = session.animationMapping;
+    const worker = workerRef.current;
+    if (
+      !worker
+      || session.currentStep !== "ANIMATION_MAPPING"
+      || !mapping
+      || mapping.revision !== session.revision
+    ) return;
+    const key = `${session.revision}:${mapping.value.authoringRevision}:${
+      JSON.stringify(mapping.value)
+    }`;
+    if (coreAnimationValidationRequestRef.current === key) return;
+    coreAnimationValidationRequestRef.current = key;
+    void worker.validateCreatureAnimationMapping(JSON.stringify(mapping.value))
+      .then((response) => {
+        if (
+          !response.ok
+          || response.type !== "CREATURE_ANIMATION_MAPPING_VALIDATED"
+        ) return;
+        assertDirectCreatureCatalogParityV1(response.catalogJson);
+        const coreValidation = projectCoreCreatureAnimationValidationV1(
+          response.validationJson,
+        );
+        const diagnostics = mergeUiAndCoreAnimationDiagnosticsV1(
+          animationDiagnostics,
+          coreValidation.diagnostics,
+        );
+        const current = sessionRef.current.animationMapping;
+        if (
+          current?.revision !== session.revision
+          || current.value.authoringRevision !== mapping.value.authoringRevision
+        ) return;
+        dispatch({
+          type: "ANIMATION_MAPPING_VALIDATED",
+          revision: session.revision,
+          authoringRevision: mapping.value.authoringRevision,
+          authoringFingerprintSha256:
+            coreValidation.authoringFingerprintSha256,
+          status: getCreatureAnimationMappingStatusV1(diagnostics),
+          diagnostics,
+        });
+      })
+      .catch((error: unknown) => {
+        const current = sessionRef.current.animationMapping;
+        if (
+          current?.revision !== session.revision
+          || current.value.authoringRevision !== mapping.value.authoringRevision
+        ) return;
+        const diagnostics = mergeUiAndCoreAnimationDiagnosticsV1(
+          animationDiagnostics,
+          [{
+            schemaVersion: 1,
+            code: "M2A-ANIMATION-CORE-VALIDATION-UNAVAILABLE",
+            path: "animationAuthoring",
+            level: "BLOCKING",
+            message: error instanceof Error ? error.message : String(error),
+            action: "Retry after the canonical WASM worker is available.",
+          }],
+        );
+        dispatch({
+          type: "ANIMATION_MAPPING_VALIDATED",
+          revision: session.revision,
+          authoringRevision: mapping.value.authoringRevision,
+          status: "BLOCKED",
+          diagnostics,
+        });
+      });
+  }, [
+    animationDiagnostics,
+    session.animationMapping,
+    session.currentStep,
+    session.revision,
+  ]);
+
+  useEffect(() => {
+    const mapping = session.animationMapping;
+    if (!mapping || mapping.revision !== session.revision || !session.source?.sha256) {
+      setAnimationMappingSaveState({ kind: "IDLE" });
+      return;
+    }
+    setAnimationMappingSaveState({ kind: "SAVING" });
+    const saved = saveCreatureAnimationDraftV1(
+      session.source.sha256,
+      mapping.value,
+    );
+    setAnimationMappingSaveState(saved.kind === "SAVED"
+      ? { kind: "SAVED" }
+      : { kind: "ERROR", message: saved.message });
+  }, [session.animationMapping, session.revision, session.source?.sha256]);
+
+  const continueFromInspect = () => {
+    const current = sessionRef.current;
+    if (current.target !== "CREATURE") {
+      dispatch({ type: "CONTINUE_TO_BUILD" });
+      return;
+    }
+    dispatch({ type: "CONTINUE_TO_ANIMATION_MAPPING" });
+    if (!current.source?.sha256) return;
+    const loaded = loadCreatureAnimationDraftV1(current.source.sha256);
+    if (
+      loaded.kind === "LOADED"
+      && loaded.value.sourceRevision === current.source.sha256
+    ) {
+      dispatch({
+        type: "ANIMATION_MAPPING_INITIALIZED",
+        revision: current.revision,
+        authoring: loaded.value,
+      });
+    } else if (loaded.kind === "ERROR") {
+      setAnimationMappingSaveState({
+        kind: "ERROR",
+        message: loaded.diagnostics[0]?.message ?? "Animation draft could not be loaded.",
+      });
+    }
+  };
+
+  const applySafeAnimationSuggestions = () => {
+    const mapping = sessionRef.current.animationMapping;
+    if (!mapping) return;
+    const proposal = proposeCreatureAnimationMappingV1(
+      getAuroraAnimationStateCatalogV1(),
+      animationInspection.sourceClips,
+    );
+    const applied = applyHighConfidenceAssignmentsV1(mapping.value, proposal);
+    const existing = new Map(
+      mapping.value.assignments.map((assignment) => [assignment.targetSlot, assignment]),
+    );
+    applied.assignments.forEach((assignment) => {
+      if (existing.has(assignment.targetSlot)) return;
+      dispatch({ type: "ANIMATION_SOURCE_ASSIGNED", assignment });
+    });
+  };
+  const useGeneratedAnimationProfile = () => {
+    const mapping = sessionRef.current.animationMapping;
+    if (!mapping) return;
+    getAuroraAnimationStateCatalogV1().forEach(({ slot }) => {
+      dispatch({
+        type: "ANIMATION_SOURCE_ASSIGNED",
+        assignment: {
+          targetSlot: slot,
+          sourceKind: "PROCEDURAL",
+          sourceClipName: null,
+          customAnimationId: null,
+          provenance: {
+            provider: "PROCEDURAL_GENERATOR",
+            assetId: "M2A_PROCEDURAL_HUMANOID_42_V1",
+            ownership: "PROJECT_GENERATED",
+          },
+        },
+      });
+    });
+  };
   const sourceMetrics = sourceInspection ? {
     meshCount: sourceInspection.inventory.meshCount,
     vertexCount: sourceInspection.statistics.vertexCount,
@@ -842,6 +1126,7 @@ export function App({
       header={<StudioHeader version="v0.1.0" environment="local" theme="dark" />}
       workflow={(
         <WorkflowStepper
+          steps={workflowSteps}
           currentStep={session.currentStep}
           visitedSteps={unlockedSteps}
           completedSteps={completedSteps}
@@ -939,7 +1224,47 @@ export function App({
           }
           wideViewport={session.target === "PLACEABLE" && Boolean(placeableAuthoring)}
           onBack={() => dispatch({ type: "NAVIGATE", step: "SOURCE" })}
+          onContinue={continueFromInspect}
+        />
+      ) : session.currentStep === "ANIMATION_MAPPING"
+        && session.animationMapping ? (
+        <CreatureAnimationMappingStep
+          authoring={session.animationMapping.value}
+          inspection={animationInspection}
+          saveState={animationMappingSaveState}
+          canContinue={canContinueFromAnimationMapping(session)}
+          validationStatus={session.animationMappingValidation?.value.status}
+          canonicalValidationPending={
+            animationMappingStatus === "READY"
+            && !/^[0-9a-f]{64}$/.test(
+              session.animationMappingValidation?.value
+                .authoringFingerprintSha256 ?? "",
+            )
+          }
+          onBack={() => dispatch({ type: "NAVIGATE", step: "INSPECT" })}
           onContinue={() => dispatch({ type: "CONTINUE_TO_BUILD" })}
+          onApplySuggestions={applySafeAnimationSuggestions}
+          canUseGeneratedProfile={sourceInspection
+            ? canOfferGeneratedHumanoidProfileV1({
+                skinCount: sourceInspection.inventory.skinCount,
+                boneCount: sourceInspection.boneCount,
+                clips: sourceInspection.clips,
+              })
+            : false}
+          onUseGeneratedProfile={useGeneratedAnimationProfile}
+          onAuthoringEvent={(event) => dispatch(event)}
+          sourcePreviewInput={session.source?.sha256 ? {
+            provenance: "SOURCE",
+            file: session.source.file,
+            sourceSha256: session.source.sha256,
+          } : undefined}
+          readback={currentResult?.kind === "MODEL" ? currentResult.readback : undefined}
+          builtAuthoringRevision={
+            currentResult?.kind === "MODEL"
+              ? currentResult.animationBuildInput.authoringRevision
+              : undefined
+          }
+          onPreviewError={setSourceError}
         />
       ) : session.currentStep === "BUILD" ? (
         <BuildStep
@@ -952,7 +1277,10 @@ export function App({
           }
           canRetry={session.build.kind === "FAILED"}
           canCancel={session.build.kind === "RUNNING"}
-          onBack={() => dispatch({ type: "NAVIGATE", step: "INSPECT" })}
+          onBack={() => dispatch({
+            type: "NAVIGATE",
+            step: session.target === "CREATURE" ? "ANIMATION_MAPPING" : "INSPECT",
+          })}
           onBuild={startBuild}
           onRetry={startBuild}
           onCancel={cancelBuild}

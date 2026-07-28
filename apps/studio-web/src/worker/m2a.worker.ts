@@ -4,6 +4,7 @@ import init, {
   buildM7CorpusBatchV1,
   buildMeshyH1ModelPackageV2,
   buildMeshyH1ModelPackageV3,
+  buildMeshyH1ModelPackageV4,
   buildMeshyProceduralHumanoidModelPackageV1,
   buildMeshyM0StaticRigidPackageV1,
   buildMeshyStaticPlaceablePackageV1,
@@ -15,6 +16,9 @@ import init, {
   inspectM7CorpusIntakeV1Json,
   inspectMeshyStaticPlaceableAuthoringV1,
   validateM7CorpusManifestV1Json,
+  validateCreatureAnimationAuthoringV1,
+  resolveCreatureAnimationMappingV1,
+  directCreatureAnimationCatalogV1Json,
 } from "@m2a-wasm";
 import type {
   StudioWorkerRequest,
@@ -91,6 +95,20 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         new Uint8Array(request.appearanceTwoDa),
         twoDaInspectionLimitsJson,
       ),
+    };
+  }
+  if (request.type === "VALIDATE_CREATURE_ANIMATION_MAPPING") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "CREATURE_ANIMATION_MAPPING_VALIDATED",
+      validationJson: validateCreatureAnimationAuthoringV1(
+        request.animationAuthoringJson,
+      ),
+      resolutionJson: resolveCreatureAnimationMappingV1(
+        request.animationAuthoringJson,
+      ),
+      catalogJson: directCreatureAnimationCatalogV1Json(),
     };
   }
   if (request.type === "VALIDATE_M7_CORPUS") {
@@ -320,6 +338,13 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         return buildMeshyH1ModelPackageV3(
           new Uint8Array(request.sourceGlb),
           new Uint8Array(request.appearanceTwoDa),
+          request.eventAuthoringJson,
+        );
+      case "H1_SKINNED_FULL_42_AUTHORED":
+        return buildMeshyH1ModelPackageV4(
+          new Uint8Array(request.sourceGlb),
+          new Uint8Array(request.appearanceTwoDa),
+          request.animationAuthoringJson,
           request.eventAuthoringJson,
         );
       case "H1_SKINNED_FULL_42":

@@ -3,6 +3,7 @@ import type { WorkflowStep } from "./workflow";
 export type WorkflowStepId = WorkflowStep;
 
 export interface WorkflowStepperProps {
+  steps?: readonly WorkflowStepId[];
   currentStep: WorkflowStepId;
   visitedSteps: readonly WorkflowStepId[];
   completedSteps: readonly WorkflowStepId[];
@@ -16,13 +17,22 @@ interface WorkflowStepDefinition {
   description: string;
 }
 
-const WORKFLOW_STEPS: readonly WorkflowStepDefinition[] = [
-  { id: "SOURCE", label: "Source", description: "Select input files" },
-  { id: "INSPECT", label: "Inspect", description: "Validate & preview" },
-  { id: "BUILD", label: "Build", description: "Convert & validate" },
-  { id: "REVIEW", label: "Review Output", description: "Verify results" },
-  { id: "DOWNLOAD", label: "Download", description: "Get your results" },
-];
+const WORKFLOW_STEP_DEFINITIONS: Readonly<Record<WorkflowStepId, WorkflowStepDefinition>> = {
+  SOURCE: { id: "SOURCE", label: "Source", description: "Select input files" },
+  INSPECT: { id: "INSPECT", label: "Inspect", description: "Validate & preview" },
+  ANIMATION_MAPPING: {
+    id: "ANIMATION_MAPPING",
+    label: "Animation Mapping",
+    description: "Map Aurora states",
+  },
+  BUILD: { id: "BUILD", label: "Build", description: "Convert & validate" },
+  REVIEW: { id: "REVIEW", label: "Review Output", description: "Verify results" },
+  DOWNLOAD: { id: "DOWNLOAD", label: "Download", description: "Get your results" },
+};
+
+const DEFAULT_WORKFLOW_STEPS = Object.keys(
+  WORKFLOW_STEP_DEFINITIONS,
+) as WorkflowStepId[];
 
 function LockIcon() {
   return (
@@ -34,6 +44,7 @@ function LockIcon() {
 }
 
 export function WorkflowStepper({
+  steps = DEFAULT_WORKFLOW_STEPS,
   currentStep,
   visitedSteps,
   completedSteps,
@@ -47,7 +58,8 @@ export function WorkflowStepper({
   return (
     <nav className="workflow-stepper" aria-label="Conversion workflow">
       <ol className="workflow-stepper__list">
-        {WORKFLOW_STEPS.map((step, index) => {
+        {steps.map((stepId, index) => {
+          const step = WORKFLOW_STEP_DEFINITIONS[stepId];
           const isCurrent = step.id === currentStep;
           const isCompleted = completed.has(step.id);
           const isVisited = visited.has(step.id) || isCurrent || isCompleted;

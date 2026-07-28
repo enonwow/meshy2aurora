@@ -38,6 +38,43 @@ export class StudioWorkerClient {
     });
   }
 
+  validateCreatureAnimationMapping(
+    animationAuthoringJson: string,
+    requestId = workerRequestId(),
+  ) {
+    return this.request({
+      requestId,
+      type: "VALIDATE_CREATURE_ANIMATION_MAPPING",
+      animationAuthoringJson,
+    });
+  }
+
+  buildAuthoredCreatureModelPackage(
+    sourceGlb: ArrayBuffer,
+    appearanceTwoDa: ArrayBuffer,
+    animationAuthoringJson: string,
+    eventAuthoringJson?: string,
+    requestId = workerRequestId(),
+  ) {
+    return this.request({
+      requestId,
+      type: "BUILD_MODEL_PACKAGE",
+      sourceGlb,
+      appearanceTwoDa,
+      packageLane: "H1_SKINNED_FULL_42_AUTHORED",
+      animationAuthoringJson,
+      eventAuthoringJson,
+    }, [sourceGlb, appearanceTwoDa]);
+  }
+
+  cancel(requestId: string) {
+    const pending = this.pending.get(requestId);
+    if (!pending) return false;
+    this.pending.delete(requestId);
+    pending.reject(new DOMException("Studio Worker request cancelled", "AbortError"));
+    return true;
+  }
+
   dispose() {
     this.worker.terminate();
     for (const pending of this.pending.values()) {
@@ -45,4 +82,10 @@ export class StudioWorkerClient {
     }
     this.pending.clear();
   }
+}
+
+function workerRequestId() {
+  return typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `worker-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }

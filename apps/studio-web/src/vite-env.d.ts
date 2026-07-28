@@ -69,6 +69,28 @@ declare module "@m2a-wasm" {
     takeProofModuleBytes(): Uint8Array;
     free(): void;
   };
+  export function directCreatureAnimationCatalogV1Json(): string;
+  export function validateCreatureAnimationAuthoringV1(
+    animationAuthoringJson: string,
+  ): string;
+  export function resolveCreatureAnimationMappingV1(
+    animationAuthoringJson: string,
+  ): string;
+  export function buildMeshyH1ModelPackageV4(
+    sourceGlb: Uint8Array,
+    appearanceTwoDa: Uint8Array,
+    animationAuthoringJson: string,
+    eventAuthoringJson?: string,
+  ): {
+    readonly reportJson: string;
+    readonly manifestJson: string;
+    readonly summaryJson: string;
+    readonly readbackJson: string;
+    takeHakBytes(): Uint8Array;
+    takeModelBytes(): Uint8Array;
+    takeProofModuleBytes(): Uint8Array;
+    free(): void;
+  };
   export function buildMeshyProceduralHumanoidModelPackageV1(
     sourceGlb: Uint8Array,
     appearanceTwoDa: Uint8Array,

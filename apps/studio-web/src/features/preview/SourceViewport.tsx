@@ -7,9 +7,16 @@ import type { ModelPartRef, SourcePreviewInput } from "./types";
 interface Props {
   input: SourcePreviewInput;
   onError?: (message: string) => void;
+  initialAnimationName?: string | null;
+  initialAnimationLoop?: boolean;
 }
 
-export function SourceViewport({ input, onError }: Props) {
+export function SourceViewport({
+  input,
+  onError,
+  initialAnimationName,
+  initialAnimationLoop,
+}: Props) {
   const buildRoot = useCallback(async () => {
     const manager = new THREE.LoadingManager();
     manager.setURLModifier((url) => {
@@ -38,6 +45,8 @@ export function SourceViewport({ input, onError }: Props) {
       dependency={`${input.file.name}:${input.sourceSha256}`}
       buildRoot={buildRoot}
       tools={{ animationPlayback: true, overlays: true }}
+      initialAnimationName={initialAnimationName}
+      initialAnimationLoop={initialAnimationLoop}
       onError={onError}
     />
   );

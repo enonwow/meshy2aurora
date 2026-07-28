@@ -217,6 +217,8 @@ interface Props {
   selectedPart?: ModelPartRef;
   onSelectPart: (part?: ModelPartRef) => void;
   onError?: (message: string) => void;
+  initialAnimationName?: string | null;
+  initialAnimationLoop?: boolean;
 }
 
 export function buildAuroraReadbackAsset(
@@ -234,7 +236,14 @@ export function buildAuroraReadbackAsset(
   return { root, animations: animationClipsFromReadback(report) };
 }
 
-export function AuroraReadbackViewport({ report, selectedPart, onSelectPart, onError }: Props) {
+export function AuroraReadbackViewport({
+  report,
+  selectedPart,
+  onSelectPart,
+  onError,
+  initialAnimationName,
+  initialAnimationLoop,
+}: Props) {
   const buildRoot = useCallback(async () => buildAuroraReadbackAsset(report, selectedPart), [report, selectedPart]);
 
   return (
@@ -246,6 +255,8 @@ export function AuroraReadbackViewport({ report, selectedPart, onSelectPart, onE
       onSelectPart={onSelectPart}
       onError={onError}
       tools={{ animationPlayback: true, overlays: true }}
+      initialAnimationName={initialAnimationName}
+      initialAnimationLoop={initialAnimationLoop}
     />
   );
 }

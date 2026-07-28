@@ -1,13 +1,29 @@
 import { fileURLToPath } from "node:url";
+import { basename, dirname } from "node:path";
 import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
 import viteConfig from "./vite.config";
 
+const worktreeRepositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
+const worktreesDirectory = dirname(worktreeRepositoryRoot);
+const canonicalRepositoryRoot =
+  basename(worktreesDirectory).toLowerCase() === ".worktrees"
+    ? dirname(worktreesDirectory)
+    : worktreeRepositoryRoot;
+
 export default defineConfig({
   ...viteConfig,
+  resolve: {
+    alias: {
+      "@m2a-wasm": fileURLToPath(
+        new URL("../../crates/m2a-wasm/pkg/m2a_wasm.js", import.meta.url),
+      ),
+      "@m2a-canonical-repository": canonicalRepositoryRoot,
+    },
+  },
   server: {
     fs: {
-      allow: [fileURLToPath(new URL("../..", import.meta.url))],
+      allow: [worktreeRepositoryRoot, canonicalRepositoryRoot],
     },
   },
   test: {

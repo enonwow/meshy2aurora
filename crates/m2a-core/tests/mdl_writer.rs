@@ -1655,6 +1655,22 @@ fn full_creature_behavior_oracle_distinguishes_movement_and_terminal_death_offli
     assert!(report.behavior_candidate_eligible);
     assert!(report.violations.is_empty());
 
+    let mut with_custom = full.clone();
+    let mut custom = with_custom
+        .clips
+        .iter()
+        .find(|clip| clip.name == "cpause1")
+        .expect("cpause1 custom source")
+        .clone();
+    custom.name = "wave".to_owned();
+    with_custom.clips.push(custom);
+    let artifact = write_binary_mdl_with_animations(&creature(), &with_custom, &options()).unwrap();
+    let report = evaluate_direct_creature_animation_behavior_v1(&artifact.inspection);
+    assert_eq!(report.observed_clip_count, 43);
+    assert!(report.full_namespace_complete);
+    assert!(report.behavior_candidate_eligible);
+    assert!(report.violations.is_empty());
+
     let mut indistinguishable = full.clone();
     let walk_values = indistinguishable
         .clips

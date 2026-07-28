@@ -114,6 +114,66 @@ export function ReviewModelDetails({
 
       <ConversionReadiness result={result} readback={readback} />
 
+      {result.animationMappingEvidence ? (
+        <section className="review-model__animation-mapping" aria-labelledby="review-animation-mapping-heading">
+          <header>
+            <h3 id="review-animation-mapping-heading">Animation Mapping</h3>
+            <p>
+              <strong>READY · 42/42 read back</strong>
+              {` · authoring r${result.animationMappingEvidence.authoringRevision}`}
+              {` · fingerprint ${result.animationMappingEvidence.authoringFingerprintSha256.slice(0, 12)}…`}
+            </p>
+          </header>
+          <div className="review-model__animation-table">
+            <table>
+              <caption>Sources actually materialized into the built artifact</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Aurora slot</th>
+                  <th scope="col">Source</th>
+                  <th scope="col">Provider / asset</th>
+                  <th scope="col">Fallback path</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.animationMappingEvidence.baseAnimations.map((animation) => (
+                  <tr key={animation.targetSlot}>
+                    <th scope="row">{animation.targetSlot}</th>
+                    <td>{animation.sourceClipName ?? animation.sourceKind}</td>
+                    <td>{animation.provider} · {animation.assetId}</td>
+                    <td>
+                      {animation.viaFallbackSlots.length > 0
+                        ? `${animation.viaFallbackSlots.join(" → ")} → ${animation.resolvedSourceSlot}`
+                        : "Direct"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {result.animationMappingEvidence.customAnimations.length > 0 ? (
+            <div>
+              <h4>Custom animations</h4>
+              <ul>
+                {result.animationMappingEvidence.customAnimations.map((custom) => (
+                  <li key={custom.id}>
+                    <strong>{custom.id} · {custom.playback}</strong>
+                    {custom.outputClipNames.map((output, index) => (
+                      <span key={output}>
+                        {` ${custom.phases[index] ?? "ONE_SHOT"}: ${output} ← ${
+                          custom.sourceClipNames[index]
+                        }`}
+                      </span>
+                    ))}
+                    {` · ${custom.provider}`}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : <p>No custom animations were included.</p>}
+        </section>
+      ) : null}
+
       <div className="review-model__evidence" aria-label="Canonical evidence">
         {result.runtimeFixtureContract && (
           <article>

@@ -15,7 +15,7 @@ afterEach(async () => {
 });
 
 describe("WorkflowStepper", () => {
-  it("renders the five-step workflow with active, completed and blocked semantics", async () => {
+  it("renders a target-specific workflow with active, completed and blocked semantics", async () => {
     const onStepSelect = vi.fn();
     const container = document.createElement("div");
     document.body.append(container);
@@ -25,6 +25,7 @@ describe("WorkflowStepper", () => {
     await act(async () => {
       root.render(
         <WorkflowStepper
+          steps={["SOURCE", "INSPECT", "ANIMATION_MAPPING", "BUILD", "REVIEW", "DOWNLOAD"]}
           currentStep="INSPECT"
           visitedSteps={["SOURCE", "INSPECT"]}
           completedSteps={["SOURCE"]}
@@ -36,13 +37,14 @@ describe("WorkflowStepper", () => {
     const list = container.querySelector("ol");
     const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>("ol button"));
     expect(list).not.toBeNull();
-    expect(buttons).toHaveLength(5);
+    expect(buttons).toHaveLength(6);
     expect(buttons.map((button) => button.textContent)).toEqual([
       "✓SourceSelect input files",
       "2InspectValidate & preview",
-      "3BuildConvert & validate",
-      "4Review OutputVerify results",
-      "5DownloadGet your results",
+      "3Animation MappingMap Aurora states",
+      "4BuildConvert & validate",
+      "5Review OutputVerify results",
+      "6DownloadGet your results",
     ]);
     expect(buttons[1].getAttribute("aria-current")).toBe("step");
     expect(buttons[0].querySelector(".workflow-stepper__marker")?.textContent).toBe("✓");

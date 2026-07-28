@@ -1,4 +1,5 @@
 import type { WorkerArtifact } from "../../worker/types";
+import { FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1 } from "../source/directCreatureAnimationProfile";
 
 export interface CanonicalResultSnapshot {
   status: string;
@@ -23,6 +24,7 @@ export interface CanonicalResultSnapshot {
     artifactCount: number;
   };
   animationEventEvidence?: CanonicalAnimationEventEvidence;
+  animationMappingEvidence?: CanonicalAnimationMappingEvidenceV1;
   runtimeFixtureContract?: CanonicalM0RuntimeFixtureContract;
   artifacts: WorkerArtifact[];
   reportJson: string;
@@ -77,6 +79,42 @@ export interface CanonicalAnimationEventEvidence {
   missingPairs: string[];
   complete: true;
   authoringCanonical: { byteLength: number; sha256: string };
+}
+
+export interface CanonicalAnimationMappingEvidenceV1 {
+  schemaVersion: 1;
+  profile: string;
+  sourceRevision: string;
+  authoringRevision: number;
+  authoringFingerprintSha256: string;
+  baseAnimations: Array<{
+    targetSlot: string;
+    resolvedSourceSlot: string;
+    sourceKind: string;
+    sourceClipName: string | null;
+    customAnimationId: string | null;
+    provider: string;
+    assetId: string;
+    ownership: string;
+    viaFallbackSlots: string[];
+  }>;
+  customAnimations: Array<{
+    id: string;
+    playback: "ONE_SHOT" | "LOOPING_PHASED";
+    phases: Array<"START" | "LOOP" | "END">;
+    outputClipNames: string[];
+    sourceClipNames: string[];
+    provider: string;
+    assetId: string;
+    ownership: string;
+  }>;
+  conformance: {
+    status: "READY";
+    expectedBaseSlotCount: 42;
+    materializedBaseSlotCount: 42;
+    expectedCustomClipNames: string[];
+    materializedCustomClipNames: string[];
+  };
 }
 
 export interface CanonicalM0RuntimeResource {
@@ -247,6 +285,207 @@ function conversionDiagnostic(value: unknown, path: string): CanonicalConversion
     severity: string(item.severity, `${path}.severity`),
     path: string(item.path, `${path}.path`),
     message: string(item.message, `${path}.message`),
+  };
+}
+
+function nullableString(value: unknown, path: string): string | null {
+  return value === null ? null : string(value, path);
+}
+
+function animationProvenance(value: unknown, path: string) {
+  const item = record(value, path);
+  return {
+    provider: string(item.provider, `${path}.provider`),
+    assetId: string(item.assetId, `${path}.assetId`),
+    ownership: string(item.ownership, `${path}.ownership`),
+  };
+}
+
+function animationMappingEvidenceParser(
+  authoringValue: unknown,
+  conformanceValue: unknown,
+  path: string,
+): CanonicalAnimationMappingEvidenceV1 {
+  const authoring = record(authoringValue, `${path}.animationAuthoring`);
+  const conformance = record(conformanceValue, `${path}.authoredAnimationConformance`);
+  if (integer(authoring.schemaVersion, `${path}.animationAuthoring.schemaVersion`) !== 1) {
+    fail(`${path}.animationAuthoring.schemaVersion`);
+  }
+  if (integer(conformance.schemaVersion, `${path}.authoredAnimationConformance.schemaVersion`) !== 1) {
+    fail(`${path}.authoredAnimationConformance.schemaVersion`);
+  }
+  const baseAnimations = array(
+    authoring.baseAnimations,
+    `${path}.animationAuthoring.baseAnimations`,
+  ).map((value, index) => {
+    const itemPath = `${path}.animationAuthoring.baseAnimations[${index}]`;
+    const item = record(value, itemPath);
+    const assignment = record(item.assignment, `${itemPath}.assignment`);
+    const targetSlot = string(item.targetSlot, `${itemPath}.targetSlot`);
+    const assignmentTargetSlot = string(
+      assignment.targetSlot,
+      `${itemPath}.assignment.targetSlot`,
+    );
+    if (assignmentTargetSlot !== targetSlot) {
+      fail(`${itemPath}.assignment.targetSlot`);
+    }
+    return {
+      targetSlot,
+      resolvedSourceSlot: string(
+        item.resolvedSourceSlot,
+        `${itemPath}.resolvedSourceSlot`,
+      ),
+      sourceKind: string(assignment.sourceKind, `${itemPath}.assignment.sourceKind`),
+      sourceClipName: nullableString(
+        assignment.sourceClipName,
+        `${itemPath}.assignment.sourceClipName`,
+      ),
+      customAnimationId: nullableString(
+        assignment.customAnimationId,
+        `${itemPath}.assignment.customAnimationId`,
+      ),
+      ...animationProvenance(
+        assignment.provenance,
+        `${itemPath}.assignment.provenance`,
+      ),
+      viaFallbackSlots: stringArray(
+        item.viaFallbackSlots,
+        `${itemPath}.viaFallbackSlots`,
+      ),
+    };
+  });
+  const canonicalSlots = new Set<string>(FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1);
+  if (
+    baseAnimations.length !== FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1.length
+    || baseAnimations.some(({ targetSlot, resolvedSourceSlot, viaFallbackSlots }, index) => (
+      targetSlot !== FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1[index]
+      || !canonicalSlots.has(resolvedSourceSlot)
+      || viaFallbackSlots.some((slot) => !canonicalSlots.has(slot))
+    ))
+  ) {
+    fail(`${path}.animationAuthoring.baseAnimations`);
+  }
+  const customAnimations = array(
+    authoring.customAnimations,
+    `${path}.animationAuthoring.customAnimations`,
+  ).map((value, index) => {
+    const itemPath = `${path}.animationAuthoring.customAnimations[${index}]`;
+    const item = record(value, itemPath);
+    const playbackValue = string(item.playback, `${itemPath}.playback`);
+    if (playbackValue !== "ONE_SHOT" && playbackValue !== "LOOPING_PHASED") {
+      fail(`${itemPath}.playback`);
+    }
+    const playback = playbackValue as "ONE_SHOT" | "LOOPING_PHASED";
+    const phases = stringArray(item.phases, `${itemPath}.phases`);
+    if (
+      phases.some((phase) => !["START", "LOOP", "END"].includes(phase))
+      || new Set(phases).size !== phases.length
+      || (
+        playback === "ONE_SHOT"
+          ? phases.length !== 0
+          : phases.filter((phase) => phase === "LOOP").length !== 1
+      )
+    ) {
+      fail(`${itemPath}.phases`);
+    }
+    const outputClipNames = stringArray(
+      item.outputClipNames,
+      `${itemPath}.outputClipNames`,
+    );
+    const sourceClipNames = stringArray(
+      item.sourceClipNames,
+      `${itemPath}.sourceClipNames`,
+    );
+    if (
+      outputClipNames.length !== sourceClipNames.length
+      || outputClipNames.length === 0
+      || (
+        playback === "ONE_SHOT"
+          ? outputClipNames.length !== 1
+          : outputClipNames.length !== phases.length
+      )
+    ) {
+      fail(`${itemPath}.outputClipNames`);
+    }
+    return {
+      id: string(item.id, `${itemPath}.id`),
+      playback,
+      phases: phases as Array<"START" | "LOOP" | "END">,
+      outputClipNames,
+      sourceClipNames,
+      ...animationProvenance(item.provenance, `${itemPath}.provenance`),
+    };
+  });
+  const status = string(
+    conformance.status,
+    `${path}.authoredAnimationConformance.status`,
+  );
+  const expectedBaseSlotCount = integer(
+    conformance.expectedBaseSlotCount,
+    `${path}.authoredAnimationConformance.expectedBaseSlotCount`,
+  );
+  const materializedBaseSlotCount = integer(
+    conformance.materializedBaseSlotCount,
+    `${path}.authoredAnimationConformance.materializedBaseSlotCount`,
+  );
+  const conformanceDiagnostics = array(
+    conformance.diagnostics,
+    `${path}.authoredAnimationConformance.diagnostics`,
+  );
+  if (
+    status !== "READY"
+    || expectedBaseSlotCount !== 42
+    || materializedBaseSlotCount !== 42
+    || conformanceDiagnostics.length !== 0
+  ) {
+    fail(`${path}.authoredAnimationConformance`);
+  }
+  const expectedCustomClipNames = stringArray(
+    conformance.expectedCustomClipNames,
+    `${path}.authoredAnimationConformance.expectedCustomClipNames`,
+  );
+  const materializedCustomClipNames = stringArray(
+    conformance.materializedCustomClipNames,
+    `${path}.authoredAnimationConformance.materializedCustomClipNames`,
+  );
+  const declaredCustomClipNames = customAnimations.flatMap(
+    ({ outputClipNames }) => outputClipNames,
+  );
+  const allOutputNames = [
+    ...FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1,
+    ...declaredCustomClipNames,
+  ].map((name) => name.toLowerCase());
+  if (
+    JSON.stringify(expectedCustomClipNames) !== JSON.stringify(declaredCustomClipNames)
+    || JSON.stringify(materializedCustomClipNames) !== JSON.stringify(expectedCustomClipNames)
+    || new Set(allOutputNames).size !== allOutputNames.length
+  ) {
+    fail(`${path}.authoredAnimationConformance.materializedCustomClipNames`);
+  }
+  return {
+    schemaVersion: 1,
+    profile: string(authoring.profile, `${path}.animationAuthoring.profile`),
+    sourceRevision: string(
+      authoring.sourceRevision,
+      `${path}.animationAuthoring.sourceRevision`,
+    ),
+    authoringRevision: integer(
+      authoring.authoringRevision,
+      `${path}.animationAuthoring.authoringRevision`,
+    ),
+    authoringFingerprintSha256: sha256(
+      authoring.authoringFingerprintSha256,
+      `${path}.animationAuthoring.authoringFingerprintSha256`,
+    ),
+    baseAnimations,
+    customAnimations,
+    conformance: {
+      status: "READY",
+      expectedBaseSlotCount: 42,
+      materializedBaseSlotCount: 42,
+      expectedCustomClipNames,
+      materializedCustomClipNames,
+    },
   };
 }
 
@@ -459,6 +698,35 @@ export function projectCanonicalResult(
   equal(textureResource.resref, string(summary.textureResref, "summary.textureResref"), "manifest.packageManifest.resources.TEXTURE.resref");
   equal(appearanceResource.resref, "appearance", "manifest.packageManifest.resources.APPEARANCE_TABLE.resref");
 
+  let animationMappingEvidence: CanonicalAnimationMappingEvidenceV1 | undefined;
+  if (
+    report.animationAuthoring !== undefined
+    || report.authoredAnimationConformance !== undefined
+    || manifest.animationAuthoring !== undefined
+    || manifest.authoredAnimationConformance !== undefined
+  ) {
+    const reportEvidence = animationMappingEvidenceParser(
+      report.animationAuthoring,
+      report.authoredAnimationConformance,
+      "report",
+    );
+    const manifestEvidence = animationMappingEvidenceParser(
+      manifest.animationAuthoring,
+      manifest.authoredAnimationConformance,
+      "manifest",
+    );
+    if (JSON.stringify(reportEvidence) !== JSON.stringify(manifestEvidence)) {
+      throw new Error("Canonical result identity mismatch at animationMappingEvidence");
+    }
+    if (
+      reportEvidence.conformance.expectedCustomClipNames.length
+      !== reportEvidence.conformance.materializedCustomClipNames.length
+    ) {
+      fail("report.authoredAnimationConformance.materializedCustomClipNames");
+    }
+    animationMappingEvidence = reportEvidence;
+  }
+
   let runtimeFixtureContract: CanonicalM0RuntimeFixtureContract | undefined;
   if (status === "M0_MESHY_STATIC_RIGID_PACKAGE_MATERIALIZED") {
     const reportContract = runtimeFixtureContractParser(report.m0RuntimeFixtureContract, "report.m0RuntimeFixtureContract");
@@ -550,6 +818,7 @@ export function projectCanonicalResult(
       artifactCount: artifacts.length,
     },
     animationEventEvidence,
+    animationMappingEvidence,
     runtimeFixtureContract,
     artifacts: [...artifacts],
     reportJson,

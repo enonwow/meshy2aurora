@@ -1,4 +1,19 @@
-import { compareWorkflowSteps, type WorkflowStep } from "./workflow";
+import {
+  compareWorkflowSteps,
+  getWorkflowStepsForTarget,
+  type WorkflowStep,
+} from "./workflow";
+import {
+  createCreatureAnimationAuthoringV1,
+  isAnimationMappingCurrentV1,
+  reduceCreatureAnimationAuthoringV1,
+  type CreatureAnimationAuthoringEventV1,
+} from "../features/animation-mapping/state";
+import type {
+  AnimationMappingDiagnosticV1,
+  CreatureAnimationAuthoringV1,
+  CreatureAnimationMappingStatusV1,
+} from "../features/animation-mapping/types";
 
 export type StudioInputKind = "SOURCE" | "APPEARANCE" | "ANIMATION_EVENTS";
 export type StudioTarget = "CREATURE" | "PLACEABLE" | "TILE";
@@ -75,6 +90,14 @@ export interface StudioSessionState<
   readonly animationEvents: StudioInputFile | null;
   readonly sourceInspection: RevisionBoundSnapshot<TInspection> | null;
   readonly appearanceInspection: RevisionBoundSnapshot<TAppearanceInspection> | null;
+  readonly animationMapping: RevisionBoundSnapshot<CreatureAnimationAuthoringV1> | null;
+  readonly animationMappingValidation: RevisionBoundSnapshot<{
+    readonly authoringRevision: number;
+    /** Present only after the canonical core/WASM validation completed. */
+    readonly authoringFingerprintSha256: string | null;
+    readonly status: CreatureAnimationMappingStatusV1;
+    readonly diagnostics: readonly AnimationMappingDiagnosticV1[];
+  }> | null;
   readonly build: BuildState<TResult>;
   readonly result: RevisionBoundSnapshot<TResult> | null;
   readonly download: DownloadState;
@@ -114,7 +137,21 @@ export type StudioSessionEvent<
       readonly inspection: TAppearanceInspection;
     }
   | { readonly type: "CONTINUE_TO_INSPECT" }
+  | { readonly type: "CONTINUE_TO_ANIMATION_MAPPING" }
   | { readonly type: "CONTINUE_TO_BUILD" }
+  | {
+      readonly type: "ANIMATION_MAPPING_INITIALIZED";
+      readonly revision: number;
+      readonly authoring: CreatureAnimationAuthoringV1;
+    }
+  | {
+      readonly type: "ANIMATION_MAPPING_VALIDATED";
+      readonly revision: number;
+      readonly authoringRevision: number;
+      readonly authoringFingerprintSha256?: string;
+      readonly status: CreatureAnimationMappingStatusV1;
+      readonly diagnostics: readonly AnimationMappingDiagnosticV1[];
+    }
   | {
       readonly type: "BUILD_STARTED";
       readonly requestId: string;
@@ -138,7 +175,8 @@ export type StudioSessionEvent<
       readonly revision: number;
     }
   | { readonly type: "NAVIGATE"; readonly step: WorkflowStep }
-  | { readonly type: "START_NEW_CONVERSION" };
+  | { readonly type: "START_NEW_CONVERSION" }
+  | CreatureAnimationAuthoringEventV1;
 
 function selectedInput(file: File): StudioInputFile {
   return {
@@ -169,6 +207,8 @@ export function createInitialStudioSession<
     animationEvents: null,
     sourceInspection: null,
     appearanceInspection: null,
+    animationMapping: null,
+    animationMappingValidation: null,
     build: { kind: "IDLE" },
     result: null,
     download: { kind: "LOCKED" },
@@ -190,9 +230,20 @@ function invalidateDownstream<TInspection, TResult, TAppearanceInspection>(
     lastAvailableStep: "SOURCE",
     sourceInspection: null,
     appearanceInspection: null,
+    ...invalidateAnimationMappingAfterSourceChangeV1(),
     build: { kind: "IDLE" },
     result: null,
     download: { kind: "LOCKED" },
+  };
+}
+
+export function invalidateAnimationMappingAfterSourceChangeV1(): Pick<
+  StudioSessionState,
+  "animationMapping" | "animationMappingValidation"
+> {
+  return {
+    animationMapping: null,
+    animationMappingValidation: null,
   };
 }
 
@@ -328,6 +379,103 @@ export function studioSessionReducer<TInspection, TResult, TAppearanceInspection
           ? state.lastAvailableStep
           : "INSPECT",
       };
+    case "CONTINUE_TO_ANIMATION_MAPPING": {
+      if (
+        state.target !== "CREATURE"
+        || !state.source
+        || !state.appearance
+        || !state.source.sha256
+        || state.sourceInspection?.revision !== state.revision
+        || state.appearanceInspection?.revision !== state.revision
+      ) return state;
+      const animationMapping = isAnimationMappingCurrentV1(state)
+        ? state.animationMapping
+        : {
+            revision: state.revision,
+            value: createCreatureAnimationAuthoringV1(state.source.sha256, "S"),
+          };
+      return {
+        ...state,
+        currentStep: "ANIMATION_MAPPING",
+        lastAvailableStep:
+          compareWorkflowSteps(state.lastAvailableStep, "ANIMATION_MAPPING") >= 0
+            ? state.lastAvailableStep
+            : "ANIMATION_MAPPING",
+        animationMapping,
+        animationMappingValidation: isAnimationMappingCurrentV1(state)
+          ? state.animationMappingValidation
+          : null,
+      };
+    }
+    case "ANIMATION_MAPPING_INITIALIZED":
+      if (
+        event.revision !== state.revision
+        || state.target !== "CREATURE"
+        || !state.source
+        || !state.appearance
+        || !state.source.sha256
+        || event.authoring.sourceRevision !== state.source.sha256
+        || state.sourceInspection?.revision !== state.revision
+        || state.appearanceInspection?.revision !== state.revision
+      ) return state;
+      return {
+        ...state,
+        animationMapping: {
+          revision: state.revision,
+          value: event.authoring,
+        },
+        animationMappingValidation: null,
+      };
+    case "ANIMATION_SOURCE_ASSIGNED":
+    case "ANIMATION_SOURCE_CLEARED":
+    case "ANIMATION_FALLBACK_APPROVED":
+    case "ANIMATION_FALLBACK_REJECTED":
+    case "CUSTOM_ANIMATION_ADDED":
+    case "CUSTOM_ANIMATION_UPDATED":
+    case "CUSTOM_ANIMATION_REMOVED": {
+      if (
+        state.animationMapping?.revision !== state.revision
+        || state.target !== "CREATURE"
+      ) return state;
+      const nextAuthoring = reduceCreatureAnimationAuthoringV1(
+        state.animationMapping.value,
+        event,
+      );
+      if (nextAuthoring === state.animationMapping.value) return state;
+      return {
+        ...state,
+        lastAvailableStep: state.currentStep === "REVIEW"
+          ? "BUILD"
+          : state.lastAvailableStep,
+        animationMapping: {
+          revision: state.revision,
+          value: nextAuthoring,
+        },
+        animationMappingValidation: null,
+        build: { kind: "IDLE" },
+        result: null,
+        download: { kind: "LOCKED" },
+      };
+    }
+    case "ANIMATION_MAPPING_VALIDATED":
+      if (
+        event.revision !== state.revision
+        || state.animationMapping?.revision !== state.revision
+        || state.animationMapping.value.authoringRevision !== event.authoringRevision
+      ) return state;
+      return {
+        ...state,
+        animationMappingValidation: {
+          revision: state.revision,
+          value: {
+            authoringRevision: event.authoringRevision,
+            authoringFingerprintSha256:
+              event.authoringFingerprintSha256 ?? null,
+            status: event.status,
+            diagnostics: event.diagnostics,
+          },
+        },
+      };
     case "CONTINUE_TO_BUILD":
       if (
         !state.source
@@ -338,6 +486,10 @@ export function studioSessionReducer<TInspection, TResult, TAppearanceInspection
         || (
           state.target !== "TILE"
           && state.appearanceInspection?.revision !== state.revision
+        )
+        || (
+          state.target === "CREATURE"
+          && !hasReadyCurrentAnimationMapping(state)
         )
       ) return state;
       return {
@@ -358,6 +510,10 @@ export function studioSessionReducer<TInspection, TResult, TAppearanceInspection
         || (
           state.target !== "TILE"
           && state.appearanceInspection?.revision !== state.revision
+        )
+        || (
+          state.target === "CREATURE"
+          && !hasReadyCurrentAnimationMapping(state)
         )
       ) return state;
       return {
@@ -433,10 +589,24 @@ export function studioSessionReducer<TInspection, TResult, TAppearanceInspection
       };
     case "NAVIGATE":
       if (state.build.kind === "RUNNING") return state;
+      if (!getWorkflowStepsForTarget(state.target).includes(event.step)) return state;
       if (compareWorkflowSteps(event.step, state.lastAvailableStep) > 0) return state;
       if (event.step === state.currentStep) return state;
       return { ...state, currentStep: event.step };
     case "START_NEW_CONVERSION":
       return createInitialStudioSession<TInspection, TResult, TAppearanceInspection>(state.revision + 1);
   }
+}
+
+function hasReadyCurrentAnimationMapping(
+  state: StudioSessionState,
+): boolean {
+  return isAnimationMappingCurrentV1(state)
+    && state.animationMappingValidation?.revision === state.revision
+    && state.animationMappingValidation.value.authoringRevision
+      === state.animationMapping?.value.authoringRevision
+    && state.animationMappingValidation.value.status === "READY"
+    && /^[0-9a-f]{64}$/.test(
+      state.animationMappingValidation.value.authoringFingerprintSha256 ?? "",
+    );
 }

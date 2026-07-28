@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::fs;
 
 use m2a_core::{
     animated_donor_candidate::{
@@ -14,13 +14,12 @@ use m2a_core::{
 };
 use sha2::{Digest, Sha256};
 
+#[path = "support/canonical_workspace.rs"]
+mod canonical_workspace;
+
 #[test]
 fn exact_h2_r42_uses_the_owned_runtime_positive_type0_root_rigid_family() {
-    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(std::path::Path::parent)
-        .expect("canonical repository root")
-        .to_path_buf();
+    let repo = canonical_workspace::canonical_repository_root();
     let source = fs::read(repo.join("sample-3d/h2-clockwork-sentinel-1500/source.glb"))
         .expect("exact generated Meshy H2 source");
     let appearance = fs::read(repo.join("local-reference-assets/appearance.2da"))

@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import sourceUrl from "../.generated/owned-package/generated/source.glb?url";
 import fullNative42SourceUrl from "../.generated/owned-full42-package/generated/source.glb?url";
-import proceduralHumanoidSourceUrl from "../../../../sample-3d/h2-clockwork-sentinel-1500/source.glb?url";
+import proceduralHumanoidSourceUrl from "@m2a-canonical-repository/sample-3d/h2-clockwork-sentinel-1500/source.glb?url";
 import appearanceUrl from "../fixtures/appearance.2da?url";
 import placeablesUrl from "../fixtures/placeables.2da?url";
 import { buildM7PayloadEnvelope } from "../../src/features/m7/envelope";
@@ -730,6 +730,13 @@ describe("local file to canonical web-WASM Worker integration", () => {
       .find(({ textContent }) => textContent?.trim() === label);
     await expect.poll(() => findButton("Continue to Inspect")?.disabled).toBe(false);
     findButton("Continue to Inspect")?.click();
+    await expect.poll(() => findButton("Continue to Build")?.disabled).toBe(false);
+    findButton("Continue to Build")?.click();
+    await expect
+      .poll(() => container.querySelector("#animation-mapping-title")?.textContent)
+      .toBe("Creature Animation Mapping");
+    await expect.poll(() => findButton("Use generated Base 42")?.disabled).toBe(false);
+    findButton("Use generated Base 42")?.click();
     await expect.poll(() => findButton("Continue to Build")?.disabled).toBe(false);
     findButton("Continue to Build")?.click();
     await expect.poll(() => findButton("Build Package")?.disabled).toBe(false);

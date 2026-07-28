@@ -979,10 +979,12 @@ pub fn evaluate_direct_creature_animation_behavior_v1(
             .entry(clip.name.to_ascii_lowercase())
             .or_default() += 1;
     }
-    let full_namespace_complete = clips.len() == FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1.len()
-        && FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1
-            .iter()
-            .all(|name| name_counts.get(*name) == Some(&1));
+    // "Base 42 complete" means every engine-facing base slot occurs exactly
+    // once. Caller-authored custom animations are an additive namespace and
+    // must not invalidate the Base 42 behavior oracle.
+    let full_namespace_complete = FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1
+        .iter()
+        .all(|name| name_counts.get(*name) == Some(&1));
     let all_required_content_present = FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1.iter().all(|name| {
         clips
             .iter()

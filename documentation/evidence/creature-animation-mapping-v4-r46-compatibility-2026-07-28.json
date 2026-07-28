@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "testModuleFilename": "m2a_h2r46.mod",
+  "status": "ready_for_owner_proof_reused_exact_candidate",
+  "recordedAtLocalDate": "2026-07-28",
+  "decision": {
+    "kind": "REUSE_BYTE_IDENTICAL_EXISTING_CANDIDATE",
+    "basis": "The authored V4 replay produced byte-identical runtime artifacts for the already admitted, installed and owner-tested r46 lineage.",
+    "newModelIterationCreated": false,
+    "newResrefCreated": false,
+    "immutableProofPacketModified": false
+  },
+  "authoring": {
+    "schemaVersion": 1,
+    "profile": "DIRECT_CREATURE_S_L_BASE_42_AUTHORING_V1",
+    "authoringRevision": 1,
+    "authoringFingerprintSha256": "9e09be1e1307f96ae9a6b7e91a5cf6b33e6105d2ff3b1981df4ffe06d618affe",
+    "modelType": "S",
+    "baseSlotCount": 42,
+    "sourceKind": "PROCEDURAL",
+    "provider": "PROCEDURAL_GENERATOR",
+    "assetId": "m2a:procedural-humanoid-v1",
+    "ownership": "PROJECT_GENERATED",
+    "fallbackCount": 0,
+    "customAnimationCount": 0,
+    "coreValidationStatus": "READY"
+  },
+  "inputs": {
+    "sourceGlb": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\h2-r46-root-first-full-appearance-20260727\\generated\\source.glb",
+      "byteLength": 8234708,
+      "sha256": "f8cf0af21c8143a62b64c490a81dd2855ad3c3f9865922e3854f84b714dec3a3"
+    },
+    "baseAppearanceTwoDa": {
+      "path": "C:\\Projects\\meshy2aurora\\proof-output\\h2-r45-skin-bind-controllers-20260726\\generated\\appearance.2da",
+      "byteLength": 7655521,
+      "sha256": "24b8351629fbcb00d160df13589bba49d49c29b72a644d70b651bfa3d8b9b966"
+    }
+  },
+  "runtimeIdentity": {
+    "modelResref": "m2a_h2p46",
+    "textureResref": "m2a_h2t46",
+    "moduleResref": "m2a_h2r46",
+    "areaResref": "m2a_h2a46",
+    "hakResref": "m2a_h2r46",
+    "creatureResref": "m2a_h2utc46"
+  },
+  "byteIdentity": {
+    "model": {
+      "byteLength": 612752,
+      "sha256": "d788f07137c7bf713f18654a14f0ce0559e46315cbb2558ea6dcb6fb7fc8d739",
+      "matchesR46": true
+    },
+    "texture": {
+      "byteLength": 12582956,
+      "sha256": "03169b1493ed4b2f5269ed6fa611aef787e219cddd08661c9135a7f82191c167",
+      "matchesR46": true
+    },
+    "appearanceTwoDa": {
+      "byteLength": 7655663,
+      "sha256": "c32dce7cdd2c87af21762f828e305e5a8ee303e204330ea02b9571f95d3290f5",
+      "matchesR46": true
+    },
+    "hak": {
+      "byteLength": 20851627,
+      "sha256": "027a9fc32fee9f75447c63f7308def35a1d098018d68d4d788d39c1174c7f98a",
+      "matchesR46": true
+    },
+    "module": {
+      "byteLength": 15157,
+      "sha256": "b206f5507ce14406d62716f9e75c029044e9090f8ead1cdebfc2574e887b959c",
+      "matchesR46": true
+    }
+  },
+  "handoff": {
+    "toolsetModuleName": "Meshy2Aurora procedural humanoid proof",
+    "areaName": "Meshy2Aurora M0 binary vertical-slice area",
+    "objectDisplayName": "Meshy procedural humanoid",
+    "objectTag": "m2a_procedural_creature",
+    "templateResref": "m2a_h2utc46",
+    "appearanceRow": 15220,
+    "position": [10.0, 14.5, 0.0],
+    "orientation": [0.0, -1.0],
+    "orderedHakResrefs": ["m2a_h2r46"]
+  },
+  "nativeInstallationReadback": {
+    "method": "REUSE_EXISTING_HASH_IDENTICAL",
+    "verifiedAtLocalDate": "2026-07-28",
+    "moduleDestination": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\modules\\m2a_h2r46.mod",
+    "moduleSha256": "b206f5507ce14406d62716f9e75c029044e9090f8ead1cdebfc2574e887b959c",
+    "moduleSourceDestinationIdentical": true,
+    "hakDestination": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\hak\\m2a_h2r46.hak",
+    "hakSha256": "027a9fc32fee9f75447c63f7308def35a1d098018d68d4d788d39c1174c7f98a",
+    "hakSourceDestinationIdentical": true
+  },
+  "ownerResult": {
+    "toolset": {
+      "modelVisibility": "visible",
+      "proofCompleteness": "missing"
+    },
+    "nwn": {
+      "modelVisibility": "visible",
+      "proofCompleteness": "verified"
+    },
+    "source": "documentation/evidence/h2-r46-owner-toolset-nwn-visual-result-2026-07-27.json"
+  },
+  "verification": {
+    "test": "cargo test -p m2a-core --test r46_v4_compatibility_audit -- --ignored --nocapture",
+    "result": "PASS",
+    "agentStartedOrControlledToolsetOrNwn": false
+  }
+}

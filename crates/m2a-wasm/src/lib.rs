@@ -1136,6 +1136,156 @@ fn build_meshy_h1_model_package_v3_inner(
     })
 }
 
+/// Returns the canonical Rust catalog projection used for cross-layer parity
+/// tests. The browser does not maintain a second semantic catalog.
+#[wasm_bindgen(js_name = directCreatureAnimationCatalogV1Json)]
+pub fn direct_creature_animation_catalog_v1_json() -> String {
+    serialize_json(&m2a_core::creature_animation_mapping::direct_creature_base_catalog_v1())
+}
+
+/// Validates a strict V1 authoring document and always returns structured JSON,
+/// including malformed-input diagnostics.
+#[wasm_bindgen(js_name = validateCreatureAnimationAuthoringV1)]
+pub fn validate_creature_animation_authoring_v1(animation_authoring_json: &str) -> String {
+    match serde_json::from_str::<m2a_core::creature_animation_mapping::CreatureAnimationAuthoringV1>(
+        animation_authoring_json,
+    ) {
+        Ok(authoring) => serialize_json(
+            &m2a_core::creature_animation_mapping::validate_creature_animation_authoring_v1(
+                &authoring,
+            ),
+        ),
+        Err(error) => serialize_json(&serde_json::json!({
+            "schemaVersion": 1,
+            "status": "BLOCKED",
+            "mappedBaseSlotCount": 0,
+            "reviewCount": 0,
+            "blockingCount": 1,
+            "customAnimationCount": 0,
+            "authoringFingerprintSha256": "",
+            "diagnostics": [{
+                "schemaVersion": 1,
+                "code": "M2A-ANIMATION-AUTHORING-JSON",
+                "path": "animationAuthoringJson",
+                "level": "BLOCKING",
+                "message": format!("animation authoring JSON does not match the strict V1 schema: {error}"),
+                "action": "Open a compatible saved mapping or recreate the document."
+            }]
+        })),
+    }
+}
+
+/// Resolves the exact Base 42/custom output projection. Failures remain data
+/// so the worker can render diagnostics without parsing thrown text.
+#[wasm_bindgen(js_name = resolveCreatureAnimationMappingV1)]
+pub fn resolve_creature_animation_mapping_v1(animation_authoring_json: &str) -> String {
+    let validation_json = validate_creature_animation_authoring_v1(animation_authoring_json);
+    let authoring = match serde_json::from_str::<
+        m2a_core::creature_animation_mapping::CreatureAnimationAuthoringV1,
+    >(animation_authoring_json)
+    {
+        Ok(authoring) => authoring,
+        Err(_) => {
+            return serialize_json(&serde_json::json!({
+                "schemaVersion": 1,
+                "ok": false,
+                "validation": serde_json::from_str::<serde_json::Value>(&validation_json)
+                    .unwrap_or(serde_json::Value::Null),
+                "mapping": serde_json::Value::Null
+            }));
+        }
+    };
+    match m2a_core::creature_animation_mapping::resolve_creature_animation_mapping_v1(&authoring) {
+        Ok(mapping) => serialize_json(&serde_json::json!({
+            "schemaVersion": 1,
+            "ok": true,
+            "validation": serde_json::from_str::<serde_json::Value>(&validation_json)
+                .unwrap_or(serde_json::Value::Null),
+            "mapping": mapping
+        })),
+        Err(_) => serialize_json(&serde_json::json!({
+            "schemaVersion": 1,
+            "ok": false,
+            "validation": serde_json::from_str::<serde_json::Value>(&validation_json)
+                .unwrap_or(serde_json::Value::Null),
+            "mapping": serde_json::Value::Null
+        })),
+    }
+}
+
+/// Additive authored-animation build boundary. V2/V3 remain untouched.
+#[wasm_bindgen(js_name = buildMeshyH1ModelPackageV4)]
+pub fn build_meshy_h1_model_package_v4(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring_json: &str,
+    event_authoring_json: Option<String>,
+) -> Result<StudioModelPackageArtifactV1, JsValue> {
+    build_meshy_h1_model_package_v4_inner(
+        source_glb,
+        appearance_two_da,
+        animation_authoring_json,
+        event_authoring_json.as_deref(),
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+fn build_meshy_h1_model_package_v4_inner(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring_json: &str,
+    event_authoring_json: Option<&str>,
+) -> Result<StudioModelPackageArtifactV1, String> {
+    let authoring = serde_json::from_str::<
+        m2a_core::creature_animation_mapping::CreatureAnimationAuthoringV1,
+    >(animation_authoring_json)
+    .map_err(|_| {
+        serialize_json(&serde_json::json!({
+            "schemaVersion": 1,
+            "stage": "ANIMATION",
+            "code": "M2A-ANIMATION-AUTHORING-JSON",
+            "path": "animationAuthoringJson",
+            "message": "animation authoring JSON does not match the strict V1 schema"
+        }))
+    })?;
+    let event_authoring = event_authoring_json
+        .filter(|json| !json.trim().is_empty())
+        .map(|json| {
+            serde_json::from_str::<m2a_core::model_pipeline::DirectCreatureEventAuthoringV1>(json)
+                .map_err(|_| {
+                    serialize_json(&serde_json::json!({
+                        "schemaVersion": 1,
+                        "stage": "ANIMATION",
+                        "code": "M6-ANIMATION-EVENT-AUTHORING-JSON",
+                        "path": "eventAuthoringJson",
+                        "message": "event authoring JSON does not match the strict V1 schema"
+                    }))
+                })
+        })
+        .transpose()?;
+    let artifact = m2a_core::model_pipeline::build_meshy_h1_model_package_v4_with_events(
+        source_glb,
+        appearance_two_da,
+        &authoring,
+        event_authoring.as_ref(),
+    )
+    .map_err(|error| serialize_json(&error))?;
+    let readback =
+        m2a_core::inspect_binary_mdl(&artifact.model).map_err(|error| serialize_json(&error))?;
+
+    Ok(StudioModelPackageArtifactV1 {
+        hak_bytes: artifact.hak,
+        model_bytes: artifact.model,
+        proof_module_bytes: artifact.proof_module,
+        report_json: String::from_utf8(artifact.report_json).map_err(|error| error.to_string())?,
+        manifest_json: String::from_utf8(artifact.manifest_json)
+            .map_err(|error| error.to_string())?,
+        summary_json: String::from_utf8(artifact.summary_json)
+            .map_err(|error| error.to_string())?,
+        readback_json: serialize_json(&readback),
+    })
+}
+
 /// Executes the separate M0 control lane for one static, unskinned Meshy GLB.
 /// The returned HAK/MOD names are distinct from H1 and the MOD uses the
 /// validated, self-contained M0 vertical-slice area.
@@ -2329,11 +2479,13 @@ mod m5_native_tests {
         build_meshy_procedural_humanoid_model_package_v1_inner,
         build_meshy_static_placeable_package_v1_inner,
         build_meshy_static_placeable_package_v2_inner, build_meshy_static_tile_package_v1_inner,
-        inspect_two_da_v2_json, inspect_two_da_v2_json_inner, materialize_hak_resources,
-        serialize_json, write_hak_artifact_json, write_hak_v1, write_hak_v1_report_json,
-        write_model_package_v1, write_model_package_v1_inner, write_package_manifest_v1_json,
-        write_package_manifest_v1_json_inner, write_tga_artifact_json, write_tga_v1,
-        write_tga_v1_report_json,
+        direct_creature_animation_catalog_v1_json, inspect_two_da_v2_json,
+        inspect_two_da_v2_json_inner, materialize_hak_resources,
+        resolve_creature_animation_mapping_v1, serialize_json,
+        validate_creature_animation_authoring_v1, write_hak_artifact_json, write_hak_v1,
+        write_hak_v1_report_json, write_model_package_v1, write_model_package_v1_inner,
+        write_package_manifest_v1_json, write_package_manifest_v1_json_inner,
+        write_tga_artifact_json, write_tga_v1, write_tga_v1_report_json,
     };
     use m2a_core::hak::{HakResourceInputV1, HakWriterOptionsV1};
     use m2a_core::tga::{TgaImageV1, TgaPixelFormatV1, TgaWriterOptionsV1};
@@ -2342,6 +2494,45 @@ mod m5_native_tests {
     };
 
     const DIRECT_CREATURE_APPEARANCE: &[u8] = b"2DA V2.0\r\n\r\nLABEL MOVERATE MODELTYPE RACE PORTRAIT ENVMAP DefaultPhenoType BLOODCOLR WEAPONSCALE SIZECATEGORY STRING_REF NAME WING_TAIL_SCALE HELMET_SCALE_M HELMET_SCALE_F WALKDIST RUNDIST PERSPACE CREPERSPACE HEIGHT HITDIST PREFATCKDIST TARGETHEIGHT ABORTONPARRY RACIALTYPE HASLEGS HASARMS PERCEPTIONDIST FOOTSTEPTYPE SOUNDAPPTYPE HEADTRACK HEAD_ARC_H HEAD_ARC_V HEAD_NAME BODY_BAG TARGETABLE\r\n0 Existing NORM S c_horror po_Horror **** 0 G **** 4 **** Hook_Horror 1 1 1 2.33 3.5 0.6 1 1 0.4 2.1 H 1 1 1 1 9 4 6 1 60 30 head 0 1\r\n";
+
+    fn canonical_repository_root() -> std::path::PathBuf {
+        let crate_directory = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let repository_root = crate_directory
+            .parent()
+            .and_then(std::path::Path::parent)
+            .expect("m2a-wasm must be nested at crates/m2a-wasm");
+        let worktrees_directory = repository_root.parent();
+        if worktrees_directory
+            .and_then(std::path::Path::file_name)
+            .is_some_and(|name| name.eq_ignore_ascii_case(".worktrees"))
+        {
+            return worktrees_directory
+                .and_then(std::path::Path::parent)
+                .expect(".worktrees must have the canonical repository parent")
+                .to_path_buf();
+        }
+        repository_root.to_path_buf()
+    }
+
+    #[test]
+    fn authored_animation_wasm_boundaries_return_structured_data() {
+        let catalog: serde_json::Value =
+            serde_json::from_str(&direct_creature_animation_catalog_v1_json()).unwrap();
+        assert_eq!(catalog.as_array().map(Vec::len), Some(42));
+
+        let validation: serde_json::Value =
+            serde_json::from_str(&validate_creature_animation_authoring_v1("{")).unwrap();
+        assert_eq!(validation["status"], "BLOCKED");
+        assert_eq!(
+            validation["diagnostics"][0]["code"],
+            "M2A-ANIMATION-AUTHORING-JSON"
+        );
+
+        let resolution: serde_json::Value =
+            serde_json::from_str(&resolve_creature_animation_mapping_v1("{")).unwrap();
+        assert_eq!(resolution["ok"], false);
+        assert_eq!(resolution["validation"]["status"], "BLOCKED");
+    }
 
     fn tga_image() -> TgaImageV1 {
         TgaImageV1 {
@@ -2955,8 +3146,7 @@ mod m5_native_tests {
     #[test]
     fn studio_h2_procedural_lane_materializes_the_owned_single_idle_source_as_full_42() {
         let source = std::fs::read(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../sample-3d/h2-clockwork-sentinel-1500/source.glb"),
+            canonical_repository_root().join("sample-3d/h2-clockwork-sentinel-1500/source.glb"),
         )
         .expect("owned H2 GLB");
         let appearance = DIRECT_CREATURE_APPEARANCE;

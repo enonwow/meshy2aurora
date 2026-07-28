@@ -19,6 +19,12 @@ pub use crate::direct_creature_animation::{
 };
 
 use crate::{
+    creature_animation_mapping::{
+        AnimationSourceKindV1, AuthoredAnimationConformanceV1, CreatureAnimationAuthoringV1,
+        ResolvedCreatureAnimationMappingV1, evaluate_authored_animation_conformance_v1,
+        materialize_authored_direct_creature_clips_v1, resolve_creature_animation_mapping_v1,
+        validate_creature_animation_authoring_v1,
+    },
     direct_creature_contract::{
         DirectCreatureRuntimeProfileV2, SourceTopologyBindingV1,
         direct_creature_runtime_profile_digest_v2, inspect_m0_source_topology_binding_v1,
@@ -532,6 +538,10 @@ pub struct M6MaterializationManifestV1 {
     pub manifest_self_hash_policy: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub m0_runtime_fixture_contract: Option<M0RuntimeFixtureContractV2>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub animation_authoring: Option<ResolvedCreatureAnimationMappingV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authored_animation_conformance: Option<AuthoredAnimationConformanceV1>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -581,6 +591,10 @@ pub struct M6MaterializationReportV1 {
     pub skin_animation_conformance: Option<M6SkinAnimationConformanceV1>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub m0_runtime_fixture_contract: Option<M0RuntimeFixtureContractV2>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub animation_authoring: Option<ResolvedCreatureAnimationMappingV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authored_animation_conformance: Option<AuthoredAnimationConformanceV1>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -789,6 +803,179 @@ pub fn build_meshy_h1_model_package_v3(
         animation_profile,
         Some((event_profile, event_authoring)),
     )
+}
+
+/// Additive H1 route driven by the versioned Creature Animation Mapping
+/// document. Existing V2/V3 behavior is unchanged.
+pub fn build_meshy_h1_model_package_v4(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring: &CreatureAnimationAuthoringV1,
+) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
+    build_meshy_h1_model_package_v4_with_identity(
+        source_glb,
+        appearance_two_da,
+        animation_authoring,
+        &ProceduralCreaturePackageIdentityV1::historical_default(),
+    )
+}
+
+/// Authored H1 route with a caller-owned immutable runtime identity.
+///
+/// This is the candidate-freezing boundary for an admitted proof lineage. It
+/// does not allocate or install an identity and therefore cannot bypass the
+/// model iteration gate.
+pub fn build_meshy_h1_model_package_v4_with_identity(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring: &CreatureAnimationAuthoringV1,
+    runtime_identity: &ProceduralCreaturePackageIdentityV1,
+) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
+    build_meshy_h1_model_package_v4_with_events_and_identity(
+        source_glb,
+        appearance_two_da,
+        animation_authoring,
+        None,
+        runtime_identity,
+    )
+}
+
+pub fn build_meshy_h1_model_package_v4_with_events(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring: &CreatureAnimationAuthoringV1,
+    event_authoring: Option<&DirectCreatureEventAuthoringV1>,
+) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
+    build_meshy_h1_model_package_v4_with_events_and_identity(
+        source_glb,
+        appearance_two_da,
+        animation_authoring,
+        event_authoring,
+        &ProceduralCreaturePackageIdentityV1::historical_default(),
+    )
+}
+
+pub fn build_meshy_h1_model_package_v4_with_events_and_identity(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring: &CreatureAnimationAuthoringV1,
+    event_authoring: Option<&DirectCreatureEventAuthoringV1>,
+    runtime_identity: &ProceduralCreaturePackageIdentityV1,
+) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
+    let validation = validate_creature_animation_authoring_v1(animation_authoring);
+    if validation.status
+        != crate::creature_animation_mapping::CreatureAnimationMappingStatusV1::Ready
+    {
+        let first = validation.diagnostics.first();
+        return Err(pipeline_error(
+            "animation",
+            first
+                .map(|diagnostic| diagnostic.code.as_str())
+                .unwrap_or("M2A-ANIMATION-AUTHORING-NOT-READY"),
+            first
+                .map(|diagnostic| diagnostic.path.as_str())
+                .unwrap_or("animationAuthoring"),
+            first
+                .map(|diagnostic| diagnostic.message.as_str())
+                .unwrap_or("animation authoring is not ready"),
+        ));
+    }
+    let input_identity = identity(source_glb);
+    let source_revision_matches = animation_authoring.source_revision == input_identity.sha256
+        || animation_authoring.source_revision == format!("sha256:{}", input_identity.sha256);
+    if !source_revision_matches {
+        return Err(pipeline_error(
+            "animation",
+            "M2A-ANIMATION-SOURCE-REVISION-STALE",
+            "animationAuthoring.sourceRevision",
+            "animation authoring sourceRevision does not match the exact GLB bytes",
+        ));
+    }
+    let mut source = ingest_glb(source_glb, &GlbLimits::default()).map_err(|error| {
+        pipeline_error(
+            "ingest",
+            error.code,
+            error.json_path.unwrap_or_else(|| "input".to_owned()),
+            error.message,
+        )
+    })?;
+    sanitize_meshy_h1_degenerate_triangles_v1(&mut source)?;
+    let (rig, mut mapping) = derive_meshy_h1_profile_and_mapping_v1(&source)
+        .map_err(|error| pipeline_error("profile", error.code, error.path, error.message))?;
+    let uses_procedural = animation_authoring
+        .assignments
+        .iter()
+        .any(|assignment| assignment.source_kind == AnimationSourceKindV1::Procedural);
+    apply_authored_h1_source_names_v1(&source, &mut mapping, uses_procedural);
+    build_m6_model_package_with_ingest_v5(
+        source_glb,
+        appearance_two_da,
+        source,
+        &rig,
+        &Default::default(),
+        &mapping,
+        if uses_procedural {
+            DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1
+        } else {
+            DirectCreatureAnimationProfileV1::FullNative42ExplicitV1
+        },
+        event_authoring.map(|authoring| {
+            (
+                DirectCreatureAnimationEventProfileV1::CommonNativeGameplayHooksExplicitV1,
+                authoring,
+            )
+        }),
+        runtime_identity,
+        Some(animation_authoring),
+    )
+}
+
+fn apply_authored_h1_source_names_v1(
+    source: &GlbIngestResult,
+    mapping: &mut ProfileAAnimationMappingV1,
+    preserve_procedural_idle: bool,
+) {
+    let procedural_idle_source_id = if preserve_procedural_idle {
+        source
+            .ir
+            .animations
+            .iter()
+            .find(|animation| {
+                animation
+                    .name
+                    .as_deref()
+                    .is_some_and(|name| name.eq_ignore_ascii_case("cpause1"))
+            })
+            .map(|animation| animation.id)
+            .or_else(|| {
+                mapping
+                    .clip_mappings
+                    .iter()
+                    .find(|clip_mapping| {
+                        clip_mapping
+                            .output_clip_name
+                            .eq_ignore_ascii_case("cpause1")
+                    })
+                    .map(|clip_mapping| clip_mapping.source_animation_id)
+            })
+    } else {
+        None
+    };
+    for (index, clip_mapping) in mapping.clip_mappings.iter_mut().enumerate() {
+        clip_mapping.output_clip_name =
+            if procedural_idle_source_id == Some(clip_mapping.source_animation_id) {
+                "cpause1".to_owned()
+            } else {
+                source
+                    .ir
+                    .animations
+                    .iter()
+                    .find(|animation| animation.id == clip_mapping.source_animation_id)
+                    .and_then(|animation| animation.name.clone())
+                    .filter(|name| !name.trim().is_empty())
+                    .unwrap_or_else(|| format!("m2a_source_{index}"))
+            };
+    }
 }
 
 fn apply_automatic_h1_animation_profile_names_v1(
@@ -1205,6 +1392,8 @@ fn build_meshy_m0_static_rigid_package_internal(
         animation_event_authoring_canonical: None,
         skin_animation_conformance: None,
         m0_runtime_fixture_contract: m0_runtime_fixture_contract.clone(),
+        animation_authoring: None,
+        authored_animation_conformance: None,
     };
     let report_json = json_bytes(&report, "report")?;
     let summary = M6MaterializationSummaryV1 {
@@ -1278,6 +1467,8 @@ fn build_meshy_m0_static_rigid_package_internal(
         m0_appearance_table: Some(m0_appearance_table),
         manifest_self_hash_policy: "EXCLUDED_TO_AVOID_SELF_REFERENCE".to_owned(),
         m0_runtime_fixture_contract,
+        animation_authoring: None,
+        authored_animation_conformance: None,
     };
     let manifest_json = json_bytes(&manifest, "manifest")?;
     Ok(M6ModelPackageArtifactV1 {
@@ -2130,6 +2321,36 @@ fn build_m6_model_package_with_ingest_v4(
     )>,
     runtime_identity: &ProceduralCreaturePackageIdentityV1,
 ) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
+    build_m6_model_package_with_ingest_v5(
+        source_glb,
+        appearance_two_da,
+        ingest,
+        rig,
+        profile_options,
+        mapping,
+        animation_profile,
+        event_configuration,
+        runtime_identity,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_m6_model_package_with_ingest_v5(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    ingest: GlbIngestResult,
+    rig: &CreatureRigProfileV1,
+    profile_options: &crate::profile_a::ProfileAOptionsV1,
+    mapping: &ProfileAAnimationMappingV1,
+    animation_profile: DirectCreatureAnimationProfileV1,
+    event_configuration: Option<(
+        DirectCreatureAnimationEventProfileV1,
+        &DirectCreatureEventAuthoringV1,
+    )>,
+    runtime_identity: &ProceduralCreaturePackageIdentityV1,
+    animation_authoring: Option<&CreatureAnimationAuthoringV1>,
+) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
     let input_glb_identity = identity(source_glb);
     let input_appearance_identity = identity(appearance_two_da);
     let glb_limits = GlbLimits::default();
@@ -2166,15 +2387,48 @@ fn build_m6_model_package_with_ingest_v4(
             "M6 proof requires one mapped source animation",
         )
     })?;
-    let mut animations = if animation_profile
+    let procedural_animations = if animation_profile
         == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1
     {
         let procedural_rig = procedural_humanoid_rig_from_creature_v1(&creature)?;
-        author_procedural_humanoid_full_native_42_v1(source_animations, procedural_rig)
-            .map_err(|error| pipeline_error("animation", error.code, error.path, error.message))?
+        Some(
+            author_procedural_humanoid_full_native_42_v1(source_animations, procedural_rig)
+                .map_err(|error| {
+                    pipeline_error("animation", error.code, error.path, error.message)
+                })?,
+        )
+    } else {
+        None
+    };
+    let mut animations = if let Some(authoring) = animation_authoring {
+        materialize_authored_direct_creature_clips_v1(
+            source_animations,
+            procedural_animations.as_ref(),
+            authoring,
+        )
+        .map_err(|error| pipeline_error("animation", error.code, error.path, error.message))?
+    } else if let Some(procedural) = procedural_animations {
+        procedural
     } else {
         materialize_direct_creature_runtime_clips_v1(source_animations, animation_profile)?
     };
+    let resolved_animation_authoring = animation_authoring
+        .map(resolve_creature_animation_mapping_v1)
+        .transpose()
+        .map_err(|error| pipeline_error("animation", error.code, error.path, error.message))?;
+    let authored_animation_conformance = animation_authoring
+        .map(|authoring| evaluate_authored_animation_conformance_v1(authoring, &animations));
+    if let Some(conformance) = authored_animation_conformance.as_ref()
+        && conformance.status
+            != crate::creature_animation_mapping::CreatureAnimationMappingStatusV1::Ready
+    {
+        return Err(pipeline_error(
+            "animation",
+            "M2A-ANIMATION-AUTHORED-CONFORMANCE",
+            "materialized.animations",
+            "materialized animations do not conform to the authored mapping",
+        ));
+    }
     let procedural_event_authoring = if animation_profile
         == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1
         && event_configuration.is_none()
@@ -2407,6 +2661,7 @@ fn build_m6_model_package_with_ingest_v4(
     let package_manifest = package.manifest;
     let proof_module = if animation_profile
         == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1
+        || runtime_identity != &ProceduralCreaturePackageIdentityV1::historical_default()
     {
         build_single_profiled_creature_proof_module_with_identity_v3(
             appearance.report.appended_row_index,
@@ -2482,6 +2737,8 @@ fn build_m6_model_package_with_ingest_v4(
         animation_event_authoring_canonical,
         skin_animation_conformance,
         m0_runtime_fixture_contract: None,
+        animation_authoring: resolved_animation_authoring.clone(),
+        authored_animation_conformance: authored_animation_conformance.clone(),
     };
     let report_json = json_bytes(&report, "report")?;
     let source_animation = ingest.ir.animations.first().ok_or_else(|| {
@@ -2575,6 +2832,8 @@ fn build_m6_model_package_with_ingest_v4(
         m0_appearance_table: None,
         manifest_self_hash_policy: "EXCLUDED_TO_AVOID_SELF_REFERENCE".to_owned(),
         m0_runtime_fixture_contract: None,
+        animation_authoring: resolved_animation_authoring,
+        authored_animation_conformance,
     };
     let manifest_json = json_bytes(&manifest, "manifest")?;
     Ok(M6ModelPackageArtifactV1 {
@@ -3624,8 +3883,16 @@ fn logical_path(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{M6_REQUIRED_DIRECT_CREATURE_CLIPS, materialize_direct_creature_runtime_clips};
-    use crate::mdl::{MdlAnimationClipV1, MdlAnimationSetV1};
+    use super::{
+        M6_REQUIRED_DIRECT_CREATURE_CLIPS, apply_authored_h1_source_names_v1,
+        materialize_direct_creature_runtime_clips,
+    };
+    use crate::{
+        glb::{GlbLimits, ingest_glb},
+        mdl::{MdlAnimationClipV1, MdlAnimationSetV1},
+        owned_fixture::synthetic_owned_m6_glb_v1,
+        profile_a::derive_meshy_h1_profile_and_mapping_v1,
+    };
 
     fn clip(name: &str, length_seconds: f32) -> MdlAnimationClipV1 {
         MdlAnimationClipV1 {
@@ -3674,5 +3941,27 @@ mod tests {
             1.5
         );
         assert_eq!(output.clips.len(), M6_REQUIRED_DIRECT_CREATURE_CLIPS.len());
+    }
+
+    #[test]
+    fn authored_procedural_route_preserves_the_derived_cpause1_for_a_meshy_name() {
+        let glb = synthetic_owned_m6_glb_v1().expect("owned Meshy-style fixture");
+        let source = ingest_glb(&glb, &GlbLimits::default()).expect("GLB ingest");
+        let (_, mut procedural_mapping) =
+            derive_meshy_h1_profile_and_mapping_v1(&source).expect("derived mapping");
+        let (_, mut explicit_mapping) =
+            derive_meshy_h1_profile_and_mapping_v1(&source).expect("derived mapping");
+
+        apply_authored_h1_source_names_v1(&source, &mut procedural_mapping, true);
+        apply_authored_h1_source_names_v1(&source, &mut explicit_mapping, false);
+
+        assert_eq!(
+            procedural_mapping.clip_mappings[0].output_clip_name,
+            "cpause1"
+        );
+        assert_eq!(
+            explicit_mapping.clip_mappings[0].output_clip_name,
+            "owned-linear-pause"
+        );
     }
 }

@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::fs;
 
 use m2a_core::{
     animated_donor_candidate::build_h2_r43_h1_root_layout_candidate_v1,
@@ -10,12 +10,11 @@ use m2a_core::{
     runtime_evidence::RuntimeProofCompletenessV1,
 };
 
+#[path = "support/canonical_workspace.rs"]
+mod canonical_workspace;
+
 fn exact_candidate() -> m2a_core::animated_donor_candidate::H2R43H1RootLayoutCandidateArtifactV1 {
-    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(std::path::Path::parent)
-        .expect("canonical repository root")
-        .to_path_buf();
+    let repo = canonical_workspace::canonical_repository_root();
     let source = fs::read(repo.join("sample-3d/h2-clockwork-sentinel-1500/source.glb"))
         .expect("exact generated Meshy H2 source");
     let appearance = fs::read(repo.join("local-reference-assets/appearance.2da"))

@@ -11,6 +11,7 @@ export type ReadinessCategoryId =
   | "MATERIALS_TEXTURES"
   | "RIG"
   | "ANIMATIONS"
+  | "ANIMATION_MAPPING"
   | "BINARY_READBACK"
   | "PACKAGE_ASSEMBLY"
   | "RUNTIME_PROOF";
@@ -27,7 +28,7 @@ export interface ReadinessItem {
 export interface ReadinessValidationEntry {
   id: string;
   category?: ReadinessCategoryId;
-  source: "CONVERSION_GATE" | "CONVERSION_DIAGNOSTIC" | "BINARY_READBACK";
+  source: "CONVERSION_GATE" | "CONVERSION_DIAGNOSTIC" | "BINARY_READBACK" | "ANIMATION_MAPPING";
   code: string;
   severity: string;
   path: string;
@@ -42,7 +43,7 @@ export interface ConversionReadinessProjection {
   conversionEligible: boolean;
 }
 
-const categoryLabels: Record<Exclude<ReadinessCategoryId, "BINARY_READBACK" | "PACKAGE_ASSEMBLY" | "RUNTIME_PROOF">, string> = {
+const categoryLabels: Record<Exclude<ReadinessCategoryId, "ANIMATION_MAPPING" | "BINARY_READBACK" | "PACKAGE_ASSEMBLY" | "RUNTIME_PROOF">, string> = {
   GEOMETRY: "Geometry",
   MATERIALS_TEXTURES: "Materials & Textures",
   RIG: "Rig",
@@ -178,6 +179,19 @@ export function projectConversionReadiness(
     checkCount: packageEvidence.resourceCount + packageEvidence.artifactCount,
     detail: `${packageEvidence.resourceCount} reconciled resource(s); ${packageEvidence.artifactCount} reconciled artifact(s).`,
   };
+  const mappingEvidence = result.animationMappingEvidence;
+  const mappingItem: ReadinessItem = {
+    id: "ANIMATION_MAPPING",
+    label: "Animation Mapping",
+    status: mappingEvidence ? "PASS" : "NOT_CHECKED",
+    statusLabel: mappingEvidence ? "READY" : "NOT_CHECKED",
+    checkCount: mappingEvidence
+      ? mappingEvidence.baseAnimations.length + mappingEvidence.customAnimations.length
+      : 0,
+    detail: mappingEvidence
+      ? `${mappingEvidence.conformance.materializedBaseSlotCount}/42 base slots materialized; ${mappingEvidence.customAnimations.length} custom animation(s); fingerprint ${mappingEvidence.authoringFingerprintSha256.slice(0, 12)}…`
+      : "No authored animation mapping evidence was emitted by this package.",
+  };
 
   const validation = [
     ...result.conversionEvidence.gates.map(gateValidation),
@@ -195,7 +209,13 @@ export function projectConversionReadiness(
   }));
 
   return {
-    items: [...conversionItems, readbackItem, packageItem, runtimeProof(result)],
+    items: [
+      ...conversionItems,
+      mappingItem,
+      readbackItem,
+      packageItem,
+      runtimeProof(result),
+    ],
     validation,
     conversionEligible: result.conversionEvidence.conversionEligible,
   };

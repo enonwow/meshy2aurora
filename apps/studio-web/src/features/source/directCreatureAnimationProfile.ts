@@ -43,6 +43,9 @@ export const FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1 = [
   "ccturnr",
 ] as const;
 
+export type DirectCreatureBaseSlotV1 =
+  (typeof FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1)[number];
+
 const requiredNames = new Set<string>(FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1);
 
 export function hasFullNativeDirectCreatureProfileV1(
@@ -56,4 +59,14 @@ export function hasFullNativeDirectCreatureProfileV1(
   );
   return names.size === requiredNames.size
     && [...requiredNames].every((name) => names.has(name));
+}
+
+export function canOfferGeneratedHumanoidProfileV1(source: {
+  readonly skinCount: number;
+  readonly boneCount: number;
+  readonly clips: readonly unknown[];
+}): boolean {
+  return source.skinCount === 1
+    && source.boneCount >= 11
+    && source.clips.length > 0;
 }

@@ -30,6 +30,8 @@ interface SceneViewportProps {
     overlays?: boolean;
   };
   animationUnavailableReason?: string;
+  initialAnimationName?: string | null;
+  initialAnimationLoop?: boolean;
 }
 
 interface AnimationUiState extends AnimationPlaybackSnapshot {
@@ -105,6 +107,8 @@ export function SceneViewport({
   onError,
   tools,
   animationUnavailableReason,
+  initialAnimationName,
+  initialAnimationLoop = true,
 }: SceneViewportProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRuntimeRef = useRef<AnimationPlaybackRuntime | undefined>(undefined);
@@ -185,8 +189,18 @@ export function SceneViewport({
           animationRuntime = new AnimationPlaybackRuntime(asset.root, clips);
           animationRuntimeRef.current = animationRuntime;
           const inventory = inventoryAnimationClips(clips);
-          const snapshot = inventory.length ? animationRuntime.selectClip(0) : animationRuntime.snapshot();
-          setAnimationUi({ inventory, loading: false, ...snapshot });
+          const requestedIndex = initialAnimationName
+            ? inventory.findIndex(({ name }) => (
+                name.localeCompare(initialAnimationName, undefined, { sensitivity: "base" }) === 0
+              ))
+            : -1;
+          const snapshot = inventory.length
+            ? animationRuntime.setLoop(initialAnimationLoop)
+            : animationRuntime.snapshot();
+          const selectedSnapshot = inventory.length
+            ? animationRuntime.selectClip(requestedIndex >= 0 ? requestedIndex : 0)
+            : snapshot;
+          setAnimationUi({ inventory, loading: false, ...selectedSnapshot });
         }
 
         if (overlaysEnabled) {
@@ -241,7 +255,16 @@ export function SceneViewport({
       }
       renderer.dispose();
     };
-  }, [animationPlaybackEnabled, buildRoot, dependency, onSelectPart, onError, overlaysEnabled]);
+  }, [
+    animationPlaybackEnabled,
+    buildRoot,
+    dependency,
+    initialAnimationLoop,
+    initialAnimationName,
+    onSelectPart,
+    onError,
+    overlaysEnabled,
+  ]);
 
   const updateAnimation = (snapshot: AnimationPlaybackSnapshot) => {
     setAnimationUi((current) => ({ ...current, ...snapshot }));

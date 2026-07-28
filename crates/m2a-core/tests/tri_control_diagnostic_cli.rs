@@ -11,6 +11,9 @@ use std::{
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+#[path = "support/canonical_workspace.rs"]
+mod canonical_workspace;
+
 const BASE_SHA256: &str = "815c0b3bce0895e9f17d4b92cb02a6d34366267b5a4b9081dece0f4eee7d7a1a";
 const LAST_CITY_BASE_SHA256: &str =
     "ca0b80b74e068d8ebbd94df6005b5971e50eca5c8662fca10a40688ea2c033a2";
@@ -474,8 +477,7 @@ fn argument_value<'a>(arguments: &'a [String], key: &str) -> &'a str {
 }
 
 fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
+    canonical_workspace::canonical_repository_root()
         .canonicalize()
         .unwrap()
 }

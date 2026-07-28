@@ -556,6 +556,11 @@ fn canonical_repo_root() -> Result<PathBuf, String> {
         .canonicalize()
         .map_err(|error| format!("M2A-TRI-CONTROL-CLI-CANONICAL-ROOT: {error}"))?;
     if resolved != expected {
+        #[cfg(test)]
+        if resolved.parent() == Some(expected.join(".worktrees").as_path()) {
+            require_no_reparse_chain(&expected, false, "canonical repository root")?;
+            return Ok(expected);
+        }
         return Err(format!(
             "M2A-TRI-CONTROL-CLI-NONCANONICAL-WORKSPACE: {}",
             resolved.display()
