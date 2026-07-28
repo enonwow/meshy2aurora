@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-07-28",
+  "status": "blocked_by_model_iteration_gate",
+  "f1ThroughF10": "complete",
+  "currentCandidate": {
+    "lineage": "r46",
+    "modelVisibility": "visible"
+  },
+  "newModelIterationCreated": false,
+  "v5ProofModFrozen": false,
+  "v5ProofHakFrozen": false,
+  "nativeNwnInstallationPerformed": false,
+  "readyForOwnerProof": false,
+  "agentToolsetOrNwnSessionStarted": false,
+  "agentVisualSuccessClaimed": false,
+  "v4Compatibility": {
+    "status": "PASS",
+    "authoringFingerprintSha256": "9e09be1e1307f96ae9a6b7e91a5cf6b33e6105d2ff3b1981df4ffe06d618affe",
+    "modelSha256": "d788f07137c7bf713f18654a14f0ce0559e46315cbb2558ea6dcb6fb7fc8d739",
+    "hakSha256": "027a9fc32fee9f75447c63f7308def35a1d098018d68d4d788d39c1174c7f98a",
+    "moduleSha256": "b206f5507ce14406d62716f9e75c029044e9090f8ead1cdebfc2574e887b959c"
+  },
+  "resumeCondition": [
+    "direct_owner_exception_for_one_exact_animation_studio_v5_candidate",
+    "fresh_exact_candidate_bound_modelVisibility_not_visible"
+  ]
+}

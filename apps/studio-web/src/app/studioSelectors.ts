@@ -32,7 +32,10 @@ export function canContinueFromAnimationMapping(state: StudioSessionState): bool
     && state.animationMappingValidation?.revision === state.revision
     && state.animationMappingValidation.value.authoringRevision
       === state.animationMapping?.value.authoringRevision
-    && state.animationMappingValidation.value.status === "READY";
+    && state.animationMappingValidation.value.status === "READY"
+    && /^[0-9a-f]{64}$/.test(
+      state.animationMappingValidation.value.authoringFingerprintSha256 ?? "",
+    );
 }
 
 export function canNavigateToStep(state: StudioSessionState, step: WorkflowStep): boolean {

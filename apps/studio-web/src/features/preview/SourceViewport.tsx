@@ -1,6 +1,9 @@
 import { useCallback } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import type { AuthoredAnimationClipV1 } from "../animation-studio";
+import type { AnimationRigNodeV1 } from "../animation-editor/AnimationBoneTree";
+import { projectAuthoredClipToThreeV1 } from "../animation-editor/threeProjection";
 import { SceneViewport } from "./SceneViewport";
 import type { ModelPartRef, SourcePreviewInput } from "./types";
 
@@ -9,6 +12,9 @@ interface Props {
   onError?: (message: string) => void;
   initialAnimationName?: string | null;
   initialAnimationLoop?: boolean;
+  authoredClip?: AuthoredAnimationClipV1 | null;
+  authoredRig?: readonly AnimationRigNodeV1[];
+  controlledAnimationTimeSeconds?: number;
 }
 
 export function SourceViewport({
@@ -16,6 +22,9 @@ export function SourceViewport({
   onError,
   initialAnimationName,
   initialAnimationLoop,
+  authoredClip,
+  authoredRig = [],
+  controlledAnimationTimeSeconds,
 }: Props) {
   const buildRoot = useCallback(async () => {
     const manager = new THREE.LoadingManager();
@@ -33,10 +42,15 @@ export function SourceViewport({
             label: object.name || object.type,
           } satisfies ModelPartRef;
         });
-        resolve({ root: gltf.scene, animations: gltf.animations });
+        resolve({
+          root: gltf.scene,
+          animations: authoredClip
+            ? [projectAuthoredClipToThreeV1(authoredClip, authoredRig)]
+            : gltf.animations,
+        });
       }, reject);
     });
-  }, [input.file]);
+  }, [authoredClip, authoredRig, input.file]);
 
   return (
     <SceneViewport
@@ -45,8 +59,10 @@ export function SourceViewport({
       dependency={`${input.file.name}:${input.sourceSha256}`}
       buildRoot={buildRoot}
       tools={{ animationPlayback: true, overlays: true }}
-      initialAnimationName={initialAnimationName}
+      initialAnimationName={authoredClip?.name ?? initialAnimationName}
       initialAnimationLoop={initialAnimationLoop}
+      controlledAnimationTimeSeconds={controlledAnimationTimeSeconds}
+      hideAnimationControls={Boolean(authoredClip)}
       onError={onError}
     />
   );

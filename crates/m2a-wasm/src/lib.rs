@@ -1213,6 +1213,340 @@ pub fn resolve_creature_animation_mapping_v1(animation_authoring_json: &str) -> 
     }
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EditableAnimationRigNodeBoundaryV1 {
+    id: u32,
+    name: String,
+    parent_id: Option<u32>,
+    translation: [f32; 3],
+    rotation: [f32; 4],
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EditableAnimationSourceBoundaryV1 {
+    schema_version: u32,
+    source_revision: String,
+    rig: Vec<EditableAnimationRigNodeBoundaryV1>,
+    clip: Option<m2a_core::animation_studio::AuthoredAnimationClipV1>,
+}
+
+fn animation_studio_boundary_diagnostic(
+    code: &str,
+    path: &str,
+    message: impl Into<String>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "schemaVersion": 1,
+        "code": code,
+        "path": path,
+        "level": "BLOCKING",
+        "message": message.into(),
+        "action": "Repair the exact Animation Studio document or re-inspect the immutable source GLB."
+    })
+}
+
+fn animation_studio_json_error(code: &str, path: &str, message: &str) -> String {
+    serialize_json(&serde_json::json!({
+        "schemaVersion": 1,
+        "stage": "ANIMATION",
+        "code": code,
+        "path": path,
+        "message": message
+    }))
+}
+
+/// Projects the exact immutable source GLB to the canonical output rig. When
+/// `clip_name` is supplied, the named source clip is cloned to an editable
+/// draft without modifying or embedding the source GLB.
+#[wasm_bindgen(js_name = inspectEditableAnimationSourceV1)]
+pub fn inspect_editable_animation_source_v1(
+    source_glb: &[u8],
+    clip_name: Option<String>,
+) -> Result<String, JsValue> {
+    inspect_editable_animation_source_v1_inner(source_glb, clip_name.as_deref())
+        .map_err(|error| JsValue::from_str(&error))
+}
+
+fn inspect_editable_animation_source_v1_inner(
+    source_glb: &[u8],
+    clip_name: Option<&str>,
+) -> Result<String, String> {
+    let inspection = m2a_core::model_pipeline::inspect_editable_animation_source_v1(source_glb)
+        .map_err(|error| serialize_json(&error))?;
+    let clip = clip_name
+        .filter(|name| !name.trim().is_empty())
+        .map(|name| {
+            let source_clip = inspection
+                .animations
+                .clips
+                .iter()
+                .find(|clip| clip.name.eq_ignore_ascii_case(name))
+                .ok_or_else(|| {
+                    animation_studio_json_error(
+                        "M2A-ANIMATION-EDIT-SCHEMA",
+                        "clipName",
+                        "requested source clip does not exist in the canonical output-rig inspection",
+                    )
+                })?;
+            m2a_core::animation_studio::clone_source_clip_for_editing_v1(
+                &inspection.animations,
+                &source_clip.name,
+                m2a_core::animation_studio::AuthoredAnimationClipInputV1 {
+                    id: format!("source-clip-{}", source_clip.name.to_ascii_lowercase()),
+                    name: source_clip.name.clone(),
+                    source_revision: inspection.source_revision.clone(),
+                    length_seconds: source_clip.length_seconds,
+                    transition_seconds: source_clip.transition_seconds,
+                    animation_root: source_clip.animation_root.clone(),
+                },
+            )
+            .map_err(|error| serialize_json(&error))
+        })
+        .transpose()?;
+    serialize_json_result(&EditableAnimationSourceBoundaryV1 {
+        schema_version: 1,
+        source_revision: inspection.source_revision,
+        rig: inspection
+            .rig
+            .nodes
+            .into_iter()
+            .map(|node| EditableAnimationRigNodeBoundaryV1 {
+                id: node.node_id,
+                name: node.name,
+                parent_id: node.parent_id,
+                translation: node.translation,
+                rotation: node.rotation,
+            })
+            .collect(),
+        clip,
+    })
+}
+
+/// Validates the strict Studio document against the exact canonical output rig
+/// and returns structured diagnostics instead of maintaining a JS validator.
+#[wasm_bindgen(js_name = validateAnimationStudioDocumentV1)]
+pub fn validate_animation_studio_document_v1(
+    animation_studio_document_json: &str,
+    source_glb: &[u8],
+) -> String {
+    validate_animation_studio_document_v1_inner(animation_studio_document_json, source_glb)
+}
+
+fn validate_animation_studio_document_v1_inner(
+    animation_studio_document_json: &str,
+    source_glb: &[u8],
+) -> String {
+    let document = match serde_json::from_str::<m2a_core::animation_studio::AnimationStudioDocumentV1>(
+        animation_studio_document_json,
+    ) {
+        Ok(document) => document,
+        Err(error) => {
+            return serialize_json(&serde_json::json!({
+                "schemaVersion": 1,
+                "status": "BLOCKED",
+                "sourceRevision": "",
+                "documentFingerprintSha256": "",
+                "diagnostics": [animation_studio_boundary_diagnostic(
+                    "M2A-ANIMATION-EDIT-SCHEMA",
+                    "animationStudioDocumentJson",
+                    format!("document JSON does not match the strict V1 schema: {error}"),
+                )]
+            }));
+        }
+    };
+    let fingerprint =
+        m2a_core::animation_studio::fingerprint_animation_studio_document_v1(&document);
+    let inspection =
+        match m2a_core::model_pipeline::inspect_editable_animation_source_v1(source_glb) {
+            Ok(inspection) => inspection,
+            Err(error) => {
+                return serialize_json(&serde_json::json!({
+                    "schemaVersion": 1,
+                    "status": "BLOCKED",
+                    "sourceRevision": document.source_revision,
+                    "documentFingerprintSha256": fingerprint,
+                    "diagnostics": [animation_studio_boundary_diagnostic(
+                        &error.code,
+                        &error.path,
+                        error.message,
+                    )]
+                }));
+            }
+        };
+    let diagnostics = match m2a_core::animation_studio::materialize_animation_studio_document_v1(
+        &document,
+        &inspection.rig,
+    ) {
+        Ok(_) => Vec::new(),
+        Err(diagnostics) => diagnostics,
+    };
+    serialize_json(&serde_json::json!({
+        "schemaVersion": 1,
+        "status": if diagnostics.is_empty() { "READY" } else { "BLOCKED" },
+        "sourceRevision": document.source_revision,
+        "documentFingerprintSha256": fingerprint,
+        "diagnostics": diagnostics
+    }))
+}
+
+/// Materializes a strict Studio document to canonical MDL animation IR. The
+/// adapter throws structured JSON on any schema, rig, or authoring diagnostic.
+#[wasm_bindgen(js_name = materializeAnimationStudioDocumentV1)]
+pub fn materialize_animation_studio_document_v1(
+    animation_studio_document_json: &str,
+    source_glb: &[u8],
+) -> Result<String, JsValue> {
+    materialize_animation_studio_document_v1_inner(animation_studio_document_json, source_glb)
+        .map_err(|error| JsValue::from_str(&error))
+}
+
+fn materialize_animation_studio_document_v1_inner(
+    animation_studio_document_json: &str,
+    source_glb: &[u8],
+) -> Result<String, String> {
+    let document = serde_json::from_str::<m2a_core::animation_studio::AnimationStudioDocumentV1>(
+        animation_studio_document_json,
+    )
+    .map_err(|_| {
+        animation_studio_json_error(
+            "M2A-ANIMATION-EDIT-SCHEMA",
+            "animationStudioDocumentJson",
+            "document JSON does not match the strict V1 schema",
+        )
+    })?;
+    let inspection = m2a_core::model_pipeline::inspect_editable_animation_source_v1(source_glb)
+        .map_err(|error| serialize_json(&error))?;
+    let materialized = m2a_core::animation_studio::materialize_animation_studio_document_v1(
+        &document,
+        &inspection.rig,
+    )
+    .map_err(|diagnostics| {
+        serialize_json(&serde_json::json!({
+            "schemaVersion": 1,
+            "stage": "ANIMATION",
+            "code": diagnostics
+                .first()
+                .map(|diagnostic| diagnostic.code.as_str())
+                .unwrap_or("M2A-ANIMATION-EDIT-SCHEMA"),
+            "path": diagnostics
+                .first()
+                .map(|diagnostic| diagnostic.path.as_str())
+                .unwrap_or("animationStudioDocument"),
+            "message": diagnostics
+                .first()
+                .map(|diagnostic| diagnostic.message.as_str())
+                .unwrap_or("Animation Studio materialization failed"),
+            "diagnostics": diagnostics
+        }))
+    })?;
+    serialize_json_result(&materialized)
+}
+
+/// Produces one canonical preview clip from an authored Studio document.
+/// Draft status is not a preview blocker; build-time exact-rig validation
+/// remains owned by `validateAnimationStudioDocumentV1`.
+#[wasm_bindgen(js_name = previewAuthoredAnimationClipV1)]
+pub fn preview_authored_animation_clip_v1(
+    animation_studio_document_json: &str,
+    clip_id: &str,
+) -> Result<String, JsValue> {
+    preview_authored_animation_clip_v1_inner(animation_studio_document_json, clip_id)
+        .map_err(|error| JsValue::from_str(&error))
+}
+
+fn preview_authored_animation_clip_v1_inner(
+    animation_studio_document_json: &str,
+    clip_id: &str,
+) -> Result<String, String> {
+    let document = serde_json::from_str::<m2a_core::animation_studio::AnimationStudioDocumentV1>(
+        animation_studio_document_json,
+    )
+    .map_err(|_| {
+        animation_studio_json_error(
+            "M2A-ANIMATION-EDIT-SCHEMA",
+            "animationStudioDocumentJson",
+            "Animation Studio JSON does not match the strict V1 schema",
+        )
+    })?;
+    let document_diagnostics =
+        m2a_core::animation_studio::validate_animation_studio_schema_v1(&document);
+    if !document_diagnostics.is_empty() {
+        return Err(serialize_json(&document_diagnostics));
+    }
+    let clip = document
+        .authored_clips
+        .iter()
+        .find(|clip| clip.id == clip_id)
+        .cloned()
+        .ok_or_else(|| {
+            animation_studio_json_error(
+                "M2A-ANIMATION-EDIT-SCHEMA",
+                "clipId",
+                "selected authored clip id does not exist in the Studio document",
+            )
+        })?;
+    let mut node_ids = clip
+        .tracks
+        .iter()
+        .map(|track| track.target_node_id)
+        .collect::<Vec<_>>();
+    node_ids.sort_unstable();
+    node_ids.dedup();
+    if node_ids.is_empty() {
+        node_ids.push(0);
+    }
+    let preview_rig = m2a_core::animation_studio::AnimationStudioRigV1 {
+        schema_version: 1,
+        source_revision: document.source_revision.clone(),
+        animation_root: clip.animation_root.clone(),
+        nodes: node_ids
+            .into_iter()
+            .map(
+                |node_id| m2a_core::animation_studio::AnimationStudioRigNodeV1 {
+                    node_id,
+                    name: format!("preview-node-{node_id}"),
+                    parent_id: None,
+                    translation: [0.0, 0.0, 0.0],
+                    rotation: [0.0, 0.0, 0.0, 1.0],
+                },
+            )
+            .collect(),
+    };
+    let diagnostics =
+        m2a_core::animation_studio::validate_authored_animation_clip_v1(&clip, &preview_rig);
+    if !diagnostics.is_empty() {
+        return Err(serialize_json(&serde_json::json!({
+            "schemaVersion": 1,
+            "stage": "ANIMATION",
+            "code": diagnostics[0].code,
+            "path": diagnostics[0].path,
+            "message": diagnostics[0].message,
+            "diagnostics": diagnostics
+        })));
+    }
+    let mut preview_clip = clip;
+    preview_clip.status = m2a_core::animation_studio::AuthoredAnimationClipStatusV1::Valid;
+    let document = m2a_core::animation_studio::AnimationStudioDocumentV1 {
+        schema_version: 1,
+        source_revision: document.source_revision,
+        authoring_revision: preview_clip.revision,
+        status: m2a_core::animation_studio::AnimationStudioDocumentStatusV1::Valid,
+        authored_clips: vec![preview_clip],
+    };
+    let materialized = m2a_core::animation_studio::materialize_animation_studio_document_v1(
+        &document,
+        &preview_rig,
+    )
+    .map_err(|diagnostics| serialize_json(&diagnostics))?;
+    serialize_json_result(&serde_json::json!({
+        "schemaVersion": 1,
+        "sourceRevision": document.source_revision,
+        "clip": materialized.clips.into_iter().next()
+    }))
+}
+
 /// Additive authored-animation build boundary. V2/V3 remain untouched.
 #[wasm_bindgen(js_name = buildMeshyH1ModelPackageV4)]
 pub fn build_meshy_h1_model_package_v4(
@@ -1267,6 +1601,91 @@ fn build_meshy_h1_model_package_v4_inner(
         source_glb,
         appearance_two_da,
         &authoring,
+        event_authoring.as_ref(),
+    )
+    .map_err(|error| serialize_json(&error))?;
+    let readback =
+        m2a_core::inspect_binary_mdl(&artifact.model).map_err(|error| serialize_json(&error))?;
+
+    Ok(StudioModelPackageArtifactV1 {
+        hak_bytes: artifact.hak,
+        model_bytes: artifact.model,
+        proof_module_bytes: artifact.proof_module,
+        report_json: String::from_utf8(artifact.report_json).map_err(|error| error.to_string())?,
+        manifest_json: String::from_utf8(artifact.manifest_json)
+            .map_err(|error| error.to_string())?,
+        summary_json: String::from_utf8(artifact.summary_json)
+            .map_err(|error| error.to_string())?,
+        readback_json: serialize_json(&readback),
+    })
+}
+
+/// Additive Animation Studio build boundary. It accepts only the exact V2
+/// mapping plus strict Studio V1 document and leaves every V4 byte path intact.
+#[wasm_bindgen(js_name = buildMeshyH1ModelPackageV5)]
+pub fn build_meshy_h1_model_package_v5(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring_json: &str,
+    animation_studio_document_json: &str,
+    event_authoring_json: Option<String>,
+) -> Result<StudioModelPackageArtifactV1, JsValue> {
+    build_meshy_h1_model_package_v5_inner(
+        source_glb,
+        appearance_two_da,
+        animation_authoring_json,
+        animation_studio_document_json,
+        event_authoring_json.as_deref(),
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+fn build_meshy_h1_model_package_v5_inner(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring_json: &str,
+    animation_studio_document_json: &str,
+    event_authoring_json: Option<&str>,
+) -> Result<StudioModelPackageArtifactV1, String> {
+    let authoring =
+        serde_json::from_str::<m2a_core::animation_studio::CreatureAnimationAuthoringV2>(
+            animation_authoring_json,
+        )
+        .map_err(|_| {
+            animation_studio_json_error(
+                "M2A-ANIMATION-EDIT-SCHEMA",
+                "animationAuthoringJson",
+                "animation authoring JSON does not match the strict V2 schema",
+            )
+        })?;
+    let studio = serde_json::from_str::<m2a_core::animation_studio::AnimationStudioDocumentV1>(
+        animation_studio_document_json,
+    )
+    .map_err(|_| {
+        animation_studio_json_error(
+            "M2A-ANIMATION-EDIT-SCHEMA",
+            "animationStudioDocumentJson",
+            "Animation Studio JSON does not match the strict V1 schema",
+        )
+    })?;
+    let event_authoring = event_authoring_json
+        .filter(|json| !json.trim().is_empty())
+        .map(|json| {
+            serde_json::from_str::<m2a_core::model_pipeline::DirectCreatureEventAuthoringV1>(json)
+                .map_err(|_| {
+                    animation_studio_json_error(
+                        "M6-ANIMATION-EVENT-AUTHORING-JSON",
+                        "eventAuthoringJson",
+                        "event authoring JSON does not match the strict V1 schema",
+                    )
+                })
+        })
+        .transpose()?;
+    let artifact = m2a_core::model_pipeline::build_meshy_h1_model_package_v5_with_events(
+        source_glb,
+        appearance_two_da,
+        &authoring,
+        &studio,
         event_authoring.as_ref(),
     )
     .map_err(|error| serialize_json(&error))?;
@@ -2476,12 +2895,15 @@ mod m5_native_tests {
         HakResourceDescriptorV1, HakResourceDescriptorsV1, append_two_da_row_artifact_json,
         append_two_da_row_v1, append_two_da_row_v1_report_json, build_m6_model_package_v1,
         build_meshy_h1_model_package_v2_inner, build_meshy_h1_model_package_v3_inner,
+        build_meshy_h1_model_package_v5_inner,
         build_meshy_procedural_humanoid_model_package_v1_inner,
         build_meshy_static_placeable_package_v1_inner,
         build_meshy_static_placeable_package_v2_inner, build_meshy_static_tile_package_v1_inner,
-        direct_creature_animation_catalog_v1_json, inspect_two_da_v2_json,
-        inspect_two_da_v2_json_inner, materialize_hak_resources,
-        resolve_creature_animation_mapping_v1, serialize_json,
+        direct_creature_animation_catalog_v1_json, inspect_editable_animation_source_v1_inner,
+        inspect_two_da_v2_json, inspect_two_da_v2_json_inner,
+        materialize_animation_studio_document_v1_inner, materialize_hak_resources,
+        preview_authored_animation_clip_v1_inner, resolve_creature_animation_mapping_v1,
+        serialize_json, validate_animation_studio_document_v1_inner,
         validate_creature_animation_authoring_v1, write_hak_artifact_json, write_hak_v1,
         write_hak_v1_report_json, write_model_package_v1, write_model_package_v1_inner,
         write_package_manifest_v1_json, write_package_manifest_v1_json_inner,
@@ -2583,6 +3005,42 @@ mod m5_native_tests {
     fn full_native_42_owned_glb() -> Vec<u8> {
         m2a_core::owned_fixture::synthetic_owned_m6_full_native_42_glb_v1()
             .expect("owned full-native-42 GLB fixture")
+    }
+
+    fn full_native_42_authoring_v1(
+        source: &[u8],
+    ) -> m2a_core::creature_animation_mapping::CreatureAnimationAuthoringV1 {
+        use m2a_core::creature_animation_mapping::{
+            AnimationMappingProvenanceV1, AnimationOwnershipV1, AnimationProviderV1,
+            AnimationSourceAssignmentV1, AnimationSourceKindV1,
+            CREATURE_ANIMATION_AUTHORING_PROFILE_V1, DirectCreatureBaseSlotV1,
+            DirectCreatureModelTypeV1,
+        };
+        use sha2::{Digest, Sha256};
+
+        m2a_core::creature_animation_mapping::CreatureAnimationAuthoringV1 {
+            schema_version: 1,
+            profile: CREATURE_ANIMATION_AUTHORING_PROFILE_V1.to_owned(),
+            model_type: DirectCreatureModelTypeV1::Simple,
+            source_revision: format!("{:x}", Sha256::digest(source)),
+            authoring_revision: 1,
+            assignments: m2a_core::direct_creature_animation::FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1
+                .iter()
+                .map(|slot| AnimationSourceAssignmentV1 {
+                    target_slot: DirectCreatureBaseSlotV1::try_from(*slot).unwrap(),
+                    source_kind: AnimationSourceKindV1::SourceClip,
+                    source_clip_name: Some((*slot).to_owned()),
+                    custom_animation_id: None,
+                    provenance: AnimationMappingProvenanceV1 {
+                        provider: AnimationProviderV1::SourceGlb,
+                        asset_id: "owned-full-42-fixture".to_owned(),
+                        ownership: AnimationOwnershipV1::UserOwned,
+                    },
+                })
+                .collect(),
+            fallbacks: vec![],
+            custom_animations: vec![],
+        }
     }
 
     fn common_native_event_authoring() -> m2a_core::model_pipeline::DirectCreatureEventAuthoringV1 {
@@ -3252,6 +3710,98 @@ mod m5_native_tests {
         let error: serde_json::Value = serde_json::from_str(&error).expect("structured error");
         assert_eq!(error["code"], "M6-ANIMATION-EVENTS-INELIGIBLE");
         assert!(error["message"].as_str().unwrap().contains("ccastout:cast"));
+    }
+
+    #[test]
+    fn animation_studio_wasm_boundaries_are_strict_and_v5_is_exact_core() {
+        let source = full_native_42_owned_glb();
+        let inspection_json = inspect_editable_animation_source_v1_inner(&source, Some("cpause1"))
+            .expect("editable source inspection");
+        let inspection: serde_json::Value =
+            serde_json::from_str(&inspection_json).expect("inspection JSON");
+        assert_eq!(inspection["schemaVersion"], 1);
+        assert!(
+            inspection["rig"]
+                .as_array()
+                .is_some_and(|rig| !rig.is_empty())
+        );
+        assert!(inspection["rig"].as_array().unwrap().iter().all(|node| {
+            node["translation"].as_array().map(Vec::len) == Some(3)
+                && node["rotation"].as_array().map(Vec::len) == Some(4)
+        }));
+        assert_eq!(inspection["clip"]["source"]["sourceClipName"], "cpause1");
+
+        let v1 = full_native_42_authoring_v1(&source);
+        let v2 = m2a_core::animation_studio::migrate_creature_animation_authoring_v1_to_v2(&v1);
+        let studio = m2a_core::animation_studio::AnimationStudioDocumentV1 {
+            schema_version: 1,
+            source_revision: v1.source_revision.clone(),
+            authoring_revision: 1,
+            status: m2a_core::animation_studio::AnimationStudioDocumentStatusV1::Valid,
+            authored_clips: vec![],
+        };
+        let studio_json = serde_json::to_string(&studio).unwrap();
+        let validation: serde_json::Value = serde_json::from_str(
+            &validate_animation_studio_document_v1_inner(&studio_json, &source),
+        )
+        .unwrap();
+        assert_eq!(validation["status"], "READY");
+        let materialized: serde_json::Value = serde_json::from_str(
+            &materialize_animation_studio_document_v1_inner(&studio_json, &source)
+                .expect("empty Studio materialization"),
+        )
+        .unwrap();
+        assert_eq!(materialized["clips"].as_array().map(Vec::len), Some(0));
+
+        let preview_clip: m2a_core::animation_studio::AuthoredAnimationClipV1 =
+            serde_json::from_value(inspection["clip"].clone()).unwrap();
+        let preview_clip_id = preview_clip.id.clone();
+        let mut preview_document = studio.clone();
+        preview_document.status =
+            m2a_core::animation_studio::AnimationStudioDocumentStatusV1::Draft;
+        preview_document.authored_clips = vec![preview_clip];
+        let preview = preview_authored_animation_clip_v1_inner(
+            &serde_json::to_string(&preview_document).unwrap(),
+            &preview_clip_id,
+        )
+        .expect("canonical authored preview");
+        let preview: serde_json::Value = serde_json::from_str(&preview).unwrap();
+        assert_eq!(preview["clip"]["name"], "cpause1");
+
+        let core = m2a_core::model_pipeline::build_meshy_h1_model_package_v5(
+            &source,
+            DIRECT_CREATURE_APPEARANCE,
+            &v2,
+            &studio,
+        )
+        .expect("core V5");
+        let mut boundary = build_meshy_h1_model_package_v5_inner(
+            &source,
+            DIRECT_CREATURE_APPEARANCE,
+            &serde_json::to_string(&v2).unwrap(),
+            &studio_json,
+            None,
+        )
+        .expect("WASM V5 boundary");
+        assert_eq!(boundary.take_hak_bytes(), core.hak);
+        assert_eq!(boundary.take_model_bytes(), core.model);
+        assert_eq!(boundary.take_proof_module_bytes(), core.proof_module);
+        assert_eq!(
+            boundary.manifest_json(),
+            String::from_utf8(core.manifest_json).unwrap()
+        );
+
+        let malformed: serde_json::Value =
+            serde_json::from_str(&validate_animation_studio_document_v1_inner(
+                r#"{"schemaVersion":1,"unknown":true}"#,
+                &source,
+            ))
+            .unwrap();
+        assert_eq!(malformed["status"], "BLOCKED");
+        assert_eq!(
+            malformed["diagnostics"][0]["code"],
+            "M2A-ANIMATION-EDIT-SCHEMA"
+        );
     }
 
     #[test]

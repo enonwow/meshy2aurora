@@ -65,6 +65,37 @@ import {
 import { SourceStep } from "./features/source/SourceStep";
 import { canOfferGeneratedHumanoidProfileV1 } from "./features/source/directCreatureAnimationProfile";
 import { CreatureAnimationMappingStep } from "./features/animation-mapping/CreatureAnimationMappingStep";
+import { AnimationStudioWorkspace } from "./features/animation-editor/AnimationStudioWorkspace";
+import type { AnimationRigNodeV1 } from "./features/animation-editor/AnimationBoneTree";
+import type { AnimationMappingModeV1 } from "./features/animation-editor/AnimationMappingModeSwitch";
+import { createBlankPoseClipV1 } from "./features/animation-editor/editing";
+import {
+  commitAnimationStudioDocumentV1,
+  createAnimationStudioStateV1,
+  fingerprintAnimationStudioDocumentV1,
+  loadAnimationStudioDocumentV1,
+  loadCreatureAnimationAuthoringV2DraftV1,
+  markAnimationStudioAutosaveFailedV1,
+  markAnimationStudioAutosaveSavingV1,
+  markAnimationStudioAutosavedV1,
+  markAnimationStudioBuildRevisionV1,
+  migrateCreatureAnimationAuthoringV1ToV2,
+  reconcileAnimationStudioSourceRevisionV1,
+  reduceAnimationStudioStateV1,
+  saveAnimationStudioDocumentV1,
+  saveCreatureAnimationAuthoringV2DraftV1,
+  serializeAnimationStudioDocumentV1,
+  serializeCreatureAnimationAuthoringV2,
+  undoAnimationStudioEditV1,
+  redoAnimationStudioEditV1,
+  validateAnimationStudioSchemaV1,
+  validateCreatureAnimationAuthoringV2,
+  type AnimationStudioDiagnosticV1,
+  type AnimationStudioDocumentV1,
+  type AnimationStudioStateV1,
+  type AuthoredAnimationClipV1,
+  type CreatureAnimationAuthoringV2,
+} from "./features/animation-studio";
 import type { AnimationMappingSaveStateV1 } from "./features/animation-mapping/AnimationMappingStatusBar";
 import {
   applyHighConfidenceAssignmentsV1,
@@ -93,11 +124,18 @@ import {
   mergeUiAndCoreAnimationDiagnosticsV1,
   projectCoreCreatureAnimationValidationV1,
 } from "./features/animation-mapping/coreValidation";
+import {
+  getAnimationStudioDownloadGateV1,
+  reconcileAnimationStudioReadbackV1,
+  type AnimationStudioReadbackReconciliationV1,
+} from "./features/review/reconcileAnimationStudioReadback";
+import { AuthoredAnimationReview } from "./features/review/AuthoredAnimationReview";
 import { LocalMeshyBridgeClient, type MeshyArtifactProvenance, type MeshyBridgeClient } from "./features/meshy/bridge";
 import { isMeshyLabEnabled } from "./features/meshy/feature";
 import { MeshyLab } from "./features/meshy/MeshyLab";
 import { isTileTargetEnabled } from "./features/tile/feature";
 import { StudioWorkerClient } from "./worker/client";
+import type { StudioWorkerResponse } from "./worker/types";
 
 const requestId = () => crypto.randomUUID();
 
@@ -107,7 +145,11 @@ interface StudioModelBuildResult {
   readonly readback: BinaryMdlInspectionReport;
   readonly readbackJson: string;
   readonly animationBuildInput: CreatureAnimationBuildInputV1;
-  readonly animationReconciliation: AuthoredBuiltAnimationReconciliationV1;
+  readonly animationReconciliation?: AuthoredBuiltAnimationReconciliationV1;
+  readonly animationStudioDocument?: AnimationStudioDocumentV1;
+  readonly animationAuthoringV2?: CreatureAnimationAuthoringV2;
+  readonly animationStudioFingerprintSha256?: string;
+  readonly animationStudioReconciliation?: AnimationStudioReadbackReconciliationV1;
 }
 
 interface StudioPlaceableBuildResult {
@@ -191,6 +233,120 @@ const DEFAULT_TILE_OPTIONS: TileAuthoringOptions = {
   surface: "GRASS",
   interior: false,
 };
+
+function createEmptyAnimationStudioDocumentV1(
+  sourceRevision: string,
+): AnimationStudioDocumentV1 {
+  return {
+    schemaVersion: 1,
+    sourceRevision,
+    authoringRevision: 1,
+    status: "DRAFT",
+    authoredClips: [],
+  };
+}
+
+function synchronizeCreatureAnimationAuthoringV2(
+  v1: Parameters<typeof migrateCreatureAnimationAuthoringV1ToV2>[0],
+  current: CreatureAnimationAuthoringV2 | null,
+): CreatureAnimationAuthoringV2 {
+  const migrated = migrateCreatureAnimationAuthoringV1ToV2(v1);
+  if (!current || current.sourceRevision !== migrated.sourceRevision) return migrated;
+  const authoredCustom = current.customAnimations.filter((custom) => (
+    custom.clipReference?.sourceKind === "AUTHORED_CLIP"
+    || custom.phases.some(({ clipReference }) => (
+      clipReference.sourceKind === "AUTHORED_CLIP"
+    ))
+  ));
+  const authoredCustomIds = new Set(authoredCustom.map(({ id }) => id));
+  const authoredAssignments = current.assignments.filter((assignment) => (
+    assignment.sourceKind === "CUSTOM"
+    && assignment.customAnimationId !== null
+    && authoredCustomIds.has(assignment.customAnimationId)
+  ));
+  const authoredSlots = new Set(authoredAssignments.map(({ targetSlot }) => targetSlot));
+  return {
+    ...migrated,
+    authoringRevision: Math.max(
+      migrated.authoringRevision,
+      current.authoringRevision,
+    ),
+    assignments: [
+      ...migrated.assignments.filter(({ targetSlot }) => !authoredSlots.has(targetSlot)),
+      ...authoredAssignments,
+    ],
+    customAnimations: [
+      ...migrated.customAnimations.filter(({ id }) => !authoredCustomIds.has(id)),
+      ...authoredCustom,
+    ],
+  };
+}
+
+function parseEditableAnimationSourceV1(inspectionJson: string): {
+  rig: AnimationRigNodeV1[];
+  clip: AuthoredAnimationClipV1 | null;
+} {
+  const value = JSON.parse(inspectionJson) as {
+    rig?: unknown;
+    clip?: unknown;
+  };
+  if (!Array.isArray(value.rig)) {
+    throw new Error("Editable animation source inspection has no output rig.");
+  }
+  const rig = value.rig.map((item, index): AnimationRigNodeV1 => {
+    if (
+      item === null
+      || typeof item !== "object"
+      || !Number.isSafeInteger((item as { id?: unknown }).id)
+      || typeof (item as { name?: unknown }).name !== "string"
+    ) {
+      throw new Error(`Editable animation rig node ${index} is invalid.`);
+    }
+    const node = item as {
+      id: number;
+      name: string;
+      parentId?: unknown;
+      translation?: unknown;
+      rotation?: unknown;
+    };
+    if (
+      !Array.isArray(node.translation)
+      || node.translation.length !== 3
+      || node.translation.some((component) => (
+        typeof component !== "number" || !Number.isFinite(component)
+      ))
+      || !Array.isArray(node.rotation)
+      || node.rotation.length !== 4
+      || node.rotation.some((component) => (
+        typeof component !== "number" || !Number.isFinite(component)
+      ))
+    ) {
+      throw new Error(`Editable animation rig node ${index} has no exact local pose.`);
+    }
+    if (
+      node.parentId !== null
+      && (
+        !Number.isSafeInteger(node.parentId)
+        || Number(node.parentId) < 0
+      )
+    ) {
+      throw new Error(`Editable animation rig node ${index} has an invalid parent.`);
+    }
+    return {
+      id: node.id,
+      name: node.name,
+      parentId: node.parentId === null ? null : Number(node.parentId),
+      translation: node.translation as unknown as [number, number, number],
+      rotation: node.rotation as unknown as [number, number, number, number],
+    };
+  });
+  return {
+    rig,
+    clip: value.clip === null || value.clip === undefined
+      ? null
+      : value.clip as AuthoredAnimationClipV1,
+  };
+}
 
 function sourceValidationChecks(snapshot?: SourceInspectionSnapshot): InspectValidationCheck[] {
   if (!snapshot) {
@@ -300,6 +456,24 @@ export function App({
   const [animationEventsError, setAnimationEventsError] = useState<string>();
   const [animationMappingSaveState, setAnimationMappingSaveState] =
     useState<AnimationMappingSaveStateV1>({ kind: "IDLE" });
+  const [animationStudioState, setAnimationStudioState] =
+    useState<AnimationStudioStateV1 | null>(null);
+  const animationStudioStateRef = useRef<AnimationStudioStateV1 | null>(null);
+  const [animationAuthoringV2, setAnimationAuthoringV2] =
+    useState<CreatureAnimationAuthoringV2 | null>(null);
+  const [animationAuthoringV2Dirty, setAnimationAuthoringV2Dirty] =
+    useState(false);
+  const animationAuthoringV2Ref = useRef<CreatureAnimationAuthoringV2 | null>(null);
+  const [animationStudioCoreDiagnostics, setAnimationStudioCoreDiagnostics] =
+    useState<AnimationStudioDiagnosticV1[]>([]);
+  const [
+    animationStudioMappingStorageDiagnostic,
+    setAnimationStudioMappingStorageDiagnostic,
+  ] = useState<AnimationStudioDiagnosticV1 | null>(null);
+  const [editableAnimationRig, setEditableAnimationRig] =
+    useState<AnimationRigNodeV1[]>([]);
+  const [animationStudioLoadedProjectId, setAnimationStudioLoadedProjectId] =
+    useState<string | null>(null);
   const [tileOptions, setTileOptions] = useState<TileAuthoringOptions>(DEFAULT_TILE_OPTIONS);
   const [placeableAuthoring, setPlaceableAuthoring] = useState<PlaceableAuthoringBootstrap>();
   const placeableAuthoringRef = useRef<PlaceableAuthoringBootstrap | undefined>(undefined);
@@ -315,6 +489,8 @@ export function App({
 
   sessionRef.current = session;
   placeableAuthoringRef.current = placeableAuthoring;
+  animationStudioStateRef.current = animationStudioState;
+  animationAuthoringV2Ref.current = animationAuthoringV2;
 
   useEffect(() => {
     const worker = new StudioWorkerClient();
@@ -574,6 +750,36 @@ export function App({
     const animationEvents = current.animationEvents?.file;
     const tileLane = current.target === "TILE";
     const placeableLane = current.target === "PLACEABLE";
+    const studioState = current.target === "CREATURE"
+      ? animationStudioStateRef.current
+      : null;
+    const editedAnimationLane = Boolean(
+      studioState && studioState.document.authoredClips.length > 0,
+    );
+    const studioDocument = editedAnimationLane ? studioState?.document : undefined;
+    const authoringV2 = editedAnimationLane
+      ? animationAuthoringV2Ref.current
+      : null;
+    if (
+      editedAnimationLane
+      && (
+        !studioState
+        || !studioDocument
+        || !authoringV2
+        || studioState.document.status !== "VALID"
+        || studioState.sourceStatus !== "CURRENT"
+        || studioState.autosave.status !== "AUTOSAVED"
+        || studioState.autosave.savedRevision
+          !== studioState.document.authoringRevision
+        || studioDocument.sourceRevision !== current.source.sha256
+        || authoringV2.sourceRevision !== current.source.sha256
+      )
+    ) {
+      setAnimationEventsError(
+        "Edited animation build requires the exact current, VALID and autosaved Studio revision.",
+      );
+      return;
+    }
     const placeableAuthoringJson = placeableLane && placeableAuthoringRef.current
       ? JSON.stringify(placeableAuthoringRef.current.document)
       : undefined;
@@ -594,10 +800,26 @@ export function App({
       );
       return;
     }
+    if (
+      animationEvents
+      && studioDocument?.authoredClips.some(({ events }) => events.length > 0)
+    ) {
+      setAnimationEventsError(
+        "Edited clip events and the legacy external animation-event sidecar cannot be combined. Remove one event source.",
+      );
+      return;
+    }
     const packageLane = current.target === "CREATURE"
-      ? "H1_SKINNED_FULL_42_AUTHORED" as const
+      ? editedAnimationLane
+        ? "H1_SKINNED_FULL_42_EDITED" as const
+        : "H1_SKINNED_FULL_42_AUTHORED" as const
       : "M0_STATIC_RIGID" as const;
-    const animationAuthoringJson = animationBuildInput?.animationAuthoringJson;
+    const animationAuthoringJson = editedAnimationLane && authoringV2
+      ? serializeCreatureAnimationAuthoringV2(authoringV2)
+      : animationBuildInput?.animationAuthoringJson;
+    const animationStudioDocumentJson = studioDocument
+      ? serializeAnimationStudioDocumentV1(studioDocument)
+      : undefined;
     if (current.target === "CREATURE" && !animationAuthoringJson) {
       setAnimationEventsError("Creature build requires the current animation mapping document.");
       return;
@@ -609,8 +831,16 @@ export function App({
       source.arrayBuffer(),
       appearance?.arrayBuffer(),
       animationEvents?.text(),
+      studioDocument
+        ? fingerprintAnimationStudioDocumentV1(studioDocument)
+        : Promise.resolve(undefined),
     ])
-      .then(([sourceGlb, appearanceTwoDa, eventAuthoringJson]) => {
+      .then(([
+        sourceGlb,
+        appearanceTwoDa,
+        eventAuthoringJson,
+        animationStudioFingerprintSha256,
+      ]) => {
         if (workerRef.current !== worker) return undefined;
         if (animationBuildInput) {
           assertCreatureAnimationBuildInputCurrentV1(
@@ -618,8 +848,9 @@ export function App({
             animationBuildInput,
           );
         }
+        let response: Promise<StudioWorkerResponse>;
         if (tileLane) {
-          return worker.request(
+          response = worker.request(
             {
               requestId: buildRequestId,
               type: "BUILD_TILE_PACKAGE",
@@ -634,9 +865,11 @@ export function App({
             },
             [sourceGlb],
           );
-        }
-        if (!appearanceTwoDa) throw new Error("The selected conversion target requires a base 2DA");
-        return placeableLane
+        } else {
+          if (!appearanceTwoDa) {
+            throw new Error("The selected conversion target requires a base 2DA");
+          }
+          response = placeableLane
           ? worker.request(
               {
                 requestId: buildRequestId,
@@ -650,6 +883,21 @@ export function App({
               },
               [sourceGlb, appearanceTwoDa],
             )
+          : packageLane === "H1_SKINNED_FULL_42_EDITED"
+            ? worker.request(
+                {
+                  requestId: buildRequestId,
+                  type: "BUILD_MODEL_PACKAGE",
+                  sourceGlb,
+                  appearanceTwoDa,
+                  packageLane,
+                  animationAuthoringJson: animationAuthoringJson ?? "",
+                  animationStudioDocumentJson:
+                    animationStudioDocumentJson ?? "",
+                  eventAuthoringJson,
+                },
+                [sourceGlb, appearanceTwoDa],
+              )
           : packageLane === "H1_SKINNED_FULL_42_AUTHORED"
             ? worker.request(
                 {
@@ -673,9 +921,18 @@ export function App({
                 },
                 [sourceGlb, appearanceTwoDa],
               );
+        }
+        return response.then((resolved) => ({
+          response: resolved,
+          animationStudioFingerprintSha256,
+        }));
       })
-      .then((response) => {
-        if (!response || workerRef.current !== worker) return;
+      .then((buildOutput) => {
+        if (!buildOutput || workerRef.current !== worker) return;
+        const {
+          response,
+          animationStudioFingerprintSha256,
+        } = buildOutput;
         const currentBuild = sessionRef.current.build;
         if (
           sessionRef.current.revision !== buildRevision
@@ -706,7 +963,7 @@ export function App({
             )
           : undefined;
         let animationReconciliation: AuthoredBuiltAnimationReconciliationV1 | undefined;
-        if (canonical) {
+        if (canonical && !editedAnimationLane) {
           if (!animationBuildInput) {
             throw new Error("Authored creature build snapshot is unavailable");
           }
@@ -730,6 +987,38 @@ export function App({
             throw new Error(
               `Authored/readback animation mismatch: ${
                 animationReconciliation.diagnostics.map(({ code }) => code).join(", ")
+              }`,
+            );
+          }
+        }
+        let animationStudioReconciliation:
+          AnimationStudioReadbackReconciliationV1 | undefined;
+        if (studioDocument) {
+          const builtEvidence = canonical?.animationStudioEvidence;
+          if (
+            !builtEvidence
+            || !animationStudioFingerprintSha256
+            || builtEvidence.animationStudioRevision
+              !== studioDocument.authoringRevision
+            || builtEvidence.animationStudioFingerprintSha256
+              !== animationStudioFingerprintSha256
+            || builtEvidence.sourceRevision !== studioDocument.sourceRevision
+          ) {
+            throw new Error(
+              "Canonical build Animation Studio evidence does not match the frozen document",
+            );
+          }
+          animationStudioReconciliation = reconcileAnimationStudioReadbackV1(
+            studioDocument,
+            readback,
+            builtEvidence,
+          );
+          if (animationStudioReconciliation.status !== "MATCH") {
+            throw new Error(
+              `Animation Studio/readback mismatch: ${
+                animationStudioReconciliation.diagnostics
+                  .map(({ code }) => code)
+                  .join(", ")
               }`,
             );
           }
@@ -760,7 +1049,17 @@ export function App({
                 readback,
                 readbackJson: response.readbackJson,
                 animationBuildInput: animationBuildInput!,
-                animationReconciliation: animationReconciliation!,
+                ...(animationReconciliation
+                  ? { animationReconciliation }
+                  : {}),
+                ...(studioDocument && authoringV2
+                  && animationStudioFingerprintSha256
+                  && animationStudioReconciliation ? {
+                    animationStudioDocument: studioDocument,
+                    animationAuthoringV2: authoringV2,
+                    animationStudioFingerprintSha256,
+                    animationStudioReconciliation,
+                  } : {}),
               }
             : (() => { throw new Error("Unexpected package build response"); })();
         dispatch({
@@ -769,6 +1068,17 @@ export function App({
           revision: buildRevision,
           result,
         });
+        if (studioDocument) {
+          setAnimationStudioState((studioCurrent) => (
+            studioCurrent?.document.authoringRevision
+              === studioDocument.authoringRevision
+              ? markAnimationStudioBuildRevisionV1(
+                  studioCurrent,
+                  studioDocument.authoringRevision,
+                )
+              : studioCurrent
+          ));
+        }
       })
       .catch((error: unknown) => {
         if (workerRef.current !== worker) return;
@@ -836,6 +1146,309 @@ export function App({
   ), [animationInspection, session.animationMapping]);
   const animationMappingStatus = getCreatureAnimationMappingStatusV1(
     animationDiagnostics,
+  );
+
+  const animationStudioSourceRevision = session.target === "CREATURE"
+    ? session.source?.sha256 ?? null
+    : null;
+  const animationStudioSourceFile = session.target === "CREATURE"
+    ? session.source?.file ?? null
+    : null;
+
+  useEffect(() => {
+    const sourceRevision = animationStudioSourceRevision;
+    const sourceFileForStudio = animationStudioSourceFile;
+    if (!sourceRevision || !sourceFileForStudio) {
+      setAnimationStudioState(null);
+      setAnimationAuthoringV2(null);
+      setAnimationAuthoringV2Dirty(false);
+      setEditableAnimationRig([]);
+      setAnimationStudioLoadedProjectId(null);
+      setAnimationStudioMappingStorageDiagnostic(null);
+      return;
+    }
+    let cancelled = false;
+    setAnimationAuthoringV2Dirty(false);
+    setAnimationStudioLoadedProjectId(null);
+    setAnimationStudioCoreDiagnostics([]);
+    const previousStudio = animationStudioStateRef.current;
+    const preserveStaleStudio = previousStudio !== null
+      && previousStudio.document.authoredClips.length > 0
+      && previousStudio.document.sourceRevision !== sourceRevision;
+    if (preserveStaleStudio) {
+      // Keep the exact authored document observable and fail closed. Do not
+      // silently replace it with an empty project for the newly selected GLB.
+      setAnimationStudioState(
+        reconcileAnimationStudioSourceRevisionV1(previousStudio, sourceRevision),
+      );
+    } else {
+      setAnimationStudioState(
+        createAnimationStudioStateV1(
+          createEmptyAnimationStudioDocumentV1(sourceRevision),
+        ),
+      );
+      void loadAnimationStudioDocumentV1(sourceRevision)
+        .then((loaded) => {
+          if (cancelled || sessionRef.current.source?.sha256 !== sourceRevision) return;
+          if (loaded.kind === "LOADED") {
+            const restored = createAnimationStudioStateV1(loaded.value);
+            setAnimationStudioState({
+              ...restored,
+              mode: loaded.selectedMode,
+              selectedClipId: loaded.selectedClipId,
+              autosave: {
+                status: "AUTOSAVED",
+                savedRevision: loaded.value.authoringRevision,
+                savedAt: loaded.savedAt,
+                error: null,
+              },
+            });
+          } else if (loaded.kind === "ERROR") {
+            setAnimationStudioCoreDiagnostics(loaded.diagnostics);
+          }
+          setAnimationStudioLoadedProjectId(sourceRevision);
+        });
+    }
+
+    const worker = workerRef.current;
+    if (worker) {
+      void sourceFileForStudio.arrayBuffer()
+        .then((sourceGlb) => worker.inspectEditableAnimationSource(sourceGlb))
+        .then((response) => {
+          if (
+            cancelled
+            || !response.ok
+            || response.type !== "EDITABLE_ANIMATION_SOURCE_INSPECTED"
+            || sessionRef.current.source?.sha256 !== sourceRevision
+          ) return;
+          setEditableAnimationRig(
+            parseEditableAnimationSourceV1(response.inspectionJson).rig,
+          );
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) {
+            setSourceError(
+              `Editable animation source inspection failed: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [animationStudioSourceFile, animationStudioSourceRevision]);
+
+  useEffect(() => {
+    const mapping = session.animationMapping?.value;
+    if (!mapping || !animationStudioSourceRevision) return;
+    const loaded = loadCreatureAnimationAuthoringV2DraftV1(
+      animationStudioSourceRevision,
+    );
+    setAnimationStudioMappingStorageDiagnostic(
+      loaded.kind === "ERROR" ? loaded.diagnostic : null,
+    );
+    setAnimationAuthoringV2((current) => synchronizeCreatureAnimationAuthoringV2(
+      mapping,
+      current ?? (loaded.kind === "LOADED" ? loaded.value : null),
+    ));
+  }, [animationStudioSourceRevision, session.animationMapping]);
+
+  useEffect(() => {
+    if (
+      !animationAuthoringV2
+      || !animationStudioSourceRevision
+      || !animationAuthoringV2Dirty
+    ) return;
+    const saved = saveCreatureAnimationAuthoringV2DraftV1(
+      animationStudioSourceRevision,
+      animationAuthoringV2,
+    );
+    if (saved.kind === "SAVED") setAnimationAuthoringV2Dirty(false);
+    setAnimationStudioMappingStorageDiagnostic(
+      saved.kind === "ERROR" ? saved.diagnostic : null,
+    );
+  }, [
+    animationAuthoringV2,
+    animationAuthoringV2Dirty,
+    animationStudioSourceRevision,
+  ]);
+
+  useEffect(() => {
+    const studio = animationStudioState;
+    const projectId = animationStudioSourceRevision;
+    if (
+      !studio
+      || !projectId
+      || animationStudioLoadedProjectId !== projectId
+    ) return;
+    const revision = studio.document.authoringRevision;
+    const timeout = window.setTimeout(() => {
+      setAnimationStudioState((current) => (
+        current?.document.authoringRevision === revision
+          ? markAnimationStudioAutosaveSavingV1(current)
+          : current
+      ));
+      void saveAnimationStudioDocumentV1(
+        projectId,
+        studio.document,
+        undefined,
+        {
+          selectedMode: studio.mode,
+          selectedClipId: studio.selectedClipId,
+        },
+      ).then((result) => {
+        setAnimationStudioState((current) => {
+          if (!current || current.document.authoringRevision !== revision) return current;
+          return result.kind === "SAVED"
+            ? markAnimationStudioAutosavedV1(
+                current,
+                result.revision,
+                result.savedAt,
+              )
+            : markAnimationStudioAutosaveFailedV1(
+                current,
+                result.diagnostic.message,
+              );
+        });
+      });
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [
+    animationStudioLoadedProjectId,
+    animationStudioSourceRevision,
+    animationStudioState?.document,
+    animationStudioState?.mode,
+    animationStudioState?.selectedClipId,
+  ]);
+
+  useEffect(() => {
+    const studio = animationStudioState;
+    const authoring = animationAuthoringV2;
+    const source = session.source;
+    const worker = workerRef.current;
+    if (!studio || !authoring || !source?.sha256 || !worker) return;
+    const localDiagnostics = [
+      ...validateAnimationStudioSchemaV1(studio.document),
+      ...validateCreatureAnimationAuthoringV2(authoring, studio.document),
+    ];
+    if (studio.document.authoredClips.length === 0) {
+      setAnimationStudioCoreDiagnostics(localDiagnostics);
+      return;
+    }
+    let cancelled = false;
+    const timeout = window.setTimeout(() => {
+      void source.file.arrayBuffer()
+        .then((sourceGlb) => worker.validateAnimationStudioDocument(
+          sourceGlb,
+          serializeAnimationStudioDocumentV1(studio.document),
+        ))
+        .then((response) => {
+          if (
+            cancelled
+            || !response.ok
+            || response.type !== "ANIMATION_STUDIO_DOCUMENT_VALIDATED"
+          ) return;
+          const parsed = JSON.parse(response.validationJson) as {
+            diagnostics?: AnimationStudioDiagnosticV1[];
+          } | AnimationStudioDiagnosticV1[];
+          const coreDiagnostics = Array.isArray(parsed)
+            ? parsed
+            : parsed.diagnostics ?? [];
+          setAnimationStudioCoreDiagnostics([
+            ...localDiagnostics,
+            ...coreDiagnostics,
+          ]);
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          setAnimationStudioCoreDiagnostics([
+            ...localDiagnostics,
+            {
+              schemaVersion: 1,
+              code: "M2A-ANIMATION-EDIT-WASM",
+              path: "animationStudioDocument",
+              level: "BLOCKING",
+              message: error instanceof Error ? error.message : String(error),
+              action: "Retry canonical Animation Studio validation.",
+            },
+          ]);
+        });
+    }, 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [animationAuthoringV2, animationStudioState?.document, session.source]);
+
+  useEffect(() => {
+    const studio = animationStudioState;
+    const worker = workerRef.current;
+    const previewClipId = studio?.selectedClipId
+      ?? studio?.document.authoredClips[0]?.id;
+    if (
+      !studio
+      || !worker
+      || !previewClipId
+      || studio.document.status !== "VALID"
+      || studio.document.authoredClips.length === 0
+      || studio.document.authoredClips.some(({ status }) => status !== "VALID")
+    ) return;
+    let cancelled = false;
+    const timeout = window.setTimeout(() => {
+      void worker.previewAuthoredAnimationClip(
+        serializeAnimationStudioDocumentV1(studio.document),
+        previewClipId,
+      )
+        .then((response) => {
+          if (
+            cancelled
+            || !response.ok
+            || response.type !== "AUTHORED_ANIMATION_CLIP_PREVIEWED"
+          ) return;
+          // The viewport stays a projection of the immutable Studio document.
+          // This canonical preview is a debounced parity gate only.
+          JSON.parse(response.previewJson);
+        })
+        .catch((error: unknown) => {
+          if (cancelled || (error instanceof DOMException && error.name === "AbortError")) {
+            return;
+          }
+          setSourceError(
+            `Animation Studio preview materialization failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        });
+    }, 350);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+      worker.cancelAnimationStudioPreviewBuild();
+    };
+  }, [
+    animationStudioState?.document,
+    animationStudioState?.selectedClipId,
+  ]);
+
+  const animationStudioHasAuthoredClips =
+    (animationStudioState?.document.authoredClips.length ?? 0) > 0;
+  const animationStudioDiagnostics = animationStudioMappingStorageDiagnostic
+    ? [
+        animationStudioMappingStorageDiagnostic,
+        ...animationStudioCoreDiagnostics,
+      ]
+    : animationStudioCoreDiagnostics;
+  const animationStudioReadyForBuild = !animationStudioHasAuthoredClips || Boolean(
+    animationStudioState
+    && animationAuthoringV2
+    && animationStudioState.document.status === "VALID"
+    && animationStudioState.sourceStatus === "CURRENT"
+    && animationStudioState.autosave.status === "AUTOSAVED"
+    && animationStudioState.autosave.savedRevision
+      === animationStudioState.document.authoringRevision
+    && animationStudioDiagnostics.every(({ level }) => level !== "BLOCKING"),
   );
 
   useEffect(() => {
@@ -1232,7 +1845,10 @@ export function App({
           authoring={session.animationMapping.value}
           inspection={animationInspection}
           saveState={animationMappingSaveState}
-          canContinue={canContinueFromAnimationMapping(session)}
+          canContinue={
+            canContinueFromAnimationMapping(session)
+            && animationStudioReadyForBuild
+          }
           validationStatus={session.animationMappingValidation?.value.status}
           canonicalValidationPending={
             animationMappingStatus === "READY"
@@ -1242,7 +1858,11 @@ export function App({
             )
           }
           onBack={() => dispatch({ type: "NAVIGATE", step: "INSPECT" })}
-          onContinue={() => dispatch({ type: "CONTINUE_TO_BUILD" })}
+          onContinue={() => {
+            if (animationStudioReadyForBuild) {
+              dispatch({ type: "CONTINUE_TO_BUILD" });
+            }
+          }}
           onApplySuggestions={applySafeAnimationSuggestions}
           canUseGeneratedProfile={sourceInspection
             ? canOfferGeneratedHumanoidProfileV1({
@@ -1265,6 +1885,201 @@ export function App({
               : undefined
           }
           onPreviewError={setSourceError}
+          animationMode={
+            animationStudioState?.mode === "CREATE_EDIT" ? "EDIT" : "MAP"
+          }
+          onAnimationModeChange={(mode: AnimationMappingModeV1) => {
+            setAnimationStudioState((current) => current
+              ? reduceAnimationStudioStateV1(current, {
+                  type: "ANIMATION_STUDIO_MODE_SELECTED",
+                  mode: mode === "EDIT" ? "CREATE_EDIT" : "MAP_BASE_42",
+                })
+              : current);
+          }}
+          animationStudio={animationStudioState && animationAuthoringV2
+            && animationStudioSourceFile && animationStudioSourceRevision ? (
+            <AnimationStudioWorkspace
+              document={animationStudioState.document}
+              authoring={animationAuthoringV2}
+              sourceInventory={animationInspection.sourceClips}
+              rig={editableAnimationRig}
+              viewport={(clip, playheadSeconds) => (
+                <SourceViewport
+                  input={{
+                    provenance: "SOURCE",
+                    file: animationStudioSourceFile,
+                    sourceSha256: animationStudioSourceRevision,
+                  }}
+                  authoredClip={clip}
+                  authoredRig={editableAnimationRig}
+                  controlledAnimationTimeSeconds={playheadSeconds}
+                  onError={setSourceError}
+                />
+              )}
+              autosaveState={
+                animationStudioState.autosave.status === "SAVING"
+                  ? { kind: "SAVING" }
+                  : animationStudioState.autosave.status === "AUTOSAVED"
+                    ? { kind: "SAVED" }
+                    : animationStudioState.autosave.status === "ERROR"
+                      ? {
+                          kind: "ERROR",
+                          message: animationStudioState.autosave.error
+                            ?? "The local project could not be saved.",
+                        }
+                      : { kind: "IDLE" }
+              }
+              diagnostics={animationStudioDiagnostics}
+              onDocumentChange={(document) => {
+                setAnimationStudioState((current) => current
+                  ? commitAnimationStudioDocumentV1(current, document)
+                  : current);
+                dispatch({ type: "AUTHORING_DOCUMENT_CHANGED" });
+              }}
+              onAuthoringChange={(authoring) => {
+                setAnimationAuthoringV2(authoring);
+                setAnimationAuthoringV2Dirty(true);
+                dispatch({ type: "AUTHORING_DOCUMENT_CHANGED" });
+              }}
+              onEditSourceClip={async (sourceClipId, newId, newName) => {
+                const sourceClip = animationInspection.sourceClips.find(
+                  ({ clipId }) => clipId === sourceClipId,
+                );
+                const worker = workerRef.current;
+                if (!sourceClip || !worker) {
+                  throw new Error("The selected source clip is unavailable.");
+                }
+                const response = await worker.inspectEditableAnimationSource(
+                  await animationStudioSourceFile.arrayBuffer(),
+                  sourceClip.name,
+                );
+                if (
+                  !response.ok
+                  || response.type !== "EDITABLE_ANIMATION_SOURCE_INSPECTED"
+                ) {
+                  throw new Error("The source clip could not be projected to the output rig.");
+                }
+                const projected = parseEditableAnimationSourceV1(
+                  response.inspectionJson,
+                ).clip;
+                if (!projected) {
+                  throw new Error(`No editable tracks were returned for ${sourceClip.name}.`);
+                }
+                return {
+                  ...projected,
+                  id: newId,
+                  name: newName,
+                  status: "DRAFT",
+                  source: {
+                    ...projected.source,
+                    kind: "SOURCE_CLIP_COPY",
+                    sourceRevision: animationStudioSourceRevision,
+                    sourceClipName: sourceClip.name,
+                  },
+                  revision: 1,
+                };
+              }}
+              onValidateClip={async (candidate, prospectiveDocument) => {
+                const worker = workerRef.current;
+                if (!worker) {
+                  throw new Error("The exact Animation Studio core is unavailable.");
+                }
+                const isolatedDocument: AnimationStudioDocumentV1 = {
+                  ...prospectiveDocument,
+                  status: "VALID",
+                  authoredClips: [{ ...candidate, status: "VALID" }],
+                };
+                const response = await worker.validateAnimationStudioDocument(
+                  await animationStudioSourceFile.arrayBuffer(),
+                  serializeAnimationStudioDocumentV1(isolatedDocument),
+                );
+                if (
+                  !response.ok
+                  || response.type !== "ANIMATION_STUDIO_DOCUMENT_VALIDATED"
+                ) {
+                  throw new Error(
+                    "The exact Animation Studio core could not validate this clip.",
+                  );
+                }
+                const parsed = JSON.parse(response.validationJson) as {
+                  diagnostics?: AnimationStudioDiagnosticV1[];
+                } | AnimationStudioDiagnosticV1[];
+                const coreDiagnostics = Array.isArray(parsed)
+                  ? parsed
+                  : parsed.diagnostics ?? [];
+                return [
+                  ...validateAnimationStudioSchemaV1(prospectiveDocument),
+                  ...coreDiagnostics,
+                ];
+              }}
+              onUndo={() => setAnimationStudioState((current) => current
+                ? undoAnimationStudioEditV1(current)
+                : current)}
+              onRedo={() => setAnimationStudioState((current) => current
+                ? redoAnimationStudioEditV1(current)
+                : current)}
+              canUndo={animationStudioState.undoStack.length > 0}
+              canRedo={animationStudioState.redoStack.length > 0}
+              requestedClipId={animationStudioState.selectedClipId}
+              onSelectedClipChange={(clipId) => {
+                setAnimationStudioState((current) => current
+                  ? reduceAnimationStudioStateV1(current, {
+                      type: "AUTHORED_CLIP_SELECTED",
+                      clipId,
+                    })
+                  : current);
+              }}
+            />
+          ) : (
+            <div className="empty-state" role="status">
+              <strong>Preparing Animation Studio</strong>
+              <span>The exact output rig and local project are loading.</span>
+            </div>
+          )}
+          animationStudioDocument={animationStudioState?.document}
+          animationAuthoringV2={animationAuthoringV2 ?? undefined}
+          onAnimationAuthoringV2Change={(authoring) => {
+            setAnimationAuthoringV2(authoring);
+            setAnimationAuthoringV2Dirty(true);
+            dispatch({ type: "AUTHORING_DOCUMENT_CHANGED" });
+          }}
+          onCreateAuthoredAnimation={() => {
+            setAnimationStudioState((current) => {
+              if (!current) return current;
+              const created = createBlankPoseClipV1({
+                id: crypto.randomUUID(),
+                name: `custom_animation_${current.document.authoredClips.length + 1}`,
+                sourceRevision: current.document.sourceRevision,
+                animationRoot: editableAnimationRig.find(({ parentId }) => parentId === null)
+                  ?.name ?? editableAnimationRig[0]?.name ?? "root",
+                rig: editableAnimationRig,
+              });
+              const committed = commitAnimationStudioDocumentV1(current, {
+                ...current.document,
+                status: "DRAFT",
+                authoredClips: [...current.document.authoredClips, created],
+              });
+              return {
+                ...committed,
+                mode: "CREATE_EDIT",
+                selectedClipId: created.id,
+              };
+            });
+            dispatch({ type: "AUTHORING_DOCUMENT_CHANGED" });
+          }}
+          onOpenAuthoredAnimation={(clipId) => {
+            setAnimationStudioState((current) => {
+              if (!current) return current;
+              const selected = reduceAnimationStudioStateV1(current, {
+                type: "AUTHORED_CLIP_SELECTED",
+                clipId,
+              });
+              return reduceAnimationStudioStateV1(selected, {
+                type: "ANIMATION_STUDIO_MODE_SELECTED",
+                mode: "CREATE_EDIT",
+              });
+            });
+          }}
         />
       ) : session.currentStep === "BUILD" ? (
         <BuildStep
@@ -1274,6 +2089,7 @@ export function App({
             session.build.kind !== "RUNNING"
             && Boolean(sourceInspection)
             && (session.target === "TILE" || Boolean(appearanceInspection))
+            && (session.target !== "CREATURE" || animationStudioReadyForBuild)
           }
           canRetry={session.build.kind === "FAILED"}
           canCancel={session.build.kind === "RUNNING"}
@@ -1344,10 +2160,39 @@ export function App({
               />
             )}
           />
-          <ArtifactDownloads
-            artifacts={currentResult.canonical.artifacts}
-            onError={(message) => setDebugDrawerMessage(`Artifact download error: ${message}`)}
-          />
+          {currentResult.animationStudioDocument
+            && currentResult.animationAuthoringV2
+            && currentResult.animationStudioFingerprintSha256
+            && currentResult.animationStudioReconciliation ? (
+            <AuthoredAnimationReview
+              studio={currentResult.animationStudioDocument}
+              authoring={currentResult.animationAuthoringV2}
+              studioFingerprintSha256={
+                currentResult.animationStudioFingerprintSha256
+              }
+              reconciliation={currentResult.animationStudioReconciliation}
+            />
+          ) : null}
+          {currentResult.animationStudioReconciliation
+            && !getAnimationStudioDownloadGateV1(
+              currentResult.animationStudioReconciliation,
+            ).allowed ? (
+            <section className="panel" role="alert" aria-label="Download blocked">
+              <h3>Download blocked</h3>
+              <p>
+                {getAnimationStudioDownloadGateV1(
+                  currentResult.animationStudioReconciliation,
+                ).reason}
+              </p>
+            </section>
+          ) : (
+            <ArtifactDownloads
+              artifacts={currentResult.canonical.artifacts}
+              onError={(message) => setDebugDrawerMessage(
+                `Artifact download error: ${message}`,
+              )}
+            />
+          )}
         </>
       ) : (
         <section className="inspect-scaffold" aria-labelledby="review-unavailable-heading">

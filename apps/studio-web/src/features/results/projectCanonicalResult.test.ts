@@ -340,6 +340,121 @@ describe("canonical result projector", () => {
     )).toThrow("Canonical result identity mismatch at animationMappingEvidence");
   });
 
+  it("reconciles complete V5 Studio evidence and stable-ID binary readback", () => {
+    const value = fixture();
+    const sourceRevision = "1".repeat(64);
+    const studioFingerprint = "2".repeat(64);
+    const studioEvidence = {
+      animationStudioSchemaVersion: 1,
+      animationStudioFingerprintSha256: studioFingerprint,
+      animationStudioRevision: 11,
+      creatureAnimationAuthoringSchemaVersion: 2,
+      creatureAnimationAuthoringFingerprintSha256: "3".repeat(64),
+      authoredClipCount: 1,
+      authoredClipIds: ["clip-stable"],
+      authoredClipOutputNames: ["authored_editor_name"],
+      authoredEventCount: 0,
+      customAssignmentCount: 1,
+      sourceRevision,
+      readbackStatus: "MATCH",
+      animationStudioReadback: {
+        schemaVersion: 1,
+        studioFingerprint,
+        sourceRevision,
+        status: "MATCH",
+        clips: [{
+          authoredClipId: "clip-stable",
+          outputClipName: "custom_runtime",
+          materializedFingerprint: "4".repeat(64),
+        }],
+        diagnostics: [],
+      },
+      sourceGlbUnchanged: true,
+      authoredClips: [{
+        id: "clip-stable",
+        outputName: "authored_editor_name",
+        kind: "MOTION",
+        status: "VALID",
+        revision: 5,
+        source: {
+          kind: "BLANK_POSE",
+          sourceRevision,
+          sourceClipName: null,
+          sourceClipFingerprint: null,
+          proceduralTemplate: null,
+        },
+        keyframeCount: 3,
+        eventCount: 0,
+        usages: [{
+          authoredClipId: "clip-stable",
+          outputClipName: "custom_runtime",
+          usageKind: "CUSTOM_ONE_SHOT",
+          baseSlot: "ca1slashl",
+          customAnimationId: "custom-stable",
+          phase: null,
+        }],
+      }],
+    };
+    Object.assign(value.report, studioEvidence);
+    Object.assign(value.summary, studioEvidence);
+    Object.assign(value.manifest, studioEvidence, {
+      inputGlb: id(123, "1"),
+    });
+    const reportJson = JSON.stringify(value.report);
+    value.summary.outputs.report.byteLength = bytes(reportJson).byteLength;
+    const summaryJson = JSON.stringify(value.summary);
+    const manifestJson = JSON.stringify(value.manifest);
+    for (const [artifactId, json] of [
+      ["report-json", reportJson],
+      ["summary-json", summaryJson],
+      ["manifest-json", manifestJson],
+    ] as const) {
+      const artifact = value.artifacts.find((candidate) => (
+        candidate.artifactId === artifactId
+      ))!;
+      artifact.bytes = bytes(json);
+      artifact.byteLength = artifact.bytes.byteLength;
+    }
+
+    expect(projectCanonicalResult(
+      reportJson,
+      summaryJson,
+      manifestJson,
+      value.artifacts,
+    ).animationStudioEvidence).toMatchObject({
+      animationStudioFingerprintSha256: studioFingerprint,
+      sourceRevision,
+      readbackStatus: "MATCH",
+      animationStudioReadback: {
+        status: "MATCH",
+        clips: [{
+          authoredClipId: "clip-stable",
+          outputClipName: "custom_runtime",
+        }],
+      },
+    });
+
+    (
+      value.manifest as typeof value.manifest & {
+        animationStudioReadback: {
+          clips: Array<{ authoredClipId: string }>;
+        };
+      }
+    ).animationStudioReadback.clips[0]!.authoredClipId = "renamed-id";
+    const staleManifestJson = JSON.stringify(value.manifest);
+    const manifestArtifact = value.artifacts.find(({ artifactId }) => (
+      artifactId === "manifest-json"
+    ))!;
+    manifestArtifact.bytes = bytes(staleManifestJson);
+    manifestArtifact.byteLength = manifestArtifact.bytes.byteLength;
+    expect(() => projectCanonicalResult(
+      reportJson,
+      summaryJson,
+      staleManifestJson,
+      value.artifacts,
+    )).toThrow(/animationStudio/);
+  });
+
   it.each(["report", "summary", "manifest", "artifact"] as const)("rejects malformed %s input without fallback values", (part) => {
     const value = fixture();
     if (part === "report") delete (value.report as { geometry?: unknown }).geometry;

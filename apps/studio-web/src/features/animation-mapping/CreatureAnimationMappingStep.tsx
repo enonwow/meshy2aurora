@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import {
   filterAnimationCatalogV1,
   projectAnimationCatalogRowsV1,
@@ -17,12 +23,20 @@ import type {
 import type { CreatureAnimationAuthoringEventV1 } from "./state";
 import { AnimationSourcePicker } from "./AnimationSourcePicker";
 import { FallbackReview } from "./FallbackReview";
-import { CustomAnimationEditor } from "./CustomAnimationEditor";
 import { AnimationPreviewPanel } from "./AnimationPreviewPanel";
 import type {
   BinaryMdlInspectionReport,
   SourcePreviewInput,
 } from "../preview/types";
+import {
+  AnimationMappingModeSwitch,
+  type AnimationMappingModeV1,
+} from "../animation-editor/AnimationMappingModeSwitch";
+import { CustomAnimationMappingPanel } from "../animation-editor/CustomAnimationMappingPanel";
+import type {
+  AnimationStudioDocumentV1,
+  CreatureAnimationAuthoringV2,
+} from "../animation-studio/types";
 import "./CreatureAnimationMappingStep.css";
 
 export interface CreatureAnimationMappingStepProps {
@@ -42,6 +56,14 @@ export interface CreatureAnimationMappingStepProps {
   readback?: BinaryMdlInspectionReport;
   builtAuthoringRevision?: number | null;
   onPreviewError?: (message: string) => void;
+  animationStudio?: ReactNode;
+  animationMode?: AnimationMappingModeV1;
+  onAnimationModeChange?: (mode: AnimationMappingModeV1) => void;
+  animationStudioDocument?: AnimationStudioDocumentV1;
+  animationAuthoringV2?: CreatureAnimationAuthoringV2;
+  onAnimationAuthoringV2Change?: (authoring: CreatureAnimationAuthoringV2) => void;
+  onCreateAuthoredAnimation?: () => void;
+  onOpenAuthoredAnimation?: (clipId: string) => void;
 }
 
 const FILTERS: readonly {
@@ -70,7 +92,23 @@ export function CreatureAnimationMappingStep({
   readback,
   builtAuthoringRevision,
   onPreviewError,
+  animationStudio,
+  animationMode,
+  onAnimationModeChange,
+  animationStudioDocument,
+  animationAuthoringV2,
+  onAnimationAuthoringV2Change,
+  onCreateAuthoredAnimation,
+  onOpenAuthoredAnimation,
 }: CreatureAnimationMappingStepProps) {
+  const [internalMode, setInternalMode] = useState<AnimationMappingModeV1>(
+    readAnimationMappingModeV1,
+  );
+  const mode = animationMode ?? internalMode;
+  const setMode = (next: AnimationMappingModeV1) => {
+    setInternalMode(next);
+    onAnimationModeChange?.(next);
+  };
   const rows = useMemo(
     () => projectAnimationCatalogRowsV1(authoring, inspection),
     [authoring, inspection],
@@ -106,6 +144,10 @@ export function CreatureAnimationMappingStep({
     filterAnimationCatalogV1(rows, "", id).length,
   ])) as Record<AnimationCatalogFilterV1, number>;
 
+  useEffect(() => {
+    persistAnimationMappingModeV1(mode);
+  }, [mode]);
+
   return (
     <section className="animation-mapping-step" aria-labelledby="animation-mapping-title">
       <header className="animation-mapping-step__header">
@@ -131,6 +173,10 @@ export function CreatureAnimationMappingStep({
         </div>
       </header>
 
+      <AnimationMappingModeSwitch value={mode} onChange={setMode} />
+
+      {mode === "EDIT" && animationStudio ? animationStudio : (
+        <>
       <div className="animation-mapping-step__workspace">
         <aside className="animation-catalog" aria-label="Animation catalog">
           <label>
@@ -221,6 +267,27 @@ export function CreatureAnimationMappingStep({
                     authoring={authoring}
                     inspection={inspection}
                     onEvent={onAuthoringEvent}
+                    customSelected={animationAuthoringV2?.assignments.some(
+                      (assignment) => (
+                        assignment.targetSlot === selected.slot
+                        && assignment.sourceKind === "CUSTOM"
+                      ),
+                    )}
+                    customPanel={animationStudioDocument
+                      && animationAuthoringV2
+                      && onAnimationAuthoringV2Change
+                      && onCreateAuthoredAnimation
+                      && onOpenAuthoredAnimation ? (
+                      <CustomAnimationMappingPanel
+                        slot={selected.slot}
+                        authoring={animationAuthoringV2}
+                        studio={animationStudioDocument}
+                        sourceInventory={inspection.sourceClips}
+                        onAuthoringChange={onAnimationAuthoringV2Change}
+                        onCreate={onCreateAuthoredAnimation}
+                        onOpenClip={onOpenAuthoredAnimation}
+                      />
+                    ) : undefined}
                   />
                 ) : null}
                 {selected.diagnosticCodes.length > 0 ? (
@@ -241,14 +308,7 @@ export function CreatureAnimationMappingStep({
                 ) : null}
               </section>
               {onAuthoringEvent ? (
-                <>
-                  <FallbackReview authoring={authoring} onEvent={onAuthoringEvent} />
-                  <CustomAnimationEditor
-                    authoring={authoring}
-                    inspection={inspection}
-                    onEvent={onAuthoringEvent}
-                  />
-                </>
+                <FallbackReview authoring={authoring} onEvent={onAuthoringEvent} />
               ) : null}
             </>
           ) : (
@@ -284,8 +344,30 @@ export function CreatureAnimationMappingStep({
           </button>
         </div>
       </footer>
+        </>
+      )}
     </section>
   );
+}
+
+const ANIMATION_MAPPING_MODE_STORAGE_KEY = "m2a.animationMapping.mode.v1";
+
+function readAnimationMappingModeV1(): AnimationMappingModeV1 {
+  if (typeof window === "undefined") return "MAP";
+  const query = new URLSearchParams(window.location.search).get("animationMode");
+  if (query === "edit") return "EDIT";
+  if (query === "map") return "MAP";
+  return window.localStorage.getItem(ANIMATION_MAPPING_MODE_STORAGE_KEY) === "EDIT"
+    ? "EDIT"
+    : "MAP";
+}
+
+function persistAnimationMappingModeV1(mode: AnimationMappingModeV1) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(ANIMATION_MAPPING_MODE_STORAGE_KEY, mode);
+  const url = new URL(window.location.href);
+  url.searchParams.set("animationMode", mode === "EDIT" ? "edit" : "map");
+  window.history.replaceState(window.history.state, "", url);
 }
 
 function DerivedField({ label, value }: { label: string; value: string }) {

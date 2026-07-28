@@ -19,6 +19,15 @@ pub use crate::direct_creature_animation::{
 };
 
 use crate::{
+    animation_studio::{
+        AnimationStudioDocumentV1, AnimationStudioReadbackStatusV1, AnimationStudioReadbackV1,
+        AnimationStudioRigNodeV1, AnimationStudioRigV1, AuthoredAnimationClipKindV1,
+        AuthoredAnimationClipStatusV1, AuthoredAnimationSourceV1, AuthoredAnimationUsageV1,
+        CreatureAnimationAuthoringV2, MaterializedCreatureAnimationAuthoringV2,
+        evaluate_edited_animation_conformance_v1, fingerprint_animation_studio_document_v1,
+        fingerprint_creature_animation_authoring_v2, materialize_creature_animation_authoring_v2,
+        validate_creature_animation_authoring_v2,
+    },
     creature_animation_mapping::{
         AnimationSourceKindV1, AuthoredAnimationConformanceV1, CreatureAnimationAuthoringV1,
         ResolvedCreatureAnimationMappingV1, evaluate_authored_animation_conformance_v1,
@@ -646,6 +655,95 @@ pub struct M6ModelPackageArtifactV1 {
     pub summary_json: Vec<u8>,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditableAnimationSourceInspectionV1 {
+    pub schema_version: u32,
+    pub source_revision: String,
+    pub rig: AnimationStudioRigV1,
+    pub animations: MdlAnimationSetV1,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnimationStudioAuthoredClipAuditV1 {
+    pub id: String,
+    pub output_name: String,
+    pub kind: AuthoredAnimationClipKindV1,
+    pub status: AuthoredAnimationClipStatusV1,
+    pub revision: u64,
+    pub source: AuthoredAnimationSourceV1,
+    pub keyframe_count: usize,
+    pub event_count: usize,
+    pub usages: Vec<AuthoredAnimationUsageV1>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnimationStudioBuildAuditV1 {
+    pub animation_studio_schema_version: u32,
+    pub animation_studio_fingerprint_sha256: String,
+    pub animation_studio_revision: u64,
+    pub creature_animation_authoring_schema_version: u32,
+    pub creature_animation_authoring_fingerprint_sha256: String,
+    pub authored_clip_count: usize,
+    pub authored_clip_ids: Vec<String>,
+    pub authored_clip_output_names: Vec<String>,
+    pub authored_event_count: usize,
+    pub custom_assignment_count: usize,
+    pub source_revision: String,
+    pub readback_status: AnimationStudioReadbackStatusV1,
+    pub animation_studio_readback: AnimationStudioReadbackV1,
+    pub source_glb_unchanged: bool,
+    pub authored_clips: Vec<AnimationStudioAuthoredClipAuditV1>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct M6MaterializationReportV5 {
+    #[serde(flatten)]
+    pub base: M6MaterializationReportV1,
+    #[serde(flatten)]
+    pub animation_studio: AnimationStudioBuildAuditV1,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct M6MaterializationManifestV5 {
+    #[serde(flatten)]
+    pub base: M6MaterializationManifestV1,
+    #[serde(flatten)]
+    pub animation_studio: AnimationStudioBuildAuditV1,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct M6MaterializationSummaryV5 {
+    #[serde(flatten)]
+    pub base: M6MaterializationSummaryV1,
+    #[serde(flatten)]
+    pub animation_studio: AnimationStudioBuildAuditV1,
+}
+
+#[derive(Clone, Debug)]
+pub struct M6ModelPackageArtifactV5 {
+    pub source_glb: Vec<u8>,
+    pub model: Vec<u8>,
+    pub texture: Vec<u8>,
+    pub appearance_two_da: Vec<u8>,
+    pub hak: Vec<u8>,
+    pub proof_module: Vec<u8>,
+    pub manifest: M6MaterializationManifestV5,
+    pub package_manifest: PackageManifestV1,
+    pub manifest_json: Vec<u8>,
+    pub report: M6MaterializationReportV5,
+    pub report_json: Vec<u8>,
+    pub summary: M6MaterializationSummaryV5,
+    pub summary_json: Vec<u8>,
+    pub animation_studio_readback: AnimationStudioReadbackV1,
+    pub materialized_animations: MaterializedCreatureAnimationAuthoringV2,
+}
+
 pub fn build_m6_model_package_v1(
     source_glb: &[u8],
     appearance_two_da: &[u8],
@@ -687,6 +785,72 @@ pub fn build_meshy_h1_model_package_v1(
         &Default::default(),
         &mapping,
     )
+}
+
+/// Inspects the exact browser-selected GLB into the same editable animation
+/// values and output-rig node identities used by the canonical H1 writer.
+pub fn inspect_editable_animation_source_v1(
+    source_glb: &[u8],
+) -> Result<EditableAnimationSourceInspectionV1, M6PipelineErrorV1> {
+    let mut source = ingest_glb(source_glb, &GlbLimits::default()).map_err(|error| {
+        pipeline_error(
+            "ingest",
+            error.code,
+            error.json_path.unwrap_or_else(|| "input".to_owned()),
+            error.message,
+        )
+    })?;
+    sanitize_meshy_h1_degenerate_triangles_v1(&mut source)?;
+    let (rig, mut mapping) = derive_meshy_h1_profile_and_mapping_v1(&source)
+        .map_err(|error| pipeline_error("profile", error.code, error.path, error.message))?;
+    apply_authored_h1_source_names_v1(&source, &mut mapping, false);
+    let animated =
+        convert_profile_a_with_animations_v1(&source, &rig, &Default::default(), &mapping)
+            .map_err(|error| pipeline_error("animation", error.code, error.path, error.message))?;
+    let creature = animated.base.creature.ok_or_else(|| {
+        pipeline_error(
+            "profile",
+            "M6-PROFILE-INELIGIBLE",
+            "conversion.creature",
+            "editable animation inspection has no creature output",
+        )
+    })?;
+    let animations = animated.animations.ok_or_else(|| {
+        pipeline_error(
+            "animation",
+            "M6-ANIMATION-MISSING",
+            "conversion.animations",
+            "editable animation inspection has no mapped animations",
+        )
+    })?;
+    let source_revision = identity(source_glb).sha256;
+    let animation_root = animations
+        .clips
+        .first()
+        .map(|clip| clip.animation_root.clone())
+        .or_else(|| {
+            creature
+                .nodes
+                .iter()
+                .find(|node| node.parent_id.is_none())
+                .map(|node| node.name.clone())
+        })
+        .ok_or_else(|| {
+            pipeline_error(
+                "animation",
+                "M2A-ANIMATION-EDIT-BONE-MISSING",
+                "rig.animationRoot",
+                "editable animation rig has no root node",
+            )
+        })?;
+    let studio_rig =
+        animation_studio_rig_from_creature_v1(&creature, &source_revision, &animation_root)?;
+    Ok(EditableAnimationSourceInspectionV1 {
+        schema_version: 1,
+        source_revision,
+        rig: studio_rig,
+        animations,
+    })
 }
 
 /// Automatic H1 route with an explicit animation-completeness policy.
@@ -927,6 +1091,170 @@ pub fn build_meshy_h1_model_package_v4_with_events_and_identity(
         }),
         runtime_identity,
         Some(animation_authoring),
+        None,
+    )
+    .map(|built| built.artifact)
+}
+
+pub fn build_meshy_h1_model_package_v5(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring: &CreatureAnimationAuthoringV2,
+    animation_studio: &AnimationStudioDocumentV1,
+) -> Result<M6ModelPackageArtifactV5, M6PipelineErrorV1> {
+    build_meshy_h1_model_package_v5_with_events(
+        source_glb,
+        appearance_two_da,
+        animation_authoring,
+        animation_studio,
+        None,
+    )
+}
+
+pub fn build_meshy_h1_model_package_v5_with_events(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring: &CreatureAnimationAuthoringV2,
+    animation_studio: &AnimationStudioDocumentV1,
+    event_authoring: Option<&DirectCreatureEventAuthoringV1>,
+) -> Result<M6ModelPackageArtifactV5, M6PipelineErrorV1> {
+    let source_identity = identity(source_glb);
+    for (path, revision) in [
+        (
+            "animationAuthoring.sourceRevision",
+            animation_authoring.source_revision.as_str(),
+        ),
+        (
+            "animationStudio.sourceRevision",
+            animation_studio.source_revision.as_str(),
+        ),
+    ] {
+        if revision != source_identity.sha256 {
+            return Err(pipeline_error(
+                "animation",
+                "M2A-ANIMATION-EDIT-SOURCE-STALE",
+                path,
+                "V5 authoring sourceRevision does not match the exact immutable GLB bytes",
+            ));
+        }
+    }
+    let validation =
+        validate_creature_animation_authoring_v2(animation_authoring, animation_studio);
+    if let Some(first) = validation.first() {
+        return Err(pipeline_error(
+            "animation",
+            &first.code,
+            &first.path,
+            &first.message,
+        ));
+    }
+    if event_authoring.is_some()
+        && animation_studio
+            .authored_clips
+            .iter()
+            .any(|clip| !clip.events.is_empty())
+    {
+        return Err(pipeline_error(
+            "animation",
+            "M2A-ANIMATION-EDIT-EVENT",
+            "eventAuthoring",
+            "external event authoring cannot be combined with integrated authored clip events",
+        ));
+    }
+
+    let mut source = ingest_glb(source_glb, &GlbLimits::default()).map_err(|error| {
+        pipeline_error(
+            "ingest",
+            error.code,
+            error.json_path.unwrap_or_else(|| "input".to_owned()),
+            error.message,
+        )
+    })?;
+    sanitize_meshy_h1_degenerate_triangles_v1(&mut source)?;
+    let (rig, mut mapping) = derive_meshy_h1_profile_and_mapping_v1(&source)
+        .map_err(|error| pipeline_error("profile", error.code, error.path, error.message))?;
+    let uses_procedural = animation_authoring
+        .assignments
+        .iter()
+        .any(|assignment| assignment.source_kind == AnimationSourceKindV1::Procedural);
+    apply_authored_h1_source_names_v1(&source, &mut mapping, uses_procedural);
+    let built = build_m6_model_package_with_ingest_v5(
+        source_glb,
+        appearance_two_da,
+        source,
+        &rig,
+        &Default::default(),
+        &mapping,
+        if uses_procedural {
+            DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1
+        } else {
+            DirectCreatureAnimationProfileV1::FullNative42ExplicitV1
+        },
+        event_authoring.map(|authoring| {
+            (
+                DirectCreatureAnimationEventProfileV1::CommonNativeGameplayHooksExplicitV1,
+                authoring,
+            )
+        }),
+        &ProceduralCreaturePackageIdentityV1::historical_default(),
+        None,
+        Some((animation_authoring, animation_studio)),
+    )?;
+    let base = built.artifact;
+    let expected = built.animation_studio_materialization.ok_or_else(|| {
+        pipeline_error(
+            "animation",
+            "M2A-ANIMATION-EDIT-SCHEMA",
+            "animationStudio",
+            "V5 internal build did not preserve its exact Animation Studio materialization",
+        )
+    })?;
+    let studio_rig = built.animation_studio_rig.ok_or_else(|| {
+        pipeline_error(
+            "animation",
+            "M2A-ANIMATION-EDIT-SCHEMA",
+            "animationStudio.rig",
+            "V5 internal build did not preserve its exact Animation Studio rig",
+        )
+    })?;
+    if base.source_glb.as_slice() != source_glb {
+        return Err(pipeline_error(
+            "animation",
+            "M2A-ANIMATION-EDIT-SOURCE-STALE",
+            "artifact.sourceGlb",
+            "V5 pipeline changed the exact source GLB bytes",
+        ));
+    }
+    let binary_readback = inspect_binary_mdl(&base.model)
+        .map_err(|error| pipeline_error("readback", error.code, "model", error.context))?;
+    let studio_readback = evaluate_edited_animation_conformance_v1(
+        animation_studio,
+        &expected,
+        &studio_rig,
+        &built.writer_readback,
+        &binary_readback,
+    );
+    if studio_readback.status != AnimationStudioReadbackStatusV1::Match {
+        let first = studio_readback.diagnostics.first();
+        return Err(pipeline_error(
+            "readback",
+            first
+                .map(|diagnostic| diagnostic.code.as_str())
+                .unwrap_or("M2A-ANIMATION-EDIT-READBACK-MISMATCH"),
+            first
+                .map(|diagnostic| diagnostic.path.as_str())
+                .unwrap_or("readback.animations"),
+            first
+                .map(|diagnostic| diagnostic.message.as_str())
+                .unwrap_or("authored animation binary readback mismatch"),
+        ));
+    }
+    finish_animation_studio_v5_artifact(
+        base,
+        animation_authoring,
+        animation_studio,
+        expected,
+        studio_readback,
     )
 }
 
@@ -976,6 +1304,237 @@ fn apply_authored_h1_source_names_v1(
                     .unwrap_or_else(|| format!("m2a_source_{index}"))
             };
     }
+}
+
+fn first_animation_studio_pipeline_error(
+    diagnostics: Vec<crate::animation_studio::AnimationStudioDiagnosticV1>,
+) -> M6PipelineErrorV1 {
+    diagnostics.first().map_or_else(
+        || {
+            pipeline_error(
+                "animation",
+                "M2A-ANIMATION-EDIT-SCHEMA",
+                "animationStudio",
+                "Animation Studio materialization failed without a diagnostic",
+            )
+        },
+        |diagnostic| {
+            pipeline_error(
+                "animation",
+                &diagnostic.code,
+                &diagnostic.path,
+                &diagnostic.message,
+            )
+        },
+    )
+}
+
+fn animation_studio_rig_from_creature_v1(
+    creature: &AuroraCreatureIrV1,
+    source_revision: &str,
+    animation_root: &str,
+) -> Result<AnimationStudioRigV1, M6PipelineErrorV1> {
+    let nodes = creature
+        .nodes
+        .iter()
+        .map(|node| {
+            let (translation, rotation) =
+                decompose_animation_studio_bind_v1(node.bind_local_matrix).map_err(|message| {
+                    pipeline_error(
+                        "animation",
+                        "M2A-ANIMATION-EDIT-QUATERNION",
+                        format!("rig.nodes[{}].bindLocalMatrix", node.id),
+                        message,
+                    )
+                })?;
+            Ok(AnimationStudioRigNodeV1 {
+                node_id: node.id,
+                name: node.name.clone(),
+                parent_id: node.parent_id,
+                translation,
+                rotation,
+            })
+        })
+        .collect::<Result<Vec<_>, M6PipelineErrorV1>>()?;
+    Ok(AnimationStudioRigV1 {
+        schema_version: 1,
+        source_revision: source_revision.to_owned(),
+        animation_root: animation_root.to_owned(),
+        nodes,
+    })
+}
+
+fn decompose_animation_studio_bind_v1(
+    matrix: [f32; 16],
+) -> Result<([f32; 3], [f32; 4]), &'static str> {
+    if matrix.iter().any(|value| !value.is_finite()) {
+        return Err("bind matrix contains a non-finite value");
+    }
+    let mut columns = [
+        [matrix[0], matrix[1], matrix[2]],
+        [matrix[4], matrix[5], matrix[6]],
+        [matrix[8], matrix[9], matrix[10]],
+    ];
+    for column in &mut columns {
+        let length = (column[0] * column[0] + column[1] * column[1] + column[2] * column[2]).sqrt();
+        if !length.is_finite() || length <= 1.0e-8 {
+            return Err("bind matrix rotation basis is singular");
+        }
+        for value in column {
+            *value /= length;
+        }
+    }
+    let m00 = columns[0][0];
+    let m01 = columns[1][0];
+    let m02 = columns[2][0];
+    let m10 = columns[0][1];
+    let m11 = columns[1][1];
+    let m12 = columns[2][1];
+    let m20 = columns[0][2];
+    let m21 = columns[1][2];
+    let m22 = columns[2][2];
+    let trace = m00 + m11 + m22;
+    let (x, y, z, w) = if trace > 0.0 {
+        let s = (trace + 1.0).sqrt() * 2.0;
+        ((m21 - m12) / s, (m02 - m20) / s, (m10 - m01) / s, 0.25 * s)
+    } else if m00 > m11 && m00 > m22 {
+        let s = (1.0 + m00 - m11 - m22).sqrt() * 2.0;
+        (0.25 * s, (m01 + m10) / s, (m02 + m20) / s, (m21 - m12) / s)
+    } else if m11 > m22 {
+        let s = (1.0 + m11 - m00 - m22).sqrt() * 2.0;
+        ((m01 + m10) / s, 0.25 * s, (m12 + m21) / s, (m02 - m20) / s)
+    } else {
+        let s = (1.0 + m22 - m00 - m11).sqrt() * 2.0;
+        ((m02 + m20) / s, (m12 + m21) / s, 0.25 * s, (m10 - m01) / s)
+    };
+    let norm = (x * x + y * y + z * z + w * w).sqrt();
+    if !norm.is_finite() || norm <= 1.0e-8 {
+        return Err("bind matrix produced an invalid rotation quaternion");
+    }
+    let mut rotation = [x / norm, y / norm, z / norm, w / norm];
+    if rotation[3] < 0.0 {
+        for component in &mut rotation {
+            *component = -*component;
+        }
+    }
+    Ok(([matrix[12], matrix[13], matrix[14]], rotation))
+}
+
+fn finish_animation_studio_v5_artifact(
+    base: M6ModelPackageArtifactV1,
+    animation_authoring: &CreatureAnimationAuthoringV2,
+    studio: &AnimationStudioDocumentV1,
+    materialized_animations: MaterializedCreatureAnimationAuthoringV2,
+    animation_studio_readback: AnimationStudioReadbackV1,
+) -> Result<M6ModelPackageArtifactV5, M6PipelineErrorV1> {
+    let authored_clips = studio
+        .authored_clips
+        .iter()
+        .map(|clip| AnimationStudioAuthoredClipAuditV1 {
+            id: clip.id.clone(),
+            output_name: clip.name.clone(),
+            kind: clip.kind,
+            status: clip.status,
+            revision: clip.revision,
+            source: clip.source.clone(),
+            keyframe_count: clip.tracks.iter().map(|track| track.keyframes.len()).sum(),
+            event_count: clip.events.len(),
+            usages: materialized_animations
+                .authored_usages
+                .iter()
+                .filter(|usage| usage.authored_clip_id == clip.id)
+                .cloned()
+                .collect(),
+        })
+        .collect::<Vec<_>>();
+    let audit = AnimationStudioBuildAuditV1 {
+        animation_studio_schema_version: studio.schema_version,
+        animation_studio_fingerprint_sha256: fingerprint_animation_studio_document_v1(studio),
+        animation_studio_revision: studio.authoring_revision,
+        creature_animation_authoring_schema_version: animation_authoring.schema_version,
+        creature_animation_authoring_fingerprint_sha256:
+            fingerprint_creature_animation_authoring_v2(animation_authoring),
+        authored_clip_count: studio.authored_clips.len(),
+        authored_clip_ids: studio
+            .authored_clips
+            .iter()
+            .map(|clip| clip.id.clone())
+            .collect(),
+        authored_clip_output_names: studio
+            .authored_clips
+            .iter()
+            .map(|clip| clip.name.clone())
+            .collect(),
+        authored_event_count: studio
+            .authored_clips
+            .iter()
+            .map(|clip| clip.events.len())
+            .sum(),
+        custom_assignment_count: animation_authoring
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.source_kind == AnimationSourceKindV1::Custom)
+            .count(),
+        source_revision: studio.source_revision.clone(),
+        readback_status: animation_studio_readback.status,
+        animation_studio_readback: animation_studio_readback.clone(),
+        source_glb_unchanged: true,
+        authored_clips,
+    };
+    if !audit.source_glb_unchanged {
+        return Err(pipeline_error(
+            "animation",
+            "M2A-ANIMATION-EDIT-SOURCE-STALE",
+            "artifact.sourceGlb",
+            "V5 source GLB changed during artifact finalization",
+        ));
+    }
+    let report = M6MaterializationReportV5 {
+        base: base.report.clone(),
+        animation_studio: audit.clone(),
+    };
+    let report_json = json_bytes(&report, "report")?;
+    let mut summary_base = base.summary.clone();
+    summary_base.outputs.report = identity(&report_json);
+    let summary = M6MaterializationSummaryV5 {
+        base: summary_base,
+        animation_studio: audit.clone(),
+    };
+    let summary_json = json_bytes(&summary, "summary")?;
+    let mut manifest_base = base.manifest.clone();
+    for generated in &mut manifest_base.generated_files {
+        let replacement = match generated.relative_path.as_str() {
+            "reports/materialization-report.json" => Some(identity(&report_json)),
+            "reports/summary.json" => Some(identity(&summary_json)),
+            _ => None,
+        };
+        if let Some(replacement) = replacement {
+            generated.byte_length = replacement.byte_length;
+            generated.sha256 = replacement.sha256;
+        }
+    }
+    let manifest = M6MaterializationManifestV5 {
+        base: manifest_base,
+        animation_studio: audit,
+    };
+    let manifest_json = json_bytes(&manifest, "manifest")?;
+    Ok(M6ModelPackageArtifactV5 {
+        source_glb: base.source_glb,
+        model: base.model,
+        texture: base.texture,
+        appearance_two_da: base.appearance_two_da,
+        hak: base.hak,
+        proof_module: base.proof_module,
+        manifest,
+        package_manifest: base.package_manifest,
+        manifest_json,
+        report,
+        report_json,
+        summary,
+        summary_json,
+        animation_studio_readback,
+        materialized_animations,
+    })
 }
 
 fn apply_automatic_h1_animation_profile_names_v1(
@@ -2332,7 +2891,16 @@ fn build_m6_model_package_with_ingest_v4(
         event_configuration,
         runtime_identity,
         None,
+        None,
     )
+    .map(|built| built.artifact)
+}
+
+struct M6ModelPackageInternalV5 {
+    artifact: M6ModelPackageArtifactV1,
+    animation_studio_materialization: Option<MaterializedCreatureAnimationAuthoringV2>,
+    animation_studio_rig: Option<AnimationStudioRigV1>,
+    writer_readback: crate::mdl::InspectionReport,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2350,7 +2918,8 @@ fn build_m6_model_package_with_ingest_v5(
     )>,
     runtime_identity: &ProceduralCreaturePackageIdentityV1,
     animation_authoring: Option<&CreatureAnimationAuthoringV1>,
-) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
+    animation_studio_authoring: Option<(&CreatureAnimationAuthoringV2, &AnimationStudioDocumentV1)>,
+) -> Result<M6ModelPackageInternalV5, M6PipelineErrorV1> {
     let input_glb_identity = identity(source_glb);
     let input_appearance_identity = identity(appearance_two_da);
     let glb_limits = GlbLimits::default();
@@ -2387,6 +2956,27 @@ fn build_m6_model_package_with_ingest_v5(
             "M6 proof requires one mapped source animation",
         )
     })?;
+    let animation_studio_source_animations = if animation_studio_authoring.is_some() {
+        let mut source_mapping = mapping.clone();
+        apply_authored_h1_source_names_v1(&ingest, &mut source_mapping, false);
+        Some(
+            convert_profile_a_with_animations_v1(&ingest, rig, profile_options, &source_mapping)
+                .map_err(|error| {
+                    pipeline_error("animation", error.code, error.path, error.message)
+                })?
+                .animations
+                .ok_or_else(|| {
+                    pipeline_error(
+                        "animation",
+                        "M6-ANIMATION-MISSING",
+                        "conversion.animations",
+                        "Animation Studio source projection has no mapped animations",
+                    )
+                })?,
+        )
+    } else {
+        None
+    };
     let procedural_animations = if animation_profile
         == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1
     {
@@ -2400,7 +2990,43 @@ fn build_m6_model_package_with_ingest_v5(
     } else {
         None
     };
-    let mut animations = if let Some(authoring) = animation_authoring {
+    let mut animation_studio_rig = animation_studio_authoring
+        .map(|(_, studio)| {
+            animation_studio_rig_from_creature_v1(
+                &creature,
+                &studio.source_revision,
+                animation_studio_source_animations
+                    .as_ref()
+                    .unwrap_or(source_animations)
+                    .clips
+                    .first()
+                    .map(|clip| clip.animation_root.as_str())
+                    .unwrap_or("root"),
+            )
+        })
+        .transpose()?;
+    let mut animation_studio_materialization =
+        if let Some((authoring, studio)) = animation_studio_authoring {
+            Some(
+                materialize_creature_animation_authoring_v2(
+                    animation_studio_source_animations
+                        .as_ref()
+                        .unwrap_or(source_animations),
+                    procedural_animations.as_ref(),
+                    authoring,
+                    studio,
+                    animation_studio_rig
+                        .as_ref()
+                        .expect("V2 authoring creates the Studio rig"),
+                )
+                .map_err(first_animation_studio_pipeline_error)?,
+            )
+        } else {
+            None
+        };
+    let mut animations = if let Some(materialized) = animation_studio_materialization.as_ref() {
+        materialized.animations.clone()
+    } else if let Some(authoring) = animation_authoring {
         materialize_authored_direct_creature_clips_v1(
             source_animations,
             procedural_animations.as_ref(),
@@ -2433,11 +3059,13 @@ fn build_m6_model_package_with_ingest_v5(
         == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1
         && event_configuration.is_none()
     {
-        Some(
-            author_procedural_common_native_events_v1(&animations).map_err(|error| {
-                pipeline_error("animation", error.code, error.path, error.message)
-            })?,
-        )
+        let required = author_procedural_common_native_events_v1(&animations)
+            .map_err(|error| pipeline_error("animation", error.code, error.path, error.message))?;
+        Some(if animation_studio_authoring.is_some() {
+            merge_required_events_with_integrated_authored_v1(&animations, &required)
+        } else {
+            required
+        })
     } else {
         None
     };
@@ -2456,11 +3084,30 @@ fn build_m6_model_package_with_ingest_v5(
     if animation_profile == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1 {
         insert_controllerless_aurora_skin_root_v1(&mut creature, &runtime_identity.model_resref)?;
     }
+    let runtime_root_id = creature
+        .nodes
+        .iter()
+        .find(|node| node.parent_id.is_none())
+        .map(|node| node.id);
     normalize_direct_creature_runtime_root(
         &mut creature,
         &mut animations,
         &runtime_identity.model_resref,
     )?;
+    if let Some(rig) = animation_studio_rig.as_mut() {
+        rig.animation_root = runtime_identity.model_resref.clone();
+        if let Some(runtime_root_id) = runtime_root_id
+            && let Some(root) = rig
+                .nodes
+                .iter_mut()
+                .find(|node| node.node_id == runtime_root_id)
+        {
+            root.name.clone_from(&runtime_identity.model_resref);
+        }
+    }
+    if let Some(materialized) = animation_studio_materialization.as_mut() {
+        materialized.animations = animations.clone();
+    }
     let proof_clip = animations
         .clips
         .iter()
@@ -2526,6 +3173,7 @@ fn build_m6_model_package_with_ingest_v5(
         },
     )
     .map_err(|error| pipeline_error("model", error.code, error.path, error.message))?;
+    let writer_readback = mdl.inspection.clone();
     let animation_behavior = is_full_native_42_profile(animation_profile)
         .then(|| evaluate_direct_creature_animation_behavior_v1(&mdl.inspection));
     if let Some(behavior) = animation_behavior.as_ref()
@@ -2836,21 +3484,60 @@ fn build_m6_model_package_with_ingest_v5(
         authored_animation_conformance,
     };
     let manifest_json = json_bytes(&manifest, "manifest")?;
-    Ok(M6ModelPackageArtifactV1 {
-        source_glb: source_glb.to_vec(),
-        model,
-        texture,
-        appearance_two_da,
-        hak,
-        proof_module: proof_module.payload,
-        manifest,
-        package_manifest,
-        manifest_json,
-        report,
-        report_json,
-        summary,
-        summary_json,
+    Ok(M6ModelPackageInternalV5 {
+        artifact: M6ModelPackageArtifactV1 {
+            source_glb: source_glb.to_vec(),
+            model,
+            texture,
+            appearance_two_da,
+            hak,
+            proof_module: proof_module.payload,
+            manifest,
+            package_manifest,
+            manifest_json,
+            report,
+            report_json,
+            summary,
+            summary_json,
+        },
+        animation_studio_materialization,
+        animation_studio_rig,
+        writer_readback,
     })
+}
+
+fn merge_required_events_with_integrated_authored_v1(
+    animations: &MdlAnimationSetV1,
+    required: &DirectCreatureEventAuthoringV1,
+) -> DirectCreatureEventAuthoringV1 {
+    DirectCreatureEventAuthoringV1 {
+        schema_version: required.schema_version,
+        clips: required
+            .clips
+            .iter()
+            .map(|required_clip| {
+                let mut events = animations
+                    .clips
+                    .iter()
+                    .find(|clip| clip.name.eq_ignore_ascii_case(&required_clip.clip_name))
+                    .map(|clip| clip.events.clone())
+                    .unwrap_or_default();
+                for required_event in &required_clip.events {
+                    if !events
+                        .iter()
+                        .any(|event| event.name.eq_ignore_ascii_case(&required_event.name))
+                    {
+                        events.push(required_event.clone());
+                    }
+                }
+                events.sort_by(|left, right| left.time_seconds.total_cmp(&right.time_seconds));
+                DirectCreatureClipEventAuthoringV1 {
+                    clip_name: required_clip.clip_name.clone(),
+                    events,
+                }
+            })
+            .collect(),
+    }
 }
 
 pub fn materialize_direct_creature_runtime_clips_v1(

@@ -32,6 +32,8 @@ interface SceneViewportProps {
   animationUnavailableReason?: string;
   initialAnimationName?: string | null;
   initialAnimationLoop?: boolean;
+  controlledAnimationTimeSeconds?: number;
+  hideAnimationControls?: boolean;
 }
 
 interface AnimationUiState extends AnimationPlaybackSnapshot {
@@ -109,6 +111,8 @@ export function SceneViewport({
   animationUnavailableReason,
   initialAnimationName,
   initialAnimationLoop = true,
+  controlledAnimationTimeSeconds,
+  hideAnimationControls = false,
 }: SceneViewportProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRuntimeRef = useRef<AnimationPlaybackRuntime | undefined>(undefined);
@@ -200,7 +204,14 @@ export function SceneViewport({
           const selectedSnapshot = inventory.length
             ? animationRuntime.selectClip(requestedIndex >= 0 ? requestedIndex : 0)
             : snapshot;
-          setAnimationUi({ inventory, loading: false, ...selectedSnapshot });
+          const controlledSnapshot = inventory.length
+            && controlledAnimationTimeSeconds !== undefined
+            ? animationRuntime.seek(controlledAnimationTimeSeconds)
+            : selectedSnapshot;
+          if (controlledAnimationTimeSeconds !== undefined) {
+            animationRuntime.setPlaying(false);
+          }
+          setAnimationUi({ inventory, loading: false, ...controlledSnapshot });
         }
 
         if (overlaysEnabled) {
@@ -266,6 +277,20 @@ export function SceneViewport({
     overlaysEnabled,
   ]);
 
+  useEffect(() => {
+    if (controlledAnimationTimeSeconds === undefined) return;
+    const runtime = animationRuntimeRef.current;
+    if (!runtime) return;
+    runtime.setPlaying(false);
+    setAnimationUi((current) => ({
+      ...current,
+      ...runtime.seek(controlledAnimationTimeSeconds),
+    }));
+  }, [
+    animationUi.inventory.length,
+    controlledAnimationTimeSeconds,
+  ]);
+
   const updateAnimation = (snapshot: AnimationPlaybackSnapshot) => {
     setAnimationUi((current) => ({ ...current, ...snapshot }));
   };
@@ -304,7 +329,7 @@ export function SceneViewport({
             ))}
         </fieldset>
       )}
-      {(animationPlaybackEnabled || animationUnavailableReason) && (
+      {((animationPlaybackEnabled && !hideAnimationControls) || animationUnavailableReason) && (
         <section className="viewport__animation" aria-label="Animation player">
           {animationUnavailableReason ? (
             <p>{animationUnavailableReason}</p>

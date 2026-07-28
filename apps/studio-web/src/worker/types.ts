@@ -1,6 +1,7 @@
 export type ModelPackageLaneV1 =
   | "H1_SKINNED_FULL_42"
   | "H1_SKINNED_FULL_42_AUTHORED"
+  | "H1_SKINNED_FULL_42_EDITED"
   | "SKINNED_PROCEDURAL_HUMANOID_42"
   | "M0_STATIC_RIGID";
 
@@ -20,10 +21,37 @@ export type StudioWorkerRequest =
     }
   | {
       requestId: string;
+      type: "INSPECT_EDITABLE_ANIMATION_SOURCE";
+      sourceGlb: ArrayBuffer;
+      clipName?: string;
+    }
+  | {
+      requestId: string;
+      type: "VALIDATE_ANIMATION_STUDIO_DOCUMENT";
+      sourceGlb: ArrayBuffer;
+      animationStudioDocumentJson: string;
+    }
+  | {
+      requestId: string;
+      type: "MATERIALIZE_ANIMATION_STUDIO_DOCUMENT";
+      sourceGlb: ArrayBuffer;
+      animationStudioDocumentJson: string;
+    }
+  | {
+      requestId: string;
+      type: "PREVIEW_AUTHORED_ANIMATION_CLIP";
+      animationStudioDocumentJson: string;
+      clipId: string;
+    }
+  | {
+      requestId: string;
       type: "BUILD_MODEL_PACKAGE";
       sourceGlb: ArrayBuffer;
       appearanceTwoDa: ArrayBuffer;
-      packageLane: Exclude<ModelPackageLaneV1, "H1_SKINNED_FULL_42_AUTHORED">;
+      packageLane: Exclude<
+        ModelPackageLaneV1,
+        "H1_SKINNED_FULL_42_AUTHORED" | "H1_SKINNED_FULL_42_EDITED"
+      >;
     }
   | {
       requestId: string;
@@ -40,6 +68,16 @@ export type StudioWorkerRequest =
       appearanceTwoDa: ArrayBuffer;
       packageLane: "H1_SKINNED_FULL_42_AUTHORED";
       animationAuthoringJson: string;
+      eventAuthoringJson?: string;
+    }
+  | {
+      requestId: string;
+      type: "BUILD_MODEL_PACKAGE";
+      sourceGlb: ArrayBuffer;
+      appearanceTwoDa: ArrayBuffer;
+      packageLane: "H1_SKINNED_FULL_42_EDITED";
+      animationAuthoringJson: string;
+      animationStudioDocumentJson: string;
       eventAuthoringJson?: string;
     }
   | {
@@ -102,6 +140,30 @@ export type StudioWorkerSuccess =
       validationJson: string;
       resolutionJson: string;
       catalogJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "EDITABLE_ANIMATION_SOURCE_INSPECTED";
+      inspectionJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ANIMATION_STUDIO_DOCUMENT_VALIDATED";
+      validationJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ANIMATION_STUDIO_DOCUMENT_MATERIALIZED";
+      materializationJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "AUTHORED_ANIMATION_CLIP_PREVIEWED";
+      previewJson: string;
     }
   | {
       requestId: string;

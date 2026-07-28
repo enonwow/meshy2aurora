@@ -2,6 +2,7 @@ import type {
   BinaryMdlInspectionReport,
   BinaryReadbackValidationEvidence,
   ReadbackAnimation,
+  ReadbackAnimationEvent,
   ReadbackController,
   ReadbackDiagnostic,
   ReadbackMesh,
@@ -50,9 +51,20 @@ function animation(value: unknown, path: string): ReadbackAnimation {
     length: number(item.length, `${path}.length`),
     transition: number(item.transition, `${path}.transition`),
     animationRoot: string(item.animationRoot, `${path}.animationRoot`),
+    events: array(item.events, `${path}.events`).map(
+      (entry, index) => animationEvent(entry, `${path}.events[${index}]`),
+    ),
     nodeTree: {
       roots: array(tree.roots, `${path}.nodeTree.roots`).map((entry, index) => node(entry, `${path}.nodeTree.roots[${index}]`)),
     },
+  };
+}
+
+function animationEvent(value: unknown, path: string): ReadbackAnimationEvent {
+  const item = record(value, path);
+  return {
+    time: number(item.time, `${path}.time`),
+    name: string(item.name, `${path}.name`),
   };
 }
 

@@ -5,6 +5,7 @@ import init, {
   buildMeshyH1ModelPackageV2,
   buildMeshyH1ModelPackageV3,
   buildMeshyH1ModelPackageV4,
+  buildMeshyH1ModelPackageV5,
   buildMeshyProceduralHumanoidModelPackageV1,
   buildMeshyM0StaticRigidPackageV1,
   buildMeshyStaticPlaceablePackageV1,
@@ -15,6 +16,10 @@ import init, {
   inspectTwoDaV2Json,
   inspectM7CorpusIntakeV1Json,
   inspectMeshyStaticPlaceableAuthoringV1,
+  inspectEditableAnimationSourceV1,
+  validateAnimationStudioDocumentV1,
+  materializeAnimationStudioDocumentV1,
+  previewAuthoredAnimationClipV1,
   validateM7CorpusManifestV1Json,
   validateCreatureAnimationAuthoringV1,
   resolveCreatureAnimationMappingV1,
@@ -109,6 +114,50 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         request.animationAuthoringJson,
       ),
       catalogJson: directCreatureAnimationCatalogV1Json(),
+    };
+  }
+  if (request.type === "INSPECT_EDITABLE_ANIMATION_SOURCE") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "EDITABLE_ANIMATION_SOURCE_INSPECTED",
+      inspectionJson: inspectEditableAnimationSourceV1(
+        new Uint8Array(request.sourceGlb),
+        request.clipName,
+      ),
+    };
+  }
+  if (request.type === "VALIDATE_ANIMATION_STUDIO_DOCUMENT") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "ANIMATION_STUDIO_DOCUMENT_VALIDATED",
+      validationJson: validateAnimationStudioDocumentV1(
+        request.animationStudioDocumentJson,
+        new Uint8Array(request.sourceGlb),
+      ),
+    };
+  }
+  if (request.type === "MATERIALIZE_ANIMATION_STUDIO_DOCUMENT") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "ANIMATION_STUDIO_DOCUMENT_MATERIALIZED",
+      materializationJson: materializeAnimationStudioDocumentV1(
+        request.animationStudioDocumentJson,
+        new Uint8Array(request.sourceGlb),
+      ),
+    };
+  }
+  if (request.type === "PREVIEW_AUTHORED_ANIMATION_CLIP") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "AUTHORED_ANIMATION_CLIP_PREVIEWED",
+      previewJson: previewAuthoredAnimationClipV1(
+        request.animationStudioDocumentJson,
+        request.clipId,
+      ),
     };
   }
   if (request.type === "VALIDATE_M7_CORPUS") {
@@ -345,6 +394,14 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
           new Uint8Array(request.sourceGlb),
           new Uint8Array(request.appearanceTwoDa),
           request.animationAuthoringJson,
+          request.eventAuthoringJson,
+        );
+      case "H1_SKINNED_FULL_42_EDITED":
+        return buildMeshyH1ModelPackageV5(
+          new Uint8Array(request.sourceGlb),
+          new Uint8Array(request.appearanceTwoDa),
+          request.animationAuthoringJson,
+          request.animationStudioDocumentJson,
           request.eventAuthoringJson,
         );
       case "H1_SKINNED_FULL_42":

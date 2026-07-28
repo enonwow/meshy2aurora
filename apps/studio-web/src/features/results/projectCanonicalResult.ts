@@ -25,6 +25,7 @@ export interface CanonicalResultSnapshot {
   };
   animationEventEvidence?: CanonicalAnimationEventEvidence;
   animationMappingEvidence?: CanonicalAnimationMappingEvidenceV1;
+  animationStudioEvidence?: CanonicalAnimationStudioEvidenceV1;
   runtimeFixtureContract?: CanonicalM0RuntimeFixtureContract;
   artifacts: WorkerArtifact[];
   reportJson: string;
@@ -115,6 +116,62 @@ export interface CanonicalAnimationMappingEvidenceV1 {
     expectedCustomClipNames: string[];
     materializedCustomClipNames: string[];
   };
+}
+
+export interface CanonicalAnimationStudioUsageV1 {
+  authoredClipId: string;
+  outputClipName: string;
+  usageKind: "BASE_SLOT" | "CUSTOM_ONE_SHOT" | "CUSTOM_PHASE";
+  baseSlot: string | null;
+  customAnimationId: string | null;
+  phase: "START" | "LOOP" | "END" | null;
+}
+
+export interface CanonicalAnimationStudioEvidenceV1 {
+  animationStudioSchemaVersion: 1;
+  animationStudioFingerprintSha256: string;
+  animationStudioRevision: number;
+  creatureAnimationAuthoringSchemaVersion: 2;
+  creatureAnimationAuthoringFingerprintSha256: string;
+  authoredClipCount: number;
+  authoredClipIds: string[];
+  authoredClipOutputNames: string[];
+  authoredEventCount: number;
+  customAssignmentCount: number;
+  sourceRevision: string;
+  readbackStatus: "MATCH";
+  animationStudioReadback: CanonicalAnimationStudioReadbackV1;
+  sourceGlbUnchanged: true;
+  authoredClips: Array<{
+    id: string;
+    outputName: string;
+    kind: "MOTION" | "STATIC_POSE";
+    status: "VALID";
+    revision: number;
+    source: {
+      kind: "BLANK_POSE" | "SOURCE_CLIP_COPY" | "PROCEDURAL_TEMPLATE";
+      sourceRevision: string;
+      sourceClipName: string | null;
+      sourceClipFingerprint: string | null;
+      proceduralTemplate: string | null;
+    };
+    keyframeCount: number;
+    eventCount: number;
+    usages: CanonicalAnimationStudioUsageV1[];
+  }>;
+}
+
+export interface CanonicalAnimationStudioReadbackV1 {
+  schemaVersion: 1;
+  studioFingerprint: string;
+  sourceRevision: string;
+  status: "MATCH";
+  clips: Array<{
+    authoredClipId: string;
+    outputClipName: string;
+    materializedFingerprint: string;
+  }>;
+  diagnostics: [];
 }
 
 export interface CanonicalM0RuntimeResource {
@@ -489,6 +546,260 @@ function animationMappingEvidenceParser(
   };
 }
 
+function animationStudioEvidenceParser(
+  value: unknown,
+  path: string,
+): CanonicalAnimationStudioEvidenceV1 {
+  const item = record(value, path);
+  if (
+    integer(
+      item.animationStudioSchemaVersion,
+      `${path}.animationStudioSchemaVersion`,
+    ) !== 1
+  ) fail(`${path}.animationStudioSchemaVersion`);
+  if (
+    integer(
+      item.creatureAnimationAuthoringSchemaVersion,
+      `${path}.creatureAnimationAuthoringSchemaVersion`,
+    ) !== 2
+  ) fail(`${path}.creatureAnimationAuthoringSchemaVersion`);
+  const authoredClipIds = stringArray(
+    item.authoredClipIds,
+    `${path}.authoredClipIds`,
+  );
+  const authoredClipOutputNames = stringArray(
+    item.authoredClipOutputNames,
+    `${path}.authoredClipOutputNames`,
+  );
+  const authoredClips = array(
+    item.authoredClips,
+    `${path}.authoredClips`,
+  ).map((value, index) => {
+    const clipPath = `${path}.authoredClips[${index}]`;
+    const clip = record(value, clipPath);
+    const source = record(clip.source, `${clipPath}.source`);
+    const kindValue = string(clip.kind, `${clipPath}.kind`);
+    if (kindValue !== "MOTION" && kindValue !== "STATIC_POSE") {
+      fail(`${clipPath}.kind`);
+    }
+    const kind = kindValue as "MOTION" | "STATIC_POSE";
+    if (string(clip.status, `${clipPath}.status`) !== "VALID") {
+      fail(`${clipPath}.status`);
+    }
+    const sourceKindValue = string(source.kind, `${clipPath}.source.kind`);
+    if (
+      sourceKindValue !== "BLANK_POSE"
+      && sourceKindValue !== "SOURCE_CLIP_COPY"
+      && sourceKindValue !== "PROCEDURAL_TEMPLATE"
+    ) fail(`${clipPath}.source.kind`);
+    const sourceKind = sourceKindValue as
+      | "BLANK_POSE"
+      | "SOURCE_CLIP_COPY"
+      | "PROCEDURAL_TEMPLATE";
+    const usages = array(clip.usages, `${clipPath}.usages`).map(
+      (usageValue, usageIndex): CanonicalAnimationStudioUsageV1 => {
+        const usagePath = `${clipPath}.usages[${usageIndex}]`;
+        const usage = record(usageValue, usagePath);
+        const usageKindValue = string(usage.usageKind, `${usagePath}.usageKind`);
+        if (
+          usageKindValue !== "BASE_SLOT"
+          && usageKindValue !== "CUSTOM_ONE_SHOT"
+          && usageKindValue !== "CUSTOM_PHASE"
+        ) fail(`${usagePath}.usageKind`);
+        const usageKind = usageKindValue as
+          | "BASE_SLOT"
+          | "CUSTOM_ONE_SHOT"
+          | "CUSTOM_PHASE";
+        const phaseCandidate = usage.phase === null
+          ? null
+          : string(usage.phase, `${usagePath}.phase`);
+        if (
+          phaseCandidate !== null
+          && phaseCandidate !== "START"
+          && phaseCandidate !== "LOOP"
+          && phaseCandidate !== "END"
+        ) fail(`${usagePath}.phase`);
+        const phaseValue = phaseCandidate as "START" | "LOOP" | "END" | null;
+        return {
+          authoredClipId: string(
+            usage.authoredClipId,
+            `${usagePath}.authoredClipId`,
+          ),
+          outputClipName: string(
+            usage.outputClipName,
+            `${usagePath}.outputClipName`,
+          ),
+          usageKind,
+          baseSlot: nullableString(usage.baseSlot, `${usagePath}.baseSlot`),
+          customAnimationId: nullableString(
+            usage.customAnimationId,
+            `${usagePath}.customAnimationId`,
+          ),
+          phase: phaseValue,
+        };
+      },
+    );
+    return {
+      id: string(clip.id, `${clipPath}.id`),
+      outputName: string(clip.outputName, `${clipPath}.outputName`),
+      kind,
+      status: "VALID" as const,
+      revision: integer(clip.revision, `${clipPath}.revision`),
+      source: {
+        kind: sourceKind,
+        sourceRevision: sha256(
+          source.sourceRevision,
+          `${clipPath}.source.sourceRevision`,
+        ),
+        sourceClipName: nullableString(
+          source.sourceClipName,
+          `${clipPath}.source.sourceClipName`,
+        ),
+        sourceClipFingerprint: nullableString(
+          source.sourceClipFingerprint,
+          `${clipPath}.source.sourceClipFingerprint`,
+        ),
+        proceduralTemplate: nullableString(
+          source.proceduralTemplate,
+          `${clipPath}.source.proceduralTemplate`,
+        ),
+      },
+      keyframeCount: integer(clip.keyframeCount, `${clipPath}.keyframeCount`),
+      eventCount: integer(clip.eventCount, `${clipPath}.eventCount`),
+      usages,
+    };
+  });
+  const authoredClipCount = integer(
+    item.authoredClipCount,
+    `${path}.authoredClipCount`,
+  );
+  const authoredEventCount = integer(
+    item.authoredEventCount,
+    `${path}.authoredEventCount`,
+  );
+  if (
+    authoredClipCount !== authoredClips.length
+    || authoredClipIds.length !== authoredClips.length
+    || authoredClipOutputNames.length !== authoredClips.length
+    || authoredClips.some((clip, index) => (
+      clip.id !== authoredClipIds[index]
+      || clip.outputName !== authoredClipOutputNames[index]
+    ))
+    || authoredClips.reduce((total, clip) => total + clip.eventCount, 0)
+      !== authoredEventCount
+  ) {
+    fail(`${path}.authoredClips`);
+  }
+  if (string(item.readbackStatus, `${path}.readbackStatus`) !== "MATCH") {
+    fail(`${path}.readbackStatus`);
+  }
+  if (!boolean(item.sourceGlbUnchanged, `${path}.sourceGlbUnchanged`)) {
+    fail(`${path}.sourceGlbUnchanged`);
+  }
+  const sourceRevision = sha256(item.sourceRevision, `${path}.sourceRevision`);
+  if (authoredClips.some((clip) => clip.source.sourceRevision !== sourceRevision)) {
+    fail(`${path}.authoredClips.sourceRevision`);
+  }
+  const animationStudioFingerprintSha256 = sha256(
+    item.animationStudioFingerprintSha256,
+    `${path}.animationStudioFingerprintSha256`,
+  );
+  const readbackPath = `${path}.animationStudioReadback`;
+  const readbackItem = record(item.animationStudioReadback, readbackPath);
+  if (
+    integer(readbackItem.schemaVersion, `${readbackPath}.schemaVersion`) !== 1
+    || string(readbackItem.status, `${readbackPath}.status`) !== "MATCH"
+  ) {
+    fail(readbackPath);
+  }
+  const readbackDiagnostics = array(
+    readbackItem.diagnostics,
+    `${readbackPath}.diagnostics`,
+  );
+  if (readbackDiagnostics.length !== 0) {
+    fail(`${readbackPath}.diagnostics`);
+  }
+  const readbackClips = array(
+    readbackItem.clips,
+    `${readbackPath}.clips`,
+  ).map((value, index) => {
+    const clipPath = `${readbackPath}.clips[${index}]`;
+    const clip = record(value, clipPath);
+    return {
+      authoredClipId: string(
+        clip.authoredClipId,
+        `${clipPath}.authoredClipId`,
+      ),
+      outputClipName: string(
+        clip.outputClipName,
+        `${clipPath}.outputClipName`,
+      ),
+      materializedFingerprint: sha256(
+        clip.materializedFingerprint,
+        `${clipPath}.materializedFingerprint`,
+      ),
+    };
+  });
+  const expectedUsageKeys = authoredClips
+    .flatMap(({ usages }) => usages)
+    .map(({ authoredClipId, outputClipName }) => (
+      `${authoredClipId}\0${outputClipName}`
+    ))
+    .sort();
+  const readbackUsageKeys = readbackClips
+    .map(({ authoredClipId, outputClipName }) => (
+      `${authoredClipId}\0${outputClipName}`
+    ))
+    .sort();
+  if (
+    sha256(
+      readbackItem.studioFingerprint,
+      `${readbackPath}.studioFingerprint`,
+    ) !== animationStudioFingerprintSha256
+    || sha256(
+      readbackItem.sourceRevision,
+      `${readbackPath}.sourceRevision`,
+    ) !== sourceRevision
+    || JSON.stringify(readbackUsageKeys) !== JSON.stringify(expectedUsageKeys)
+  ) {
+    fail(readbackPath);
+  }
+  const animationStudioReadback: CanonicalAnimationStudioReadbackV1 = {
+    schemaVersion: 1,
+    studioFingerprint: animationStudioFingerprintSha256,
+    sourceRevision,
+    status: "MATCH",
+    clips: readbackClips,
+    diagnostics: [],
+  };
+  return {
+    animationStudioSchemaVersion: 1,
+    animationStudioFingerprintSha256,
+    animationStudioRevision: integer(
+      item.animationStudioRevision,
+      `${path}.animationStudioRevision`,
+    ),
+    creatureAnimationAuthoringSchemaVersion: 2,
+    creatureAnimationAuthoringFingerprintSha256: sha256(
+      item.creatureAnimationAuthoringFingerprintSha256,
+      `${path}.creatureAnimationAuthoringFingerprintSha256`,
+    ),
+    authoredClipCount,
+    authoredClipIds,
+    authoredClipOutputNames,
+    authoredEventCount,
+    customAssignmentCount: integer(
+      item.customAssignmentCount,
+      `${path}.customAssignmentCount`,
+    ),
+    sourceRevision,
+    readbackStatus: "MATCH",
+    animationStudioReadback,
+    sourceGlbUnchanged: true,
+    authoredClips,
+  };
+}
+
 export function projectCanonicalResult(
   reportJson: string,
   summaryJson: string,
@@ -727,6 +1038,35 @@ export function projectCanonicalResult(
     animationMappingEvidence = reportEvidence;
   }
 
+  let animationStudioEvidence: CanonicalAnimationStudioEvidenceV1 | undefined;
+  if (
+    report.animationStudioSchemaVersion !== undefined
+    || summary.animationStudioSchemaVersion !== undefined
+    || manifest.animationStudioSchemaVersion !== undefined
+  ) {
+    const reportEvidence = animationStudioEvidenceParser(report, "report");
+    const summaryEvidence = animationStudioEvidenceParser(summary, "summary");
+    const manifestEvidence = animationStudioEvidenceParser(manifest, "manifest");
+    if (
+      JSON.stringify(reportEvidence) !== JSON.stringify(summaryEvidence)
+      || JSON.stringify(reportEvidence) !== JSON.stringify(manifestEvidence)
+    ) {
+      throw new Error(
+        "Canonical result identity mismatch at animationStudioEvidence",
+      );
+    }
+    if (
+      reportEvidence.sourceRevision
+        !== sha256(
+          record(manifest.inputGlb, "manifest.inputGlb").sha256,
+          "manifest.inputGlb.sha256",
+        )
+    ) {
+      fail("animationStudioEvidence.sourceRevision");
+    }
+    animationStudioEvidence = reportEvidence;
+  }
+
   let runtimeFixtureContract: CanonicalM0RuntimeFixtureContract | undefined;
   if (status === "M0_MESHY_STATIC_RIGID_PACKAGE_MATERIALIZED") {
     const reportContract = runtimeFixtureContractParser(report.m0RuntimeFixtureContract, "report.m0RuntimeFixtureContract");
@@ -819,6 +1159,7 @@ export function projectCanonicalResult(
     },
     animationEventEvidence,
     animationMappingEvidence,
+    animationStudioEvidence,
     runtimeFixtureContract,
     artifacts: [...artifacts],
     reportJson,

@@ -70,6 +70,7 @@ describe("creature animation build integration", () => {
         length: 1,
         transition: 0,
         animationRoot: "root",
+        events: [],
         nodeTree: { roots: [] },
       })),
       diagnostics: [],

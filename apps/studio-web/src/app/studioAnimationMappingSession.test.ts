@@ -124,5 +124,14 @@ describe("Studio creature animation mapping session", () => {
       diagnostics: [],
     });
     expect(canContinueFromAnimationMapping(validated)).toBe(true);
+
+    const withoutCanonicalFingerprint = studioSessionReducer(state, {
+      type: "ANIMATION_MAPPING_VALIDATED",
+      revision: state.revision,
+      authoringRevision: 2,
+      status: "READY",
+      diagnostics: [],
+    });
+    expect(canContinueFromAnimationMapping(withoutCanonicalFingerprint)).toBe(false);
   });
 });

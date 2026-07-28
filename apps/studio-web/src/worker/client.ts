@@ -14,6 +14,7 @@ export class StudioWorkerClient {
     { type: "module" },
   );
   private readonly pending = new Map<string, Pending>();
+  private animationPreviewRequestId: string | null = null;
 
   constructor() {
     this.worker.addEventListener("message", (event: MessageEvent<StudioWorkerResponse>) => {
@@ -49,6 +50,70 @@ export class StudioWorkerClient {
     });
   }
 
+  inspectEditableAnimationSource(
+    sourceGlb: ArrayBuffer,
+    clipName?: string,
+    requestId = workerRequestId(),
+  ) {
+    return this.request({
+      requestId,
+      type: "INSPECT_EDITABLE_ANIMATION_SOURCE",
+      sourceGlb,
+      clipName,
+    }, [sourceGlb]);
+  }
+
+  validateAnimationStudioDocument(
+    sourceGlb: ArrayBuffer,
+    animationStudioDocumentJson: string,
+    requestId = workerRequestId(),
+  ) {
+    return this.request({
+      requestId,
+      type: "VALIDATE_ANIMATION_STUDIO_DOCUMENT",
+      sourceGlb,
+      animationStudioDocumentJson,
+    }, [sourceGlb]);
+  }
+
+  materializeAnimationStudioDocument(
+    sourceGlb: ArrayBuffer,
+    animationStudioDocumentJson: string,
+    requestId = workerRequestId(),
+  ) {
+    if (this.animationPreviewRequestId) this.cancel(this.animationPreviewRequestId);
+    this.animationPreviewRequestId = requestId;
+    return this.request({
+      requestId,
+      type: "MATERIALIZE_ANIMATION_STUDIO_DOCUMENT",
+      sourceGlb,
+      animationStudioDocumentJson,
+    }, [sourceGlb]).finally(() => {
+      if (this.animationPreviewRequestId === requestId) {
+        this.animationPreviewRequestId = null;
+      }
+    });
+  }
+
+  previewAuthoredAnimationClip(
+    animationStudioDocumentJson: string,
+    clipId: string,
+    requestId = workerRequestId(),
+  ) {
+    if (this.animationPreviewRequestId) this.cancel(this.animationPreviewRequestId);
+    this.animationPreviewRequestId = requestId;
+    return this.request({
+      requestId,
+      type: "PREVIEW_AUTHORED_ANIMATION_CLIP",
+      animationStudioDocumentJson,
+      clipId,
+    }).finally(() => {
+      if (this.animationPreviewRequestId === requestId) {
+        this.animationPreviewRequestId = null;
+      }
+    });
+  }
+
   buildAuthoredCreatureModelPackage(
     sourceGlb: ArrayBuffer,
     appearanceTwoDa: ArrayBuffer,
@@ -65,6 +130,31 @@ export class StudioWorkerClient {
       animationAuthoringJson,
       eventAuthoringJson,
     }, [sourceGlb, appearanceTwoDa]);
+  }
+
+  buildEditedCreatureModelPackage(
+    sourceGlb: ArrayBuffer,
+    appearanceTwoDa: ArrayBuffer,
+    animationAuthoringJson: string,
+    animationStudioDocumentJson: string,
+    eventAuthoringJson?: string,
+    requestId = workerRequestId(),
+  ) {
+    return this.request({
+      requestId,
+      type: "BUILD_MODEL_PACKAGE",
+      sourceGlb,
+      appearanceTwoDa,
+      packageLane: "H1_SKINNED_FULL_42_EDITED",
+      animationAuthoringJson,
+      animationStudioDocumentJson,
+      eventAuthoringJson,
+    }, [sourceGlb, appearanceTwoDa]);
+  }
+
+  cancelAnimationStudioPreviewBuild() {
+    if (!this.animationPreviewRequestId) return false;
+    return this.cancel(this.animationPreviewRequestId);
   }
 
   cancel(requestId: string) {

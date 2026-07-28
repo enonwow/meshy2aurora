@@ -3,6 +3,10 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type {
+  AnimationStudioDocumentV1,
+  CreatureAnimationAuthoringV2,
+} from "../animation-studio/types";
 import { createCreatureAnimationAuthoringV1 } from "./state";
 import { CreatureAnimationMappingStep } from "./CreatureAnimationMappingStep";
 
@@ -15,6 +19,8 @@ afterEach(async () => {
     roots.splice(0).forEach((root) => root.unmount());
   });
   document.body.replaceChildren();
+  window.localStorage.clear();
+  window.history.replaceState(null, "", "/");
 });
 
 describe("CreatureAnimationMappingStep", () => {
@@ -131,5 +137,107 @@ describe("CreatureAnimationMappingStep", () => {
       .find(({ textContent }) => textContent === "Apply safe suggestions")!
       .click();
     expect(onApplySuggestions).toHaveBeenCalledOnce();
+  });
+
+  it("keeps Create & edit inside step 3 and restores the deep-linked sub-mode", async () => {
+    window.history.replaceState(null, "", "/?animationMode=edit");
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <CreatureAnimationMappingStep
+          authoring={createCreatureAnimationAuthoringV1("sha256:source", "S")}
+          inspection={{ sourceClips: [] }}
+          saveState={{ kind: "SAVED" }}
+          canContinue={false}
+          onBack={vi.fn()}
+          onContinue={vi.fn()}
+          onApplySuggestions={vi.fn()}
+          animationStudio={<div data-testid="animation-studio">Editor workspace</div>}
+        />,
+      );
+    });
+    expect(container.querySelector('[data-testid="animation-studio"]')).not.toBeNull();
+    expect(container.textContent).toContain("Creature Animation Mapping");
+    expect(container.textContent).not.toContain("Continue to Build");
+    expect(window.localStorage.getItem("m2a.animationMapping.mode.v1")).toBe("EDIT");
+    expect(new URL(window.location.href).searchParams.get("animationMode")).toBe("edit");
+
+    const mapButton = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+      .find(({ textContent }) => textContent?.includes("Map animations"))!;
+    await act(async () => mapButton.click());
+    expect(container.querySelector('[data-testid="animation-studio"]')).toBeNull();
+    expect(container.textContent).toContain("Continue to Build");
+  });
+
+  it("opens the saved Custom picker as the fourth source realization without manual IDs", async () => {
+    const sourceRevision = "a".repeat(64);
+    const studio: AnimationStudioDocumentV1 = {
+      schemaVersion: 1,
+      sourceRevision,
+      authoringRevision: 1,
+      status: "VALID",
+      authoredClips: [],
+    };
+    const authoringV2: CreatureAnimationAuthoringV2 = {
+      schemaVersion: 2,
+      profile: "DIRECT_CREATURE_S_L_BASE_42_AUTHORING_V1",
+      modelType: "S",
+      sourceRevision,
+      authoringRevision: 1,
+      assignments: [],
+      fallbacks: [],
+      customAnimations: [],
+    };
+    const onCreate = vi.fn();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+
+    await act(async () => {
+      root.render(
+        <CreatureAnimationMappingStep
+          authoring={createCreatureAnimationAuthoringV1(sourceRevision, "S")}
+          inspection={{ sourceClips: [] }}
+          saveState={{ kind: "SAVED" }}
+          canContinue={false}
+          onBack={vi.fn()}
+          onContinue={vi.fn()}
+          onApplySuggestions={vi.fn()}
+          onAuthoringEvent={vi.fn()}
+          animationStudioDocument={studio}
+          animationAuthoringV2={authoringV2}
+          onAnimationAuthoringV2Change={vi.fn()}
+          onCreateAuthoredAnimation={onCreate}
+          onOpenAuthoredAnimation={vi.fn()}
+        />,
+      );
+    });
+
+    expect(container.querySelector(".custom-animation-mapping-panel")).toBeNull();
+    const realization = container.querySelector<HTMLElement>(
+      '[role="radiogroup"][aria-label="Source realization"]',
+    )!;
+    const custom = realization.querySelector<HTMLInputElement>(
+      'input[value="CUSTOM"]',
+    )!;
+    await act(async () => custom.click());
+
+    expect(custom.checked).toBe(true);
+    expect(container.querySelector(".custom-animation-mapping-panel")).not.toBeNull();
+    expect(container.querySelector('[aria-label="Saved Custom animations"]'))
+      .not.toBeNull();
+    expect(container.querySelector('input[aria-label="Custom animation ID"]'))
+      .toBeNull();
+    expect(container.querySelector('input[aria-label="Custom animation name"]'))
+      .toBeNull();
+
+    const create = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find(({ textContent }) => textContent === "+ Create new animation")!;
+    await act(async () => create.click());
+    expect(onCreate).toHaveBeenCalledOnce();
   });
 });

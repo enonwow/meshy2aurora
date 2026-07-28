@@ -27,7 +27,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["tests/browser/**/*.integration.ts"],
+    include: ["tests/browser/**/*.integration.{ts,tsx}"],
     fileParallelism: false,
     browser: {
       enabled: true,

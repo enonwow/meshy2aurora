@@ -23,6 +23,13 @@ describe("Studio workflow", () => {
     expect(getWorkflowStepsForTarget("TILE")).not.toContain("ANIMATION_MAPPING");
   });
 
+  it("keeps Create & edit as a sub-mode of Animation Mapping instead of a seventh workflow step", () => {
+    expect(getWorkflowStepsForTarget("CREATURE")).toHaveLength(6);
+    expect(getWorkflowStepsForTarget("CREATURE")).toContain("ANIMATION_MAPPING");
+    expect(getWorkflowStepsForTarget("CREATURE")).not.toContain("ANIMATION_STUDIO");
+    expect(getWorkflowStepsForTarget("CREATURE")).not.toContain("CREATE_EDIT");
+  });
+
   it("compares steps using workflow order", () => {
     expect(compareWorkflowSteps("SOURCE", "SOURCE")).toBe(0);
     expect(compareWorkflowSteps("INSPECT", "ANIMATION_MAPPING")).toBeLessThan(0);

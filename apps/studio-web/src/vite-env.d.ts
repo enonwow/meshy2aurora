@@ -76,10 +76,42 @@ declare module "@m2a-wasm" {
   export function resolveCreatureAnimationMappingV1(
     animationAuthoringJson: string,
   ): string;
+  export function inspectEditableAnimationSourceV1(
+    sourceGlb: Uint8Array,
+    clipName?: string,
+  ): string;
+  export function validateAnimationStudioDocumentV1(
+    animationStudioDocumentJson: string,
+    sourceGlb: Uint8Array,
+  ): string;
+  export function materializeAnimationStudioDocumentV1(
+    animationStudioDocumentJson: string,
+    sourceGlb: Uint8Array,
+  ): string;
+  export function previewAuthoredAnimationClipV1(
+    animationStudioDocumentJson: string,
+    clipId: string,
+  ): string;
   export function buildMeshyH1ModelPackageV4(
     sourceGlb: Uint8Array,
     appearanceTwoDa: Uint8Array,
     animationAuthoringJson: string,
+    eventAuthoringJson?: string,
+  ): {
+    readonly reportJson: string;
+    readonly manifestJson: string;
+    readonly summaryJson: string;
+    readonly readbackJson: string;
+    takeHakBytes(): Uint8Array;
+    takeModelBytes(): Uint8Array;
+    takeProofModuleBytes(): Uint8Array;
+    free(): void;
+  };
+  export function buildMeshyH1ModelPackageV5(
+    sourceGlb: Uint8Array,
+    appearanceTwoDa: Uint8Array,
+    animationAuthoringJson: string,
+    animationStudioDocumentJson: string,
     eventAuthoringJson?: string,
   ): {
     readonly reportJson: string;

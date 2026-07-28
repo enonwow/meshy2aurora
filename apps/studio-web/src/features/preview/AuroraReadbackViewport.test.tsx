@@ -62,6 +62,7 @@ const readback: BinaryMdlInspectionReport = {
     length: 1,
     transition: 0,
     animationRoot: "body",
+    events: [],
     nodeTree: {
       roots: [{
         offset: 24,

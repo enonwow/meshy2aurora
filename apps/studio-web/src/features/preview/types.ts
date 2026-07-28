@@ -47,12 +47,18 @@ export interface ReadbackNode {
   children: ReadbackNode[];
 }
 
+export interface ReadbackAnimationEvent {
+  time: number;
+  name: string;
+}
+
 export interface ReadbackAnimation {
   offset: number;
   name: string;
   length: number;
   transition: number;
   animationRoot: string;
+  events: ReadbackAnimationEvent[];
   nodeTree: { roots: ReadbackNode[] };
 }
 

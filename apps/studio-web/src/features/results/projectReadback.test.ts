@@ -28,7 +28,15 @@ const valid = () => ({
       children: [],
     }],
   },
-  animations: [],
+  animations: [{
+    offset: 48,
+    name: "owned_wave",
+    length: 1,
+    transition: 0.1,
+    animationRoot: "root",
+    events: [{ time: 0.5, name: "impact" }],
+    nodeTree: { roots: [] },
+  }],
   diagnostics: [{ schemaVersion: 1, code: "NOTE", severity: "INFO", offset: 12, context: "owned" }],
 });
 
@@ -108,6 +116,11 @@ describe("canonical readback projector", () => {
     ["wrong nested controller", (() => {
       const value = valid();
       value.nodeTree.roots[0].controllers[0].values = [[0, "bad" as unknown as number, 2]];
+      return JSON.stringify(value);
+    })()],
+    ["wrong animation event", (() => {
+      const value = valid();
+      value.animations[0].events = [{ time: Number.NaN, name: "impact" }];
       return JSON.stringify(value);
     })()],
     ["wrong diagnostic", JSON.stringify({ ...valid(), diagnostics: [{ schemaVersion: 1, code: "X" }] })],

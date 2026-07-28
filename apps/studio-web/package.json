@@ -10,7 +10,8 @@
     "build": "npm run build:wasm && tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
-    "test:worker-integration": "npm run build:wasm && node tests/prepare-worker-fixture.mjs && vitest run --config vitest.worker-integration.config.ts"
+    "test:browser-persistence": "vitest run --config src/features/animation-studio/vitest.browser.config.ts",
+    "test:worker-integration": "npm run build:wasm && node tests/prepare-worker-fixture.mjs && vitest run --config vitest.worker-integration.config.ts && npm run test:browser-persistence"
   },
   "dependencies": {
     "react": "latest",
