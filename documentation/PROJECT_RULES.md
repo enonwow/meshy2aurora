@@ -2,8 +2,18 @@
 
 ## 0. Kanoniczny workspace — HARD STOP
 
-Jedynym repozytorium i zapisywalnym workspace projektu jest
-`C:\Projects\meshy2aurora`.
+Kanoniczne metadane repozytorium i glowny zapisywalny workspace projektu sa w:
+
+`C:\Projects\meshy2aurora`
+
+Decyzja wlasciciela z 2026-07-28 dopuszcza jeden dodatkowy, rownolegly
+worktree:
+
+`C:\Projects\meshy2aurora\.worktrees\animation`
+
+Wyjatek jest wazny tylko dla brancha `animation` polaczonego ze wspolnym Git
+directory `C:\Projects\meshy2aurora\.git`. Inne worktree, klony, sciezki i
+polaczenia branch/path pozostaja zabronione.
 
 `C:\Users\enonw\Documents\meshy2aurora` jest sciezka bezwzglednie zakazana.
 Nie wolno tam tworzyc, edytowac, stage'owac, kopiowac, migrowac, testowac,
@@ -11,10 +21,10 @@ budowac ani przechowywac plikow tymczasowych projektu. Nie jest to klon,
 staging, scratch, mirror ani fallback. Wlasciciel nigdy nie wskazal ani nie
 autoryzowal tej sciezki.
 
-Kazdy agent i subagent przed pierwszym zapisem musi rozwiazac repo root. Jezeli
-nie jest nim dokladnie `C:\Projects\meshy2aurora`, ma wykonac HARD STOP bez
-tworzenia plikow i bez obchodzenia problemu przez drugi katalog. Task trzeba
-wznowic z repo kanonicznym jako workspace root. Pelny kontrakt znajduje sie w
+Kazdy agent i subagent przed pierwszym zapisem musi rozwiazac repo root. Musi
+nim byc dokladnie glowny workspace albo zatwierdzony worktree `animation`
+opisany powyzej. Kazdy inny wynik oznacza HARD STOP bez tworzenia plikow i bez
+obchodzenia problemu przez kolejny katalog. Pelny kontrakt znajduje sie w
 `documentation/CANONICAL_WORKSPACE.md` i root `AGENTS.md`.
 
 Obowiazkowy preflight:
@@ -23,10 +33,14 @@ Obowiazkowy preflight:
 
 ## 1. Dokumentacja
 
-Cala dokumentacja projektu znajduje sie w folderze `C:\Projects\meshy2aurora\documentation` i tam ma byc dopisywana. Nie tworzymy rozproszonych notatek poza tym folderem bez rownoczesnego wpisu lub przeniesienia do `documentation`.
+Cala dokumentacja projektu znajduje sie w katalogu `documentation` aktywnego,
+zatwierdzonego worktree i tam ma byc dopisywana. Nie tworzymy rozproszonych
+notatek poza tym folderem bez rownoczesnego wpisu lub przeniesienia do
+`documentation`.
 
-Foldery o podobnej nazwie poza `C:\Projects\meshy2aurora` nie sa kanoniczne
-dla tego projektu i nie wolno uzywac ich nawet jako tymczasowego stagingu.
+Foldery o podobnej nazwie poza dwoma dokladnie zatwierdzonymi rootami nie sa
+kanoniczne dla tego projektu i nie wolno uzywac ich nawet jako tymczasowego
+stagingu.
 
 ### 1.1 Rejestr istotnych problemow i wynikow
 

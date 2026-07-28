@@ -1,15 +1,22 @@
 # Canonical workspace invariant
 
-<!-- WORKSPACE-INVARIANT: Canonical repo C:\Projects\meshy2aurora. Never use C:\Users\enonw\Documents\meshy2aurora for project work. -->
+<!-- WORKSPACE-INVARIANT: Canonical Git metadata C:\Projects\meshy2aurora\.git; approved roots C:\Projects\meshy2aurora and its exact .worktrees\animation worktree. Never use C:\Users\enonw\Documents\meshy2aurora for project work. -->
 
 Status: `MANDATORY / HARD STOP`
 
-## One project location
+## One repository, two approved worktree roots
 
-The only canonical repository, implementation target, documentation root and
-place for project-local temporary work is:
+The canonical Git metadata and primary worktree are:
 
 `C:\Projects\meshy2aurora`
+
+The owner decision of 2026-07-28 authorizes exactly one parallel worktree:
+
+`C:\Projects\meshy2aurora\.worktrees\animation`
+
+The exception is valid only while the exact worktree is on branch `animation`
+and resolves its Git common directory to `C:\Projects\meshy2aurora\.git`.
+No other worktree, clone, sibling path or branch/path pairing is approved.
 
 The following path is explicitly forbidden:
 
@@ -25,13 +32,15 @@ canonical repository is outside the current sandbox.
 Before the first write, every root agent, subagent and local automation must:
 
 1. resolve the repository root;
-2. confirm it is exactly `C:\Projects\meshy2aurora`;
-3. stop without writing when the check fails;
-4. resume only in a task whose workspace root is the canonical repository.
+2. confirm it is exactly the primary root or the approved `animation` root;
+3. for the parallel root, confirm branch `animation` and the canonical Git
+   common directory;
+4. stop without writing when the check fails;
+5. resume only in a task whose workspace root is approved.
 
 It is forbidden to prepare changes in another similarly named folder and copy
 them later. A missing permission to the canonical repository is a workspace
-configuration problem, not permission to create a second worktree.
+configuration problem, not permission to create another worktree.
 
 Read-only diagnosis may identify the mismatch, but it must not create project
 files, Git objects, tests, build outputs or notes outside the canonical repo.
@@ -44,6 +53,8 @@ documents without rewriting historical snapshots or `*-cloud.md` files.
 
 The visible source of truth is this document together with `PROJECT_RULES.md`,
 root `AGENTS.md`, `documentation/AGENTS.md` and `orchestrator-state.yaml`.
+The exception applies only on branch `animation`; it does not authorize
+additional worktrees from either approved root.
 
 ## Consolidation record
 

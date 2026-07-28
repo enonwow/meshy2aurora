@@ -2,9 +2,18 @@
 
 ## Canonical workspace — HARD STOP
 
-The only canonical repository and writable project workspace is:
+The canonical repository and primary writable project workspace is:
 
 `C:\Projects\meshy2aurora`
+
+One parallel worktree is explicitly authorized by the owner on 2026-07-28:
+
+`C:\Projects\meshy2aurora\.worktrees\animation`
+
+This exception is valid only when that exact path is checked out on branch
+`animation` and its Git common directory is the canonical repository's
+`C:\Projects\meshy2aurora\.git`. No other worktree, clone, sibling directory or
+branch/path pairing is authorized.
 
 The following path is forbidden for every project operation:
 
@@ -19,13 +28,13 @@ Before any implementation or documentation write, run:
 `powershell -NoProfile -ExecutionPolicy Bypass -File assert-canonical-workspace.ps1`
 
 The check must resolve the repository root.
-If it is not exactly `C:\Projects\meshy2aurora`, stop. Do not work around the
-problem by writing elsewhere and do not repeatedly request permissions for
-out-of-workspace writes. Reopen or resume the task with the canonical repository
-as its workspace root.
+It must resolve either the primary root or the exact authorized `animation`
+worktree above. Otherwise stop. Do not work around the problem by writing
+elsewhere and do not repeatedly request permissions for out-of-workspace
+writes. Reopen or resume the task with an approved workspace root.
 
-All durable project documentation belongs in
-`C:\Projects\meshy2aurora\documentation`. Read
+All durable project documentation belongs in the active approved worktree's
+`documentation` directory. Read
 `documentation/PROJECT_RULES.md` and
 `documentation/CANONICAL_WORKSPACE.md` before changing the project.
 
