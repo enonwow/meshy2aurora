@@ -6,12 +6,14 @@
 
 - [M0 runtime conformance/state-projection fix — offline evidence (2026-07-21)](evidence/m0-runtime-conformance-state-projection-fix-2026-07-21.md)
 
-> **HARD STOP — workspace:** jedynym repo projektu jest
-> `C:\Projects\meshy2aurora`. Nigdy nie uzywaj
+> **HARD STOP — workspace:** kanoniczne metadane Git sa w
+> `C:\Projects\meshy2aurora`; branch `animation` ma jeden jawnie zatwierdzony
+> worktree `C:\Projects\meshy2aurora\.worktrees\animation`. Nigdy nie uzywaj
 > `C:\Users\enonw\Documents\meshy2aurora`, nawet jako stagingu, scratcha lub
 > miejsca tymczasowego. Szczegoly: [CANONICAL_WORKSPACE.md](CANONICAL_WORKSPACE.md).
 
-Ten folder jest jedynym miejscem dokumentacji projektu `meshy2aurora`.
+Ten folder jest miejscem dokumentacji aktywnego, zatwierdzonego worktree
+projektu `meshy2aurora`.
 
 Przed uzyciem starszego dokumentu sprawdz jego klase w [status-dokumentacji-web-2026-07-10-codex.md](status-dokumentacji-web-2026-07-10-codex.md). D11-D14 i aktywne dokumenty webowe maja pierwszenstwo przed historycznymi rekomendacjami CLI/Node/aurora-web.
 
@@ -57,6 +59,7 @@ Aktualny kierunek po audycie 2026-07-09:
 - [evidence/p8-s1-collision-v3-ascii-pwk-ready-for-owner-proof-2026-07-25.md](evidence/p8-s1-collision-v3-ascii-pwk-ready-for-owner-proof-2026-07-25.md) - exact V3 po poprawce: ASCII PWK, hashe MOD/HAK/PWK, offline gates i checklista testu kolizji przez wlasciciela.
 - [mdx-polityka-codex.md](mdx-polityka-codex.md) - aktywna polityka appended volatile/MDX dla profilu A.
 - [animacje-kontrakt-profil-a-codex.md](animacje-kontrakt-profil-a-codex.md) - self-contained kierunek animacji oraz korekta faktow o `c_kocrachn`/`c_Horror`.
+- [audyt-meshy-api-animacje-2026-07-28-codex.md](audyt-meshy-api-animacje-2026-07-28-codex.md) - aktualny kontrakt Rigging/Animation API, snapshot 678 presetow, koszty, luki Bridge oraz plan bezpiecznego wieloklipowego pipeline Meshy -> Aurora.
 - [hak-2da-gff-crosswalk-codex.md](hak-2da-gff-crosswalk-codex.md) - kontrakt writerow HAK/ERF, 2DA i GFF oraz generated module proof.
 - [m0-runtime-fixture-standard.md](m0-runtime-fixture-standard.md) - jeden generowany Area, tile, entry point i pozycja fixture'a dla kolejnych testów eksportu Meshy M0 w Aurora/NWN.
 - [korpus-referencyjny-mdl-codex.md](korpus-referencyjny-mdl-codex.md) - polityka wielomodelowej regresji bez kopiowania retail/CEP payloadow do repo.
