@@ -60,6 +60,7 @@ Aktualny kierunek po audycie 2026-07-09:
 - [mdx-polityka-codex.md](mdx-polityka-codex.md) - aktywna polityka appended volatile/MDX dla profilu A.
 - [animacje-kontrakt-profil-a-codex.md](animacje-kontrakt-profil-a-codex.md) - self-contained kierunek animacji oraz korekta faktow o `c_kocrachn`/`c_Horror`.
 - [audyt-meshy-api-animacje-2026-07-28-codex.md](audyt-meshy-api-animacje-2026-07-28-codex.md) - aktualny kontrakt Rigging/Animation API, snapshot 678 presetow, koszty, luki Bridge oraz plan bezpiecznego wieloklipowego pipeline Meshy -> Aurora.
+- [audyt-aplikacji-creature-animacje-2026-07-28-codex.md](audyt-aplikacji-creature-animacje-2026-07-28-codex.md) - audyt Core/WASM/Studio pod katem modeli Creature i animacji: mocne bramki offline, blokery P0 przeplywu produktowego, macierz gotowosci i kolejnosc implementacji.
 - [hak-2da-gff-crosswalk-codex.md](hak-2da-gff-crosswalk-codex.md) - kontrakt writerow HAK/ERF, 2DA i GFF oraz generated module proof.
 - [m0-runtime-fixture-standard.md](m0-runtime-fixture-standard.md) - jeden generowany Area, tile, entry point i pozycja fixture'a dla kolejnych testów eksportu Meshy M0 w Aurora/NWN.
 - [korpus-referencyjny-mdl-codex.md](korpus-referencyjny-mdl-codex.md) - polityka wielomodelowej regresji bez kopiowania retail/CEP payloadow do repo.
