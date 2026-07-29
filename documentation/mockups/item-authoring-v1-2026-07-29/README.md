@@ -23,22 +23,37 @@ Najważniejsze decyzje:
 - nie ma osobnych trybów `Shield`, `Weapon` ani innych kategorii użytkowych;
 - użytkownik wybiera rekord `BaseItem`, a Studio odczytuje z `baseitems.2da`
   `ItemClass`, `ModelType`, slot wyposażenia i rozmiar ikony;
+- Aurora ma cztery formalne profile `ModelType`, ale trzy schematy geometrii:
+  `1`, `3` albo `19` partów;
+- `ModelType 0` oznacza jeden `ModelPart1` bez kanałów kolorów, `ModelType 1`
+  ten sam jednopartowy schemat z sześcioma kanałami materiałowymi,
+  `ModelType 2` trzy party `Bottom/Middle/Top`, a `ModelType 3` dziewiętnaście
+  partów pancerza oraz sześć kanałów kolorów;
 - `ModelType` wyznacza schemat wymaganych slotów, ale nie tworzy jednego
-  zbiorczego modelu;
+  zbiorczego modelu; tarcza jest demonstracyjnie `ModelType 0`, a potion
+  `ModelType 2`, więc klasy użytkowe nie mogą sterować pipeline’em;
 - każdy part ma własne źródło, numer wariantu, resref MDL, teksturę oraz
   transform w przestrzeni złożenia;
 - UTI zapisuje numery partów, a runtime składa odpowiadające im zasoby MDL;
-- złożony podgląd i ikona powstają z całego zestawu partów; podgląd nie jest
-  dodatkowym zasobem MDL;
+- transformy ze Studio są wypalane do kontrolerów węzłów każdego MDL; UTI
+  pozostaje wyłącznie numerycznym wyborem wariantów;
+- złożony podgląd nie jest dodatkowym zasobem MDL;
+- ikona nie jest renderem kamery 3D: Aurora składa na płótnie ekwipunku osobne
+  warstwy `i…_b_…`, `i…_m_…` i `i…_t_…`;
 - wybrany w mockupie `BaseItem 1 · Longsword · ModelType 2` jest scenariuszem
   demonstracyjnym pokazującym trzy sloty `B/M/T`;
 - sposób składania modelu wynika z `ModelType`, nie z ręcznie wybranej rodziny;
-- MDL, ikona i UTI mają osobne tożsamości zasobów;
+- MDL, warstwy ikon i UTI mają osobne tożsamości zasobów; resrefy modeli 3D
+  nie mają prefiksu `i`, a resrefy ikon go mają;
 - tryby `Composed`, `Exploded` oraz `Icon` pokazują odpowiednio wynik złożenia,
-  osobne zasoby partów i ikonę całego przedmiotu;
-- transform i pivot są rozwiązywane per part, a nie przez Meshy `auto_size`;
+  osobne zasoby partów i kompozycję trzech warstw 2D;
+- transform i pivot są rozwiązywane per part, wypalane do MDL i nie zależą od
+  Meshy `auto_size`;
 - limit produktu wynosi 300 000 trójkątów;
 - budżet geometrii jest liczony dla sumy partów jednego przedmiotu;
+- niezależna granica strumienia binarnego pozostaje równa 65 535 indeksom,
+  czyli 21 845 trójkątom na jeden strumień; większa geometria jest dzielona
+  deterministycznie bez kasowania trójkątów;
 - interfejs nie deklaruje sukcesu wizualnego Toolset/NWN;
 - końcowy proof pozostaje po stronie właściciela.
 
@@ -53,7 +68,9 @@ kolizji zasobów przed ich przydzieleniem.
 - `app.js` — lokalna nawigacja, zakładki i tryby podglądu;
 - `01-item-target.png` — wybór opcji Item;
 - `02-prepare-item.png` — przygotowanie przykładowego przedmiotu;
-- `03-review-package.png` — przegląd paczki.
+- `03-review-package.png` — przegląd paczki;
+- `04-icon-layers.png` — trzy osobne warstwy ikon `B/M/T`;
+- `05-transform-bake.png` — projekcja transformu ze Studio do MDL i UTI.
 
 Mockup jest samodzielnym prototypem dokumentacyjnym. Nie uruchamia Meshy API,
 nie tworzy MDL/UTI/HAK/MOD i nie jest dowodem Aurora Toolset ani NWN.
@@ -82,12 +99,23 @@ Następnie otwórz:
 
 ![Review Item package](03-review-package.png)
 
-Kontrola 2026-07-29:
+### Warstwy ikony
+
+![Icon layers](04-icon-layers.png)
+
+### Bake transformacji
+
+![Transform bake](05-transform-bake.png)
+
+Kontrola 2026-07-30:
 
 - [x] trzy stany wyrenderowane i sprawdzone w lokalnej przeglądarce;
 - [x] nawigacja Source → Prepare Item → Review Output działa;
 - [x] widoki Composed, Exploded oraz Icon przełączają się;
 - [x] zakładki Parts, Transform, Icon i Checks przełączają się;
 - [x] konsola przeglądarki bez błędów i ostrzeżeń;
+- [x] ekran Source pokazuje 4 profile `ModelType` i 3 schematy `1/3/19`;
+- [x] transform jest jawnie wypalany do MDL, a UTI pozostaje numeryczne;
+- [x] ikona używa osobnych warstw `i…_b`, `i…_m` i `i…_t` na płótnie 2D;
 - [x] mock rozdziela MDL, ikonę, UTI i proof package;
 - [x] mock nie deklaruje sukcesu wizualnego Toolset/NWN.

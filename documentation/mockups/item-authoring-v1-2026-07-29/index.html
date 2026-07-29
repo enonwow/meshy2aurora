@@ -70,6 +70,41 @@
               <span class="contract-chip">No manual item categories</span>
             </div>
 
+            <section class="profile-overview" aria-label="Aurora item ModelType profiles">
+              <header>
+                <div>
+                  <p class="eyebrow">Aurora item anatomy</p>
+                  <h3>4 formal ModelTypes · 3 geometry schemas</h3>
+                </div>
+                <div class="geometry-family-pills" aria-label="Geometry part counts">
+                  <span>1 part</span><span>3 parts</span><span>19 parts</span>
+                </div>
+              </header>
+              <div class="profile-grid">
+                <article class="profile-card">
+                  <span class="profile-index">0</span>
+                  <div><strong>Single MDL</strong><small>ModelPart1 · 0 color channels</small><em>Shield, ring</em></div>
+                  <b>1 part</b>
+                </article>
+                <article class="profile-card">
+                  <span class="profile-index">1</span>
+                  <div><strong>Single MDL + colors</strong><small>ModelPart1 · 6 material channels</small><em>Helmet, cloak</em></div>
+                  <b>1 part</b>
+                </article>
+                <article class="profile-card profile-card--selected">
+                  <span class="profile-index">2</span>
+                  <div><strong>Bottom · Middle · Top</strong><small>ModelPart1/B · Part2/M · Part3/T</small><em>Longsword, potion</em></div>
+                  <b>3 parts</b>
+                </article>
+                <article class="profile-card">
+                  <span class="profile-index">3</span>
+                  <div><strong>Body-part assembly</strong><small>19 model parts · 6 color channels</small><em>Armor</em></div>
+                  <b>19 parts</b>
+                </article>
+              </div>
+              <p class="profile-rule"><span>RULE</span> Product flow resolves <code>UTI.BaseItem → baseitems.2da.ModelType</code>. It never asks “weapon or shield?”.</p>
+            </section>
+
             <div class="contract-resolver">
               <article class="resolver-card">
                 <span class="resolver-step">1</span>
@@ -94,9 +129,9 @@
               <article class="input-card">
                 <header><span class="input-icon">⬡</span><div><strong>Part sources</strong><small>One source model assigned to every required part slot</small></div><b>required</b></header>
                 <div class="part-source-stack">
-                  <div><span>B</span><p><strong>blade.glb</strong><small>Part1 · 9,140 triangles</small></p><b>assigned</b></div>
-                  <div><span>M</span><p><strong>crossguard_grip.glb</strong><small>Part2 · 5,120 triangles</small></p><b>assigned</b></div>
-                  <div><span>T</span><p><strong>pommel.glb</strong><small>Part3 · 1,204 triangles</small></p><b>assigned</b></div>
+                  <div><span>B</span><p><strong>bottom.glb</strong><small>Bottom · ModelPart1 · 9,140 triangles</small></p><b>assigned</b></div>
+                  <div><span>M</span><p><strong>middle.glb</strong><small>Middle · ModelPart2 · 5,120 triangles</small></p><b>assigned</b></div>
+                  <div><span>T</span><p><strong>top.glb</strong><small>Top · ModelPart3 · 1,204 triangles</small></p><b>assigned</b></div>
                 </div>
                 <button class="meshy-action" type="button"><span>✦</span><div><strong>Add or generate a part</strong><small>Meshy source → inspect → assign to B, M or T</small></div><i>Open →</i></button>
               </article>
@@ -113,6 +148,7 @@
                   <select>
                     <option>0 · Shortsword · ModelType 2</option>
                     <option selected>1 · Longsword · ModelType 2</option>
+                    <option>6 · Potion · ModelType 2</option>
                     <option>14 · Small Shield · ModelType 0</option>
                     <option>17 · Helmet · ModelType 1</option>
                     <option>56 · Large Shield · ModelType 0</option>
@@ -131,9 +167,9 @@
               <div><dt>BaseItem</dt><dd><strong>1</strong><small>Longsword</small></dd></div>
               <div><dt>ItemClass</dt><dd><code>WSwLs</code></dd></div>
               <div><dt>Part schema</dt><dd><strong>B · M · T</strong><small>ModelType 2</small></dd></div>
-              <div><dt>Geometry budget</dt><dd><strong>15,464 / 20,000</strong><small>sum of all parts</small></dd></div>
+              <div><dt>Geometry budget</dt><dd><strong>15,464 / 300,000</strong><small>sum of all parts</small></dd></div>
               <div><dt>Texture policy</dt><dd><strong>1 diffuse / part</strong><small>three TGA outputs</small></dd></div>
-              <div><dt>Outputs</dt><dd><strong>3 MDL · 3 TGA · UTI</strong><small>icon + HAK/MOD</small></dd></div>
+              <div><dt>Outputs</dt><dd><strong>3 MDL · 6 TGA · UTI</strong><small>3 diffuse + 3 icon · HAK/MOD</small></dd></div>
             </dl>
             <div class="scope-card">
               <span>✓</span>
@@ -196,10 +232,10 @@
 
               <div class="part-stack-panel" aria-label="Required item part slots">
                 <p>PART SLOTS</p>
-                <button class="part-slot part-slot--active" type="button"><b>B</b><span><strong>Blade</strong><small>ModelPart1 · 9,140 tris</small></span><i>✓</i></button>
+                <button class="part-slot part-slot--active" type="button"><b>B</b><span><strong>Bottom</strong><small>ModelPart1 · 9,140 tris</small></span><i>✓</i></button>
                 <button class="part-slot" type="button"><b>M</b><span><strong>Middle</strong><small>ModelPart2 · 5,120 tris</small></span><i>✓</i></button>
                 <button class="part-slot" type="button"><b>T</b><span><strong>Top</strong><small>ModelPart3 · 1,204 tris</small></span><i>✓</i></button>
-                <div><span>Σ</span><p><strong>15,464</strong><small>of 20,000 triangles</small></p></div>
+                <div><span>Σ</span><p><strong>15,464</strong><small>of 300,000 triangles</small></p></div>
               </div>
 
               <div class="item-parts-stage">
@@ -245,7 +281,14 @@
 
               <div class="size-ruler size-ruler--height"><i></i><span>1.45 m</span></div>
               <div class="size-ruler size-ruler--width"><i></i><span>0.24 m</span></div>
-              <div class="icon-frame"><span>1 × 4 slots · composed model</span></div>
+              <div class="icon-frame"><span>1 × 4 slots · Aurora 2D canvas</span></div>
+              <div class="icon-layer-stack" aria-label="Three inventory icon layers">
+                <p>ICON LAYERS · NOT A 3D CAMERA RENDER</p>
+                <div><b>B</b><code>iwswls_b_251.tga</code><span>bottom layer</span></div>
+                <div><b>M</b><code>iwswls_m_252.tga</code><span>middle layer</span></div>
+                <div><b>T</b><code>iwswls_t_253.tga</code><span>top layer</span></div>
+                <small>Aurora composites B + M + T on the inventory grid.</small>
+              </div>
 
               <div class="viewport-legend">
                 <div><i class="legend-dot legend-dot--cyan"></i><span>selected part B</span></div>
@@ -289,17 +332,24 @@
                   <div class="part-resource part-resource--active"><b>B</b><span><strong>ModelPart1 · 251</strong><code>wswls_b_251.mdl</code></span><i>9,140</i></div>
                   <div class="part-resource"><b>M</b><span><strong>ModelPart2 · 252</strong><code>wswls_m_252.mdl</code></span><i>5,120</i></div>
                   <div class="part-resource"><b>T</b><span><strong>ModelPart3 · 253</strong><code>wswls_t_253.mdl</code></span><i>1,204</i></div>
-                  <dl class="resource-list"><div><dt>Blueprint</dt><dd><code>m2a_lsword01.uti</code></dd></div><div><dt>Inventory icon</dt><dd><code>iwswls_251.tga</code></dd></div></dl>
+                  <dl class="resource-list"><div><dt>Blueprint</dt><dd><code>m2a_lsword01.uti</code></dd></div><div><dt>Icon layers</dt><dd><code>i…_b_251 · i…_m_252 · i…_t_253</code></dd></div></dl>
                 </fieldset>
-                <div class="resolved-card"><span>✓</span><div><strong>Part schema complete</strong><p>3 MDL · 3 diffuse · 1 UTI · composed icon</p></div><code>38e2…b7c1</code></div>
+                <div class="resolved-card"><span>✓</span><div><strong>Part schema complete</strong><p>3 MDL · 3 diffuse · 3 icon layers · 1 UTI</p></div><code>38e2…b7c1</code></div>
               </section>
 
               <section class="inspector-panel" data-tab-content="attachment">
-                <div class="inspector-intro"><p class="eyebrow">Selected part · B</p><h2>Align Blade to Middle</h2><p>Each part keeps its own resource transform. Seam readback verifies that neighboring anchors meet.</p></div>
+                <div class="inspector-intro"><p class="eyebrow">Selected part · B</p><h2>Align Bottom to Middle</h2><p>Studio edits the source transform; the build must bake it into that part’s MDL node controllers.</p></div>
+                <div class="bake-route">
+                  <div><span>1</span><p><strong>Studio transform</strong><small>offset · rotation · scale</small></p></div>
+                  <i>→</i>
+                  <div><span>2</span><p><strong>Bake into MDL</strong><small>node controllers per part</small></p></div>
+                  <i>→</i>
+                  <div><span>3</span><p><strong>UTI stays numeric</strong><small>ModelPart1 = 251</small></p></div>
+                </div>
                 <fieldset class="control-section">
                   <legend>Part selection</legend>
-                  <label class="field"><span>Active slot</span><select><option>B · ModelPart1 · Blade</option><option>M · ModelPart2 · Middle</option><option>T · ModelPart3 · Top</option></select></label>
-                  <label class="field"><span>Source</span><select><option>blade.glb · verified</option></select></label>
+                  <label class="field"><span>Active slot</span><select><option>B · ModelPart1 · Bottom</option><option>M · ModelPart2 · Middle</option><option>T · ModelPart3 · Top</option></select></label>
+                  <label class="field"><span>Source</span><select><option>bottom.glb · verified</option></select></label>
                   <div class="vector-grid">
                     <label>X <input value="0.000" /><small>m</small></label><label>Y <input value="0.000" /><small>m</small></label><label>Z <input value="0.012" /><small>m</small></label>
                   </div>
@@ -314,24 +364,27 @@
               </section>
 
               <section class="inspector-panel" data-tab-content="icon">
-                <div class="inspector-intro"><p class="eyebrow">Inventory representation</p><h2>Generate a separate icon</h2><p>The icon uses an <code>i…</code> resource name. It is not the MDL filename.</p></div>
+                <div class="inspector-intro"><p class="eyebrow">Inventory representation</p><h2>Author three 2D icon layers</h2><p>Each layer uses the <code>i…</code> namespace. The 3D MDL resources never do.</p></div>
                 <div class="icon-preview-card">
                   <div class="inventory-grid inventory-grid--sword"><span></span><span></span><span></span><span></span><b>†</b></div>
-                  <div><strong>1 × 4 inventory slots</strong><p>Rendered from the composed B+M+T preview, never from one part alone.</p></div>
+                  <div><strong>1 × 4 inventory slots</strong><p>Aurora composites separate B, M and T images in its 2D inventory canvas.</p></div>
                 </div>
                 <fieldset class="control-section">
-                  <legend>Icon camera</legend>
-                  <label class="field"><span>View</span><select><option>Front-left · recommended</option><option>Front</option><option>Custom</option></select></label>
-                  <label class="field"><span>Background</span><select><option>Transparent</option><option>Dark neutral</option></select></label>
-                  <label class="switch-row"><span><strong>Auto-center silhouette</strong><small>Preserve aspect ratio</small></span><input type="checkbox" checked /><i></i></label>
+                  <legend>Resolved icon resources</legend>
+                  <dl class="icon-resource-list">
+                    <div><dt>B · Bottom</dt><dd><code>iwswls_b_251.tga</code></dd></div>
+                    <div><dt>M · Middle</dt><dd><code>iwswls_m_252.tga</code></dd></div>
+                    <div><dt>T · Top</dt><dd><code>iwswls_t_253.tga</code></dd></div>
+                  </dl>
                 </fieldset>
-                <button class="primary-outline" type="button">Regenerate icon preview</button>
+                <div class="icon-contract-note"><span>2D</span><p><strong>Layer composition, not screenshotting</strong><small>The preview follows Aurora’s B/M/T icon resolver.</small></p></div>
               </section>
 
               <section class="inspector-panel" data-tab-content="diagnostics">
                 <div class="inspector-intro"><p class="eyebrow">Offline gates</p><h2>Item diagnostics</h2><p>Geometry and packaging checks before owner-run visual proof.</p></div>
                 <article class="diagnostic diagnostic--pass"><span>✓</span><div><strong>Required part slots</strong><small>B, M and T each resolve one source and one MDL</small></div><b>PASS</b></article>
-                <article class="diagnostic diagnostic--pass"><span>✓</span><div><strong>Combined geometry budget</strong><small>15,464 / 20,000 triangles across all parts</small></div><b>PASS</b></article>
+                <article class="diagnostic diagnostic--pass"><span>✓</span><div><strong>Combined geometry budget</strong><small>15,464 / 300,000 triangles across all parts</small></div><b>PASS</b></article>
+                <article class="diagnostic diagnostic--pass"><span>✓</span><div><strong>Per-stream binary boundary</strong><small>Every deterministic mesh segment ≤ 21,845 triangles</small></div><b>PASS</b></article>
                 <article class="diagnostic diagnostic--pass"><span>✓</span><div><strong>Part seams</strong><small>B→M and M→T gaps remain below 0.001 m</small></div><b>PASS</b></article>
                 <article class="diagnostic diagnostic--warning"><span>!</span><div><strong>Composed runtime model</strong><small>Offline assembly complete; Toolset/NWN verdict required</small></div><b>PENDING</b></article>
                 <div class="proof-warning"><strong>Owner-run proof boundary</strong><p>The package may become <code>ready_for_owner_proof</code>; this screen cannot claim visual success.</p></div>
@@ -352,9 +405,9 @@
           <div>
             <p class="eyebrow">Step 4 · Review output</p>
             <h1>Review Item package</h1>
-            <p>BaseItem 1 · Longsword · ModelType 2. Verify all part resources and the composed result.</p>
+            <p>BaseItem 1 · Longsword · ModelType 2. Verify MDL parts, baked transforms, UTI numbers and icon layers.</p>
           </div>
-          <div class="build-chip"><span>✓</span><div><strong>Build completed</strong><small>Offline validation passed · 12 resources</small></div></div>
+          <div class="build-chip"><span>✓</span><div><strong>Build completed</strong><small>Offline validation passed · exact lineage</small></div></div>
         </header>
 
         <div class="review-layout">
@@ -364,20 +417,22 @@
               <div class="comparison-grid">
                 <div class="comparison-card"><div class="mini-scene mini-scene--parts"><span class="mini-part mini-part--b">B</span><span class="mini-part mini-part--m">M</span><span class="mini-part mini-part--t">T</span></div><strong>Part resources</strong><small>three independent binary MDLs</small><b class="pass">OFFLINE PASS</b></div>
                 <div class="comparison-card"><div class="mini-scene mini-scene--equipped"><i class="mini-human"></i><span class="mini-sword">†</span></div><strong>Composed item</strong><small>B→M→T · equipped right hand</small><b>OWNER PROOF</b></div>
-                <div class="comparison-card"><div class="mini-scene mini-scene--icon"><i></i><i></i><i></i><i></i><span class="mini-sword">†</span></div><strong>Inventory icon</strong><small>1 × 4 slots · composed silhouette</small><b class="pass">OFFLINE PASS</b></div>
+                <div class="comparison-card"><div class="mini-scene mini-scene--icon"><i></i><i></i><i></i><i></i><span class="mini-sword">†</span></div><strong>3 icon layers</strong><small>B + M + T · composed on 2D canvas</small><b class="pass">OFFLINE PASS</b></div>
               </div>
             </article>
 
             <article class="package-tree panel">
               <header><div><p class="eyebrow">Package contents</p><h2>Exact resource lineage</h2></div><button type="button">Copy manifest</button></header>
               <div class="tree">
-                <div class="tree-row tree-row--folder"><span>⌄</span><strong>m2a_item_parts_v1.zip</strong><small>proof handoff</small><b>12 files</b></div>
+                <div class="tree-row tree-row--folder"><span>⌄</span><strong>m2a_item_parts_v1.zip</strong><small>proof handoff</small><b>MANIFESTED</b></div>
                 <div class="tree-row tree-row--folder tree-row--nested"><span>⌄</span><strong>m2a_item_parts_v1.hak</strong><small>content package</small><b class="pass">HASHED</b></div>
                 <div class="tree-row tree-row--file tree-row--deep"><span>B</span><strong>wswls_b_251.mdl</strong><small>ModelPart1 · 9,140 triangles</small><b>312 KB</b></div>
                 <div class="tree-row tree-row--file tree-row--deep"><span>M</span><strong>wswls_m_252.mdl</strong><small>ModelPart2 · 5,120 triangles</small><b>184 KB</b></div>
                 <div class="tree-row tree-row--file tree-row--deep"><span>T</span><strong>wswls_t_253.mdl</strong><small>ModelPart3 · 1,204 triangles</small><b>62 KB</b></div>
                 <div class="tree-row tree-row--file tree-row--deep"><span>TGA</span><strong>m2a_ls_b/m/t.tga</strong><small>three per-part diffuse textures</small><b>9.1 MB</b></div>
-                <div class="tree-row tree-row--file tree-row--deep"><span>ICO</span><strong>iwswls_251.tga</strong><small>composed inventory icon · alpha</small><b>64 KB</b></div>
+                <div class="tree-row tree-row--file tree-row--deep"><span>ICO</span><strong>iwswls_b_251.tga</strong><small>Bottom · 2D icon layer · alpha</small><b>24 KB</b></div>
+                <div class="tree-row tree-row--file tree-row--deep"><span>ICO</span><strong>iwswls_m_252.tga</strong><small>Middle · 2D icon layer · alpha</small><b>20 KB</b></div>
+                <div class="tree-row tree-row--file tree-row--deep"><span>ICO</span><strong>iwswls_t_253.tga</strong><small>Top · 2D icon layer · alpha</small><b>20 KB</b></div>
                 <div class="tree-row tree-row--folder tree-row--nested"><span>⌄</span><strong>m2a_item_parts_v1.mod</strong><small>owner test module</small><b class="pass">HASHED</b></div>
                 <div class="tree-row tree-row--file tree-row--deep"><span>UTI</span><strong>m2a_lsword01.uti</strong><small>BaseItem 1 · parts 251 / 252 / 253</small><b>2 KB</b></div>
                 <div class="tree-row tree-row--file tree-row--deep"><span>UTC</span><strong>m2a_item_tester.utc</strong><small>composed item equipped in right hand</small><b>4 KB</b></div>
@@ -393,10 +448,12 @@
               <dl>
                 <div><dt>Part schema B/M/T</dt><dd class="pass">PASS</dd></div>
                 <div><dt>Three MDL readbacks</dt><dd class="pass">PASS</dd></div>
+                <div><dt>Transforms baked into MDL</dt><dd class="pass">PASS</dd></div>
+                <div><dt>Three icon layers</dt><dd class="pass">PASS</dd></div>
                 <div><dt>Part seams</dt><dd class="pass">PASS</dd></div>
                 <div><dt>UTI identity</dt><dd class="pass">PASS</dd></div>
                 <div><dt>Resource collisions</dt><dd class="pass">NONE</dd></div>
-                <div><dt>Combined geometry</dt><dd class="pass">15,464 / 20,000</dd></div>
+                <div><dt>Combined geometry</dt><dd class="pass">15,464 / 300,000</dd></div>
                 <div><dt>Toolset visibility</dt><dd class="pending">NOT TESTED</dd></div>
                 <div><dt>NWN visibility</dt><dd class="pending">NOT TESTED</dd></div>
               </dl>
