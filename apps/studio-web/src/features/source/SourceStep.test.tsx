@@ -171,6 +171,64 @@ describe("SourceStep", () => {
     expect(onTextureArtifactCleanupChange).toHaveBeenCalledWith(true);
   });
 
+  it("exposes audited detached-accessory modes and requires a bone for Select bone", async () => {
+    const onModeChange = vi.fn();
+    const onBoneChange = vi.fn();
+    const container = await render(
+      <SourceStep
+        {...handlers()}
+        source={source()}
+        appearance={appearance()}
+        onCreatureProfileChange={vi.fn()}
+        onSkinAccessoryStabilizationModeChange={onModeChange}
+        onSkinAccessorySelectedBoneNameChange={onBoneChange}
+        onContinue={vi.fn()}
+      />,
+    );
+    const mode = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Detached accessory skinning"]',
+    );
+
+    expect(mode?.value).toBe("AUTO");
+    expect(Array.from(mode?.options ?? []).map((option) => option.textContent)).toEqual([
+      "Auto",
+      "Keep source weights",
+      "Select bone",
+    ]);
+    expect(container.textContent).toContain("spatially welded detached parts");
+
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")
+        ?.set?.call(mode, "SELECT_BONE");
+      mode?.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(onModeChange).toHaveBeenCalledWith("SELECT_BONE");
+
+    await act(async () => {
+      rootRender(
+        container,
+        <SourceStep
+          {...handlers()}
+          source={source()}
+          appearance={appearance()}
+          skinAccessoryStabilizationMode="SELECT_BONE"
+          skinAccessorySelectedBoneName=""
+          onCreatureProfileChange={vi.fn()}
+          onSkinAccessoryStabilizationModeChange={onModeChange}
+          onSkinAccessorySelectedBoneNameChange={onBoneChange}
+          onContinue={vi.fn()}
+        />,
+      );
+    });
+    const bone = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Accessory bone name"]',
+    );
+    const continueButton = Array.from(container.querySelectorAll("button"))
+      .find((candidate) => candidate.textContent?.includes("Continue to Inspect"));
+    expect(bone).not.toBeNull();
+    expect(continueButton?.disabled).toBe(true);
+  });
+
   it("uses the shared 300K product profile by default", async () => {
     const container = await render(
       <SourceStep

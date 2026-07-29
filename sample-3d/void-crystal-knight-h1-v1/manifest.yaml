@@ -78,9 +78,9 @@ duplicate_run_incident:
   total_credits_spent: 76
   balance_after_both_runs: 626
   selected_for_local_asset: false
-latest_offline_pipeline:
+previous_candidate_demo1:
   date: 2026-07-29
-  status: ready_for_owner_proof
+  status: owner_visual_failed_detached_skin_accessory
   candidate_id: void-crystal-knight-h1-v1-demo1
   packet_path: proof-output/void-crystal-knight-h1-v1-demo1
   source_preview:
@@ -136,6 +136,106 @@ latest_offline_pipeline:
     hak_path: C:/Users/enonw/Documents/Neverwinter Nights/hak/vckhak1.hak
     hak_hash_verified: true
   visual_proof:
+    owner_observation:
+      model_visibility: visible
+      proof_completeness: failed
+      failure: detached_skin_accessory_deformation
+      screenshot_path: C:/Users/enonw/AppData/Local/Temp/codex-clipboard-03ff9c92-bc65-4764-9bd6-84c75a61c4c1.png
+      screenshot_size_bytes: 1905728
+      screenshot_sha256: c631239994d395b72fe0622b6eef2154142d684b4bf8a6a5f0f2ee646f5c8850
+      note: exact candidate is visible; detached crystals stretch into black wing-like artifacts
+    toolset:
+      model_visibility: not_tested
+      proof_completeness: missing
+    nwn:
+      model_visibility: not_tested
+      proof_completeness: missing
+latest_offline_pipeline:
+  date: 2026-07-29
+  status: owner_visual_fix_confirmed
+  candidate_id: void-crystal-knight-h1-v1-demo2-product-v3
+  packet_path: proof-output/void-crystal-knight-h1-v1-demo2-product-v3
+  pipeline: PROCEDURAL_CREATURE_PRODUCT_V3_DEMO_V2
+  identities:
+    module_filename: vckdemo2.mod
+    module_name: Meshy2Aurora procedural humanoid proof
+    module_resref: vckdemo2
+    area_name: Meshy2Aurora M0 binary vertical-slice area
+    area_resref: vckarea2
+    creature_resref: vckutc2
+    hak_filename: vckhak2.hak
+    hak_resref: vckhak2
+    appearance_row: 15100
+    model_resref: vcknight_m2
+    texture_resref: vcknight_t2
+  geometry:
+    source_triangles: 19704
+    geometry_triangles: 19704
+    written_triangles: 19704
+  skin_accessory_stabilization:
+    mode: AUTO
+    component_count: 5
+    detached_component_count: 4
+    risky_component_count: 4
+    stabilized_component_count: 4
+    changed_vertex_count: 341
+    lower_pair_bone: Spine02
+    upper_pair_bone: Spine
+    warnings: []
+  animations:
+    profile: FULL_NATIVE42_PROCEDURAL_HUMANOID_V1
+    required_count: 42
+    preserved_source_count: 3
+    procedural_count: 39
+    source_clips: [cpause1, cwalk, crun]
+    behavior_candidate_eligible: true
+    gameplay_event_pairs: 23
+    skin_animation_conformance_complete: true
+  outputs:
+    module:
+      path: proof-output/void-crystal-knight-h1-v1-demo2-product-v3/generated/vckdemo2.mod
+      size_bytes: 15142
+      sha256: cb96c0a9caba04463c4b53303f43aca09ff0216efd3a3b1211af7669b3a08797
+    hak:
+      path: proof-output/void-crystal-knight-h1-v1-demo2-product-v3/generated/vckhak2.hak
+      size_bytes: 22040645
+      sha256: 4b2181b922fa6fce85a312596754bda0acc5aee831265c745e0e7bc182a1f7e2
+    model:
+      path: proof-output/void-crystal-knight-h1-v1-demo2-product-v3/generated/vcknight_m2.mdl
+      size_bytes: 2556084
+      sha256: 219a51ee1c9112500332d02adfa25b093748030cc69c8ec55bbf66a25df8963e
+    texture:
+      path: proof-output/void-crystal-knight-h1-v1-demo2-product-v3/generated/vcknight_t2.tga
+      size_bytes: 12582956
+      sha256: 5101483b93b6eb4e0aa39cc705dcbed9de1a70c1661f85eacffcb58793025e8a
+    appearance_2da:
+      path: proof-output/void-crystal-knight-h1-v1-demo2-product-v3/generated/appearance.2da
+      size_bytes: 6901349
+      sha256: 3dc8505bb5848044659cf44f9fe60e3f7c401db772496c4571ec0fff62a761d6
+    packet_manifest:
+      path: proof-output/void-crystal-knight-h1-v1-demo2-product-v3/reports/materialization-manifest.json
+      size_bytes: 9901
+      sha256: 1ae830be617e04c2df983a19ca297b656bff305598ddbdec20b57fb64493c6ee
+  rejected_lane:
+    packet_path: proof-output/void-crystal-knight-h1-v1-demo2
+    reason: legacy_product_bundle_removed_26_valid_microtriangles
+    source_triangles: 19704
+    written_triangles: 19678
+    installed: false
+  native_installation:
+    module_path: C:/Users/enonw/Documents/Neverwinter Nights/modules/vckdemo2.mod
+    module_hash_verified: true
+    hak_path: C:/Users/enonw/Documents/Neverwinter Nights/hak/vckhak2.hak
+    hak_hash_verified: true
+  visual_proof:
+    owner_observation:
+      date: 2026-07-30
+      model_visibility: visible
+      proof_completeness: verified
+      geometry_artifact_result: fixed
+      fixed_defect: detached_skin_accessory_deformation
+      lane: owner_reported_unspecified
+      note: owner reported the model is nicely corrected and authorized branch publication for merge
     toolset:
       model_visibility: not_tested
       proof_completeness: missing

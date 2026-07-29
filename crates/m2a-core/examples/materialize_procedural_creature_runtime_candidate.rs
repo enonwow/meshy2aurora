@@ -2,9 +2,11 @@ use std::{env, fs, path::PathBuf, process::ExitCode};
 
 use m2a_core::{
     model_pipeline::{
-        MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_COUNT_V1, ProceduralCreaturePackageIdentityV1,
-        build_meshy_procedural_humanoid_model_package_with_identity_v1,
+        MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_COUNT_V1, ProceduralCreatureBuildOptionsV1,
+        ProceduralCreaturePackageIdentityV1, ProceduralCreatureProductIdentityV2,
         build_meshy_procedural_humanoid_p100k_experiment_with_identity_v1,
+        build_meshy_procedural_humanoid_product_with_options_v3, build_procedural_creature_demo_v2,
+        write_procedural_creature_product_demo_packet_v2,
         write_procedural_creature_proof_packet_with_identity_v1,
     },
     proof_module::BinaryCreatureModuleIdentityV1,
@@ -44,52 +46,105 @@ fn run() -> Result<String, String> {
             command.appearance_two_da.display()
         )
     })?;
-    let artifact = if command.p100k_experiment {
-        build_meshy_procedural_humanoid_p100k_experiment_with_identity_v1(
+    if command.p100k_experiment {
+        let artifact = build_meshy_procedural_humanoid_p100k_experiment_with_identity_v1(
             &source_glb,
             &appearance_two_da,
             &command.identity,
         )
-    } else {
-        build_meshy_procedural_humanoid_model_package_with_identity_v1(
-            &source_glb,
-            &appearance_two_da,
+        .map_err(|error| error.to_string())?;
+        write_procedural_creature_proof_packet_with_identity_v1(
+            &command.output,
+            &artifact,
             &command.identity,
         )
+        .map_err(|error| error.to_string())?;
+        return serde_json::to_string_pretty(&serde_json::json!({
+            "ok": true,
+            "status": "PROCEDURAL_CREATURE_RUNTIME_CANDIDATE_MATERIALIZED",
+            "pipeline": "P100K_LEGACY_COMPATIBILITY_V1",
+            "outputDirectory": command.output,
+            "identity": command.identity,
+            "sourceGlb": binding(&artifact.source_glb),
+            "sourceAppearanceTwoDa": binding(&appearance_two_da),
+            "model": binding(&artifact.model),
+            "texture": binding(&artifact.texture),
+            "runtimeAppearanceTwoDa": binding(&artifact.appearance_two_da),
+            "hak": binding(&artifact.hak),
+            "module": binding(&artifact.proof_module),
+            "appearanceRow": artifact.report.appearance.appended_row_index,
+            "animationProfile": artifact.report.animation_completeness,
+            "animationBehavior": artifact.report.animation_behavior,
+            "animationEvents": artifact.report.animation_event_conformance,
+            "skinAnimationConformance": artifact.report.skin_animation_conformance,
+            "skinAccessoryStabilization": artifact.report.skin_accessory_stabilization,
+            "triangleExperiment": {
+                "policy": "MESHY_P100K_SEGMENTED_EXPERIMENT_V1",
+                "requestedTriangleCount": MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_COUNT_V1,
+                "sanitizedSourceTriangleCount": artifact.report.geometry.triangle_count,
+                "writtenTriangleCount": artifact.report.model.projection.triangle_count,
+                "binaryMdlMeshStreamCount": artifact.report.model.layout.mesh_nodes.len(),
+                "productionTriangleBudgetChanged": false
+            },
+            "runtimeContractVerified": true,
+            "startsToolset": false,
+            "startsNwn": false
+        }))
+        .map_err(|error| format!("PROCEDURAL-CREATURE-CANDIDATE-REPORT-FAILED: {error}"));
     }
+
+    let product_identity = ProceduralCreatureProductIdentityV2 {
+        model_resref: command.identity.model_resref.clone(),
+        texture_resref: command.identity.texture_resref.clone(),
+        hak_resref: command.identity.module.hak_resref.clone(),
+        appearance_label: format!(
+            "M2A_CREATURE_V2_{}",
+            command.identity.model_resref.to_ascii_uppercase()
+        ),
+    };
+    let product = build_meshy_procedural_humanoid_product_with_options_v3(
+        &source_glb,
+        &appearance_two_da,
+        &product_identity,
+        &ProceduralCreatureBuildOptionsV1::default(),
+    )
     .map_err(|error| error.to_string())?;
-    write_procedural_creature_proof_packet_with_identity_v1(
+    let demo = build_procedural_creature_demo_v2(
+        &product,
+        &command.identity.module,
+        &command.identity.creature_resref,
+    )
+    .map_err(|error| error.to_string())?;
+    write_procedural_creature_product_demo_packet_v2(
         &command.output,
-        &artifact,
-        &command.identity,
+        &product,
+        &demo,
+        &source_glb,
+        &command.identity.module,
+        &command.identity.creature_resref,
     )
     .map_err(|error| error.to_string())?;
 
     serde_json::to_string_pretty(&serde_json::json!({
         "ok": true,
         "status": "PROCEDURAL_CREATURE_RUNTIME_CANDIDATE_MATERIALIZED",
+        "pipeline": "PROCEDURAL_CREATURE_PRODUCT_V3_DEMO_V2",
         "outputDirectory": command.output,
         "identity": command.identity,
-        "sourceGlb": binding(&artifact.source_glb),
+        "sourceGlb": binding(&source_glb),
         "sourceAppearanceTwoDa": binding(&appearance_two_da),
-        "model": binding(&artifact.model),
-        "texture": binding(&artifact.texture),
-        "runtimeAppearanceTwoDa": binding(&artifact.appearance_two_da),
-        "hak": binding(&artifact.hak),
-        "module": binding(&artifact.proof_module),
-        "appearanceRow": artifact.report.appearance.appended_row_index,
-        "animationProfile": artifact.report.animation_completeness,
-        "animationBehavior": artifact.report.animation_behavior,
-        "animationEvents": artifact.report.animation_event_conformance,
-        "skinAnimationConformance": artifact.report.skin_animation_conformance,
-        "triangleExperiment": command.p100k_experiment.then(|| serde_json::json!({
-            "policy": "MESHY_P100K_SEGMENTED_EXPERIMENT_V1",
-            "requestedTriangleCount": MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_COUNT_V1,
-            "sanitizedSourceTriangleCount": artifact.report.geometry.triangle_count,
-            "writtenTriangleCount": artifact.report.model.projection.triangle_count,
-            "binaryMdlMeshStreamCount": artifact.report.model.layout.mesh_nodes.len(),
-            "productionTriangleBudgetChanged": false
-        })),
+        "model": binding(&product.model),
+        "texture": binding(&product.texture),
+        "runtimeAppearanceTwoDa": binding(&product.appearance_two_da),
+        "hak": binding(&product.hak),
+        "module": binding(&demo.payload),
+        "appearanceRow": product.report.appearance.appended_row_index,
+        "animationProfile": product.report.animation_completeness,
+        "animationBehavior": product.report.animation_behavior,
+        "animationEvents": product.report.animation_event_conformance,
+        "skinAnimationConformance": product.report.skin_animation_conformance,
+        "skinAccessoryStabilization": product.report.skin_accessory_stabilization,
+        "geometry": product.report.geometry,
         "runtimeContractVerified": true,
         "startsToolset": false,
         "startsNwn": false

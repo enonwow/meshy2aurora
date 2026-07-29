@@ -560,6 +560,10 @@ describe("Studio workflow", () => {
 
   it("routes a one-idle skinned Meshy humanoid through the procedural 42-state lane", async () => {
     const container = await renderApp();
+    const stabilization = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Detached accessory skinning"]',
+    );
+    expect(stabilization?.value).toBe("AUTO");
     const { build } = await driveToBuild(container, singleIdleSkinnedSourceInspectionJson());
     expect(build.packageLane).toBe("SKINNED_PROCEDURAL_HUMANOID_42");
     if (
@@ -573,6 +577,33 @@ describe("Studio workflow", () => {
       textureResref: "m2c2taaaaaaaa",
       hakResref: "m2c2haaaaaaaa",
       appearanceLabel: "M2A_CREATURE_V2_AAAAAAAA",
+    });
+    expect(build.skinAccessoryStabilization).toEqual({ mode: "AUTO" });
+  });
+
+  it("routes an explicit accessory bone through the procedural build request", async () => {
+    const container = await renderApp();
+    const stabilization = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Detached accessory skinning"]',
+    );
+    expect(stabilization).not.toBeNull();
+    await act(async () => setSelectValue(stabilization!, "SELECT_BONE"));
+    const bone = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Accessory bone name"]',
+    );
+    expect(bone).not.toBeNull();
+    await act(async () => setValue(bone!, "Spine02"));
+
+    const { build } = await driveToBuild(container, singleIdleSkinnedSourceInspectionJson());
+    if (
+      build.type !== "BUILD_MODEL_PACKAGE"
+      || build.packageLane !== "SKINNED_PROCEDURAL_HUMANOID_42"
+    ) {
+      throw new Error("procedural product request unavailable");
+    }
+    expect(build.skinAccessoryStabilization).toEqual({
+      mode: "SELECT_BONE",
+      selectedBoneName: "Spine02",
     });
   });
 
