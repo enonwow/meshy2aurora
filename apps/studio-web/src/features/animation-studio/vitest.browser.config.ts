@@ -5,6 +5,7 @@ export default defineConfig({
   test: {
     include: [
       "src/features/animation-studio/persistence.browser.test.ts",
+      "src/features/project/persistence.browser.test.ts",
     ],
     fileParallelism: false,
     browser: {

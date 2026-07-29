@@ -3,9 +3,11 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 export function NewAnimationMenu({
   onCreateBlank,
   onCreateProcedural,
+  onImportFromModel,
 }: {
   onCreateBlank: () => void;
   onCreateProcedural?: () => void;
+  onImportFromModel?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -65,6 +67,15 @@ export function NewAnimationMenu({
               onClick={() => choose(onCreateProcedural)}
             >
               From procedural template
+            </button>
+          ) : null}
+          {onImportFromModel ? (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => choose(onImportFromModel)}
+            >
+              Copy from another model…
             </button>
           ) : null}
         </div>

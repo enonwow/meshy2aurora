@@ -361,11 +361,19 @@ pub struct DirectCreatureBaseSlotDefinitionV1 {
     pub label: String,
     pub description: String,
     pub slot: DirectCreatureBaseSlotV1,
+    pub gameplay_floor: bool,
     pub supported_model_types: Vec<DirectCreatureModelTypeV1>,
     pub playback_policy: PlaybackPolicyV1,
 }
 
 pub type AuroraAnimationStateDefinitionV1 = DirectCreatureBaseSlotDefinitionV1;
+
+pub fn is_gameplay_floor_slot_v1(slot: &str) -> bool {
+    matches!(
+        slot,
+        "cappear" | "cpause1" | "cwalk" | "crun" | "ca1slashl" | "cdamagel" | "cdead"
+    )
+}
 
 pub fn direct_creature_base_catalog_v1() -> Vec<DirectCreatureBaseSlotDefinitionV1> {
     AURORA_ANIMATION_STATE_CATALOG_V1
@@ -375,6 +383,7 @@ pub fn direct_creature_base_catalog_v1() -> Vec<DirectCreatureBaseSlotDefinition
             label: entry.label.to_owned(),
             description: entry.description.to_owned(),
             slot: DirectCreatureBaseSlotV1(entry.slot.to_owned()),
+            gameplay_floor: is_gameplay_floor_slot_v1(entry.slot),
             supported_model_types: vec![
                 DirectCreatureModelTypeV1::Simple,
                 DirectCreatureModelTypeV1::Limited,

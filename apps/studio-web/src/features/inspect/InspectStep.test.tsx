@@ -109,4 +109,65 @@ describe("InspectStep", () => {
     expect(onContinue).not.toHaveBeenCalled();
     expect(onBack).toHaveBeenCalledOnce();
   });
+
+  it("announces Animation Mapping as the next Creature screen", async () => {
+    const container = await render(
+      <InspectStep
+        viewport={<div>Source renderer</div>}
+        sourceMetrics={{ meshCount: 2 }}
+        validationChecks={[]}
+        canContinue
+        continueLabel="Continue to Animation Mapping"
+        onBack={vi.fn()}
+        onContinue={vi.fn()}
+      />,
+    );
+
+    expect(Array.from(container.querySelectorAll("button"))
+      .some(({ textContent }) => textContent === "Continue to Animation Mapping"))
+      .toBe(true);
+    expect(container.textContent).not.toContain("Continue to Build");
+  });
+
+  it("shows H1 requirements, actual values and a repair action before build", async () => {
+    const container = await render(
+      <InspectStep
+        viewport={<div>Source renderer</div>}
+        sourceMetrics={{ meshCount: 2 }}
+        validationChecks={[]}
+        profileRequirements={[
+          {
+            id: "h1-source-skin",
+            label: "Source skin",
+            expected: "exactly 1",
+            actual: "2",
+            status: "ERROR",
+            repair: "Re-export one active skin.",
+          },
+          {
+            id: "h1-triangle-budget",
+            label: "Render-model triangle budget",
+            expected: "at most 20,000",
+            actual: "18,000",
+            status: "PASS",
+            repair: "Remesh the source.",
+          },
+        ]}
+        canContinue={false}
+        continueLabel="Continue to Animation Mapping"
+        onBack={vi.fn()}
+        onContinue={vi.fn()}
+      />,
+    );
+
+    const panel = container.querySelector(
+      '[aria-labelledby="inspect-profile-requirements-heading"]',
+    );
+    expect(panel?.textContent).toContain("Creature H1 profile");
+    expect(panel?.textContent).toContain("Expected: exactly 1");
+    expect(panel?.textContent).toContain("Actual: 2");
+    expect(panel?.textContent).toContain("Repair: Re-export one active skin.");
+    expect(panel?.querySelectorAll('[data-status="ERROR"]')).toHaveLength(1);
+    expect(panel?.querySelectorAll('[data-status="PASS"]')).toHaveLength(1);
+  });
 });

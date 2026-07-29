@@ -89,6 +89,7 @@ describe("Animation Studio accessibility", () => {
     const workspace = required<HTMLElement>(
       container.querySelector(".animation-studio-workspace"),
     );
+    expect(workspace.getAttribute("data-layout")).toBe("aurora-animation-workbench");
     expect(workspace.getAttribute("aria-labelledby")).toBe("animation-studio-title");
     expect(workspace.querySelector("h2#animation-studio-title")?.textContent)
       .toBe("Create & edit animations");
@@ -99,6 +100,39 @@ describe("Animation Studio accessibility", () => {
     expect(workspace.querySelector('aside[aria-label="Animation properties"]'))
       .not.toBeNull();
     expect(workspace.querySelector('nav[aria-label="Output rig bones"]')).not.toBeNull();
+    expect(
+      workspace.querySelector(".animation-studio-workspace__toolbar-actions"),
+    ).not.toBeNull();
+    expect(
+      workspace.querySelector('[data-variant="primary"][data-action="save-custom"]'),
+    ).not.toBeNull();
+    expect(
+      workspace.querySelector('[data-panel="clip-library"]'),
+    ).not.toBeNull();
+    expect(
+      workspace.querySelector('[data-panel="viewport-timeline"]'),
+    ).not.toBeNull();
+    expect(
+      workspace.querySelector('[data-panel="animation-inspector"]'),
+    ).not.toBeNull();
+    expect(
+      workspace.querySelector('[role="toolbar"][aria-label="Animation viewport display"]'),
+    ).not.toBeNull();
+    expect(
+      workspace.querySelector('button[aria-label="Show source animation"]'),
+    ).not.toBeNull();
+    expect(
+      workspace.querySelector('button[aria-label="Show edited animation"]'),
+    ).not.toBeNull();
+    expect(
+      workspace.querySelector('select[aria-label="Output rig bone"]'),
+    ).not.toBeNull();
+    expect(
+      workspace.querySelector('button[aria-label="Delete selected keyframes"]'),
+    ).not.toBeNull();
+    expect(
+      workspace.querySelector("details.animation-timeline-advanced"),
+    ).not.toBeNull();
 
     const autosave = required<HTMLElement>(
       workspace.querySelector(".animation-studio-autosave"),
@@ -158,15 +192,14 @@ describe("Animation Studio accessibility", () => {
     const tabs = Array.from(
       container.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
     );
-    const treeItems = Array.from(
-      container.querySelectorAll<HTMLButtonElement>('[role="treeitem"]'),
+    const boneSelect = required<HTMLSelectElement>(
+      container.querySelector('select[aria-label="Output rig bone"]'),
     );
     expect(tabs.map(({ tabIndex }) => tabIndex)).toEqual([0, -1]);
-    expect(treeItems.map(({ tabIndex }) => tabIndex)).toEqual([0, -1]);
     expect(tabbableLabels(container).slice(0, 3)).toEqual([
       "Map animations",
       "+ New animation",
-      "root #0",
+      "Output rig bone",
     ]);
 
     tabs[0]!.focus();
@@ -186,11 +219,12 @@ describe("Animation Studio accessibility", () => {
     await key(menuItems[1]!, { key: "Escape" });
     expect(document.activeElement).toBe(menuTrigger);
 
-    treeItems[0]!.focus();
-    await key(treeItems[0]!, { key: "ArrowDown" });
-    expect(document.activeElement).toBe(treeItems[1]);
-    expect(treeItems[1]!.getAttribute("aria-selected")).toBe("true");
-    expect(treeItems[1]!.getAttribute("aria-level")).toBe("2");
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set
+        ?.call(boneSelect, "7");
+      boneSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(boneSelect.value).toBe("7");
   });
 
   it("keeps the visible clip list keyboard-reachable when its selected item is filtered out", async () => {
@@ -399,7 +433,7 @@ function tabbableLabels(container: HTMLElement) {
     && !(element instanceof HTMLButtonElement && element.disabled)
     && !(element instanceof HTMLInputElement && element.disabled)
     && !(element instanceof HTMLSelectElement && element.disabled)
-  )).map((element) => element.textContent?.trim() || element.getAttribute("aria-label") || "");
+  )).map((element) => element.getAttribute("aria-label") || element.textContent?.trim() || "");
 }
 
 async function key(

@@ -29,6 +29,9 @@ export function CustomAnimationPickerRow({
           ? `${item.sourceClipCount} read-only source clips`
           : `${item.keyframeCount} keyframes`,
         item.playback === "LOOPING_PHASED" ? "Start Loop End phases" : "One shot",
+        `provider ${item.provenance.provider}`,
+        `asset ${item.provenance.assetId}`,
+        `ownership ${item.provenance.ownership}`,
       ].join(", ")}
       data-status={item.status}
       onClick={() => item.assignable && onSelect()}
@@ -51,6 +54,28 @@ export function CustomAnimationPickerRow({
       {item.assignedSlots.length > 0 ? (
         <small>Used by Base 42: {item.assignedSlots.join(", ")}</small>
       ) : null}
+      <small className="custom-animation-picker__provenance">
+        Provider: {item.provenance.provider}
+        {" · "}Asset: {item.provenance.assetId}
+        {" · "}Ownership: {item.provenance.ownership}
+      </small>
+      {item.lineage.map(({ reference, authoredSource }, index) => (
+        <small
+          className="custom-animation-picker__lineage"
+          key={`${reference.sourceKind}:${reference.authoredClipId ?? reference.sourceClipName}:${index}`}
+        >
+          Lineage {index + 1}: {reference.sourceKind}
+          {reference.sourceClipName ? ` · source ${reference.sourceClipName}` : ""}
+          {reference.authoredClipId ? ` · clip ${reference.authoredClipId}` : ""}
+          {authoredSource
+            ? ` · ${authoredSource.kind} · revision ${authoredSource.sourceRevision.slice(0, 12)}${
+                authoredSource.sourceClipFingerprint
+                  ? ` · fingerprint ${authoredSource.sourceClipFingerprint.slice(0, 12)}`
+                  : ""
+              }`
+            : ""}
+        </small>
+      ))}
       {!item.assignable ? <span>Finish editing to assign</span> : null}
     </button>
   );

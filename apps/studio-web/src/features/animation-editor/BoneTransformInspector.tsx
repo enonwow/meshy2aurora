@@ -3,13 +3,17 @@ import { useEffect, useState } from "react";
 export function BoneTransformInspector({
   selectedBoneName,
   path,
+  selectedKeyCount,
   onPathChange,
   onInsert,
+  onDeleteSelectedKeys,
 }: {
   selectedBoneName: string | null;
   path: "ROTATION" | "TRANSLATION";
+  selectedKeyCount: number;
   onPathChange: (path: "ROTATION" | "TRANSLATION") => void;
   onInsert: (value: number[]) => void;
+  onDeleteSelectedKeys: () => void;
 }) {
   const [components, setComponents] = useState<[number, number, number]>([0, 0, 0]);
   useEffect(() => setComponents([0, 0, 0]), [path, selectedBoneName]);
@@ -18,7 +22,7 @@ export function BoneTransformInspector({
     : components;
   return (
     <section className="bone-transform-inspector" aria-labelledby="bone-transform-title">
-      <h3 id="bone-transform-title">Bone &amp; clip</h3>
+      <h3 id="bone-transform-title">Transform</h3>
       <p>Selected bone: <strong>{selectedBoneName ?? "None"}</strong></p>
       <div role="tablist" aria-label="Transform path">
         {(["ROTATION", "TRANSLATION"] as const).map((candidate) => (
@@ -58,13 +62,23 @@ export function BoneTransformInspector({
           ? `Stored quaternion: ${value.map((item) => item.toFixed(4)).join(", ")}`
           : "Values are stored in output-rig local space."}
       </p>
-      <button
-        type="button"
-        disabled={!selectedBoneName}
-        onClick={() => onInsert([...value])}
-      >
-        + Add keyframe
-      </button>
+      <div className="bone-transform-inspector__actions">
+        <button
+          type="button"
+          disabled={!selectedBoneName}
+          onClick={() => onInsert([...value])}
+        >
+          + Add keyframe
+        </button>
+        <button
+          type="button"
+          aria-label="Delete selected keyframes"
+          disabled={selectedKeyCount === 0}
+          onClick={onDeleteSelectedKeys}
+        >
+          Delete keyframe
+        </button>
+      </div>
     </section>
   );
 }

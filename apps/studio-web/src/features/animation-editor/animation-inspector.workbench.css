@@ -1,0 +1,132 @@
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-workspace__inspector {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr;
+  gap: 10px;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-bone-tree,
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .bone-transform-inspector {
+  gap: 7px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--animation-border);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-bone-tree [role="tree"] {
+  max-height: 104px;
+  border: 1px solid #1b3342;
+  border-radius: 4px;
+  background: #07141d;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-bone-tree [role="treeitem"] {
+  min-height: 25px;
+  padding: 3px 7px;
+  border: 0;
+  border-bottom: 1px solid rgb(32 56 71 / 55%);
+  border-radius: 0;
+  background: transparent;
+  color: var(--animation-muted);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-bone-tree [role="treeitem"][aria-level="2"] {
+  padding-left: 18px;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-bone-tree [role="treeitem"][aria-level="3"] {
+  padding-left: 30px;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-bone-tree [role="treeitem"][aria-selected="true"] {
+  background: var(--animation-cyan-soft);
+  color: var(--animation-cyan);
+  box-shadow: inset 2px 0 0 var(--animation-cyan);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-bone-tree small {
+  color: #5f7887;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .bone-transform-inspector p,
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-settings p {
+  margin: 0;
+  color: var(--animation-muted);
+  font-size: .66rem;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .bone-transform-inspector fieldset {
+  gap: 5px;
+  padding: 0;
+  border: 0;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .bone-transform-inspector fieldset legend {
+  grid-column: 1 / -1;
+  margin-bottom: 2px;
+  color: var(--animation-muted);
+  font-size: .64rem;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .bone-transform-inspector label {
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  color: var(--animation-muted);
+  font-size: .68rem;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .bone-transform-inspector label:nth-of-type(1) {
+  color: #f05a64;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .bone-transform-inspector label:nth-of-type(2) {
+  color: var(--animation-lime);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .bone-transform-inspector label:nth-of-type(3) {
+  color: var(--animation-cyan);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .bone-transform-inspector > button {
+  border-color: #648d25;
+  color: var(--animation-lime);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-settings {
+  align-content: start;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-settings label {
+  gap: 3px;
+  color: var(--animation-muted);
+  font-size: .65rem;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-settings button {
+  margin-top: 4px;
+  border-color: #663641;
+  color: #f7a0a8;
+}
+

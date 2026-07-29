@@ -111,6 +111,7 @@ function InputRow({
           type="file"
           accept={accept}
           required={required}
+          aria-label={`${label} file`}
           aria-describedby={`${detailsId}${error ? ` ${errorId}` : ""}`}
           aria-invalid={error ? true : undefined}
           onClick={(event) => { event.currentTarget.value = ""; }}

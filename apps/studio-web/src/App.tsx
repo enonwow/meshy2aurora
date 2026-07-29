@@ -1,5 +1,15 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { StudioHeader } from "./app/StudioHeader";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  StudioHeader,
+  type StudioProjectPersistence,
+} from "./app/StudioHeader";
 import { StudioShell } from "./app/StudioShell";
 import {
   canContinueFromAnimationMapping,
@@ -7,44 +17,50 @@ import {
   getWorkflowStepStatus,
 } from "./app/studioSelectors";
 import {
-  createInitialStudioSession,
-  studioSessionReducer,
-  type StudioSessionEvent,
   type StudioSessionState,
   type StudioTarget,
 } from "./app/studioSession";
-import { getWorkflowStepsForTarget } from "./app/workflow";
+import {
+  useStudioSessionController,
+  useStudioWorkerController,
+} from "./app/useStudioControllers";
+import {
+  getWorkflowStepsForTarget,
+  workflowStepLabel,
+  type WorkflowStep,
+} from "./app/workflow";
 import { WorkflowStepper } from "./app/WorkflowStepper";
 import { BuildStep, type BuildStepState } from "./features/build/BuildStep";
-import { ArtifactDownloads } from "./features/downloads/ArtifactDownloads";
+import { DownloadStep } from "./features/downloads/DownloadStep";
 import {
-  buildStageForPipelineStage,
+  createDownloadManifestV1,
+  projectDownloadReadinessV1,
+  type DownloadManifestInputIdentityV1,
+} from "./features/downloads/downloadManifest";
+import {
   projectBuildFailure,
 } from "./features/build/projectBuildFailure";
+import { createTargetBuildRequestV1 } from "./features/build/targetBuildRequest";
 import {
   projectAppearanceInspection,
   type AppearanceInspectionSnapshot,
 } from "./features/inspect/appearanceInspection";
-import { InspectStep } from "./features/inspect/InspectStep";
+import {
+  InspectStep,
+  type InspectProfileRequirement,
+} from "./features/inspect/InspectStep";
 import {
   projectSourceInspection,
   type SourceInspectionSnapshot,
 } from "./features/inspect/sourceInspection";
 import type { InspectValidationCheck } from "./features/inspect/ValidationPanel";
-import { AuroraReadbackViewport } from "./features/preview/AuroraReadbackViewport";
-import { SourceViewport } from "./features/preview/SourceViewport";
-import { PlaceableAuthoringEditor } from "./features/placeable-authoring/PlaceableAuthoringEditor";
 import {
   parsePlaceableAuthoringBootstrap,
   type PlaceableAuthoringBootstrap,
 } from "./features/placeable-authoring/types";
 import type { BinaryMdlInspectionReport, ModelPartRef } from "./features/preview/types";
-import {
-  ReviewModelDetails,
-  type ReviewViewport,
-} from "./features/review/ReviewModelDetails";
-import { PlaceableReview } from "./features/review/PlaceableReview";
-import { TileReview } from "./features/review/TileReview";
+import type { ReviewViewport } from "./features/review/ReviewModelDetails";
+import { ReviewWorkflowActions } from "./features/review/ReviewWorkflowActions";
 import {
   projectCanonicalResult,
   type CanonicalResultSnapshot,
@@ -65,10 +81,15 @@ import {
 import { SourceStep } from "./features/source/SourceStep";
 import { canOfferGeneratedHumanoidProfileV1 } from "./features/source/directCreatureAnimationProfile";
 import { CreatureAnimationMappingStep } from "./features/animation-mapping/CreatureAnimationMappingStep";
-import { AnimationStudioWorkspace } from "./features/animation-editor/AnimationStudioWorkspace";
 import type { AnimationRigNodeV1 } from "./features/animation-editor/AnimationBoneTree";
 import type { AnimationMappingModeV1 } from "./features/animation-editor/AnimationMappingModeSwitch";
 import { createBlankPoseClipV1 } from "./features/animation-editor/editing";
+import {
+  ANIMATION_IMPORT_RIG_MISMATCH_V1,
+  compareAnimationImportRigsV1,
+  createImportedModelClipV1,
+  type ExternalAnimationSourceInspectionV1,
+} from "./features/animation-editor/animationImport";
 import {
   commitAnimationStudioDocumentV1,
   createAnimationStudioStateV1,
@@ -129,18 +150,106 @@ import {
   reconcileAnimationStudioReadbackV1,
   type AnimationStudioReadbackReconciliationV1,
 } from "./features/review/reconcileAnimationStudioReadback";
-import { AuthoredAnimationReview } from "./features/review/AuthoredAnimationReview";
-import { LocalMeshyBridgeClient, type MeshyArtifactProvenance, type MeshyBridgeClient } from "./features/meshy/bridge";
+import {
+  AURORA_MODEL_TRIANGLE_BUDGET_V1,
+  LocalMeshyBridgeClient,
+  type MeshyArtifactProvenance,
+  type MeshyBridgeClient,
+} from "./features/meshy/bridge";
 import { isMeshyLabEnabled } from "./features/meshy/feature";
-import { MeshyLab } from "./features/meshy/MeshyLab";
 import { isTileTargetEnabled } from "./features/tile/feature";
+import { ProjectManagerDialog } from "./features/project/ProjectManagerDialog";
+import {
+  createMeshy2AuroraProjectV1,
+  deleteProjectV1,
+  duplicateMeshy2AuroraProjectV1,
+  listProjectRecoveryRecordsV1,
+  loadProjectV1,
+  parseMeshy2AuroraProjectV1,
+  projectBuildIdentityV1,
+  projectExportFileNameV1,
+  projectFileReferenceV1,
+  renameMeshy2AuroraProjectV1,
+  reviseMeshy2AuroraProjectV1,
+  saveProjectV1,
+  serializeMeshy2AuroraProjectV1,
+  serializeProjectBuildIdentityV1,
+  sameProjectBuildIdentityV1,
+  type Meshy2AuroraProjectFilesV1,
+  type Meshy2AuroraProjectV1,
+  type ProjectBuildIdentityV1,
+  type ProjectDatabaseV1,
+  type ProjectRecoveryRecordV1,
+} from "./features/project";
 import { StudioWorkerClient } from "./worker/client";
-import type { StudioWorkerResponse } from "./worker/types";
+
+const AuroraReadbackViewport = lazy(async () => ({
+  default: (await import("./features/preview/AuroraReadbackViewport"))
+    .AuroraReadbackViewport,
+}));
+const SourceViewport = lazy(async () => ({
+  default: (await import("./features/preview/SourceViewport")).SourceViewport,
+}));
+const PlaceableAuthoringEditor = lazy(async () => ({
+  default: (await import("./features/placeable-authoring/PlaceableAuthoringEditor"))
+    .PlaceableAuthoringEditor,
+}));
+const ReviewModelDetails = lazy(async () => ({
+  default: (await import("./features/review/ReviewModelDetails"))
+    .ReviewModelDetails,
+}));
+const PlaceableReview = lazy(async () => ({
+  default: (await import("./features/review/PlaceableReview")).PlaceableReview,
+}));
+const TileReview = lazy(async () => ({
+  default: (await import("./features/review/TileReview")).TileReview,
+}));
+const AnimationStudioWorkspace = lazy(async () => ({
+  default: (await import("./features/animation-editor/AnimationStudioWorkspace"))
+    .AnimationStudioWorkspace,
+}));
+const AuthoredAnimationReview = lazy(async () => ({
+  default: (await import("./features/review/AuthoredAnimationReview"))
+    .AuthoredAnimationReview,
+}));
+const MeshyLab = lazy(async () => ({
+  default: (await import("./features/meshy/MeshyLab")).MeshyLab,
+}));
 
 const requestId = () => crypto.randomUUID();
 
+async function fileSha256(file: File): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function downloadProjectBackup(project: Meshy2AuroraProjectV1) {
+  const url = URL.createObjectURL(new Blob(
+    [serializeMeshy2AuroraProjectV1(project)],
+    { type: "application/json" },
+  ));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = projectExportFileNameV1(project);
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function projectContentSignature(project: Meshy2AuroraProjectV1): string {
+  return JSON.stringify({
+    target: project.target,
+    files: project.files,
+    animationMappingV2: project.animationMappingV2,
+    animationStudio: project.animationStudio,
+    placeableAuthoring: project.placeableAuthoring,
+    tileOptions: project.tileOptions,
+  });
+}
+
 interface StudioModelBuildResult {
   readonly kind: "MODEL";
+  readonly projectIdentity: ProjectBuildIdentityV1;
   readonly canonical: CanonicalResultSnapshot;
   readonly readback: BinaryMdlInspectionReport;
   readonly readbackJson: string;
@@ -154,6 +263,7 @@ interface StudioModelBuildResult {
 
 interface StudioPlaceableBuildResult {
   readonly kind: "PLACEABLE";
+  readonly projectIdentity: ProjectBuildIdentityV1;
   readonly placeable: PlaceableResultSnapshot;
   readonly readback: BinaryMdlInspectionReport;
   readonly readbackJson: string;
@@ -161,6 +271,7 @@ interface StudioPlaceableBuildResult {
 
 interface StudioTileBuildResult {
   readonly kind: "TILE";
+  readonly projectIdentity: ProjectBuildIdentityV1;
   readonly tile: TileResultSnapshot;
   readonly readback: BinaryMdlInspectionReport;
   readonly readbackJson: string;
@@ -177,17 +288,6 @@ type StudioState = StudioSessionState<
   AppearanceInspectionSnapshot
 >;
 
-function reduceSession(
-  state: StudioState,
-  event: StudioSessionEvent<
-    SourceInspectionSnapshot,
-    AppearanceInspectionSnapshot,
-    StudioBuildResult
-  >,
-) {
-  return studioSessionReducer(state, event);
-}
-
 function isGlb(file: File) {
   return file.name.toLowerCase().endsWith(".glb");
 }
@@ -200,34 +300,6 @@ function isJson(file: File) {
   return file.name.toLowerCase().endsWith(".json");
 }
 
-const STUDIO_PLACEABLE_IDENTITY = {
-  moduleResref: "m2a_s1_plc_mod",
-  moduleFileName: "m2a_s1_plc_mod.mod",
-  moduleDisplayName: "Meshy2Aurora S1 Placeable Proof",
-  areaResref: "m2a_s1_plc_ar",
-  areaName: "Meshy2Aurora S1 Ritual Pedestal",
-  hakResref: "m2a_s1_plc_hak",
-  hakFileName: "m2a_s1_plc_hak.hak",
-  modelResref: "m2a_s1_plc_ped",
-  textureResref: "m2a_s1_plc_tex",
-  blueprintResref: "m2a_s1_plc_utp",
-  objectTag: "m2a_s1_ritual_pedestal",
-  displayName: "Meshy Ritual Pedestal",
-} as const;
-const STUDIO_PLACEABLE_PLACEMENT = { x: 10, y: 14.5, z: 0, bearing: 0 } as const;
-const STUDIO_TILE_IDENTITY = {
-  moduleResref: "m2atilestv1",
-  moduleFileName: "m2a_tile_static_v1.mod",
-  moduleDisplayName: "Meshy2Aurora Tile Static V1",
-  areaResref: "m2atilearea",
-  areaName: "M2A Tile Static 2x2",
-  hakResref: "m2atilestv1",
-  hakFileName: "m2a_tile_static_v1.hak",
-  tilesetResref: "m2atilesetv1",
-  modelResref: "m2atilemdl1",
-  textureResref: "m2atiletex1",
-  imageMapResref: "m2atilemap1",
-} as const;
 const DEFAULT_TILE_OPTIONS: TileAuthoringOptions = {
   terrainName: "Grass",
   surface: "GRASS",
@@ -283,13 +355,23 @@ function synchronizeCreatureAnimationAuthoringV2(
 }
 
 function parseEditableAnimationSourceV1(inspectionJson: string): {
+  sourceRevision: string;
   rig: AnimationRigNodeV1[];
+  clips: ExternalAnimationSourceInspectionV1["clips"];
   clip: AuthoredAnimationClipV1 | null;
 } {
   const value = JSON.parse(inspectionJson) as {
+    sourceRevision?: unknown;
     rig?: unknown;
+    clips?: unknown;
     clip?: unknown;
   };
+  if (
+    typeof value.sourceRevision !== "string"
+    || !/^[0-9a-f]{64}$/i.test(value.sourceRevision)
+  ) {
+    throw new Error("Editable animation source inspection has no SHA-256 revision.");
+  }
   if (!Array.isArray(value.rig)) {
     throw new Error("Editable animation source inspection has no output rig.");
   }
@@ -340,8 +422,36 @@ function parseEditableAnimationSourceV1(inspectionJson: string): {
       rotation: node.rotation as unknown as [number, number, number, number],
     };
   });
+  if (!Array.isArray(value.clips)) {
+    throw new Error("Editable animation source inspection has no clip inventory.");
+  }
+  const clips = value.clips.map((item, index) => {
+    if (
+      item === null
+      || typeof item !== "object"
+      || typeof (item as { name?: unknown }).name !== "string"
+      || typeof (item as { durationSeconds?: unknown }).durationSeconds !== "number"
+      || !Number.isFinite((item as { durationSeconds: number }).durationSeconds)
+      || !Number.isSafeInteger((item as { trackCount?: unknown }).trackCount)
+      || Number((item as { trackCount: number }).trackCount) < 0
+    ) {
+      throw new Error(`Editable animation clip inventory row ${index} is invalid.`);
+    }
+    const clip = item as {
+      name: string;
+      durationSeconds: number;
+      trackCount: number;
+    };
+    return {
+      name: clip.name,
+      durationSeconds: clip.durationSeconds,
+      trackCount: clip.trackCount,
+    };
+  });
   return {
+    sourceRevision: value.sourceRevision,
     rig,
+    clips,
     clip: value.clip === null || value.clip === undefined
       ? null
       : value.clip as AuthoredAnimationClipV1,
@@ -396,6 +506,96 @@ function sourceValidationChecks(snapshot?: SourceInspectionSnapshot): InspectVal
   return [eligibility, ...gates, ...diagnostics];
 }
 
+function creatureH1ProfileRequirements(
+  snapshot?: SourceInspectionSnapshot,
+): InspectProfileRequirement[] {
+  const pending = "Inspection pending";
+  const requirements = [
+    {
+      id: "h1-source-skin",
+      label: "Source skin",
+      expected: "exactly 1",
+      actual: snapshot ? String(snapshot.inventory.skinCount) : pending,
+      pass: snapshot ? snapshot.inventory.skinCount === 1 : null,
+      repair: "Re-export one active skin and remove unused skin records.",
+    },
+    {
+      id: "h1-skinned-mesh-node",
+      label: "Skinned mesh node",
+      expected: "exactly 1 node with both meshId and skinId",
+      actual: snapshot ? String(snapshot.skinnedMeshNodeCount) : pending,
+      pass: snapshot ? snapshot.skinnedMeshNodeCount === 1 : null,
+      repair: "Merge the render surface under one mesh node bound to the selected skin.",
+    },
+    {
+      id: "h1-source-primitive",
+      label: "Source primitive",
+      expected: "exactly 1",
+      actual: snapshot ? String(snapshot.inventory.primitiveCount) : pending,
+      pass: snapshot ? snapshot.inventory.primitiveCount === 1 : null,
+      repair: "Join the render geometry and export it as one indexed primitive.",
+    },
+    {
+      id: "h1-joints",
+      label: "Skin joints",
+      expected: "at least 1 unique joint and joint reference",
+      actual: snapshot
+        ? `${snapshot.boneCount} unique / ${snapshot.inventory.jointReferenceCount} references`
+        : pending,
+      pass: snapshot
+        ? snapshot.boneCount > 0 && snapshot.inventory.jointReferenceCount > 0
+        : null,
+      repair: "Bind the mesh to a non-empty skeleton and export joint references.",
+    },
+    {
+      id: "h1-triangle-budget",
+      label: "Render-model triangle budget",
+      expected: `at most ${AURORA_MODEL_TRIANGLE_BUDGET_V1.toLocaleString("en-US")}`,
+      actual: snapshot
+        ? snapshot.statistics.triangleCount.toLocaleString("en-US")
+        : pending,
+      pass: snapshot
+        ? snapshot.statistics.triangleCount <= AURORA_MODEL_TRIANGLE_BUDGET_V1
+        : null,
+      repair: `Remesh or decimate to ${AURORA_MODEL_TRIANGLE_BUDGET_V1.toLocaleString("en-US")} triangles or fewer.`,
+    },
+    {
+      id: "h1-normals",
+      label: "Vertex normals",
+      expected: "present on every primitive",
+      actual: snapshot
+        ? `${snapshot.statistics.primitivesMissingNormals} primitives missing`
+        : pending,
+      pass: snapshot ? snapshot.statistics.primitivesMissingNormals === 0 : null,
+      repair: "Generate and export normals for the selected primitive.",
+    },
+    {
+      id: "h1-uv0",
+      label: "UV0",
+      expected: "present on every primitive",
+      actual: snapshot
+        ? `${snapshot.statistics.primitivesMissingUv0} primitives missing`
+        : pending,
+      pass: snapshot ? snapshot.statistics.primitivesMissingUv0 === 0 : null,
+      repair: "Create a UV0 unwrap and include TEXCOORD_0 in the GLB.",
+    },
+    {
+      id: "h1-topology",
+      label: "Primitive topology",
+      expected: "triangles only",
+      actual: snapshot
+        ? `${snapshot.statistics.nonTrianglePrimitives} non-triangle primitives`
+        : pending,
+      pass: snapshot ? snapshot.statistics.nonTrianglePrimitives === 0 : null,
+      repair: "Triangulate the model before exporting the GLB.",
+    },
+  ] as const;
+  return requirements.map(({ pass, ...requirement }) => ({
+    ...requirement,
+    status: pass === null ? "UNAVAILABLE" : pass ? "PASS" : "ERROR",
+  }));
+}
+
 function appearanceValidationChecks(snapshot?: AppearanceInspectionSnapshot): InspectValidationCheck[] {
   if (!snapshot) {
     return [{
@@ -435,22 +635,38 @@ export interface AppProps {
   readonly meshyBridge?: MeshyBridgeClient;
   readonly meshyLabEnabled?: boolean;
   readonly tileTargetEnabled?: boolean;
+  readonly projectDatabase?: ProjectDatabaseV1;
 }
 
 export function App({
   meshyBridge,
   meshyLabEnabled = isMeshyLabEnabled(),
   tileTargetEnabled = isTileTargetEnabled(),
+  projectDatabase,
 }: AppProps = {}) {
-  const workerRef = useRef<StudioWorkerClient | undefined>(undefined);
-  const sessionRef = useRef<StudioState>(
-    createInitialStudioSession<
-      SourceInspectionSnapshot,
-      StudioBuildResult,
-      AppearanceInspectionSnapshot
-    >(),
+  const { session, sessionRef, dispatch } = useStudioSessionController<
+    SourceInspectionSnapshot,
+    StudioBuildResult,
+    AppearanceInspectionSnapshot
+  >();
+  const { workerRef, replaceWorker } = useStudioWorkerController();
+  const [project, setProject] = useState<Meshy2AuroraProjectV1>(
+    () => createMeshy2AuroraProjectV1(),
   );
-  const [session, dispatch] = useReducer(reduceSession, sessionRef.current);
+  const projectRef = useRef(project);
+  const [projectPersistence, setProjectPersistence] =
+    useState<StudioProjectPersistence>("NOT_SAVED");
+  const [projectManagerOpen, setProjectManagerOpen] = useState(false);
+  const [projectBusy, setProjectBusy] = useState(false);
+  const [projectError, setProjectError] = useState<string>();
+  const [projectRecoveryRecords, setProjectRecoveryRecords] =
+    useState<ProjectRecoveryRecordV1[]>([]);
+  const [pendingProjectRebind, setPendingProjectRebind] = useState({
+    sourceGlb: false,
+    baseTwoDa: false,
+    animationEvents: false,
+  });
+  const pendingProjectRebindRef = useRef(pendingProjectRebind);
   const [sourceError, setSourceError] = useState<string>();
   const [appearanceError, setAppearanceError] = useState<string>();
   const [animationEventsError, setAnimationEventsError] = useState<string>();
@@ -487,24 +703,11 @@ export function App({
 
   if (!meshyBridgeRef.current) meshyBridgeRef.current = meshyBridge ?? new LocalMeshyBridgeClient();
 
-  sessionRef.current = session;
+  projectRef.current = project;
+  pendingProjectRebindRef.current = pendingProjectRebind;
   placeableAuthoringRef.current = placeableAuthoring;
   animationStudioStateRef.current = animationStudioState;
   animationAuthoringV2Ref.current = animationAuthoringV2;
-
-  useEffect(() => {
-    const worker = new StudioWorkerClient();
-    workerRef.current = worker;
-    return () => {
-      workerRef.current?.dispose();
-      workerRef.current = undefined;
-    };
-  }, []);
-
-  const replaceWorker = () => {
-    workerRef.current?.dispose();
-    workerRef.current = new StudioWorkerClient();
-  };
 
   const invalidateRunningBuild = () => {
     if (sessionRef.current.build.kind !== "RUNNING") return;
@@ -512,6 +715,177 @@ export function App({
     setReviewViewport("CONVERTED");
     setSelectedReadbackPart(undefined);
   };
+
+  const refreshProjectRecoveryRecords = () => {
+    void listProjectRecoveryRecordsV1(projectDatabase)
+      .then(setProjectRecoveryRecords)
+      .catch((error: unknown) => {
+        setProjectError(
+          `Local recovery is unavailable: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
+  };
+
+  const applyProject = (
+    nextProject: Meshy2AuroraProjectV1,
+    persistence: StudioProjectPersistence,
+  ) => {
+    invalidateRunningBuild();
+    projectRef.current = nextProject;
+    setProject(nextProject);
+    setProjectPersistence(persistence);
+    setPendingProjectRebind({
+      sourceGlb: nextProject.files.sourceGlb !== null,
+      baseTwoDa: nextProject.files.baseTwoDa !== null,
+      animationEvents: nextProject.files.animationEvents !== null,
+    });
+    setSourceError(nextProject.files.sourceGlb
+      ? `Rebind the exact source file with SHA-256 ${nextProject.files.sourceGlb.sha256}.`
+      : undefined);
+    setAppearanceError(nextProject.files.baseTwoDa
+      ? `Rebind the exact base table with SHA-256 ${nextProject.files.baseTwoDa.sha256}.`
+      : undefined);
+    setAnimationEventsError(nextProject.files.animationEvents
+      ? `Rebind the exact event JSON with SHA-256 ${nextProject.files.animationEvents.sha256}.`
+      : undefined);
+    setAnimationMappingSaveState({ kind: "IDLE" });
+    setAnimationStudioState(
+      nextProject.animationStudio
+        ? createAnimationStudioStateV1(nextProject.animationStudio)
+        : null,
+    );
+    setAnimationAuthoringV2(nextProject.animationMappingV2);
+    setAnimationAuthoringV2Dirty(false);
+    setAnimationStudioCoreDiagnostics([]);
+    setAnimationStudioMappingStorageDiagnostic(null);
+    setAnimationStudioLoadedProjectId(null);
+    setEditableAnimationRig([]);
+    setTileOptions(nextProject.tileOptions);
+    setPlaceableAuthoring(undefined);
+    setReviewViewport("CONVERTED");
+    setSelectedReadbackPart(undefined);
+    setDebugDrawerMessage(undefined);
+    setMeshyProvenance(undefined);
+    setShowMeshyLab(false);
+    setProjectManagerOpen(false);
+    dispatch({ type: "PROJECT_OPENED", target: nextProject.target });
+  };
+
+  const createNewProject = () => {
+    applyProject(createMeshy2AuroraProjectV1(), "DIRTY");
+    setProjectError(undefined);
+  };
+
+  const importProject = (file: File) => {
+    setProjectBusy(true);
+    setProjectError(undefined);
+    void file.text()
+      .then((json) => {
+        const parsed = parseMeshy2AuroraProjectV1(json);
+        if (parsed.kind === "INVALID") {
+          throw new Error(parsed.diagnostics.map(({ message }) => message).join(" "));
+        }
+        applyProject(parsed.value, "DIRTY");
+      })
+      .catch((error: unknown) => setProjectError(
+        `Project import failed: ${error instanceof Error ? error.message : String(error)}`,
+      ))
+      .finally(() => setProjectBusy(false));
+  };
+
+  const duplicateProject = () => {
+    applyProject(duplicateMeshy2AuroraProjectV1(projectRef.current), "DIRTY");
+    setProjectError(undefined);
+  };
+
+  const recoverProject = (projectId: string) => {
+    setProjectBusy(true);
+    setProjectError(undefined);
+    void loadProjectV1(projectId, projectDatabase)
+      .then((result) => {
+        if (result.kind !== "LOADED") {
+          const message = result.kind === "ERROR"
+            ? result.diagnostics.map(({ message: diagnosticMessage }) => diagnosticMessage).join(" ")
+            : "The local project record no longer exists.";
+          throw new Error(message);
+        }
+        applyProject(result.value, "SAVED");
+      })
+      .catch((error: unknown) => setProjectError(
+        `Project recovery failed: ${error instanceof Error ? error.message : String(error)}`,
+      ))
+      .finally(() => setProjectBusy(false));
+  };
+
+  const removeRecoveryProject = (projectId: string) => {
+    setProjectBusy(true);
+    setProjectError(undefined);
+    void deleteProjectV1(projectId, true, projectDatabase)
+      .then((result) => {
+        if (result.kind === "ERROR") throw new Error(result.diagnostic.message);
+        refreshProjectRecoveryRecords();
+      })
+      .catch((error: unknown) => setProjectError(
+        `Project delete failed: ${error instanceof Error ? error.message : String(error)}`,
+      ))
+      .finally(() => setProjectBusy(false));
+  };
+
+  const deleteCurrentProject = () => {
+    const projectId = projectRef.current.identity.projectId;
+    setProjectBusy(true);
+    setProjectError(undefined);
+    void deleteProjectV1(projectId, true, projectDatabase)
+      .then((result) => {
+        if (result.kind === "ERROR") throw new Error(result.diagnostic.message);
+        applyProject(createMeshy2AuroraProjectV1(), "DIRTY");
+        refreshProjectRecoveryRecords();
+      })
+      .catch((error: unknown) => setProjectError(
+        `Project delete failed: ${error instanceof Error ? error.message : String(error)}`,
+      ))
+      .finally(() => setProjectBusy(false));
+  };
+
+  useEffect(() => {
+    if (!projectManagerOpen) return;
+    refreshProjectRecoveryRecords();
+  }, [projectManagerOpen]);
+
+  useEffect(() => {
+    if (projectPersistence !== "DIRTY") return;
+    const projectId = project.identity.projectId;
+    const revision = project.revision;
+    const timeout = window.setTimeout(() => {
+      void saveProjectV1(project, projectDatabase).then((result) => {
+        if (
+          projectRef.current.identity.projectId !== projectId
+          || projectRef.current.revision !== revision
+        ) return;
+        if (result.kind === "SAVED") {
+          setProjectPersistence("SAVED");
+          setProjectError(undefined);
+          if (projectManagerOpen) refreshProjectRecoveryRecords();
+        } else {
+          setProjectPersistence("DIRTY");
+          setProjectError(result.diagnostic.message);
+        }
+      });
+    }, 350);
+    return () => window.clearTimeout(timeout);
+  }, [project, projectDatabase, projectManagerOpen, projectPersistence]);
+
+  useEffect(() => {
+    if (projectPersistence === "SAVED") return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [projectPersistence]);
 
   const sourceFile = session.source?.file;
   useEffect(() => {
@@ -552,10 +926,35 @@ export function App({
         if (projection.kind === "FAILED") {
           throw new Error(`${projection.failure.code}: ${projection.failure.message}`);
         }
+        const expectedSource = pendingProjectRebindRef.current.sourceGlb
+          ? projectRef.current.files.sourceGlb
+          : null;
+        if (
+          expectedSource
+          && projection.snapshot.source.sha256 !== expectedSource.sha256
+        ) {
+          setSourceError(
+            `Project expects source SHA-256 ${expectedSource.sha256}; selected file is ${
+              projection.snapshot.source.sha256
+            }. Select the exact source file.`,
+          );
+          dispatch({ type: "SOURCE_REMOVED" });
+          return;
+        }
         setSourceError(undefined);
+        const bootstrap = response.placeableAuthoringJson
+          ? parsePlaceableAuthoringBootstrap(response.placeableAuthoringJson)
+          : undefined;
+        const restoredPlaceable = projectRef.current.placeableAuthoring;
         setPlaceableAuthoring(
-          response.placeableAuthoringJson
-            ? parsePlaceableAuthoringBootstrap(response.placeableAuthoringJson)
+          bootstrap
+            ? {
+                ...bootstrap,
+                document:
+                  restoredPlaceable?.sourceSha256 === projection.snapshot.source.sha256
+                    ? restoredPlaceable
+                    : bootstrap.document,
+              }
             : undefined,
         );
         dispatch({
@@ -564,6 +963,9 @@ export function App({
           sha256: projection.snapshot.source.sha256,
           inspection: projection.snapshot,
         });
+        if (expectedSource) {
+          setPendingProjectRebind((current) => ({ ...current, sourceGlb: false }));
+        }
       })
       .catch((error: unknown) => {
         if (
@@ -615,6 +1017,21 @@ export function App({
           throw new Error("Unexpected appearance inspection response");
         }
         const inspection = projectAppearanceInspection(response.inspectionJson);
+        const expectedAppearance = pendingProjectRebindRef.current.baseTwoDa
+          ? projectRef.current.files.baseTwoDa
+          : null;
+        if (
+          expectedAppearance
+          && inspection.sourceSha256 !== expectedAppearance.sha256
+        ) {
+          setAppearanceError(
+            `Project expects base 2DA SHA-256 ${expectedAppearance.sha256}; selected file is ${
+              inspection.sourceSha256
+            }. Select the exact base table.`,
+          );
+          dispatch({ type: "APPEARANCE_REMOVED" });
+          return;
+        }
         setAppearanceError(undefined);
         dispatch({
           type: "APPEARANCE_INSPECTION_SUCCEEDED",
@@ -622,6 +1039,9 @@ export function App({
           sha256: inspection.sourceSha256,
           inspection,
         });
+        if (expectedAppearance) {
+          setPendingProjectRebind((current) => ({ ...current, baseTwoDa: false }));
+        }
       })
       .catch((error: unknown) => {
         if (
@@ -640,6 +1060,76 @@ export function App({
       });
     return () => { cancelled = true; };
   }, [appearanceFile, session.revision]);
+
+  const animationEventsFile = session.animationEvents?.file;
+  useEffect(() => {
+    if (!animationEventsFile) return;
+    let cancelled = false;
+    const revision = session.revision;
+    dispatch({
+      type: "INPUT_METADATA_UPDATED",
+      input: "ANIMATION_EVENTS",
+      revision,
+      parse: { kind: "PARSING" },
+    });
+    void Promise.all([
+      animationEventsFile.text().then((json) => JSON.parse(json)),
+      fileSha256(animationEventsFile),
+    ])
+      .then(([, sha256]) => {
+        if (
+          cancelled
+          || sessionRef.current.revision !== revision
+          || sessionRef.current.animationEvents?.file !== animationEventsFile
+        ) return;
+        const expectedEvents = pendingProjectRebindRef.current.animationEvents
+          ? projectRef.current.files.animationEvents
+          : null;
+        if (expectedEvents && sha256 !== expectedEvents.sha256) {
+          setAnimationEventsError(
+            `Project expects animation-event SHA-256 ${expectedEvents.sha256}; selected file is ${
+              sha256
+            }. Select the exact event JSON.`,
+          );
+          dispatch({ type: "ANIMATION_EVENTS_REMOVED" });
+          return;
+        }
+        setAnimationEventsError(undefined);
+        dispatch({
+          type: "INPUT_METADATA_UPDATED",
+          input: "ANIMATION_EVENTS",
+          revision,
+          sha256,
+          parse: { kind: "VALID" },
+        });
+        if (expectedEvents) {
+          setPendingProjectRebind((current) => ({
+            ...current,
+            animationEvents: false,
+          }));
+        }
+      })
+      .catch((error: unknown) => {
+        if (
+          cancelled
+          || sessionRef.current.revision !== revision
+          || sessionRef.current.animationEvents?.file !== animationEventsFile
+        ) return;
+        const message = `Animation event JSON is invalid: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
+        setAnimationEventsError(message);
+        dispatch({
+          type: "INPUT_METADATA_UPDATED",
+          input: "ANIMATION_EVENTS",
+          revision,
+          parse: { kind: "INVALID", message },
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [animationEventsFile, session.revision]);
 
   const selectSource = (file: File, provenance?: MeshyArtifactProvenance) => {
     if (!isGlb(file)) {
@@ -696,18 +1186,21 @@ export function App({
     setSourceError(undefined);
     setMeshyProvenance(undefined);
     setPlaceableAuthoring(undefined);
+    setPendingProjectRebind((current) => ({ ...current, sourceGlb: false }));
     dispatch({ type: "SOURCE_REMOVED" });
   };
 
   const removeAppearance = () => {
     invalidateRunningBuild();
     setAppearanceError(undefined);
+    setPendingProjectRebind((current) => ({ ...current, baseTwoDa: false }));
     dispatch({ type: "APPEARANCE_REMOVED" });
   };
 
   const removeAnimationEvents = () => {
     invalidateRunningBuild();
     setAnimationEventsError(undefined);
+    setPendingProjectRebind((current) => ({ ...current, animationEvents: false }));
     dispatch({ type: "ANIMATION_EVENTS_REMOVED" });
   };
 
@@ -721,6 +1214,11 @@ export function App({
     setDebugDrawerMessage(undefined);
     setTileOptions(DEFAULT_TILE_OPTIONS);
     setPlaceableAuthoring(undefined);
+    setPendingProjectRebind({
+      sourceGlb: false,
+      baseTwoDa: false,
+      animationEvents: false,
+    });
     dispatch({ type: "START_NEW_CONVERSION" });
   };
 
@@ -745,6 +1243,8 @@ export function App({
 
     const buildRequestId = requestId();
     const buildRevision = current.revision;
+    const projectBuildIdentity = projectBuildIdentityV1(projectRef.current);
+    const projectIdentityJson = serializeProjectBuildIdentityV1(projectRef.current);
     const source = current.source.file;
     const appearance = current.appearance?.file;
     const animationEvents = current.animationEvents?.file;
@@ -848,80 +1348,46 @@ export function App({
             animationBuildInput,
           );
         }
-        let response: Promise<StudioWorkerResponse>;
-        if (tileLane) {
-          response = worker.request(
-            {
-              requestId: buildRequestId,
-              type: "BUILD_TILE_PACKAGE",
-              sourceGlb,
-              optionsJson: JSON.stringify({
-                schemaVersion: 1,
-                identity: STUDIO_TILE_IDENTITY,
-                interior: tileOptions.interior,
-                terrainName: tileOptions.terrainName.trim(),
-                surface: tileOptions.surface,
-              }),
-            },
-            [sourceGlb],
-          );
-        } else {
-          if (!appearanceTwoDa) {
-            throw new Error("The selected conversion target requires a base 2DA");
-          }
-          response = placeableLane
-          ? worker.request(
-              {
-                requestId: buildRequestId,
-                type: "BUILD_PLACEABLE_PACKAGE",
-                sourceGlb,
-                placeablesTwoDa: appearanceTwoDa,
-                identityJson: JSON.stringify(STUDIO_PLACEABLE_IDENTITY),
-                placementJson: JSON.stringify(STUDIO_PLACEABLE_PLACEMENT),
-                paletteId: 7,
-                authoringJson: placeableAuthoringJson,
-              },
-              [sourceGlb, appearanceTwoDa],
-            )
-          : packageLane === "H1_SKINNED_FULL_42_EDITED"
-            ? worker.request(
-                {
-                  requestId: buildRequestId,
-                  type: "BUILD_MODEL_PACKAGE",
-                  sourceGlb,
-                  appearanceTwoDa,
-                  packageLane,
-                  animationAuthoringJson: animationAuthoringJson ?? "",
-                  animationStudioDocumentJson:
-                    animationStudioDocumentJson ?? "",
-                  eventAuthoringJson,
-                },
-                [sourceGlb, appearanceTwoDa],
-              )
-          : packageLane === "H1_SKINNED_FULL_42_AUTHORED"
-            ? worker.request(
-                {
-                  requestId: buildRequestId,
-                  type: "BUILD_MODEL_PACKAGE",
-                  sourceGlb,
-                  appearanceTwoDa,
-                  packageLane,
-                  animationAuthoringJson: animationAuthoringJson ?? "",
-                  eventAuthoringJson,
-                },
-                [sourceGlb, appearanceTwoDa],
-              )
-            : worker.request(
-                {
-                  requestId: buildRequestId,
-                  type: "BUILD_MODEL_PACKAGE",
-                  sourceGlb,
-                  appearanceTwoDa,
-                  packageLane,
-                },
-                [sourceGlb, appearanceTwoDa],
-              );
+        if (!tileLane && !appearanceTwoDa) {
+          throw new Error("The selected conversion target requires a base 2DA");
         }
+        const targetBuild = tileLane
+          ? createTargetBuildRequestV1({
+              target: "TILE",
+              requestId: buildRequestId,
+              sourceGlb,
+              tileOptions,
+            })
+          : placeableLane
+            ? createTargetBuildRequestV1({
+                target: "PLACEABLE",
+                requestId: buildRequestId,
+                sourceGlb,
+                baseTwoDa: appearanceTwoDa!,
+                projectIdentityJson,
+                ...(placeableAuthoringJson
+                  ? { authoringJson: placeableAuthoringJson }
+                  : {}),
+              })
+            : createTargetBuildRequestV1({
+                target: "CREATURE",
+                requestId: buildRequestId,
+                sourceGlb,
+                baseTwoDa: appearanceTwoDa!,
+                projectIdentityJson,
+                packageLane: packageLane === "H1_SKINNED_FULL_42_EDITED"
+                  ? packageLane
+                  : "H1_SKINNED_FULL_42_AUTHORED",
+                animationAuthoringJson: animationAuthoringJson ?? "",
+                ...(animationStudioDocumentJson
+                  ? { animationStudioDocumentJson }
+                  : {}),
+                ...(eventAuthoringJson ? { eventAuthoringJson } : {}),
+              });
+        const response = worker.request(
+          targetBuild.request,
+          targetBuild.transfer,
+        );
         return response.then((resolved) => ({
           response: resolved,
           animationStudioFingerprintSha256,
@@ -962,6 +1428,31 @@ export function App({
               response.artifacts,
             )
           : undefined;
+        const placeableResult = response.type === "PLACEABLE_PACKAGE_BUILT"
+          ? projectPlaceableResult(response.reportJson, response.artifacts)
+          : undefined;
+        if (
+          canonical
+          && !sameProjectBuildIdentityV1(
+            canonical.projectIdentity,
+            projectBuildIdentity,
+          )
+        ) {
+          throw new Error(
+            `Canonical build manifest does not match the frozen project identity (expected ${projectBuildIdentity.projectId}@${projectBuildIdentity.projectRevision}, received ${canonical.projectIdentity?.projectId ?? "missing"}@${canonical.projectIdentity?.projectRevision ?? "missing"})`,
+          );
+        }
+        if (
+          placeableResult
+          && !sameProjectBuildIdentityV1(
+            placeableResult.projectIdentity,
+            projectBuildIdentity,
+          )
+        ) {
+          throw new Error(
+            `Placeable build report does not match the frozen project identity (expected ${projectBuildIdentity.projectId}@${projectBuildIdentity.projectRevision}, received ${placeableResult.projectIdentity.projectId}@${placeableResult.projectIdentity.projectRevision})`,
+          );
+        }
         let animationReconciliation: AuthoredBuiltAnimationReconciliationV1 | undefined;
         if (canonical && !editedAnimationLane) {
           if (!animationBuildInput) {
@@ -1026,13 +1517,15 @@ export function App({
         const result: StudioBuildResult = response.type === "PLACEABLE_PACKAGE_BUILT"
           ? {
               kind: "PLACEABLE",
-              placeable: projectPlaceableResult(response.reportJson, response.artifacts),
+              projectIdentity: projectBuildIdentity,
+              placeable: placeableResult!,
               readback,
               readbackJson: response.readbackJson,
             }
           : response.type === "TILE_PACKAGE_BUILT"
             ? {
                 kind: "TILE",
+                projectIdentity: projectBuildIdentity,
                 tile: projectTileResult(
                   response.reportJson,
                   response.wokReadbackJson,
@@ -1045,6 +1538,7 @@ export function App({
           : response.type === "MODEL_PACKAGE_BUILT"
             ? {
                 kind: "MODEL",
+                projectIdentity: projectBuildIdentity,
                 canonical: canonical!,
                 readback,
                 readbackJson: response.readbackJson,
@@ -1118,8 +1612,16 @@ export function App({
   const blockedSteps = workflowSteps.filter(
     (step) => getWorkflowStepStatus(session, step) === "LOCKED",
   );
-  const sourceIdentity = session.source?.sha256 ? { sha256: session.source.sha256 } : undefined;
-  const appearanceIdentity = session.appearance?.sha256 ? { sha256: session.appearance.sha256 } : undefined;
+  const sourceIdentity = session.source?.sha256
+    ? { sha256: session.source.sha256 }
+    : project.files.sourceGlb
+      ? { sha256: project.files.sourceGlb.sha256 }
+      : undefined;
+  const appearanceIdentity = session.appearance?.sha256
+    ? { sha256: session.appearance.sha256 }
+    : project.files.baseTwoDa
+      ? { sha256: project.files.baseTwoDa.sha256 }
+      : undefined;
   const sourceInspection = session.sourceInspection?.revision === session.revision
     ? session.sourceInspection.value
     : undefined;
@@ -1154,6 +1656,7 @@ export function App({
   const animationStudioSourceFile = session.target === "CREATURE"
     ? session.source?.file ?? null
     : null;
+  const animationStudioProjectId = project.identity.projectId;
 
   useEffect(() => {
     const sourceRevision = animationStudioSourceRevision;
@@ -1172,6 +1675,7 @@ export function App({
     setAnimationStudioLoadedProjectId(null);
     setAnimationStudioCoreDiagnostics([]);
     const previousStudio = animationStudioStateRef.current;
+    const projectDocument = projectRef.current.animationStudio;
     const preserveStaleStudio = previousStudio !== null
       && previousStudio.document.authoredClips.length > 0
       && previousStudio.document.sourceRevision !== sourceRevision;
@@ -1181,13 +1685,25 @@ export function App({
       setAnimationStudioState(
         reconcileAnimationStudioSourceRevisionV1(previousStudio, sourceRevision),
       );
+    } else if (projectDocument?.sourceRevision === sourceRevision) {
+      const restored = createAnimationStudioStateV1(projectDocument);
+      setAnimationStudioState({
+        ...restored,
+        autosave: {
+          status: "AUTOSAVED",
+          savedRevision: projectDocument.authoringRevision,
+          savedAt: projectRef.current.identity.updatedAt,
+          error: null,
+        },
+      });
+      setAnimationStudioLoadedProjectId(animationStudioProjectId);
     } else {
       setAnimationStudioState(
         createAnimationStudioStateV1(
           createEmptyAnimationStudioDocumentV1(sourceRevision),
         ),
       );
-      void loadAnimationStudioDocumentV1(sourceRevision)
+      void loadAnimationStudioDocumentV1(animationStudioProjectId)
         .then((loaded) => {
           if (cancelled || sessionRef.current.source?.sha256 !== sourceRevision) return;
           if (loaded.kind === "LOADED") {
@@ -1206,7 +1722,7 @@ export function App({
           } else if (loaded.kind === "ERROR") {
             setAnimationStudioCoreDiagnostics(loaded.diagnostics);
           }
-          setAnimationStudioLoadedProjectId(sourceRevision);
+          setAnimationStudioLoadedProjectId(animationStudioProjectId);
         });
     }
 
@@ -1238,7 +1754,11 @@ export function App({
     return () => {
       cancelled = true;
     };
-  }, [animationStudioSourceFile, animationStudioSourceRevision]);
+  }, [
+    animationStudioProjectId,
+    animationStudioSourceFile,
+    animationStudioSourceRevision,
+  ]);
 
   useEffect(() => {
     const mapping = session.animationMapping?.value;
@@ -1246,12 +1766,20 @@ export function App({
     const loaded = loadCreatureAnimationAuthoringV2DraftV1(
       animationStudioSourceRevision,
     );
+    const projectMapping = projectRef.current.animationMappingV2;
     setAnimationStudioMappingStorageDiagnostic(
       loaded.kind === "ERROR" ? loaded.diagnostic : null,
     );
     setAnimationAuthoringV2((current) => synchronizeCreatureAnimationAuthoringV2(
       mapping,
-      current ?? (loaded.kind === "LOADED" ? loaded.value : null),
+      current
+        ?? (
+          projectMapping?.sourceRevision === animationStudioSourceRevision
+            ? projectMapping
+            : loaded.kind === "LOADED"
+              ? loaded.value
+              : null
+        ),
     ));
   }, [animationStudioSourceRevision, session.animationMapping]);
 
@@ -1277,10 +1805,10 @@ export function App({
 
   useEffect(() => {
     const studio = animationStudioState;
-    const projectId = animationStudioSourceRevision;
+    const projectId = animationStudioProjectId;
     if (
       !studio
-      || !projectId
+      || !animationStudioSourceRevision
       || animationStudioLoadedProjectId !== projectId
     ) return;
     const revision = studio.document.authoringRevision;
@@ -1317,6 +1845,7 @@ export function App({
     return () => window.clearTimeout(timeout);
   }, [
     animationStudioLoadedProjectId,
+    animationStudioProjectId,
     animationStudioSourceRevision,
     animationStudioState?.document,
     animationStudioState?.mode,
@@ -1430,6 +1959,78 @@ export function App({
   }, [
     animationStudioState?.document,
     animationStudioState?.selectedClipId,
+  ]);
+
+  useEffect(() => {
+    const current = projectRef.current;
+    const sourceGlb = session.source?.sha256
+      ? current.files.sourceGlb?.sha256 === session.source.sha256
+        ? current.files.sourceGlb
+        : projectFileReferenceV1(session.source.file, session.source.sha256)
+      : pendingProjectRebind.sourceGlb
+        ? current.files.sourceGlb
+        : null;
+    const baseTwoDa = session.appearance?.sha256
+      ? current.files.baseTwoDa?.sha256 === session.appearance.sha256
+        ? current.files.baseTwoDa
+        : projectFileReferenceV1(session.appearance.file, session.appearance.sha256)
+      : pendingProjectRebind.baseTwoDa
+        ? current.files.baseTwoDa
+        : null;
+    const animationEvents = session.animationEvents?.sha256
+      ? current.files.animationEvents?.sha256 === session.animationEvents.sha256
+        ? current.files.animationEvents
+        : projectFileReferenceV1(
+            session.animationEvents.file,
+            session.animationEvents.sha256,
+          )
+      : pendingProjectRebind.animationEvents
+        ? current.files.animationEvents
+        : null;
+    const files: Meshy2AuroraProjectFilesV1 = {
+      sourceGlb,
+      baseTwoDa,
+      animationEvents,
+    };
+    const projected: Meshy2AuroraProjectV1 = {
+      ...current,
+      target: session.target,
+      files,
+      animationMappingV2: pendingProjectRebind.sourceGlb
+        ? current.animationMappingV2
+        : animationAuthoringV2,
+      animationStudio: pendingProjectRebind.sourceGlb
+        ? current.animationStudio
+        : animationStudioState?.document ?? null,
+      placeableAuthoring: pendingProjectRebind.sourceGlb
+        ? current.placeableAuthoring
+        : placeableAuthoring?.document ?? null,
+      tileOptions,
+    };
+    if (projectContentSignature(current) === projectContentSignature(projected)) {
+      return;
+    }
+    const revised = reviseMeshy2AuroraProjectV1(current, {
+      target: projected.target,
+      files: projected.files,
+      animationMappingV2: projected.animationMappingV2,
+      animationStudio: projected.animationStudio,
+      placeableAuthoring: projected.placeableAuthoring,
+      tileOptions: projected.tileOptions,
+    });
+    projectRef.current = revised;
+    setProject(revised);
+    setProjectPersistence("DIRTY");
+  }, [
+    animationAuthoringV2,
+    animationStudioState?.document,
+    pendingProjectRebind,
+    placeableAuthoring?.document,
+    session.animationEvents,
+    session.appearance,
+    session.source,
+    session.target,
+    tileOptions,
   ]);
 
   const animationStudioHasAuthoredClips =
@@ -1660,14 +2261,11 @@ export function App({
   const buildStepState: BuildStepState = session.build.kind === "RUNNING"
     ? {
         kind: "RUNNING",
-        completedStages: [],
-        message: "The local Worker is executing the canonical pipeline. Per-stage progress is unavailable.",
+        message: "The local Worker is executing one atomic canonical build. No percentage or intra-Worker stage telemetry is available.",
       }
     : session.build.kind === "FAILED"
       ? {
           kind: "FAILED",
-          completedStages: [],
-          failedStage: buildStageForPipelineStage(session.build.failure.stage),
           failure: session.build.failure,
         }
       : {
@@ -1681,6 +2279,127 @@ export function App({
         };
   const currentResult = session.result?.revision === session.revision
     ? session.result.value
+    : undefined;
+  const currentProjectIdentity = projectBuildIdentityV1(project);
+  const currentDownloadArtifacts = currentResult?.kind === "MODEL"
+    ? currentResult.canonical.artifacts
+    : currentResult?.kind === "PLACEABLE"
+      ? currentResult.placeable.artifacts
+      : currentResult?.kind === "TILE"
+        ? currentResult.tile.artifacts
+        : undefined;
+  const currentOfflineReconciled = currentResult
+    ? currentResult.readback.validation?.status === "PASS"
+      && (
+        currentResult.kind !== "MODEL"
+        || (
+          currentResult.canonical.conversionEvidence.conversionEligible
+          && currentResult.canonical.packageAssemblyEvidence.strictReconciled
+          && currentResult.canonical.semanticEvidence.semanticDiff.length === 0
+          && (
+            currentResult.canonical.geometry.deformation !== "SKIN"
+            || currentResult.canonical.animationMappingEvidence?.conformance.status === "READY"
+          )
+          && (
+            !currentResult.canonical.animationCompletenessEvidence
+            || currentResult.canonical.animationCompletenessEvidence.complete
+          )
+          && (
+            !currentResult.canonical.animationBehaviorEvidence
+            || currentResult.canonical.animationBehaviorEvidence.behaviorCandidateEligible
+          )
+          && (
+            !currentResult.canonical.skinAnimationEvidence
+            || currentResult.canonical.skinAnimationEvidence.complete
+          )
+          && (
+            !currentResult.animationStudioReconciliation
+            || getAnimationStudioDownloadGateV1(
+              currentResult.animationStudioReconciliation,
+            ).allowed
+          )
+        )
+      )
+    : false;
+  const currentDownloadInputs: DownloadManifestInputIdentityV1[] = [];
+  if (session.source?.sha256) {
+    currentDownloadInputs.push({
+      role: "SOURCE_GLB",
+      fileName: session.source.name,
+      byteLength: session.source.size,
+      sha256: session.source.sha256,
+    });
+  }
+  if (session.appearance?.sha256) {
+    currentDownloadInputs.push({
+      role: session.target === "PLACEABLE"
+        ? "BASE_PLACEABLES_2DA"
+        : "BASE_APPEARANCE_2DA",
+      fileName: session.appearance.name,
+      byteLength: session.appearance.size,
+      sha256: session.appearance.sha256,
+    });
+  }
+  if (session.animationEvents?.sha256) {
+    currentDownloadInputs.push({
+      role: "ANIMATION_EVENTS_JSON",
+      fileName: session.animationEvents.name,
+      byteLength: session.animationEvents.size,
+      sha256: session.animationEvents.sha256,
+    });
+  }
+  if (
+    currentResult?.kind === "MODEL"
+    && currentResult.canonical.animationMappingEvidence
+  ) {
+    currentDownloadInputs.push({
+      role: "ANIMATION_MAPPING_V2",
+      fileName: "animation-mapping-v2.json",
+      byteLength: null,
+      sha256:
+        currentResult.canonical.animationMappingEvidence
+          .authoringFingerprintSha256,
+    });
+  }
+  if (
+    currentResult?.kind === "MODEL"
+    && currentResult.animationStudioFingerprintSha256
+  ) {
+    currentDownloadInputs.push({
+      role: "ANIMATION_STUDIO_V1",
+      fileName: "animation-studio-v1.json",
+      byteLength: null,
+      sha256: currentResult.animationStudioFingerprintSha256,
+    });
+  }
+  if (
+    currentResult?.kind === "PLACEABLE"
+    && currentResult.placeable.authoring
+  ) {
+    currentDownloadInputs.push({
+      role: "PLACEABLE_AUTHORING_V1",
+      fileName: "placeable-authoring-v1.json",
+      byteLength: null,
+      sha256: currentResult.placeable.authoring.authoringSha256,
+    });
+  }
+  const currentDownloadManifest = currentResult && currentDownloadArtifacts
+    ? createDownloadManifestV1({
+        projectIdentity: currentResult.projectIdentity,
+        target: currentResult.kind === "MODEL"
+          ? "CREATURE"
+          : currentResult.kind,
+        inputs: currentDownloadInputs,
+        artifacts: currentDownloadArtifacts,
+        offlineReconciled: currentOfflineReconciled,
+      })
+    : undefined;
+  const currentDownloadReadiness = currentResult
+    ? projectDownloadReadinessV1({
+        currentProjectIdentity,
+        builtProjectIdentity: currentResult.projectIdentity,
+        offlineReconciled: currentOfflineReconciled,
+      })
     : undefined;
 
   const inputs = (
@@ -1735,8 +2454,26 @@ export function App({
   );
 
   return (
-    <StudioShell
-      header={<StudioHeader version="v0.1.0" environment="local" theme="dark" />}
+    <>
+      <StudioShell
+      header={(
+        <StudioHeader
+          version="v0.1.0"
+          environment="Offline project"
+          context={studioHeaderContext(session.currentStep, session.target)}
+          theme="dark"
+          project={{
+            name: project.identity.name,
+            target: studioTargetLabel(session.target),
+            sourceSha256: session.source?.sha256 ?? project.files.sourceGlb?.sha256,
+            persistence: projectPersistence,
+          }}
+          onProjectMenu={() => {
+            setProjectManagerOpen(true);
+            setProjectError(undefined);
+          }}
+        />
+      )}
       workflow={(
         <WorkflowStepper
           steps={workflowSteps}
@@ -1747,17 +2484,27 @@ export function App({
           onStepSelect={(step) => dispatch({ type: "NAVIGATE", step })}
         />
       )}
-      inputs={showMeshyLab ? null : inputs}
+      inputs={showMeshyLab || session.currentStep === "SOURCE" ? null : inputs}
       aside={!showMeshyLab && session.currentStep === "SOURCE" ? requirements : undefined}
-      expandPrimaryToWorkspace={showMeshyLab}
+      expandPrimaryToWorkspace={
+        showMeshyLab || session.currentStep === "ANIMATION_MAPPING"
+      }
       workspaceMode={showMeshyLab}
-      debugDrawer={showMeshyLab ? null : (
+      workflowRail={!showMeshyLab}
+      workflowLabel={`${studioTargetLabel(session.target)} workflow`}
+      debugDrawer={showMeshyLab || session.currentStep === "ANIMATION_MAPPING" ? null : (
         <section className="debug-drawer-placeholder" aria-label="Debug Drawer">
           <strong>Debug Drawer</strong>
           <span>{debugDrawerMessage ?? (session.currentStep === "SOURCE" ? "Disabled until inspection begins" : "Collapsed")}</span>
         </section>
       )}
     >
+      <Suspense fallback={(
+        <section className="empty-state" role="status" aria-label="Loading feature">
+          <strong>Loading local workspace</strong>
+          <span>The feature bundle stays in this browser.</span>
+        </section>
+      )}>
       {showMeshyLab ? (
         <MeshyLab
           bridge={meshyBridgeRef.current}
@@ -1827,6 +2574,9 @@ export function App({
             </div>
           )}
           sourceMetrics={sourceMetrics}
+          profileRequirements={session.target === "CREATURE"
+            ? creatureH1ProfileRequirements(sourceInspection)
+            : undefined}
           validationChecks={[
             ...sourceValidationChecks(sourceInspection),
             ...(session.target === "TILE" ? [] : appearanceValidationChecks(appearanceInspection)),
@@ -1835,6 +2585,9 @@ export function App({
             sourceInspection?.conversionEligible === true
             && (session.target === "TILE" || Boolean(appearanceInspection))
           }
+          continueLabel={session.target === "CREATURE"
+            ? "Continue to Animation Mapping"
+            : "Continue to Build"}
           wideViewport={session.target === "PLACEABLE" && Boolean(placeableAuthoring)}
           onBack={() => dispatch({ type: "NAVIGATE", step: "SOURCE" })}
           onContinue={continueFromInspect}
@@ -1916,6 +2669,23 @@ export function App({
                   onError={setSourceError}
                 />
               )}
+              sourceViewport={(clip, playheadSeconds) => (
+                <SourceViewport
+                  input={{
+                    provenance: "SOURCE",
+                    file: animationStudioSourceFile,
+                    sourceSha256: animationStudioSourceRevision,
+                  }}
+                  initialAnimationName={
+                    clip?.source.kind === "SOURCE_CLIP_COPY"
+                      ? clip.source.sourceClipName
+                      : undefined
+                  }
+                  controlledAnimationTimeSeconds={playheadSeconds}
+                  hideAnimationControls
+                  onError={setSourceError}
+                />
+              )}
               autosaveState={
                 animationStudioState.autosave.status === "SAVING"
                   ? { kind: "SAVING" }
@@ -1978,6 +2748,68 @@ export function App({
                   },
                   revision: 1,
                 };
+              }}
+              onInspectAnimationModel={async (file) => {
+                const worker = workerRef.current;
+                if (!worker) {
+                  throw new Error("The exact Animation Studio core is unavailable.");
+                }
+                const response = await worker.inspectEditableAnimationSource(
+                  await file.arrayBuffer(),
+                );
+                if (
+                  !response.ok
+                  || response.type !== "EDITABLE_ANIMATION_SOURCE_INSPECTED"
+                ) {
+                  throw new Error("The donor GLB could not be inspected.");
+                }
+                const parsed = parseEditableAnimationSourceV1(response.inspectionJson);
+                return {
+                  sourceRevision: parsed.sourceRevision,
+                  rig: parsed.rig,
+                  clips: parsed.clips,
+                };
+              }}
+              onImportAnimationModelClip={async (
+                file,
+                clipName,
+                newId,
+                newName,
+              ) => {
+                const worker = workerRef.current;
+                if (!worker) {
+                  throw new Error("The exact Animation Studio core is unavailable.");
+                }
+                const response = await worker.inspectEditableAnimationSource(
+                  await file.arrayBuffer(),
+                  clipName,
+                );
+                if (
+                  !response.ok
+                  || response.type !== "EDITABLE_ANIMATION_SOURCE_INSPECTED"
+                ) {
+                  throw new Error(`The donor clip ${clipName} could not be projected.`);
+                }
+                const parsed = parseEditableAnimationSourceV1(response.inspectionJson);
+                const compatibility = compareAnimationImportRigsV1(
+                  editableAnimationRig,
+                  parsed.rig,
+                );
+                if (!compatibility.compatible) {
+                  throw new Error(
+                    `[${ANIMATION_IMPORT_RIG_MISMATCH_V1}] ${compatibility.message} ${
+                      compatibility.mismatches[0] ?? ""
+                    }`.trim(),
+                  );
+                }
+                if (!parsed.clip) {
+                  throw new Error(`No editable tracks were returned for ${clipName}.`);
+                }
+                return createImportedModelClipV1(parsed.clip, {
+                  id: newId,
+                  name: newName,
+                  donorSourceRevision: parsed.sourceRevision,
+                });
               }}
               onValidateClip={async (candidate, prospectiveDocument) => {
                 const worker = workerRef.current;
@@ -2084,6 +2916,11 @@ export function App({
       ) : session.currentStep === "BUILD" ? (
         <BuildStep
           state={buildStepState}
+          backLabel={session.target === "CREATURE" ? "Back to Animation Mapping" : "Back to Inspect"}
+          projectIdentity={{
+            projectId: project.identity.projectId,
+            revision: project.revision,
+          }}
           canGoBack={session.build.kind !== "RUNNING"}
           canBuild={
             session.build.kind !== "RUNNING"
@@ -2117,22 +2954,29 @@ export function App({
         />
       ) : session.currentStep === "REVIEW" && currentResult?.kind === "PLACEABLE" ? (
         <>
+          <ProjectBuildIdentity identity={currentResult.projectIdentity} />
           <PlaceableReview result={currentResult.placeable} readback={currentResult.readback} />
-          <ArtifactDownloads
-            artifacts={currentResult.placeable.artifacts}
-            onError={(message) => setDebugDrawerMessage(`Artifact download error: ${message}`)}
+          <ReviewWorkflowActions
+            canContinue={currentDownloadReadiness?.allowed === true}
+            blockedReason={currentDownloadReadiness?.reason}
+            onBack={() => dispatch({ type: "NAVIGATE", step: "BUILD" })}
+            onContinue={() => dispatch({ type: "CONTINUE_TO_DOWNLOAD" })}
           />
         </>
       ) : session.currentStep === "REVIEW" && currentResult?.kind === "TILE" ? (
         <>
+          <ProjectBuildIdentity identity={currentResult.projectIdentity} />
           <TileReview result={currentResult.tile} readback={currentResult.readback} />
-          <ArtifactDownloads
-            artifacts={currentResult.tile.artifacts}
-            onError={(message) => setDebugDrawerMessage(`Artifact download error: ${message}`)}
+          <ReviewWorkflowActions
+            canContinue={currentDownloadReadiness?.allowed === true}
+            blockedReason={currentDownloadReadiness?.reason}
+            onBack={() => dispatch({ type: "NAVIGATE", step: "BUILD" })}
+            onContinue={() => dispatch({ type: "CONTINUE_TO_DOWNLOAD" })}
           />
         </>
       ) : session.currentStep === "REVIEW" && currentResult?.kind === "MODEL" && session.source?.sha256 ? (
         <>
+          <ProjectBuildIdentity identity={currentResult.projectIdentity} />
           <ReviewModelDetails
             result={currentResult.canonical}
             readback={currentResult.readback}
@@ -2163,7 +3007,8 @@ export function App({
           {currentResult.animationStudioDocument
             && currentResult.animationAuthoringV2
             && currentResult.animationStudioFingerprintSha256
-            && currentResult.animationStudioReconciliation ? (
+            && currentResult.animationStudioReconciliation
+            && currentResult.canonical.animationStudioEvidence ? (
             <AuthoredAnimationReview
               studio={currentResult.animationStudioDocument}
               authoring={currentResult.animationAuthoringV2}
@@ -2171,12 +3016,31 @@ export function App({
                 currentResult.animationStudioFingerprintSha256
               }
               reconciliation={currentResult.animationStudioReconciliation}
+              evidence={currentResult.canonical.animationStudioEvidence}
+              readback={currentResult.readback}
+              onOpenMismatch={(path) => {
+                const clipId = /^authoredClips\.([^.]+)/.exec(path)?.[1];
+                if (clipId) {
+                  setAnimationStudioState((current) => {
+                    if (!current) return current;
+                    const selected = reduceAnimationStudioStateV1(current, {
+                      type: "AUTHORED_CLIP_SELECTED",
+                      clipId,
+                    });
+                    return reduceAnimationStudioStateV1(selected, {
+                      type: "ANIMATION_STUDIO_MODE_SELECTED",
+                      mode: "CREATE_EDIT",
+                    });
+                  });
+                }
+                dispatch({ type: "NAVIGATE", step: "ANIMATION_MAPPING" });
+              }}
             />
           ) : null}
           {currentResult.animationStudioReconciliation
-            && !getAnimationStudioDownloadGateV1(
-              currentResult.animationStudioReconciliation,
-            ).allowed ? (
+          && !getAnimationStudioDownloadGateV1(
+            currentResult.animationStudioReconciliation,
+          ).allowed ? (
             <section className="panel" role="alert" aria-label="Download blocked">
               <h3>Download blocked</h3>
               <p>
@@ -2185,15 +3049,28 @@ export function App({
                 ).reason}
               </p>
             </section>
-          ) : (
-            <ArtifactDownloads
-              artifacts={currentResult.canonical.artifacts}
-              onError={(message) => setDebugDrawerMessage(
-                `Artifact download error: ${message}`,
-              )}
-            />
-          )}
+          ) : null}
+          <ReviewWorkflowActions
+            canContinue={currentDownloadReadiness?.allowed === true}
+            blockedReason={currentDownloadReadiness?.reason}
+            onBack={() => dispatch({ type: "NAVIGATE", step: "BUILD" })}
+            onContinue={() => dispatch({ type: "CONTINUE_TO_DOWNLOAD" })}
+          />
         </>
+      ) : session.currentStep === "DOWNLOAD"
+        && currentResult
+        && currentDownloadArtifacts
+        && currentDownloadManifest
+        && currentDownloadReadiness ? (
+        <DownloadStep
+          artifacts={currentDownloadArtifacts}
+          manifest={currentDownloadManifest}
+          readiness={currentDownloadReadiness}
+          onBack={() => dispatch({ type: "NAVIGATE", step: "REVIEW" })}
+          onError={(message) => setDebugDrawerMessage(
+            `Artifact download error: ${message}`,
+          )}
+        />
       ) : (
         <section className="inspect-scaffold" aria-labelledby="review-unavailable-heading">
           <header className="inspect-scaffold__header">
@@ -2202,6 +3079,60 @@ export function App({
           <div className="empty-state"><strong>No current canonical result.</strong><span>Return to Build and run the pipeline.</span></div>
         </section>
       )}
-    </StudioShell>
+      </Suspense>
+      </StudioShell>
+      {projectManagerOpen ? (
+        <ProjectManagerDialog
+          project={project}
+          persistence={projectPersistence}
+          recoveryRecords={projectRecoveryRecords}
+          busy={projectBusy}
+          error={projectError}
+          onClose={() => setProjectManagerOpen(false)}
+          onRename={(name) => {
+            const renamed = renameMeshy2AuroraProjectV1(projectRef.current, name);
+            projectRef.current = renamed;
+            setProject(renamed);
+            setProjectPersistence("DIRTY");
+          }}
+          onNew={createNewProject}
+          onExport={() => downloadProjectBackup(projectRef.current)}
+          onImport={importProject}
+          onDuplicate={duplicateProject}
+          onDelete={deleteCurrentProject}
+          onRecover={recoverProject}
+          onDeleteRecovery={removeRecoveryProject}
+        />
+      ) : null}
+    </>
   );
+}
+
+function studioTargetLabel(target: StudioTarget) {
+  switch (target) {
+    case "CREATURE":
+      return "Creature";
+    case "PLACEABLE":
+      return "Placeable";
+    case "TILE":
+      return "Tile";
+  }
+}
+
+function ProjectBuildIdentity({
+  identity,
+}: {
+  readonly identity: ProjectBuildIdentityV1;
+}) {
+  return (
+    <section className="panel project-build-identity" aria-label="Built project identity">
+      <strong>Built from project</strong>
+      <code>{identity.projectId}</code>
+      <span>Revision {identity.projectRevision}</span>
+    </section>
+  );
+}
+
+function studioHeaderContext(step: WorkflowStep, target: StudioTarget) {
+  return `${studioTargetLabel(target)} · ${workflowStepLabel(step)}`;
 }

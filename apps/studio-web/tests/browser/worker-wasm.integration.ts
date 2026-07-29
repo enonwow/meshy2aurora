@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { userEvent } from "vitest/browser";
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import sourceUrl from "../.generated/owned-package/generated/source.glb?url";
 import fullNative42SourceUrl from "../.generated/owned-full42-package/generated/source.glb?url";
 import proceduralHumanoidSourceUrl from "@m2a-canonical-repository/sample-3d/h2-clockwork-sentinel-1500/source.glb?url";
+import ownerPlaceableSourceUrl from "@m2a-canonical-repository/sample-3d/s1-placeable-ritual-pedestal-1500/source.glb?url";
 import appearanceUrl from "../fixtures/appearance.2da?url";
 import placeablesUrl from "../fixtures/placeables.2da?url";
 import { buildM7PayloadEnvelope } from "../../src/features/m7/envelope";
@@ -13,9 +15,20 @@ import { projectTileResult } from "../../src/features/results/projectTileResult"
 import { projectCanonicalReadback } from "../../src/features/results/projectReadback";
 import { StudioWorkerClient } from "../../src/worker/client";
 import { App } from "../../src/App";
+import {
+  createInMemoryProjectDatabaseV1,
+  createMeshy2AuroraProjectV1,
+  projectFileReferenceV1,
+  reviseMeshy2AuroraProjectV1,
+  serializeMeshy2AuroraProjectV1,
+} from "../../src/features/project";
 
 const clients: StudioWorkerClient[] = [];
 const roots: Root[] = [];
+const OWNER_H2_SHA256 =
+  "f8cf0af21c8143a62b64c490a81dd2855ad3c3f9865922e3854f84b714dec3a3";
+const OWNER_PLACEABLE_SHA256 =
+  "dad22a5c3490242458cb7a81e50c53e265abf75886f57f6bd8a770938c2f7372";
 const COMMON_NATIVE_DIRECT_CREATURE_EVENT_PAIRS_V1 = [
   ["ca1slashl", "hit"],
   ["ca1slashr", "hit"],
@@ -191,6 +204,8 @@ describe("local file to canonical web-WASM Worker integration", () => {
     const appearance = await fixtureFile(appearanceUrl, "appearance.2da", "text/plain");
     const sourceGlb = await source.arrayBuffer();
     const appearanceTwoDa = await appearance.arrayBuffer();
+    expect(sourceGlb.byteLength).toBe(8_234_708);
+    expect(await sha256(sourceGlb)).toBe(OWNER_H2_SHA256);
     const client = new StudioWorkerClient();
     clients.push(client);
 
@@ -217,11 +232,14 @@ describe("local file to canonical web-WASM Worker integration", () => {
     }
 
     const hak = response.artifacts.find((artifact) => artifact.kind === "HAK");
-    const reportArtifact = response.artifacts.find(
-      (artifact) => artifact.fileName === "inspection.json",
-    );
+    const moduleArtifact = response.artifacts.find((artifact) => artifact.kind === "MODULE");
+    const reportArtifact = response.artifacts.find((artifact) => artifact.artifactId === "report-json");
     expect(hak).toBeDefined();
+    expect(moduleArtifact).toBeDefined();
     expect(reportArtifact).toBeDefined();
+    expect(reportArtifact?.fileName).toBe(
+      `${moduleArtifact!.fileName.slice(0, -4)}-inspection.json`,
+    );
     expect(hak?.provenance).toBe("M2A_WASM_WORKER");
     expect(new TextDecoder().decode(hak!.bytes.slice(0, 8))).toBe("HAK V1.0");
     expect(hak?.byteLength).toBe(hak?.bytes.byteLength);
@@ -306,6 +324,53 @@ describe("local file to canonical web-WASM Worker integration", () => {
     expect(snapshot.resrefs).toMatchObject({ model: "m2a_m6p01", texture: "m2a_m6t01" });
     expect(snapshot.hak.entryCount).toBe(3);
     expect(projectCanonicalReadback(response.readbackJson).nodeTree.roots.length).toBeGreaterThan(0);
+    const repeatedSourceGlb = await fetchBytes(proceduralHumanoidSourceUrl);
+    const repeatedAppearanceTwoDa = await fetchBytes(appearanceUrl);
+    const repeated = await client.request(
+      {
+        requestId: "integration-procedural-humanoid-build-repeat",
+        type: "BUILD_MODEL_PACKAGE",
+        sourceGlb: repeatedSourceGlb,
+        appearanceTwoDa: repeatedAppearanceTwoDa,
+        packageLane: "SKINNED_PROCEDURAL_HUMANOID_42",
+      },
+      [repeatedSourceGlb, repeatedAppearanceTwoDa],
+    );
+    expect(repeated).toMatchObject({ ok: true, type: "MODEL_PACKAGE_BUILT" });
+    if (!repeated.ok || repeated.type !== "MODEL_PACKAGE_BUILT") {
+      throw new Error("repeated real H2 Worker package did not complete");
+    }
+    const artifactIdentities = (
+      artifacts: typeof response.artifacts,
+    ) => artifacts.map(({ fileName, byteLength, sha256: artifactSha256 }) => ({
+      fileName,
+      byteLength,
+      sha256: artifactSha256,
+    })).sort((left, right) => left.fileName.localeCompare(right.fileName));
+    expect(artifactIdentities(repeated.artifacts))
+      .toEqual(artifactIdentities(response.artifacts));
+    console.info("E7_OWNER_H2_CREATURE_E2E_V1", JSON.stringify({
+      schemaVersion: 1,
+      sourceAssetId: "h2-clockwork-sentinel-1500",
+      sourceSha256: OWNER_H2_SHA256,
+      status: snapshot.status,
+      modelResref: snapshot.resrefs.model,
+      textureResref: snapshot.resrefs.texture,
+      animationProfile: report.animationCompleteness?.profile,
+      animationCount: readback.animations?.length,
+      repeatBuildMatched: true,
+      artifacts: response.artifacts.map(
+        ({ artifactId, kind, fileName, byteLength, sha256: artifactSha256 }) => ({
+          artifactId,
+          kind,
+          fileName,
+          byteLength,
+          sha256: artifactSha256,
+        }),
+      ),
+      modelVisibility: "not_tested",
+      proofCompleteness: "missing",
+    }));
   }, 60_000);
 
   it("rejects the quarantined corrupt-draw H1 lane without producing artifacts", async () => {
@@ -431,26 +496,18 @@ describe("local file to canonical web-WASM Worker integration", () => {
 
     const sourceGlb = asStaticPlaceable(await fetchBytes(sourceUrl));
     const placeablesTwoDa = await fetchBytes(placeablesUrl);
-    const identity = {
-      moduleResref: "m2a_s1_plc_mod",
-      moduleFileName: "m2a_s1_plc_mod.mod",
-      moduleDisplayName: "Meshy2Aurora S1 Placeable Proof",
-      areaResref: "m2a_s1_plc_ar",
-      areaName: "Meshy2Aurora S1 Ritual Pedestal",
-      hakResref: "m2a_s1_plc_hak",
-      hakFileName: "m2a_s1_plc_hak.hak",
-      modelResref: "m2a_s1_plc_ped",
-      textureResref: "m2a_s1_plc_tex",
-      blueprintResref: "m2a_s1_plc_utp",
-      objectTag: "m2a_s1_ritual_pedestal",
-      displayName: "Meshy Ritual Pedestal",
+    const projectIdentity = {
+      schemaVersion: 1,
+      projectId: "browser-synthetic-placeable",
+      projectName: "Synthetic Ritual Pedestal",
+      projectRevision: 3,
     };
     const response = await client.request({
       requestId: "placeable-build",
       type: "BUILD_PLACEABLE_PACKAGE",
       sourceGlb,
       placeablesTwoDa,
-      identityJson: JSON.stringify(identity),
+      projectIdentityJson: JSON.stringify(projectIdentity),
       placementJson: JSON.stringify({ x: 10, y: 14.5, z: 0, bearing: 0 }),
       paletteId: 7,
       authoringJson: JSON.stringify(authoring.document),
@@ -467,8 +524,7 @@ describe("local file to canonical web-WASM Worker integration", () => {
       status: "OFFLINE_ADMISSION_PASSED",
       profile: "STATIC_PLACEABLE",
       appearanceRow: 1,
-      modelResref: "m2a_s1_plc_ped",
-      blueprintResref: "m2a_s1_plc_utp",
+      projectIdentity,
       modelVisibility: "not_tested",
       proofCompleteness: "missing",
       authoring: expect.objectContaining({
@@ -483,6 +539,10 @@ describe("local file to canonical web-WASM Worker integration", () => {
       expect.objectContaining({ role: "PLACEABLE_BLUEPRINT", resourceType: 2044 }),
       expect.objectContaining({ role: "PLACEABLE_PALETTE", resourceType: 2030 }),
     ]));
+    expect(result.modelResref).toHaveLength(16);
+    expect(result.blueprintResref).toBe(result.modelResref);
+    expect(result.moduleFileName).toBe(`${result.modelResref}.mod`);
+    expect(result.hakFileName).toBe(`${result.modelResref}.hak`);
     const hak = response.artifacts.find(({ kind }) => kind === "HAK");
     const module = response.artifacts.find(({ kind }) => kind === "MODULE");
     expect(new TextDecoder().decode(hak!.bytes.slice(0, 8))).toBe("HAK V1.0");
@@ -491,10 +551,125 @@ describe("local file to canonical web-WASM Worker integration", () => {
     expect(module!.sha256).toBe(await sha256(module!.bytes));
     await expectExactJsonArtifact(
       response.artifacts,
-      "placeable-materialization-report.json",
+      `${result.modelResref}-placeable-materialization-report.json`,
       response.reportJson,
     );
   }, 30_000);
+
+  it("builds the canonical owner Placeable sample with revision-owned evidence", async () => {
+    const client = new StudioWorkerClient();
+    clients.push(client);
+    const inspectionSource = await fetchBytes(ownerPlaceableSourceUrl);
+    expect(await sha256(inspectionSource))
+      .toBe(OWNER_PLACEABLE_SHA256);
+    const inspectionResponse = await client.request({
+      requestId: "owner-placeable-inspection",
+      type: "INSPECT_SOURCE",
+      sourceGlb: inspectionSource,
+      target: "PLACEABLE",
+    }, [inspectionSource]);
+    expect(inspectionResponse).toMatchObject({ ok: true, type: "SOURCE_INSPECTED" });
+    if (!inspectionResponse.ok || inspectionResponse.type !== "SOURCE_INSPECTED") {
+      throw new Error("owner Placeable inspection did not complete");
+    }
+    const bootstrap = JSON.parse(inspectionResponse.placeableAuthoringJson!) as {
+      document: unknown;
+    };
+    const sourceGlb = await fetchBytes(ownerPlaceableSourceUrl);
+    const placeablesTwoDa = await fetchBytes(placeablesUrl);
+    const projectIdentity = {
+      schemaVersion: 1,
+      projectId: "owner-s1-placeable-ritual-pedestal",
+      projectName: "Owner Ritual Pedestal",
+      projectRevision: 1,
+    };
+    const response = await client.request({
+      requestId: "owner-placeable-build",
+      type: "BUILD_PLACEABLE_PACKAGE",
+      sourceGlb,
+      placeablesTwoDa,
+      projectIdentityJson: JSON.stringify(projectIdentity),
+      placementJson: JSON.stringify({ x: 10, y: 14.5, z: 0, bearing: 0 }),
+      paletteId: 7,
+      authoringJson: JSON.stringify(bootstrap.document),
+    }, [sourceGlb, placeablesTwoDa]);
+
+    expect(response).toMatchObject({ ok: true, type: "PLACEABLE_PACKAGE_BUILT" });
+    if (!response.ok || response.type !== "PLACEABLE_PACKAGE_BUILT") {
+      throw new Error("owner Placeable package did not complete");
+    }
+    const result = projectPlaceableResult(response.reportJson, response.artifacts);
+    expect(result.projectIdentity).toEqual(projectIdentity);
+    expect(result.modelVisibility).toBe("not_tested");
+    expect(result.proofCompleteness).toBe("missing");
+    expect(result.authoring).toEqual(expect.objectContaining({
+      sourceSha256: OWNER_PLACEABLE_SHA256,
+      renderableElementCount: expect.any(Number),
+      collisionElementCount: expect.any(Number),
+    }));
+    expect(result.resources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: "MODEL", resourceType: 2002 }),
+      expect.objectContaining({ role: "PLACEABLE_WALKMESH", resourceType: 2053 }),
+      expect.objectContaining({ role: "PLACEABLE_BLUEPRINT", resourceType: 2044 }),
+    ]));
+    for (const artifact of response.artifacts) {
+      expect(artifact.sha256).toBe(await sha256(artifact.bytes));
+    }
+    await expectExactJsonArtifact(
+      response.artifacts,
+      `${result.modelResref}-placeable-materialization-report.json`,
+      response.reportJson,
+    );
+
+    const repeatedSourceGlb = await fetchBytes(ownerPlaceableSourceUrl);
+    const repeatedPlaceablesTwoDa = await fetchBytes(placeablesUrl);
+    const repeated = await client.request({
+      requestId: "owner-placeable-build-repeat",
+      type: "BUILD_PLACEABLE_PACKAGE",
+      sourceGlb: repeatedSourceGlb,
+      placeablesTwoDa: repeatedPlaceablesTwoDa,
+      projectIdentityJson: JSON.stringify(projectIdentity),
+      placementJson: JSON.stringify({ x: 10, y: 14.5, z: 0, bearing: 0 }),
+      paletteId: 7,
+      authoringJson: JSON.stringify(bootstrap.document),
+    }, [repeatedSourceGlb, repeatedPlaceablesTwoDa]);
+    expect(repeated).toMatchObject({ ok: true, type: "PLACEABLE_PACKAGE_BUILT" });
+    if (!repeated.ok || repeated.type !== "PLACEABLE_PACKAGE_BUILT") {
+      throw new Error("repeated owner Placeable package did not complete");
+    }
+    const artifactIdentities = (
+      artifacts: typeof response.artifacts,
+    ) => artifacts.map(({ fileName, byteLength, sha256: artifactSha256 }) => ({
+      fileName,
+      byteLength,
+      sha256: artifactSha256,
+    })).sort((left, right) => left.fileName.localeCompare(right.fileName));
+    expect(artifactIdentities(repeated.artifacts))
+      .toEqual(artifactIdentities(response.artifacts));
+
+    console.info("E7_OWNER_PLACEABLE_E2E_V1", JSON.stringify({
+      schemaVersion: 1,
+      sourceAssetId: "s1-placeable-ritual-pedestal-1500",
+      sourceSha256: OWNER_PLACEABLE_SHA256,
+      projectIdentity,
+      authoringSha256: result.authoring?.authoringSha256,
+      status: result.status,
+      moduleFileName: result.moduleFileName,
+      moduleDisplayName: result.moduleDisplayName,
+      areaName: result.areaName,
+      hakFileName: result.hakFileName,
+      modelResref: result.modelResref,
+      textureResref: result.textureResref,
+      blueprintResref: result.blueprintResref,
+      objectTag: result.objectTag,
+      appearanceRow: result.appearanceRow,
+      placement: result.placement,
+      artifacts: artifactIdentities(response.artifacts),
+      repeatBuildMatched: true,
+      modelVisibility: result.modelVisibility,
+      proofCompleteness: result.proofCompleteness,
+    }));
+  }, 60_000);
 
   it("materializes TileStaticV1 with MDL, semantic AABB, WOK, SET, HAK and 2x2 MOD in the real Worker", async () => {
     const sourceGlb = asStaticPlaceable(await fetchBytes(sourceUrl));
@@ -705,7 +880,7 @@ describe("local file to canonical web-WASM Worker integration", () => {
     await expectExactJsonArtifact(second.artifacts, "m7-batch.json", second.batchJson);
   }, 30_000);
 
-  it("renders and resets the production App canonical result from local files", async () => {
+  it("keyboard-smokes Source through Download and resets stale output on replacement", async () => {
     const source = await fixtureFile(
       proceduralHumanoidSourceUrl,
       "h2-clockwork-sentinel-1500.glb",
@@ -717,8 +892,19 @@ describe("local file to canonical web-WASM Worker integration", () => {
     const root = createRoot(container);
     roots.push(root);
     root.render(createElement(App));
-    await expect.poll(() => container.querySelector(".inputs-panel")).toBeTruthy();
-    const [sourceInput, appearanceInput] = Array.from(container.querySelectorAll<HTMLInputElement>(".inputs-panel input[type=file]"));
+    await expect.poll(() => container.querySelector(
+      'input[aria-label="Meshy model file"]',
+    )).toBeTruthy();
+    const currentWorkflowStep = () => container.querySelector(
+      '[aria-current="step"] .workflow-stepper__label',
+    )?.textContent;
+    expect(currentWorkflowStep()).toBe("Source");
+    const sourceInput = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Meshy model file"]',
+    )!;
+    const appearanceInput = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Base model table file"]',
+    )!;
     const select = async (input: HTMLInputElement, file: File) => {
       Object.defineProperty(input, "files", { configurable: true, value: [file] });
       input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -728,20 +914,33 @@ describe("local file to canonical web-WASM Worker integration", () => {
     await select(appearanceInput, appearance);
     const findButton = (label: string) => Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
       .find(({ textContent }) => textContent?.trim() === label);
+    const activateWithKeyboard = async (label: string) => {
+      const target = findButton(label);
+      if (!target) throw new Error(`Missing keyboard target: ${label}`);
+      target.focus();
+      expect(document.activeElement).toBe(target);
+      await userEvent.keyboard("{Enter}");
+    };
     await expect.poll(() => findButton("Continue to Inspect")?.disabled).toBe(false);
-    findButton("Continue to Inspect")?.click();
-    await expect.poll(() => findButton("Continue to Build")?.disabled).toBe(false);
-    findButton("Continue to Build")?.click();
+    await activateWithKeyboard("Continue to Inspect");
+    await expect.poll(currentWorkflowStep).toBe("Inspect");
+    await expect.poll(() => findButton("Continue to Animation Mapping")?.disabled).toBe(false);
+    await activateWithKeyboard("Continue to Animation Mapping");
+    await expect.poll(currentWorkflowStep).toBe("Animation Mapping");
     await expect
       .poll(() => container.querySelector("#animation-mapping-title")?.textContent)
       .toBe("Creature Animation Mapping");
     await expect.poll(() => findButton("Use generated Base 42")?.disabled).toBe(false);
-    findButton("Use generated Base 42")?.click();
+    await activateWithKeyboard("Use generated Base 42");
     await expect.poll(() => findButton("Continue to Build")?.disabled).toBe(false);
-    findButton("Continue to Build")?.click();
+    await activateWithKeyboard("Continue to Build");
+    await expect.poll(currentWorkflowStep).toBe("Build");
     await expect.poll(() => findButton("Build Package")?.disabled).toBe(false);
-    findButton("Build Package")!.click();
+    expect(container.querySelector('[aria-label="Build project identity"]')?.textContent)
+      .toContain("Project revision");
+    await activateWithKeyboard("Build Package");
     await expect.poll(() => container.querySelector("#review-model-heading")?.textContent, { timeout: 20_000 }).toBe("Model Details");
+    expect(currentWorkflowStep()).toBe("Review");
 
     const workspace = container.querySelector<HTMLElement>(".review-model")!;
     expect(workspace.textContent).toContain("Conversion Readiness");
@@ -751,11 +950,20 @@ describe("local file to canonical web-WASM Worker integration", () => {
     expect(workspace.textContent).toContain("OPEN_M6");
     expect(workspace.textContent).toContain("Verified by binary readback");
     expect(workspace.textContent).toContain("Metrics available in both canonical snapshots");
+    expect(container.querySelector('[aria-label="Canonical Worker artifact downloads"]'))
+      .toBeNull();
+    await activateWithKeyboard("Continue to Download");
+    await expect.poll(() => container.querySelector("#download-step-heading")?.textContent)
+      .toBe("Download");
+    expect(currentWorkflowStep()).toBe("Download");
     expect(container.querySelector('[aria-label="Canonical Worker artifact downloads"]')?.textContent)
       .toContain("GENERATED ARTIFACTS");
 
+    const replacementInput = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Meshy GLB model file"]',
+    )!;
     await select(
-      sourceInput,
+      replacementInput,
       new File(
         [await fetchBytes(proceduralHumanoidSourceUrl)],
         "replacement.glb",
@@ -764,4 +972,70 @@ describe("local file to canonical web-WASM Worker integration", () => {
     );
     await expect.poll(() => container.querySelector("#review-model-heading")).toBeNull();
   }, 30_000);
+
+  it("routes the canonical owner Placeable through Source, Inspect, Build, Review and Download", async () => {
+    const source = await fixtureFile(
+      ownerPlaceableSourceUrl,
+      "s1-placeable-ritual-pedestal-1500.glb",
+      "model/gltf-binary",
+    );
+    const placeables = await fixtureFile(placeablesUrl, "placeables.2da", "text/plain");
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+    root.render(createElement(App));
+
+    await expect.poll(() => container.querySelector(
+      'input[name="conversion-target"][value="PLACEABLE"]',
+    )).toBeTruthy();
+    container.querySelector<HTMLInputElement>(
+      'input[name="conversion-target"][value="PLACEABLE"]',
+    )!.click();
+
+    const select = async (label: string, file: File) => {
+      const input = container.querySelector<HTMLInputElement>(
+        `input[aria-label="${label}"]`,
+      )!;
+      Object.defineProperty(input, "files", { configurable: true, value: [file] });
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    };
+    await select("Meshy model file", source);
+    await select("Base model table file", placeables);
+
+    const findButton = (label: string) => Array.from(
+      container.querySelectorAll<HTMLButtonElement>("button"),
+    ).find(({ textContent }) => textContent?.trim() === label);
+    await expect.poll(() => findButton("Continue to Inspect")?.disabled).toBe(false);
+    findButton("Continue to Inspect")!.click();
+    await expect.poll(() => findButton("Continue to Build")?.disabled).toBe(false);
+    expect(findButton("Continue to Animation Mapping")).toBeUndefined();
+    expect(container.querySelector("#animation-mapping-title")).toBeNull();
+
+    findButton("Continue to Build")!.click();
+    await expect.poll(() => container.querySelector("#build-step-heading")?.textContent)
+      .toBe("Build");
+    const workflowText = container.querySelector(
+      ".studio-shell__workflow-rail",
+    )?.textContent ?? "";
+    expect(workflowText).not.toContain("Animation Mapping");
+    expect(container.querySelector(".studio-header__context")?.textContent)
+      .toBe("Placeable · Build");
+    findButton("Build Package")!.click();
+    await expect.poll(
+      () => container.querySelector("#placeable-review-heading")?.textContent,
+      { timeout: 30_000 },
+    ).toContain("Placeable");
+    expect(container.querySelector('[aria-label="Built project identity"]')?.textContent)
+      .toContain("Revision");
+    expect(container.textContent).toContain("Owner visual proof not performed");
+    findButton("Continue to Download")!.click();
+    await expect.poll(() => container.querySelector("#download-step-heading")?.textContent)
+      .toBe("Download");
+    expect(container.querySelector('[aria-label="Canonical Worker artifact downloads"]')?.textContent)
+      .toContain("Download manifest");
+    expect(container.textContent).toContain("owner proof pending");
+    expect(container.textContent).toContain("revision");
+  }, 60_000);
 });

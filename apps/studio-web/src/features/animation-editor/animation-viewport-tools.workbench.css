@@ -1,0 +1,136 @@
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport > header {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr) auto;
+  gap: 12px;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport__toolbar {
+  display: flex;
+  align-items: center;
+  justify-self: center;
+  gap: 8px;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport__toolbar [role="tablist"] {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(68px, 1fr));
+  gap: 0;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport__toolbar button {
+  min-height: 28px;
+  padding: 3px 10px;
+  border-radius: 0;
+  background: #081721;
+  color: var(--animation-muted);
+  font-size: .67rem;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport__toolbar [role="tab"]:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport__toolbar [role="tab"]:last-child {
+  margin-left: -1px;
+  border-radius: 0 4px 4px 0;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport__toolbar [role="tab"][aria-selected="true"] {
+  position: relative;
+  border-color: #1683ab;
+  background: #0b2a39;
+  color: var(--animation-cyan);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport__toolbar > button:last-child {
+  width: 32px;
+  overflow: hidden;
+  padding: 0;
+  border-radius: 4px;
+  color: transparent;
+  white-space: nowrap;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport__toolbar > button:last-child::before {
+  content: "\26F6";
+  display: grid;
+  place-items: center;
+  color: #c5d3da;
+  font-size: 1rem;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport__canvas
+  > .viewport {
+  position: relative;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport__canvas
+  > .viewport
+  > header {
+  display: none;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport__canvas
+  > .viewport
+  > canvas {
+  min-height: 426px;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport__canvas
+  .viewport__overlays {
+  position: absolute;
+  z-index: 3;
+  top: 9px;
+  left: 10px;
+  display: flex;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  pointer-events: auto;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport__canvas
+  .viewport__overlays legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport__canvas
+  .viewport__overlays label {
+  min-height: 28px;
+  padding: 3px 8px;
+  border: 1px solid #285069;
+  border-radius: 4px;
+  background: rgb(5 18 27 / 84%);
+  color: #a9bdc7;
+  font-size: .65rem;
+  backdrop-filter: blur(8px);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport__canvas
+  .viewport__overlays input {
+  width: 13px;
+  min-height: 13px;
+  accent-color: var(--animation-cyan);
+}
+

@@ -5,13 +5,23 @@ import type {
   CustomAnimationClipReferenceV2,
   CustomAnimationDefinitionV2,
 } from "../animation-studio/types";
+import type {
+  BinaryMdlInspectionReport,
+  ReadbackAnimation,
+  ReadbackNode,
+} from "../preview/types";
+import type { CanonicalAnimationStudioEvidenceV1 } from "../results/projectCanonicalResult";
 import type { AnimationStudioReadbackReconciliationV1 } from "./reconcileAnimationStudioReadback";
+import "./AuthoredAnimationReview.css";
 
 export interface AuthoredAnimationReviewProps {
   studio: AnimationStudioDocumentV1;
   authoring: CreatureAnimationAuthoringV2;
   studioFingerprintSha256: string;
   reconciliation: AnimationStudioReadbackReconciliationV1;
+  evidence: CanonicalAnimationStudioEvidenceV1;
+  readback: BinaryMdlInspectionReport;
+  onOpenMismatch: (path: string) => void;
 }
 
 export function AuthoredAnimationReview({
@@ -19,8 +29,14 @@ export function AuthoredAnimationReview({
   authoring,
   studioFingerprintSha256,
   reconciliation,
+  evidence,
+  readback,
+  onOpenMismatch,
 }: AuthoredAnimationReviewProps) {
   const clipNames = new Map(studio.authoredClips.map(({ id, name }) => [id, name]));
+  const studioClips = new Map(studio.authoredClips.map((clip) => [clip.id, clip]));
+  const readbackClips = new Map(readback.animations.map((clip) => [clip.name, clip]));
+  const firstDiagnostic = reconciliation.diagnostics[0];
 
   return (
     <section className="panel authored-animation-review" aria-label="Authored animations">
@@ -116,6 +132,68 @@ export function AuthoredAnimationReview({
         )}
       </div>
 
+      <div className="authored-animation-review__comparison">
+        <h4>Source → Edited → Binary readback</h4>
+        <div>
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Usage</th>
+                <th scope="col">Source provenance</th>
+                <th scope="col">Edited clip</th>
+                <th scope="col">Binary readback</th>
+                <th scope="col">Root motion</th>
+                <th scope="col">Event markers</th>
+              </tr>
+            </thead>
+            <tbody>
+              {evidence.authoredClips.flatMap((builtClip) => {
+                const edited = studioClips.get(builtClip.id);
+                return builtClip.usages.map((usage) => {
+                  const binary = readbackClips.get(usage.outputClipName);
+                  return (
+                    <tr id={`review-authored-clip-${builtClip.id}`} key={`${builtClip.id}:${usage.outputClipName}`}>
+                      <th scope="row">
+                        {usage.baseSlot
+                          ?? [usage.customAnimationId, usage.phase].filter(Boolean).join(" · ")}
+                      </th>
+                      <td>{edited ? sourceProvenance(edited) : builtClip.source.kind}</td>
+                      <td>
+                        {edited
+                          ? `${edited.name} · ${edited.lengthSeconds.toFixed(3)} s · ${edited.tracks.length} track(s) · ${edited.events.length} event(s)`
+                          : "MISSING"}
+                      </td>
+                      <td data-status={binary ? "match" : "mismatch"}>
+                        {binary
+                          ? `${binary.name} · ${binary.length.toFixed(3)} s · ${controllerCount(binary)} controller(s)`
+                          : "MISSING"}
+                      </td>
+                      <td>{binary ? rootMotionSummary(binary) : "Unavailable"}</td>
+                      <td>{binary ? eventMarkerSummary(binary) : "Unavailable"}</td>
+                    </tr>
+                  );
+                });
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="authored-animation-review__first-mismatch">
+        <span>First mismatch</span>
+        {firstDiagnostic ? (
+          <>
+            <strong>{firstDiagnostic.code}</strong>
+            <p>{firstDiagnostic.path} · {firstDiagnostic.message}</p>
+            <button type="button" onClick={() => onOpenMismatch(firstDiagnostic.path)}>
+              Open clip or track
+            </button>
+          </>
+        ) : (
+          <strong>None — edited clips match exact binary readback</strong>
+        )}
+      </div>
+
       {reconciliation.diagnostics.length > 0 && (
         <div role="alert">
           <h4>Readback blockers</h4>
@@ -135,7 +213,10 @@ export function AuthoredAnimationReview({
 }
 
 function sourceProvenance(clip: AuthoredAnimationClipV1) {
-  const details = clip.source.kind === "SOURCE_CLIP_COPY"
+  const details = (
+    clip.source.kind === "SOURCE_CLIP_COPY"
+    || clip.source.kind === "IMPORTED_MODEL_COPY"
+  )
     ? [
         clip.source.sourceClipName,
         clip.source.sourceClipFingerprint
@@ -231,4 +312,43 @@ function playbackLabel(playback: CustomAnimationDefinitionV2["playback"]) {
 
 function shortFingerprint(value: string) {
   return value.length > 12 ? `${value.slice(0, 12)}...` : value;
+}
+
+function flattenReadbackNodes(roots: readonly ReadbackNode[]) {
+  const result: ReadbackNode[] = [];
+  const visit = (node: ReadbackNode) => {
+    result.push(node);
+    node.children.forEach(visit);
+  };
+  roots.forEach(visit);
+  return result;
+}
+
+function controllerCount(clip: ReadbackAnimation) {
+  return flattenReadbackNodes(clip.nodeTree.roots)
+    .reduce((total, node) => total + node.controllers.length, 0);
+}
+
+function rootMotionSummary(clip: ReadbackAnimation) {
+  const root = flattenReadbackNodes(clip.nodeTree.roots)
+    .find(({ name }) => name === clip.animationRoot);
+  const position = root?.controllers.find(({ controllerName }) => (
+    controllerName?.toLowerCase() === "position"
+  ));
+  const first = position?.values[0];
+  const last = position?.values.at(-1);
+  if (!first || !last || first.length < 3 || last.length < 3) {
+    return "No root translation track";
+  }
+  const delta = [0, 1, 2].map((index) => (last[index] ?? 0) - (first[index] ?? 0));
+  const magnitude = Math.hypot(...delta);
+  return `Δ [${delta.map((value) => value.toFixed(3)).join(", ")}] · ${magnitude.toFixed(3)} m`;
+}
+
+function eventMarkerSummary(clip: ReadbackAnimation) {
+  return clip.events.length === 0
+    ? "No event markers"
+    : clip.events
+        .map(({ name, time }) => `${name}@${time.toFixed(3)}s`)
+        .join(" · ");
 }

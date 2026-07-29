@@ -18,6 +18,32 @@
   margin: 0;
 }
 
+.build-step__project-identity {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.build-step__project-identity > div {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+
+.build-step__project-identity dt {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.build-step__project-identity dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
 .build-step__eyebrow {
   color: var(--text-muted, #9ca8b6);
   font-size: 0.75rem;

@@ -202,11 +202,20 @@ function builtResponse(requestId: string, format = "nwn1-binary-mdl"): StudioWor
   };
 }
 
-function placeableBuiltResponse(requestId: string): StudioWorkerResponse {
+function placeableBuiltResponse(
+  requestId: string,
+  projectIdentity: {
+    schemaVersion: 1;
+    projectId: string;
+    projectName: string;
+    projectRevision: number;
+  },
+): StudioWorkerResponse {
   const hash = (character: string) => character.repeat(64);
   const resources = [
     { container: "HAK", role: "PLACEABLES_2DA", resref: "placeables", resourceType: 2017, byteLength: 11, sha256: hash("d") },
     { container: "HAK", role: "MODEL", resref: "m2a_s1_plc_ped", resourceType: 2002, byteLength: 2, sha256: hash("b") },
+    { container: "HAK", role: "PLACEABLE_WALKMESH", resref: "m2a_s1_plc_ped", resourceType: 2053, byteLength: 3, sha256: hash("9") },
     { container: "HAK", role: "TEXTURE", resref: "m2a_s1_plc_tex", resourceType: 3, byteLength: 3, sha256: hash("c") },
     { container: "MOD", role: "MODULE_INFO", resref: "module", resourceType: 2014, byteLength: 5, sha256: hash("3") },
     { container: "MOD", role: "FACTIONS", resref: "repute", resourceType: 2038, byteLength: 5, sha256: hash("4") },
@@ -220,8 +229,9 @@ function placeableBuiltResponse(requestId: string): StudioWorkerResponse {
     schemaVersion: 1,
     status: "OFFLINE_ADMISSION_PASSED",
     profile: "STATIC_PLACEABLE",
+    projectIdentity,
     componentStatuses: {
-      mdl: "passed", twoDa: "passed", utp: "passed", gitGic: "passed",
+      mdl: "passed", pwk: "passed", twoDa: "passed", utp: "passed", gitGic: "passed",
       palette: "passed", package: "passed", proof: "not_tested",
     },
     moduleFileName: "m2a_s1_plc_mod.mod",
@@ -237,6 +247,7 @@ function placeableBuiltResponse(requestId: string): StudioWorkerResponse {
     placement: { x: 10, y: 14.5, z: 0, bearing: 0 },
     sourceModelSha256: hash("0"),
     mdlSha256: hash("b"),
+    pwkSha256: hash("9"),
     textureSha256: hash("c"),
     placeables2daSha256: hash("d"),
     utpSha256: hash("e"),
@@ -245,12 +256,12 @@ function placeableBuiltResponse(requestId: string): StudioWorkerResponse {
     gicSha256: hash("2"),
     hakSha256: hash("a"),
     moduleSha256: hash("7"),
-    hakResourceCount: 3,
+    hakResourceCount: 4,
     moduleResourceCount: 7,
     modelVisibility: "not_tested",
     proofCompleteness: "missing",
     paletteCompleteness: "custom_itp_emitted",
-    collisionCompleteness: "pwk_not_implemented",
+    collisionCompleteness: "ascii_pwk_emitted_runtime_readback_passed",
     resources,
   });
   const withName = (value: WorkerArtifact, fileName: string) => ({ ...value, fileName });
@@ -272,7 +283,7 @@ function placeableBuiltResponse(requestId: string): StudioWorkerResponse {
       withName(artifact("placeable-proof-module", "MODULE", [4, 5, 6, 7], hash("7")), "m2a_s1_plc_mod.mod"),
       withName(
         artifact("placeable-report-json", "JSON_REPORT", [...new TextEncoder().encode(reportJson)], hash("9")),
-        "placeable-materialization-report.json",
+        "m2a_s1_plc_mod-placeable-materialization-report.json",
       ),
     ],
   };
@@ -418,7 +429,7 @@ async function driveToAnimationMapping(
     await Promise.resolve();
   });
   await act(async () => button(container, "Continue to Inspect")?.click());
-  await act(async () => button(container, "Continue to Build")?.click());
+  await act(async () => button(container, "Continue to Animation Mapping")?.click());
   await settle();
   return { sourceInput, worker };
 }
@@ -470,7 +481,14 @@ async function driveToBuild(
   await act(async () => button(container, "Continue to Build")?.click());
   await act(async () => button(container, "Build Package")?.click());
   await settle();
-  return { sourceInput, worker, build: worker.requests.find((request) => request.type === "BUILD_MODEL_PACKAGE")! };
+  const currentSourceInput = Array.from(
+    container.querySelectorAll<HTMLInputElement>('input[type="file"]'),
+  )[0] ?? sourceInput;
+  return {
+    sourceInput: currentSourceInput,
+    worker,
+    build: worker.requests.find((request) => request.type === "BUILD_MODEL_PACKAGE")!,
+  };
 }
 
 async function driveToPlaceableBuild(container: HTMLElement) {
@@ -553,6 +571,35 @@ describe("Studio workflow", () => {
     expect(FakeWorker.instances[1].terminated).toBe(false);
   });
 
+  it("uses one workflow rail and content shell across the full Studio workflow", async () => {
+    const container = await renderApp();
+    const shell = container.querySelector(".studio-shell--workflow-rail");
+    expect(shell).not.toBeNull();
+    expect(
+      shell?.querySelector(
+        ".studio-shell__workflow-rail .workflow-stepper",
+      ),
+    ).not.toBeNull();
+    expect(shell?.querySelector(".studio-shell__content")).not.toBeNull();
+    expect(
+      shell?.querySelector(".studio-shell__content--no-inputs"),
+    ).not.toBeNull();
+    expect(shell?.querySelector(".studio-shell__inputs")).toBeNull();
+    expect(
+      shell?.querySelector(".studio-shell__masthead .workflow-stepper"),
+    ).toBeNull();
+    expect(
+      shell?.querySelector(".studio-shell__workflow-rail")?.getAttribute(
+        "aria-label",
+      ),
+    ).toBe("Creature workflow");
+    expect(shell?.querySelector(".studio-header__context")?.textContent)
+      .toBe("Creature · Source");
+    expect(shell?.querySelector('[aria-label="Project status"]')?.textContent)
+      .toContain("Untitled projectCreatureNo sourceNot saved");
+    expect(shell?.querySelector('[aria-label="Studio controls"]')).toBeNull();
+  });
+
   it("hides the unfinished Tile target by default", async () => {
     const container = await renderApp();
     expect(container.querySelector('input[name="conversion-target"][value="TILE"]')).toBeNull();
@@ -564,9 +611,37 @@ describe("Studio workflow", () => {
     const container = await renderApp();
     const { worker } = await driveToAnimationMapping(container, sourceInspectionJson());
     expect(container.querySelector("h1")?.textContent).toBe("Creature Animation Mapping");
+    expect(container.querySelector('[aria-label="Project status"]')?.textContent)
+      .toContain("Unsaved changes");
+    expect(container.querySelector(".studio-shell--workflow-rail")).not.toBeNull();
+    expect(
+      container.querySelector(
+        ".studio-shell__workflow-rail .workflow-stepper",
+      ),
+    ).not.toBeNull();
     expect(button(container, "Continue to Build")?.disabled).toBe(true);
     expect(worker.requests.find((request) => request.type === "BUILD_MODEL_PACKAGE"))
       .toBeUndefined();
+  });
+
+  it("keeps the same rail shell through Build and Review", async () => {
+    const container = await renderApp();
+    const { build, worker } = await driveToPlaceableBuild(container);
+    expect(container.querySelector(".studio-shell--workflow-rail")).not.toBeNull();
+    expect(container.querySelector(".studio-header__context")?.textContent)
+      .toBe("Placeable · Build");
+
+    await act(async () => {
+      worker.emit(placeableBuiltResponse(
+        build.requestId,
+        JSON.parse(build.projectIdentityJson),
+      ));
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector(".studio-shell--workflow-rail")).not.toBeNull();
+    expect(container.querySelector(".studio-header__context")?.textContent)
+      .toBe("Placeable · Review");
   });
 
   it("offers Tile authoring and reviews the Worker package with WOK/AABB bindings", async () => {
@@ -584,7 +659,11 @@ describe("Studio workflow", () => {
       worker.emit(tileBuiltResponse(build.requestId));
       await Promise.resolve();
     });
-    expect(container.querySelector("#tile-review-heading")?.textContent).toBe("TileStaticV1 Details");
+    await settle();
+    await vi.waitFor(() => {
+      expect(container.querySelector("#tile-review-heading")?.textContent)
+        .toBe("TileStaticV1 Details");
+    });
     expect(container.textContent).toContain("Render triangles");
     expect(container.textContent).toContain("WOK triangles");
     expect(container.textContent).toContain("AABB entries");
@@ -638,12 +717,18 @@ describe("Studio workflow", () => {
     const container = await renderApp();
     const { build, worker } = await driveToPlaceableBuild(container);
     expect(build.paletteId).toBe(7);
-    expect(JSON.parse(build.identityJson).modelResref).toBe("m2a_s1_plc_ped");
+    expect(JSON.parse(build.projectIdentityJson)).toEqual(expect.objectContaining({
+      schemaVersion: 1,
+      projectRevision: expect.any(Number),
+    }));
     expect(JSON.parse(build.authoringJson ?? "{}").elements).toEqual([
       expect.objectContaining({ marker: "edited-in-placeable-editor" }),
     ]);
     await act(async () => {
-      worker.emit(placeableBuiltResponse(build.requestId));
+      worker.emit(placeableBuiltResponse(
+        build.requestId,
+        JSON.parse(build.projectIdentityJson),
+      ));
       await Promise.resolve();
     });
 
@@ -652,8 +737,13 @@ describe("Studio workflow", () => {
     expect(container.textContent).toContain("Owner visual proof not performed");
     expect(container.textContent).toContain("16500");
     expect(container.textContent).not.toContain("Aurora compatible");
+    expect(container.querySelector('[aria-label="Canonical Worker artifact downloads"]'))
+      .toBeNull();
+    await act(async () => button(container, "Continue to Download")?.click());
     expect(container.querySelector('[aria-label="Canonical Worker artifact downloads"]')?.textContent)
       .toContain("m2a_s1_plc_hak.hak");
+    expect(container.querySelector("#download-step-heading")?.textContent)
+      .toBe("Download");
   });
 
   it("rejects an unknown readback contract without a partial review", async () => {
@@ -680,6 +770,10 @@ describe("Studio workflow", () => {
     const bridge = new InMemoryMeshyBridgeClient({ availableCredits: 120 });
     const container = await renderApp(false, { meshyBridge: bridge, meshyLabEnabled: true });
     await act(async () => button(container, "Open Meshy Lab")?.click());
+    await settle();
+    await vi.waitFor(() => {
+      expect(container.querySelector("#meshy-pairing-code")).not.toBeNull();
+    });
     expect(container.querySelector('[aria-label="Conversion workflow"]')).toBeNull();
     expect(container.querySelector('[aria-label="Debug Drawer"]')).toBeNull();
     expect(container.querySelector(".studio-header")).toBeNull();
@@ -707,5 +801,14 @@ describe("Studio workflow", () => {
     expect(container.textContent).toContain("meshy-s1-static-prop.glb");
     expect(container.textContent).toContain("Imported from Meshy Lab: S1-static-prop/v1");
     expect(FakeWorker.instances.at(-1)?.requests.some((request) => request.type === "INSPECT_SOURCE")).toBe(true);
+  });
+
+  it("warns before unload while the current project has no saved revision", async () => {
+    await renderApp();
+    const event = new Event("beforeunload", { cancelable: true });
+
+    window.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
   });
 });

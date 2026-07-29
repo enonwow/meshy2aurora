@@ -4,12 +4,11 @@ import init, {
   buildM7CorpusBatchV1,
   buildMeshyH1ModelPackageV2,
   buildMeshyH1ModelPackageV3,
-  buildMeshyH1ModelPackageV4,
-  buildMeshyH1ModelPackageV5,
+  buildMeshyH1ModelPackageV4ProjectV1,
+  buildMeshyH1ModelPackageV5ProjectV1,
   buildMeshyProceduralHumanoidModelPackageV1,
   buildMeshyM0StaticRigidPackageV1,
-  buildMeshyStaticPlaceablePackageV1,
-  buildMeshyStaticPlaceablePackageV2,
+  buildMeshyStaticPlaceablePackageV3ProjectV1,
   buildMeshyStaticTilePackageV1,
   ingestGlbJson,
   ingestStaticRigidGlbJson,
@@ -26,6 +25,7 @@ import init, {
   directCreatureAnimationCatalogV1Json,
 } from "@m2a-wasm";
 import type {
+  ModelPackageLaneV1,
   StudioWorkerRequest,
   StudioWorkerResponse,
   WorkerArtifact,
@@ -65,6 +65,56 @@ async function artifact(
     sha256: await sha256(bytes),
     bytes,
     provenance: "M2A_WASM_WORKER",
+  };
+}
+
+function modelArtifactNamesV1(
+  manifestJson: string,
+  packageLane: ModelPackageLaneV1 | "H1_SKINNED_FULL_42_EVENTS",
+) {
+  const fallback = packageLane === "M0_STATIC_RIGID"
+    ? {
+        hak: "m2a_m0_proof.hak",
+        model: "m2a_m0p01.mdl",
+        module: "m2a_bm0p1.mod",
+      }
+    : {
+        hak: "m2a_codex_aproof.hak",
+        model: "m2a_m6p01.mdl",
+        module: "m2a_codex_aproof.mod",
+      };
+  let generatedFiles: unknown;
+  try {
+    generatedFiles = (JSON.parse(manifestJson) as {
+      generatedFiles?: unknown;
+    }).generatedFiles;
+  } catch {
+    generatedFiles = undefined;
+  }
+  const rows = Array.isArray(generatedFiles) ? generatedFiles : [];
+  const generatedName = (extension: ".hak" | ".mdl" | ".mod") => {
+    const row = rows.find((candidate) => (
+      candidate
+      && typeof candidate === "object"
+      && typeof (candidate as { relativePath?: unknown }).relativePath === "string"
+      && (candidate as { relativePath: string }).relativePath.endsWith(extension)
+    )) as { relativePath: string } | undefined;
+    const name = row?.relativePath.split("/").at(-1);
+    return name && /^[a-z0-9_-]{1,64}\.[a-z0-9]+$/.test(name)
+      ? name
+      : undefined;
+  };
+  const hak = generatedName(".hak") ?? fallback.hak;
+  const model = generatedName(".mdl") ?? fallback.model;
+  const module = generatedName(".mod") ?? fallback.module;
+  const reportStem = module.slice(0, -4);
+  return {
+    hak,
+    model,
+    module,
+    report: `${reportStem}-inspection.json`,
+    manifest: `${reportStem}-conversion-manifest.json`,
+    summary: `${reportStem}-summary.json`,
   };
 }
 
@@ -217,28 +267,23 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
     };
   }
   if (request.type === "BUILD_PLACEABLE_PACKAGE") {
-    const result = request.authoringJson
-      ? buildMeshyStaticPlaceablePackageV2(
-          new Uint8Array(request.sourceGlb),
-          new Uint8Array(request.placeablesTwoDa),
-          request.identityJson,
-          request.placementJson,
-          request.paletteId,
-          request.authoringJson,
-        )
-      : buildMeshyStaticPlaceablePackageV1(
-          new Uint8Array(request.sourceGlb),
-          new Uint8Array(request.placeablesTwoDa),
-          request.identityJson,
-          request.placementJson,
-          request.paletteId,
-        );
+    const result = buildMeshyStaticPlaceablePackageV3ProjectV1(
+      new Uint8Array(request.sourceGlb),
+      new Uint8Array(request.placeablesTwoDa),
+      request.projectIdentityJson,
+      request.placementJson,
+      request.paletteId,
+      request.authoringJson,
+    );
     try {
       const report = JSON.parse(result.reportJson) as {
         moduleFileName: string;
         hakFileName: string;
         modelResref: string;
       };
+      const reportStem = report.moduleFileName.toLowerCase().endsWith(".mod")
+        ? report.moduleFileName.slice(0, -4)
+        : report.moduleFileName;
       const hak = exactBuffer(result.takeHakBytes());
       const model = exactBuffer(result.takeModelBytes());
       const module = exactBuffer(result.takeProofModuleBytes());
@@ -250,7 +295,7 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         artifact(
           "placeable-report-json",
           "JSON_REPORT",
-          "placeable-materialization-report.json",
+          `${reportStem}-placeable-materialization-report.json`,
           "application/json",
           reportBytes,
         ),
@@ -390,18 +435,20 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
           request.eventAuthoringJson,
         );
       case "H1_SKINNED_FULL_42_AUTHORED":
-        return buildMeshyH1ModelPackageV4(
+        return buildMeshyH1ModelPackageV4ProjectV1(
           new Uint8Array(request.sourceGlb),
           new Uint8Array(request.appearanceTwoDa),
           request.animationAuthoringJson,
+          request.projectIdentityJson,
           request.eventAuthoringJson,
         );
       case "H1_SKINNED_FULL_42_EDITED":
-        return buildMeshyH1ModelPackageV5(
+        return buildMeshyH1ModelPackageV5ProjectV1(
           new Uint8Array(request.sourceGlb),
           new Uint8Array(request.appearanceTwoDa),
           request.animationAuthoringJson,
           request.animationStudioDocumentJson,
+          request.projectIdentityJson,
           request.eventAuthoringJson,
         );
       case "H1_SKINNED_FULL_42":
@@ -421,9 +468,6 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
       }
     }
   })();
-  const artifactNames = request.packageLane === "M0_STATIC_RIGID"
-    ? { hak: "m2a_m0_proof.hak", model: "m2a_m0p01.mdl", module: "m2a_bm0p1.mod" }
-    : { hak: "m2a_codex_aproof.hak", model: "m2a_m6p01.mdl", module: "m2a_codex_aproof.mod" };
   try {
     const hak = exactBuffer(result.takeHakBytes());
     const model = exactBuffer(result.takeModelBytes());
@@ -431,13 +475,17 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
     const report = encoder.encode(result.reportJson).buffer;
     const manifest = encoder.encode(result.manifestJson).buffer;
     const summary = encoder.encode(result.summaryJson).buffer;
+    const artifactNames = modelArtifactNamesV1(
+      result.manifestJson,
+      request.packageLane,
+    );
     const artifacts = await Promise.all([
       artifact("package-hak", "HAK", artifactNames.hak, "application/octet-stream", hak),
       artifact("model-mdl", "MODEL", artifactNames.model, "application/octet-stream", model),
       artifact("proof-module", "MODULE", artifactNames.module, "application/octet-stream", proofModule),
-      artifact("report-json", "JSON_REPORT", "inspection.json", "application/json", report),
-      artifact("manifest-json", "JSON_REPORT", "conversion-manifest.json", "application/json", manifest),
-      artifact("summary-json", "JSON_REPORT", "summary.json", "application/json", summary),
+      artifact("report-json", "JSON_REPORT", artifactNames.report, "application/json", report),
+      artifact("manifest-json", "JSON_REPORT", artifactNames.manifest, "application/json", manifest),
+      artifact("summary-json", "JSON_REPORT", artifactNames.summary, "application/json", summary),
     ]);
     return {
       requestId: request.requestId,

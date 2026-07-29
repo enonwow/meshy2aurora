@@ -207,7 +207,7 @@ test("accepts a bounded Image to 3D request and rejects invalid API option range
   const localOrigin = await local.listen(0);
   const request = (path, options = {}) => fetch(`${localOrigin}${path}`, { ...options, headers: { Origin: "http://localhost:5173", ...(options.headers ?? {}) } });
   const options = {
-    modelType: "standard", aiModel: "latest", shouldRemesh: true, topology: "triangle", targetPolycount: 30_000,
+    modelType: "standard", aiModel: "latest", shouldRemesh: true, topology: "triangle", targetPolycount: 20_000,
     poseMode: "", moderation: true, targetFormats: ["glb"], alphaThumbnail: false, autoSize: false, originAt: "bottom",
     enablePbr: true, shouldTexture: true, hdTexture: false, texturePrompt: "", textureImageUrl: "", removeLighting: true, imageEnhancement: true,
     multiViewThumbnails: false, rigHumanoid: false, rigHeightMeters: 1.7,
@@ -219,6 +219,8 @@ test("accepts a bounded Image to 3D request and rejects invalid API option range
     assert.equal(valid.status, 200);
     const invalid = await request("/v1/runs/preview", { method: "POST", headers, body: JSON.stringify({ profileId: "S1-static-prop/v1", prompt: "", geometryTarget: "BALANCED", source: "IMAGE", imageDataUrls: ["data:image/png;base64,AAAA"], apiOptions: { ...options, targetPolycount: 1 } }) });
     assert.equal(invalid.status, 400);
+    const overAuroraBudget = await request("/v1/runs/preview", { method: "POST", headers, body: JSON.stringify({ profileId: "S1-static-prop/v1", prompt: "", geometryTarget: "BALANCED", source: "IMAGE", imageDataUrls: ["data:image/png;base64,AAAA"], apiOptions: { ...options, targetPolycount: 20_001 } }) });
+    assert.equal(overAuroraBudget.status, 400);
   } finally {
     await local.close();
   }
@@ -297,7 +299,7 @@ test("chains a completed private 2D task into Image to 3D without sending its si
   const local = createLocalBridge({ apiKey: "chain-test-key", pairingCode: "chain-pair", allowedOrigin: "http://localhost:5173", meshFetch: fakeMeshy });
   const localOrigin = await local.listen(0);
   const request = (path, options = {}) => fetch(`${localOrigin}${path}`, { ...options, headers: { Origin: "http://localhost:5173", ...(options.headers ?? {}) } });
-  const apiOptions = { modelType: "standard", aiModel: "latest", shouldRemesh: true, topology: "triangle", targetPolycount: 30_000, poseMode: "", moderation: true, targetFormats: ["glb"], alphaThumbnail: false, autoSize: false, originAt: "bottom", enablePbr: true, shouldTexture: true, hdTexture: false, texturePrompt: "", textureImageUrl: "", removeLighting: true, imageEnhancement: true, multiViewThumbnails: false, rigHumanoid: false, rigHeightMeters: 1.7 };
+  const apiOptions = { modelType: "standard", aiModel: "latest", shouldRemesh: true, topology: "triangle", targetPolycount: 20_000, poseMode: "", moderation: true, targetFormats: ["glb"], alphaThumbnail: false, autoSize: false, originAt: "bottom", enablePbr: true, shouldTexture: true, hdTexture: false, texturePrompt: "", textureImageUrl: "", removeLighting: true, imageEnhancement: true, multiViewThumbnails: false, rigHumanoid: false, rigHeightMeters: 1.7 };
   try {
     const pairing = await (await request("/v1/pair", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pairingCode: "chain-pair" }) })).json();
     const headers = { "X-Meshy-Session": pairing.sessionToken, "Content-Type": "application/json" };
@@ -407,6 +409,8 @@ test("runs N1 and S1 without calling humanoid-only rigging or animation endpoint
       }
       assert.equal(status.status, "READY");
       assert.equal(calls.some((call) => call.url.includes("/rigging") || call.url.includes("/animations")), false);
+      const previewRequest = calls.find((call) => call.url.endsWith("/openapi/v2/text-to-3d") && JSON.parse(call.options.body).mode === "preview");
+      assert.equal(JSON.parse(previewRequest.options.body).target_polycount, 15_000);
     } finally {
       await local.close();
     }

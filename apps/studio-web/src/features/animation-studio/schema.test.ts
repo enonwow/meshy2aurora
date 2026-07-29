@@ -219,6 +219,27 @@ describe("Animation Studio V1 schema", () => {
     })]);
   });
 
+  it("accepts a self-contained imported clip with exact donor provenance", () => {
+    const clip = animationStudioClipFixtureV1({
+      source: {
+        kind: "IMPORTED_MODEL_COPY",
+        sourceRevision: "b".repeat(64),
+        sourceClipName: "donor_walk",
+        sourceClipFingerprint: "c".repeat(64),
+        proceduralTemplate: null,
+      },
+    });
+    const document = animationStudioDocumentFixtureV1({ authoredClips: [clip] });
+
+    expect(validateAnimationStudioSchemaV1(document)).toEqual([]);
+    expect(parseAnimationStudioDocumentV1(
+      serializeAnimationStudioDocumentV1(document),
+    )).toEqual({
+      kind: "VALID",
+      value: document,
+    });
+  });
+
   it("fingerprints canonical object keys independently of insertion order", async () => {
     const document = animationStudioDocumentFixtureV1();
     const reordered = {

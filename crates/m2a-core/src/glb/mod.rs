@@ -96,8 +96,8 @@ impl Default for GlbLimits {
             max_keyframes: 1_000_000,
             max_decoded_skin_animation_bytes: 64 * 1024 * 1024,
             max_diagnostics: 2_048,
-            triangle_warning_above: 5_000,
-            triangle_blocking_above: 10_000,
+            triangle_warning_above: crate::AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1,
+            triangle_blocking_above: crate::AURORA_MODEL_TRIANGLE_BUDGET_V1,
         }
     }
 }

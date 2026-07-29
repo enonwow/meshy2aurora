@@ -107,11 +107,44 @@ declare module "@m2a-wasm" {
     takeProofModuleBytes(): Uint8Array;
     free(): void;
   };
+  export function buildMeshyH1ModelPackageV4ProjectV1(
+    sourceGlb: Uint8Array,
+    appearanceTwoDa: Uint8Array,
+    animationAuthoringJson: string,
+    projectIdentityJson: string,
+    eventAuthoringJson?: string,
+  ): {
+    readonly reportJson: string;
+    readonly manifestJson: string;
+    readonly summaryJson: string;
+    readonly readbackJson: string;
+    takeHakBytes(): Uint8Array;
+    takeModelBytes(): Uint8Array;
+    takeProofModuleBytes(): Uint8Array;
+    free(): void;
+  };
   export function buildMeshyH1ModelPackageV5(
     sourceGlb: Uint8Array,
     appearanceTwoDa: Uint8Array,
     animationAuthoringJson: string,
     animationStudioDocumentJson: string,
+    eventAuthoringJson?: string,
+  ): {
+    readonly reportJson: string;
+    readonly manifestJson: string;
+    readonly summaryJson: string;
+    readonly readbackJson: string;
+    takeHakBytes(): Uint8Array;
+    takeModelBytes(): Uint8Array;
+    takeProofModuleBytes(): Uint8Array;
+    free(): void;
+  };
+  export function buildMeshyH1ModelPackageV5ProjectV1(
+    sourceGlb: Uint8Array,
+    appearanceTwoDa: Uint8Array,
+    animationAuthoringJson: string,
+    animationStudioDocumentJson: string,
+    projectIdentityJson: string,
     eventAuthoringJson?: string,
   ): {
     readonly reportJson: string;
@@ -175,6 +208,23 @@ declare module "@m2a-wasm" {
     placementJson: string,
     paletteId: number,
     authoringJson: string,
+  ): {
+    readonly reportJson: string;
+    readonly manifestJson: string;
+    readonly summaryJson: string;
+    readonly readbackJson: string;
+    takeHakBytes(): Uint8Array;
+    takeModelBytes(): Uint8Array;
+    takeProofModuleBytes(): Uint8Array;
+    free(): void;
+  };
+  export function buildMeshyStaticPlaceablePackageV3ProjectV1(
+    sourceGlb: Uint8Array,
+    placeablesTwoDa: Uint8Array,
+    projectIdentityJson: string,
+    placementJson: string,
+    paletteId: number,
+    authoringJson?: string,
   ): {
     readonly reportJson: string;
     readonly manifestJson: string;

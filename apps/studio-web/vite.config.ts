@@ -22,4 +22,9 @@ export default defineConfig({
     },
   },
   worker: { format: "es" },
+  build: {
+    // E6 measured product budget. A separate executable gate validates the
+    // initial, lazy-feature, aggregate CSS/JS and WASM limits.
+    chunkSizeWarningLimit: 620,
+  },
 });

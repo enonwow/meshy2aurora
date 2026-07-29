@@ -37,6 +37,13 @@ export function PlaceableReview({
       <div className="review-model__metrics">
         <dl className="build-input-summary__grid">
           <div><dt>Profile</dt><dd><strong>{result.profile}</strong></dd></div>
+          <div>
+            <dt>Project build</dt>
+            <dd>
+              <code>{result.projectIdentity.projectId}</code>
+              <span>revision {result.projectIdentity.projectRevision}</span>
+            </dd>
+          </div>
           <div><dt>Appearance row</dt><dd><strong>{result.appearanceRow}</strong></dd></div>
           <div><dt>Model / texture</dt><dd><code>{result.modelResref}</code><code>{result.textureResref}</code></dd></div>
           <div><dt>Blueprint / object</dt><dd><code>{result.blueprintResref}</code><code>{result.objectTag}</code></dd></div>

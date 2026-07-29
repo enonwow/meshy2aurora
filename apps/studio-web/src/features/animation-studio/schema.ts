@@ -212,7 +212,10 @@ export function validateAnimationStudioSchemaV1(
         "Trim, resample, or split the authored animation.",
       ));
     }
-    if (clip.source.sourceRevision !== document.sourceRevision) {
+    if (
+      clip.source.kind !== "IMPORTED_MODEL_COPY"
+      && clip.source.sourceRevision !== document.sourceRevision
+    ) {
       diagnostics.push(diagnostic(
         "M2A-ANIMATION-EDIT-SOURCE-STALE",
         `$.authoredClips[${clipIndex}].source.sourceRevision`,
@@ -453,7 +456,12 @@ function validateSource(
   )) return;
   expectEnum(
     value.kind,
-    ["BLANK_POSE", "SOURCE_CLIP_COPY", "PROCEDURAL_TEMPLATE"],
+    [
+      "BLANK_POSE",
+      "SOURCE_CLIP_COPY",
+      "IMPORTED_MODEL_COPY",
+      "PROCEDURAL_TEMPLATE",
+    ],
     `${path}.kind`,
     diagnostics,
   );
@@ -478,7 +486,7 @@ function validateSource(
     );
   }
   if (
-    value.kind === "SOURCE_CLIP_COPY"
+    (value.kind === "SOURCE_CLIP_COPY" || value.kind === "IMPORTED_MODEL_COPY")
     && (
       typeof value.sourceClipName !== "string"
       || typeof value.sourceClipFingerprint !== "string"
@@ -486,17 +494,17 @@ function validateSource(
   ) {
     schemaIssue(
       path,
-      "SOURCE_CLIP_COPY requires sourceClipName and sourceClipFingerprint.",
+      `${String(value.kind)} requires sourceClipName and sourceClipFingerprint.`,
       diagnostics,
     );
   }
   if (
-    value.kind === "SOURCE_CLIP_COPY"
+    (value.kind === "SOURCE_CLIP_COPY" || value.kind === "IMPORTED_MODEL_COPY")
     && value.proceduralTemplate !== null
   ) {
     schemaIssue(
       `${path}.proceduralTemplate`,
-      "SOURCE_CLIP_COPY cannot contain proceduralTemplate.",
+      `${String(value.kind)} cannot contain proceduralTemplate.`,
       diagnostics,
     );
   }

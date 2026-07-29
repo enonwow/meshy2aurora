@@ -20,6 +20,15 @@ const WORKFLOW_STEP_INDEX: Readonly<Record<WorkflowStep, number>> = {
 
 export type WorkflowTarget = "CREATURE" | "PLACEABLE" | "TILE";
 
+export const WORKFLOW_STEP_LABELS: Readonly<Record<WorkflowStep, string>> = {
+  SOURCE: "Source",
+  INSPECT: "Inspect",
+  ANIMATION_MAPPING: "Animation Mapping",
+  BUILD: "Build",
+  REVIEW: "Review",
+  DOWNLOAD: "Download",
+};
+
 const NON_CREATURE_WORKFLOW_STEPS = WORKFLOW_STEPS.filter(
   (step) => step !== "ANIMATION_MAPPING",
 );
@@ -36,4 +45,8 @@ export function compareWorkflowSteps(left: WorkflowStep, right: WorkflowStep): n
 
 export function isWorkflowStep(value: unknown): value is WorkflowStep {
   return typeof value === "string" && WORKFLOW_STEPS.some((step) => step === value);
+}
+
+export function workflowStepLabel(step: WorkflowStep): string {
+  return WORKFLOW_STEP_LABELS[step];
 }

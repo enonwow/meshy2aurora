@@ -141,6 +141,96 @@ pub struct ProceduralCreaturePackageIdentityV1 {
     pub creature_resref: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectBuildIdentityV1 {
+    pub schema_version: u32,
+    pub project_id: String,
+    pub project_name: String,
+    pub project_revision: u64,
+}
+
+impl ProjectBuildIdentityV1 {
+    pub fn namespace_resref_v1(&self) -> Result<String, M6PipelineErrorV1> {
+        self.validate_v1()?;
+        let mut digest = Sha256::new();
+        digest.update(b"MESHY2AURORA_PROJECT_BUILD_IDENTITY_V1\0");
+        digest.update(self.project_id.as_bytes());
+        digest.update([0]);
+        digest.update(self.project_name.as_bytes());
+        digest.update([0]);
+        digest.update(self.project_revision.to_le_bytes());
+        let token = digest
+            .finalize()
+            .iter()
+            .take(7)
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        let resref = format!("m2{token}");
+        debug_assert_eq!(resref.len(), 16);
+        Ok(resref)
+    }
+
+    pub fn runtime_identity_v1(
+        &self,
+    ) -> Result<ProceduralCreaturePackageIdentityV1, M6PipelineErrorV1> {
+        let resref = self.namespace_resref_v1()?;
+        Ok(ProceduralCreaturePackageIdentityV1 {
+            model_resref: resref.clone(),
+            texture_resref: resref.clone(),
+            module: BinaryCreatureModuleIdentityV1 {
+                module_resref: resref.clone(),
+                area_resref: resref.clone(),
+                hak_resref: resref.clone(),
+            },
+            creature_resref: resref,
+        })
+    }
+
+    fn validate_v1(&self) -> Result<(), M6PipelineErrorV1> {
+        if self.schema_version != 1 {
+            return Err(project_identity_error(
+                "projectIdentity.schemaVersion",
+                "project build identity schemaVersion must be 1",
+            ));
+        }
+        if self.project_id.len() < 3
+            || self.project_id.len() > 128
+            || !self.project_id.bytes().enumerate().all(|(index, byte)| {
+                byte.is_ascii_alphanumeric()
+                    || (index > 0 && matches!(byte, b'.' | b'_' | b':' | b'-'))
+            })
+        {
+            return Err(project_identity_error(
+                "projectIdentity.projectId",
+                "projectId must match the portable 3..128 character project identity contract",
+            ));
+        }
+        if self.project_name.trim().is_empty() || self.project_name.chars().count() > 120 {
+            return Err(project_identity_error(
+                "projectIdentity.projectName",
+                "projectName must contain 1..120 non-whitespace Unicode characters",
+            ));
+        }
+        if self.project_revision == 0 {
+            return Err(project_identity_error(
+                "projectIdentity.projectRevision",
+                "projectRevision must be a positive integer",
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn project_identity_error(path: &str, message: &str) -> M6PipelineErrorV1 {
+    pipeline_error(
+        "project",
+        "M2A-PROJECT-BUILD-IDENTITY-INVALID",
+        path,
+        message,
+    )
+}
+
 impl ProceduralCreaturePackageIdentityV1 {
     fn historical_default() -> Self {
         Self {
@@ -542,6 +632,8 @@ pub struct M6MaterializationManifestV1 {
     pub generated_files: Vec<M6GeneratedFileV1>,
     pub package_manifest: PackageManifestV1,
     pub appearance_payload_policy: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_identity: Option<ProjectBuildIdentityV1>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub m0_appearance_table: Option<M0AppearanceTableBindingV1>,
     pub manifest_self_hash_policy: String,
@@ -1026,6 +1118,42 @@ pub fn build_meshy_h1_model_package_v4_with_events_and_identity(
     event_authoring: Option<&DirectCreatureEventAuthoringV1>,
     runtime_identity: &ProceduralCreaturePackageIdentityV1,
 ) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
+    build_meshy_h1_model_package_v4_internal(
+        source_glb,
+        appearance_two_da,
+        animation_authoring,
+        event_authoring,
+        runtime_identity,
+        None,
+    )
+}
+
+pub fn build_meshy_h1_model_package_v4_with_project_identity(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring: &CreatureAnimationAuthoringV1,
+    event_authoring: Option<&DirectCreatureEventAuthoringV1>,
+    project_identity: &ProjectBuildIdentityV1,
+) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
+    let runtime_identity = project_identity.runtime_identity_v1()?;
+    build_meshy_h1_model_package_v4_internal(
+        source_glb,
+        appearance_two_da,
+        animation_authoring,
+        event_authoring,
+        &runtime_identity,
+        Some(project_identity),
+    )
+}
+
+fn build_meshy_h1_model_package_v4_internal(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring: &CreatureAnimationAuthoringV1,
+    event_authoring: Option<&DirectCreatureEventAuthoringV1>,
+    runtime_identity: &ProceduralCreaturePackageIdentityV1,
+    project_identity: Option<&ProjectBuildIdentityV1>,
+) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
     let validation = validate_creature_animation_authoring_v1(animation_authoring);
     if validation.status
         != crate::creature_animation_mapping::CreatureAnimationMappingStatusV1::Ready
@@ -1090,6 +1218,7 @@ pub fn build_meshy_h1_model_package_v4_with_events_and_identity(
             )
         }),
         runtime_identity,
+        project_identity,
         Some(animation_authoring),
         None,
     )
@@ -1117,6 +1246,46 @@ pub fn build_meshy_h1_model_package_v5_with_events(
     animation_authoring: &CreatureAnimationAuthoringV2,
     animation_studio: &AnimationStudioDocumentV1,
     event_authoring: Option<&DirectCreatureEventAuthoringV1>,
+) -> Result<M6ModelPackageArtifactV5, M6PipelineErrorV1> {
+    build_meshy_h1_model_package_v5_internal(
+        source_glb,
+        appearance_two_da,
+        animation_authoring,
+        animation_studio,
+        event_authoring,
+        &ProceduralCreaturePackageIdentityV1::historical_default(),
+        None,
+    )
+}
+
+pub fn build_meshy_h1_model_package_v5_with_project_identity(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring: &CreatureAnimationAuthoringV2,
+    animation_studio: &AnimationStudioDocumentV1,
+    event_authoring: Option<&DirectCreatureEventAuthoringV1>,
+    project_identity: &ProjectBuildIdentityV1,
+) -> Result<M6ModelPackageArtifactV5, M6PipelineErrorV1> {
+    let runtime_identity = project_identity.runtime_identity_v1()?;
+    build_meshy_h1_model_package_v5_internal(
+        source_glb,
+        appearance_two_da,
+        animation_authoring,
+        animation_studio,
+        event_authoring,
+        &runtime_identity,
+        Some(project_identity),
+    )
+}
+
+fn build_meshy_h1_model_package_v5_internal(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring: &CreatureAnimationAuthoringV2,
+    animation_studio: &AnimationStudioDocumentV1,
+    event_authoring: Option<&DirectCreatureEventAuthoringV1>,
+    runtime_identity: &ProceduralCreaturePackageIdentityV1,
+    project_identity: Option<&ProjectBuildIdentityV1>,
 ) -> Result<M6ModelPackageArtifactV5, M6PipelineErrorV1> {
     let source_identity = identity(source_glb);
     for (path, revision) in [
@@ -1196,7 +1365,8 @@ pub fn build_meshy_h1_model_package_v5_with_events(
                 authoring,
             )
         }),
-        &ProceduralCreaturePackageIdentityV1::historical_default(),
+        runtime_identity,
+        project_identity,
         None,
         Some((animation_authoring, animation_studio)),
     )?;
@@ -2023,6 +2193,7 @@ fn build_meshy_m0_static_rigid_package_internal(
         generated_files,
         package_manifest: package_manifest.clone(),
         appearance_payload_policy: appearance_payload_policy.to_owned(),
+        project_identity: None,
         m0_appearance_table: Some(m0_appearance_table),
         manifest_self_hash_policy: "EXCLUDED_TO_AVOID_SELF_REFERENCE".to_owned(),
         m0_runtime_fixture_contract,
@@ -2892,6 +3063,7 @@ fn build_m6_model_package_with_ingest_v4(
         runtime_identity,
         None,
         None,
+        None,
     )
     .map(|built| built.artifact)
 }
@@ -2917,6 +3089,7 @@ fn build_m6_model_package_with_ingest_v5(
         &DirectCreatureEventAuthoringV1,
     )>,
     runtime_identity: &ProceduralCreaturePackageIdentityV1,
+    project_identity: Option<&ProjectBuildIdentityV1>,
     animation_authoring: Option<&CreatureAnimationAuthoringV1>,
     animation_studio_authoring: Option<(&CreatureAnimationAuthoringV2, &AnimationStudioDocumentV1)>,
 ) -> Result<M6ModelPackageInternalV5, M6PipelineErrorV1> {
@@ -3477,6 +3650,7 @@ fn build_m6_model_package_with_ingest_v5(
         generated_files,
         package_manifest: package_manifest.clone(),
         appearance_payload_policy: "PRESERVED_AND_APPENDED".to_owned(),
+        project_identity: project_identity.cloned(),
         m0_appearance_table: None,
         manifest_self_hash_policy: "EXCLUDED_TO_AVOID_SELF_REFERENCE".to_owned(),
         m0_runtime_fixture_contract: None,

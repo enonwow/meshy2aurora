@@ -1,4 +1,4 @@
-import type { WorkflowStep } from "./workflow";
+import { WORKFLOW_STEP_LABELS, type WorkflowStep } from "./workflow";
 
 export type WorkflowStepId = WorkflowStep;
 
@@ -18,16 +18,16 @@ interface WorkflowStepDefinition {
 }
 
 const WORKFLOW_STEP_DEFINITIONS: Readonly<Record<WorkflowStepId, WorkflowStepDefinition>> = {
-  SOURCE: { id: "SOURCE", label: "Source", description: "Select input files" },
-  INSPECT: { id: "INSPECT", label: "Inspect", description: "Validate & preview" },
+  SOURCE: { id: "SOURCE", label: WORKFLOW_STEP_LABELS.SOURCE, description: "Select input files" },
+  INSPECT: { id: "INSPECT", label: WORKFLOW_STEP_LABELS.INSPECT, description: "Validate & preview" },
   ANIMATION_MAPPING: {
     id: "ANIMATION_MAPPING",
-    label: "Animation Mapping",
+    label: WORKFLOW_STEP_LABELS.ANIMATION_MAPPING,
     description: "Map Aurora states",
   },
-  BUILD: { id: "BUILD", label: "Build", description: "Convert & validate" },
-  REVIEW: { id: "REVIEW", label: "Review Output", description: "Verify results" },
-  DOWNLOAD: { id: "DOWNLOAD", label: "Download", description: "Get your results" },
+  BUILD: { id: "BUILD", label: WORKFLOW_STEP_LABELS.BUILD, description: "Convert & validate" },
+  REVIEW: { id: "REVIEW", label: WORKFLOW_STEP_LABELS.REVIEW, description: "Verify results" },
+  DOWNLOAD: { id: "DOWNLOAD", label: WORKFLOW_STEP_LABELS.DOWNLOAD, description: "Get your results" },
 };
 
 const DEFAULT_WORKFLOW_STEPS = Object.keys(

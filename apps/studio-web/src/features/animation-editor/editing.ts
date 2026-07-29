@@ -1,4 +1,7 @@
-import type { DirectCreatureBaseSlotV1 } from "../animation-mapping/types";
+import type {
+  AnimationMappingProvenanceV1,
+  DirectCreatureBaseSlotV1,
+} from "../animation-mapping/types";
 import { canonicalFloat32ForWireV1 } from "../animation-studio/schema";
 import type {
   AnimationKeyframeV1,
@@ -46,6 +49,11 @@ export interface ProjectedCustomAnimationLibraryItemV1
   readonly assignedSlots: DirectCreatureBaseSlotV1[];
   readonly assignable: boolean;
   readonly diagnosticCodes: string[];
+  readonly provenance: AnimationMappingProvenanceV1;
+  readonly lineage: Array<{
+    readonly reference: CustomAnimationClipReferenceV2;
+    readonly authoredSource: AuthoredAnimationClipV1["source"] | null;
+  }>;
 }
 
 export interface CreateBlankPoseClipInputV1 {
@@ -721,6 +729,15 @@ export function projectCustomAnimationLibraryV1(
       assignedSlots,
       assignable: status === "VALID",
       diagnosticCodes: status === "VALID" ? [] : ["M2A-ANIMATION-EDIT-NOT-VALID"],
+      provenance: structuredClone(custom.provenance),
+      lineage: references.map((reference) => ({
+        reference: structuredClone(reference),
+        authoredSource: reference.sourceKind === "AUTHORED_CLIP"
+          ? structuredClone(
+              clips.get(reference.authoredClipId ?? "")?.source ?? null,
+            )
+          : null,
+      })),
     };
   });
 }

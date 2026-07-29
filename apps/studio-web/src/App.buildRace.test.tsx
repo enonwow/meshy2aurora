@@ -205,7 +205,7 @@ async function renderRunningBuild() {
   });
 
   await act(async () => button(container, "Continue to Inspect")?.click());
-  await act(async () => button(container, "Continue to Build")?.click());
+  await act(async () => button(container, "Continue to Animation Mapping")?.click());
   await act(async () => button(container, "Use generated Base 42")?.click());
   await settle();
   const validationRequest = worker.requests
@@ -275,7 +275,7 @@ describe("running Build invalidation", () => {
     expect(worker.terminated).toBe(false);
   });
 
-  it("projects structured Worker failure evidence into the exact failed ledger stage", async () => {
+  it("projects structured Worker failure evidence into the honest atomic build state", async () => {
     const { buildRequest, container, worker } = await renderRunningBuild();
 
     await act(async () => {
@@ -295,7 +295,7 @@ describe("running Build invalidation", () => {
     });
 
     expect(container.querySelector('[data-status="FAILED"]')?.textContent)
-      .toContain("Write binary MDL");
+      .toContain("Canonical local package build");
     expect(container.textContent).toContain("M4-WRITER-FAILED");
     expect(container.textContent).toContain("MODEL");
     expect(container.textContent).toContain("model.nodes[2]");
@@ -303,11 +303,49 @@ describe("running Build invalidation", () => {
     expect(projectionSpy).not.toHaveBeenCalled();
   });
 
+  it("terminates the cancelled Worker and retries on a fresh request without accepting the old response", async () => {
+    const { buildRequest, container, worker } = await renderRunningBuild();
+
+    await act(async () => button(container, "Cancel Build")?.click());
+    expect(worker.terminated).toBe(true);
+    expect(FakeWorker.instances).toHaveLength(2);
+    expect(button(container, "Build Package")).toBeDefined();
+
+    await act(async () => button(container, "Build Package")?.click());
+    await settle();
+    const retryWorker = FakeWorker.instances[1]!;
+    const retryRequest = retryWorker.requests.find(
+      (request) => request.type === "BUILD_MODEL_PACKAGE",
+    );
+    expect(retryRequest).toBeDefined();
+    expect(retryRequest?.requestId).not.toBe(buildRequest.requestId);
+
+    await act(async () => {
+      worker.emit({
+        requestId: buildRequest.requestId,
+        ok: true,
+        type: "MODEL_PACKAGE_BUILT",
+        artifacts: [],
+        reportJson: "stale-report",
+        manifestJson: "stale-manifest",
+        summaryJson: "stale-summary",
+        readbackJson: "stale-readback",
+      });
+      await Promise.resolve();
+    });
+
+    expect(projectionSpy).not.toHaveBeenCalled();
+    expect(button(container, "Cancel Build")).toBeDefined();
+    expect(retryWorker.terminated).toBe(false);
+  });
+
   it.each(["replace", "remove", "new-conversion"] as const)(
     "replaces the Worker immediately on %s and skips stale projections",
     async (action) => {
       const { buildRequest, container, worker } = await renderRunningBuild();
-      const sourceInput = container.querySelector<HTMLInputElement>('.inputs-panel input[accept^=".glb"]');
+      const sourceInput = container.querySelector<HTMLInputElement>(
+        'input[aria-label="Meshy GLB model file"]',
+      );
       if (!sourceInput) throw new Error("source input missing");
 
       if (action === "replace") {

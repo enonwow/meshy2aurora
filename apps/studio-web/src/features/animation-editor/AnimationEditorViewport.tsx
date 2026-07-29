@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 export function AnimationEditorViewport({
   viewport,
+  sourceViewport,
   selectedBoneName,
   playheadSeconds,
   path,
@@ -11,6 +12,7 @@ export function AnimationEditorViewport({
   onGestureCancel,
 }: {
   viewport: ReactNode;
+  sourceViewport?: ReactNode;
   selectedBoneName: string | null;
   playheadSeconds: number;
   path: "ROTATION" | "TRANSLATION";
@@ -19,16 +21,60 @@ export function AnimationEditorViewport({
   onGestureCommit: () => void;
   onGestureCancel: () => void;
 }) {
+  const [display, setDisplay] = useState<"SOURCE" | "EDITED">("EDITED");
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const showingSource = display === "SOURCE" && sourceViewport !== undefined;
+
   return (
     <section className="animation-editor-viewport" aria-label="Edited result viewport">
       <header>
         <strong>Edited result</strong>
+        <div
+          className="animation-editor-viewport__toolbar"
+          role="toolbar"
+          aria-label="Animation viewport display"
+        >
+          <span role="tablist" aria-label="Animation comparison">
+            <button
+              type="button"
+              role="tab"
+              aria-label="Show source animation"
+              aria-selected={showingSource}
+              disabled={sourceViewport === undefined}
+              onClick={() => setDisplay("SOURCE")}
+            >
+              Source
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-label="Show edited animation"
+              aria-selected={!showingSource}
+              onClick={() => setDisplay("EDITED")}
+            >
+              Edited
+            </button>
+          </span>
+          <button
+            type="button"
+            aria-label="Toggle animation viewport fullscreen"
+            onClick={() => void toggleFullscreen(viewportRef.current)}
+          >
+            Fullscreen
+          </button>
+        </div>
         <span>
-          {selectedBoneName ?? "No bone selected"} · {playheadSeconds.toFixed(2)} s
+          {selectedBoneName ?? "No bone selected"}
+          {" \u00b7 "}
+          {playheadSeconds.toFixed(2)} s
         </span>
       </header>
-      <div className="animation-editor-viewport__canvas">
-        {viewport}
+      <div
+        className="animation-editor-viewport__canvas"
+        data-animation-result={showingSource ? "SOURCE" : "EDITED"}
+        ref={viewportRef}
+      >
+        {showingSource ? sourceViewport : viewport}
         {selectedBoneName ? (
           <div
             className="animation-editor-gizmo"
@@ -70,6 +116,15 @@ export function AnimationEditorViewport({
       </div>
     </section>
   );
+}
+
+async function toggleFullscreen(target: HTMLElement | null) {
+  if (!target) return;
+  if (document.fullscreenElement) {
+    await document.exitFullscreen();
+    return;
+  }
+  await target.requestFullscreen();
 }
 
 function isRangeAdjustmentKeyV1(key: string) {

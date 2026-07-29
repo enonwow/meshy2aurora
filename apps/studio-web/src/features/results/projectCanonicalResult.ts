@@ -1,4 +1,5 @@
 import type { WorkerArtifact } from "../../worker/types";
+import type { ProjectBuildIdentityV1 } from "../project";
 import { FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1 } from "../source/directCreatureAnimationProfile";
 
 export interface CanonicalResultSnapshot {
@@ -23,10 +24,14 @@ export interface CanonicalResultSnapshot {
     resourceCount: number;
     artifactCount: number;
   };
+  animationCompletenessEvidence?: CanonicalAnimationCompletenessEvidence;
+  animationBehaviorEvidence?: CanonicalAnimationBehaviorEvidence;
   animationEventEvidence?: CanonicalAnimationEventEvidence;
+  skinAnimationEvidence?: CanonicalSkinAnimationEvidence;
   animationMappingEvidence?: CanonicalAnimationMappingEvidenceV1;
   animationStudioEvidence?: CanonicalAnimationStudioEvidenceV1;
   runtimeFixtureContract?: CanonicalM0RuntimeFixtureContract;
+  projectIdentity?: ProjectBuildIdentityV1;
   artifacts: WorkerArtifact[];
   reportJson: string;
   summaryJson: string;
@@ -80,6 +85,56 @@ export interface CanonicalAnimationEventEvidence {
   missingPairs: string[];
   complete: true;
   authoringCanonical: { byteLength: number; sha256: string };
+}
+
+export interface CanonicalAnimationCompletenessEvidence {
+  profile: string;
+  requiredClipCount: number;
+  explicitClipCount: number;
+  proceduralClipCount: number;
+  fallbackAliasCount: number;
+  complete: boolean;
+}
+
+export interface CanonicalAnimationBehaviorClipEvidence {
+  name: string;
+  decodedControllerCount: number;
+  changingControllerCount: number;
+  terminalPoseControllerCount: number;
+  motionSha256: string;
+  semanticSha256: string;
+}
+
+export interface CanonicalAnimationBehaviorEvidence {
+  schemaVersion: 1;
+  requiredNamespaceClipCount: number;
+  observedClipCount: number;
+  fullNamespaceComplete: boolean;
+  allRequiredContentPresent: boolean;
+  activeMotionComplete: boolean;
+  walkRunDistinct: boolean;
+  essentialStatesDistinct: boolean;
+  deathTransitionTerminalPose: boolean;
+  behaviorCandidateEligible: boolean;
+  clips: CanonicalAnimationBehaviorClipEvidence[];
+  violations: string[];
+}
+
+export interface CanonicalSkinAnimationClipEvidence {
+  clipName: string;
+  sampledTimeCount: number;
+  maxMovedVertexCount: number;
+  maxDisplacement: number;
+  nonRigidDeformationObserved: boolean;
+}
+
+export interface CanonicalSkinAnimationEvidence {
+  schemaVersion: 1;
+  activeJointCount: number;
+  requiredClipCount: number;
+  clips: CanonicalSkinAnimationClipEvidence[];
+  complete: boolean;
+  violations: string[];
 }
 
 export interface CanonicalAnimationMappingEvidenceV1 {
@@ -149,7 +204,11 @@ export interface CanonicalAnimationStudioEvidenceV1 {
     status: "VALID";
     revision: number;
     source: {
-      kind: "BLANK_POSE" | "SOURCE_CLIP_COPY" | "PROCEDURAL_TEMPLATE";
+      kind:
+        | "BLANK_POSE"
+        | "SOURCE_CLIP_COPY"
+        | "IMPORTED_MODEL_COPY"
+        | "PROCEDURAL_TEMPLATE";
       sourceRevision: string;
       sourceClipName: string | null;
       sourceClipFingerprint: string | null;
@@ -590,11 +649,13 @@ function animationStudioEvidenceParser(
     if (
       sourceKindValue !== "BLANK_POSE"
       && sourceKindValue !== "SOURCE_CLIP_COPY"
+      && sourceKindValue !== "IMPORTED_MODEL_COPY"
       && sourceKindValue !== "PROCEDURAL_TEMPLATE"
     ) fail(`${clipPath}.source.kind`);
     const sourceKind = sourceKindValue as
       | "BLANK_POSE"
       | "SOURCE_CLIP_COPY"
+      | "IMPORTED_MODEL_COPY"
       | "PROCEDURAL_TEMPLATE";
     const usages = array(clip.usages, `${clipPath}.usages`).map(
       (usageValue, usageIndex): CanonicalAnimationStudioUsageV1 => {
@@ -817,6 +878,34 @@ export function projectCanonicalResult(
     fail("summary.status");
   }
   equal(string(manifest.status, "manifest.status"), status, "manifest.status");
+  const projectIdentity = manifest.projectIdentity === undefined
+    ? undefined
+    : (() => {
+        const value = record(manifest.projectIdentity, "manifest.projectIdentity");
+        const schemaVersion = integer(
+          value.schemaVersion,
+          "manifest.projectIdentity.schemaVersion",
+        );
+        const projectRevision = integer(
+          value.projectRevision,
+          "manifest.projectIdentity.projectRevision",
+        );
+        if (schemaVersion !== 1 || projectRevision < 1) {
+          fail("manifest.projectIdentity");
+        }
+        return {
+          schemaVersion: 1,
+          projectId: string(
+            value.projectId,
+            "manifest.projectIdentity.projectId",
+          ),
+          projectName: string(
+            value.projectName,
+            "manifest.projectIdentity.projectName",
+          ),
+          projectRevision,
+        } satisfies ProjectBuildIdentityV1;
+      })();
 
   const ingest = record(report.ingest, "report.ingest");
   if (integer(ingest.schemaVersion, "report.ingest.schemaVersion") !== 1) fail("report.ingest.schemaVersion");
@@ -915,6 +1004,191 @@ export function projectCanonicalResult(
   equal(sha256(proofModuleJson.sha256, "report.proofModule.sha256"), outputs.proofModule.sha256, "report.proofModule.sha256");
   equal(integer(proofModuleJson.appearanceRow, "report.proofModule.appearanceRow"), appendedRow, "report.proofModule.appearanceRow");
   if (string(proofModuleJson.semanticReadbackStatus, "report.proofModule.semanticReadbackStatus") !== "PASS") fail("report.proofModule.semanticReadbackStatus");
+
+  const animationCompletenessEvidence = report.animationCompleteness === undefined
+    ? undefined
+    : (() => {
+        const value = record(
+          report.animationCompleteness,
+          "report.animationCompleteness",
+        );
+        return {
+          profile: string(
+            value.profile,
+            "report.animationCompleteness.profile",
+          ),
+          requiredClipCount: integer(
+            value.requiredClipCount,
+            "report.animationCompleteness.requiredClipCount",
+          ),
+          explicitClipCount: integer(
+            value.explicitClipCount,
+            "report.animationCompleteness.explicitClipCount",
+          ),
+          proceduralClipCount: value.proceduralClipCount === undefined
+            ? 0
+            : integer(
+                value.proceduralClipCount,
+                "report.animationCompleteness.proceduralClipCount",
+              ),
+          fallbackAliasCount: integer(
+            value.fallbackAliasCount,
+            "report.animationCompleteness.fallbackAliasCount",
+          ),
+          complete: boolean(
+            value.complete,
+            "report.animationCompleteness.complete",
+          ),
+        } satisfies CanonicalAnimationCompletenessEvidence;
+      })();
+
+  const animationBehaviorEvidence = report.animationBehavior === undefined
+    ? undefined
+    : (() => {
+        const value = record(
+          report.animationBehavior,
+          "report.animationBehavior",
+        );
+        if (
+          integer(
+            value.schemaVersion,
+            "report.animationBehavior.schemaVersion",
+          ) !== 1
+        ) fail("report.animationBehavior.schemaVersion");
+        return {
+          schemaVersion: 1,
+          requiredNamespaceClipCount: integer(
+            value.requiredNamespaceClipCount,
+            "report.animationBehavior.requiredNamespaceClipCount",
+          ),
+          observedClipCount: integer(
+            value.observedClipCount,
+            "report.animationBehavior.observedClipCount",
+          ),
+          fullNamespaceComplete: boolean(
+            value.fullNamespaceComplete,
+            "report.animationBehavior.fullNamespaceComplete",
+          ),
+          allRequiredContentPresent: boolean(
+            value.allRequiredContentPresent,
+            "report.animationBehavior.allRequiredContentPresent",
+          ),
+          activeMotionComplete: boolean(
+            value.activeMotionComplete,
+            "report.animationBehavior.activeMotionComplete",
+          ),
+          walkRunDistinct: boolean(
+            value.walkRunDistinct,
+            "report.animationBehavior.walkRunDistinct",
+          ),
+          essentialStatesDistinct: boolean(
+            value.essentialStatesDistinct,
+            "report.animationBehavior.essentialStatesDistinct",
+          ),
+          deathTransitionTerminalPose: boolean(
+            value.deathTransitionTerminalPose,
+            "report.animationBehavior.deathTransitionTerminalPose",
+          ),
+          behaviorCandidateEligible: boolean(
+            value.behaviorCandidateEligible,
+            "report.animationBehavior.behaviorCandidateEligible",
+          ),
+          clips: array(
+            value.clips,
+            "report.animationBehavior.clips",
+          ).map((clipValue, index) => {
+            const clipPath = `report.animationBehavior.clips[${index}]`;
+            const clip = record(clipValue, clipPath);
+            return {
+              name: string(clip.name, `${clipPath}.name`),
+              decodedControllerCount: integer(
+                clip.decodedControllerCount,
+                `${clipPath}.decodedControllerCount`,
+              ),
+              changingControllerCount: integer(
+                clip.changingControllerCount,
+                `${clipPath}.changingControllerCount`,
+              ),
+              terminalPoseControllerCount: integer(
+                clip.terminalPoseControllerCount,
+                `${clipPath}.terminalPoseControllerCount`,
+              ),
+              motionSha256: sha256(
+                clip.motionSha256,
+                `${clipPath}.motionSha256`,
+              ),
+              semanticSha256: sha256(
+                clip.semanticSha256,
+                `${clipPath}.semanticSha256`,
+              ),
+            };
+          }),
+          violations: stringArray(
+            value.violations,
+            "report.animationBehavior.violations",
+          ),
+        } satisfies CanonicalAnimationBehaviorEvidence;
+      })();
+
+  const skinAnimationEvidence = report.skinAnimationConformance === undefined
+    ? undefined
+    : (() => {
+        const value = record(
+          report.skinAnimationConformance,
+          "report.skinAnimationConformance",
+        );
+        if (
+          integer(
+            value.schemaVersion,
+            "report.skinAnimationConformance.schemaVersion",
+          ) !== 1
+        ) fail("report.skinAnimationConformance.schemaVersion");
+        return {
+          schemaVersion: 1,
+          activeJointCount: integer(
+            value.activeJointCount,
+            "report.skinAnimationConformance.activeJointCount",
+          ),
+          requiredClipCount: integer(
+            value.requiredClipCount,
+            "report.skinAnimationConformance.requiredClipCount",
+          ),
+          clips: array(
+            value.clips,
+            "report.skinAnimationConformance.clips",
+          ).map((clipValue, index) => {
+            const clipPath = `report.skinAnimationConformance.clips[${index}]`;
+            const clip = record(clipValue, clipPath);
+            return {
+              clipName: string(clip.clipName, `${clipPath}.clipName`),
+              sampledTimeCount: integer(
+                clip.sampledTimeCount,
+                `${clipPath}.sampledTimeCount`,
+              ),
+              maxMovedVertexCount: integer(
+                clip.maxMovedVertexCount,
+                `${clipPath}.maxMovedVertexCount`,
+              ),
+              maxDisplacement: number(
+                clip.maxDisplacement,
+                `${clipPath}.maxDisplacement`,
+              ),
+              nonRigidDeformationObserved: boolean(
+                clip.nonRigidDeformationObserved,
+                `${clipPath}.nonRigidDeformationObserved`,
+              ),
+            };
+          }),
+          complete: boolean(
+            value.complete,
+            "report.skinAnimationConformance.complete",
+          ),
+          violations: stringArray(
+            value.violations,
+            "report.skinAnimationConformance.violations",
+          ),
+        } satisfies CanonicalSkinAnimationEvidence;
+      })();
 
   let animationEventEvidence: CanonicalAnimationEventEvidence | undefined;
   if (
@@ -1157,10 +1431,14 @@ export function projectCanonicalResult(
       resourceCount: resources.length,
       artifactCount: artifacts.length,
     },
+    animationCompletenessEvidence,
+    animationBehaviorEvidence,
     animationEventEvidence,
+    skinAnimationEvidence,
     animationMappingEvidence,
     animationStudioEvidence,
     runtimeFixtureContract,
+    projectIdentity,
     artifacts: [...artifacts],
     reportJson,
     summaryJson,

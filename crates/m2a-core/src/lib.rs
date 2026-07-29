@@ -1,5 +1,12 @@
 //! Format-safe core for the standalone Meshy-to-Aurora pipeline.
 
+/// Shared product budget for every Aurora render-model route.
+///
+/// Exactly this many triangles are accepted. The independent binary MDL
+/// single-stream boundary remains defined by `mdl::NWN_EE_MAX_*`.
+pub const AURORA_MODEL_TRIANGLE_BUDGET_V1: usize = 20_000;
+pub const AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1: usize = AURORA_MODEL_TRIANGLE_BUDGET_V1 / 2;
+
 pub mod animated_donor;
 pub mod animated_donor_candidate;
 pub mod animation_studio;

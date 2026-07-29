@@ -1,0 +1,141 @@
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-library {
+  grid-template-rows: auto auto auto auto minmax(10rem, 1fr) auto;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-library > [role="tablist"],
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .bone-transform-inspector > [role="tablist"] {
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid #1b3342;
+  border-radius: 6px;
+  background: #07141d;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-library [role="tab"],
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .bone-transform-inspector [role="tab"] {
+  min-height: 29px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--animation-muted);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-library [role="tab"][aria-selected="true"],
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .bone-transform-inspector [role="tab"][aria-selected="true"] {
+  border-color: #177d99;
+  background: #0c2b39;
+  color: var(--animation-cyan);
+  box-shadow: inset 0 -1px 0 rgb(35 201 238 / 28%);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-library__actions {
+  gap: 5px;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-library__actions button {
+  min-height: 32px;
+  padding-inline: 7px;
+  font-size: .7rem;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .new-animation-menu > button {
+  border-color: #1d8bae;
+  color: var(--animation-cyan);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-library input[type="search"] {
+  width: 100%;
+  padding-left: 30px;
+  background:
+    linear-gradient(90deg, transparent 0 28px, #1b3342 28px 29px, transparent 29px),
+    #07141d;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-library label {
+  position: relative;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-library label::before {
+  content: "⌕";
+  position: absolute;
+  z-index: 1;
+  top: 5px;
+  left: 10px;
+  color: var(--animation-muted);
+  font-size: 1rem;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-library__list {
+  align-content: start;
+  gap: 3px;
+  max-height: 22rem;
+  padding-right: 2px;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-library__list > button {
+  min-height: 48px;
+  padding: 7px 8px;
+  border-color: transparent;
+  border-radius: 3px;
+  background: #091721;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-library__list > button:hover {
+  background: #0d2431;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-library__list > button[aria-selected="true"] {
+  border-color: var(--animation-cyan);
+  border-left-width: 3px;
+  background:
+    linear-gradient(90deg, rgb(35 201 238 / 17%), rgb(35 201 238 / 4%));
+  outline: 0;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-library__list small {
+  margin-top: 3px;
+  color: var(--animation-muted);
+  font-size: .65rem;
+  font-weight: 400;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-status {
+  font-size: .62rem;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-status > span {
+  border-radius: 3px;
+  padding: 2px 5px;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-source-note {
+  margin: 0;
+  padding: 9px 9px 9px 28px;
+  border: 1px solid #1c3f50;
+  border-radius: 5px;
+  background: #081822;
+  color: var(--animation-muted);
+  font-size: .66rem;
+  line-height: 1.45;
+}
+

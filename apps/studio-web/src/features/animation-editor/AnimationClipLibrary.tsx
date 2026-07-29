@@ -12,6 +12,7 @@ export function AnimationClipLibrary({
   onSelect,
   onCreateBlank,
   onCreateProcedural,
+  onImportFromModel,
   onEditCopy,
   onDuplicate,
   invalidRepairActions = {},
@@ -21,6 +22,7 @@ export function AnimationClipLibrary({
   onSelect: (id: string) => void;
   onCreateBlank: () => void;
   onCreateProcedural: () => void;
+  onImportFromModel?: () => void;
   onEditCopy: (id: string) => void;
   onDuplicate: (id: string) => void;
   invalidRepairActions?: Readonly<Record<string, string>>;
@@ -34,7 +36,11 @@ export function AnimationClipLibrary({
   const visibleHasSelection = visible.some(({ id }) => id === selectedId);
   const selected = items.find(({ id }) => id === selectedId);
   return (
-    <aside className="animation-clip-library" aria-label="Animation clips">
+    <aside
+      className="animation-clip-library"
+      aria-label="Animation clips"
+      data-panel="clip-library"
+    >
       <h2>Animation clips</h2>
       <div role="tablist" aria-label="Animation clip source">
         {(["BASE_42", "CUSTOM"] as const).map((value) => (
@@ -58,6 +64,7 @@ export function AnimationClipLibrary({
         <NewAnimationMenu
           onCreateBlank={onCreateBlank}
           onCreateProcedural={onCreateProcedural}
+          onImportFromModel={onImportFromModel}
         />
         <button
           type="button"

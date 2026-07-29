@@ -31,7 +31,7 @@ afterEach(async () => {
 });
 
 describe("BuildStep", () => {
-  it("renders the six-stage idle ledger without a viewport or invented progress", async () => {
+  it("renders one honest atomic idle stage without a viewport or invented progress", async () => {
     const handlers = callbacks();
     const container = await render(
       <BuildStep
@@ -61,8 +61,9 @@ describe("BuildStep", () => {
     );
 
     expect(container.querySelectorAll(".build-ledger__stage")).toHaveLength(BUILD_STAGE_IDS.length);
-    expect(container.querySelectorAll('[data-status="PENDING"]')).toHaveLength(6);
-    expect(container.textContent).toContain("Canonical binary readback");
+    expect(container.querySelectorAll('[data-status="PENDING"]')).toHaveLength(1);
+    expect(container.textContent).toContain("Canonical local package build");
+    expect(container.textContent).toContain("1 atomic Worker request");
     expect(container.textContent).toContain("creature.glb");
     expect(container.textContent).toContain("2,486,912 bytes");
     expect(container.textContent).toContain("appearance.2da");
@@ -81,8 +82,6 @@ describe("BuildStep", () => {
         {...handlers}
         state={{
           kind: "RUNNING",
-          completedStages: ["INGEST_SOURCE", "NORMALIZE_CANONICAL_IR"],
-          activeStage: "WRITE_BINARY_MDL",
           message: "Worker accepted the binary writer request.",
         }}
         canGoBack={false}
@@ -92,8 +91,8 @@ describe("BuildStep", () => {
       />,
     );
 
-    expect(container.querySelectorAll('[data-status="COMPLETE"]')).toHaveLength(2);
-    expect(container.querySelector('[data-status="RUNNING"]')?.textContent).toContain("Write binary MDL");
+    expect(container.querySelectorAll('[data-status="RUNNING"]')).toHaveLength(1);
+    expect(container.querySelector('[data-status="RUNNING"]')?.textContent).toContain("Canonical local package build");
     expect(container.textContent).toContain("Worker accepted the binary writer request.");
     expect(container.textContent).toContain("Running — indeterminate");
     expect(container.textContent).not.toMatch(/\d+%|estimated|remaining/i);
@@ -112,8 +111,6 @@ describe("BuildStep", () => {
         {...handlers}
         state={{
           kind: "FAILED",
-          completedStages: ["INGEST_SOURCE"],
-          failedStage: "NORMALIZE_CANONICAL_IR",
           failure: {
             stage: "PROFILE",
             code: "M3A-PROFILE-INELIGIBLE",
@@ -137,7 +134,7 @@ describe("BuildStep", () => {
     );
 
     expect(container.querySelector('[data-status="FAILED"]')?.textContent).toContain("M3A-PROFILE-INELIGIBLE");
-    expect(container.querySelectorAll('[data-status="NOT_RUN"]')).toHaveLength(4);
+    expect(container.querySelectorAll('[data-status="FAILED"]')).toHaveLength(1);
     expect(container.textContent).toContain("Canonical normalization was rejected.");
     expect(container.textContent).toContain("Failure diagnostics");
     expect(container.textContent).toContain("PROFILE");
@@ -175,5 +172,22 @@ describe("BuildStep", () => {
     );
     expect(container.textContent).toContain("Input inspection summary is unavailable.");
     expect(container.textContent).not.toContain("INSPECTED");
+  });
+
+  it("announces Animation Mapping as the Creature back destination", async () => {
+    const container = await render(
+      <BuildStep
+        {...callbacks()}
+        state={{ kind: "IDLE" }}
+        backLabel="Back to Animation Mapping"
+        canGoBack
+        canBuild={false}
+        canRetry={false}
+        canCancel={false}
+      />,
+    );
+
+    expect(container.textContent).toContain("Back to Animation Mapping");
+    expect(container.textContent).not.toContain("Back to Inspect");
   });
 });

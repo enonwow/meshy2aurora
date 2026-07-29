@@ -69,6 +69,7 @@ export interface SourceInspectionSnapshot {
   inventory: SourceInventory;
   statistics: SourceStatistics;
   boneCount: number;
+  skinnedMeshNodeCount: number;
   clips: SourceAnimationClip[];
   gates: SourceGate[];
   diagnostics: SourceDiagnostic[];
@@ -296,7 +297,15 @@ function projectReady(root: JsonRecord): SourceInspectionProjection {
 
   const inventory = projectInventory(report.inventory, "ingestJson.report.inventory");
   reconcileCount(inventory.sceneCount, ir.scenes, "ingestJson.ir.scenes");
-  reconcileCount(inventory.nodeCount, ir.nodes, "ingestJson.ir.nodes");
+  const nodes = array(ir.nodes, "ingestJson.ir.nodes");
+  equal(inventory.nodeCount, nodes.length, "ingestJson.ir.nodes");
+  const skinnedMeshNodeCount = nodes.reduce<number>((count, value, index) => {
+    const path = `ingestJson.ir.nodes[${index}]`;
+    const node = record(value, path);
+    const meshId = optionalInteger(node.meshId, `${path}.meshId`);
+    const skinId = optionalInteger(node.skinId, `${path}.skinId`);
+    return count + (meshId !== null && skinId !== null ? 1 : 0);
+  }, 0);
   reconcileCount(inventory.meshCount, ir.meshes, "ingestJson.ir.meshes");
   reconcileCount(inventory.primitiveCount, ir.primitives, "ingestJson.ir.primitives");
   reconcileCount(inventory.materialCount, ir.materials, "ingestJson.ir.materials");
@@ -333,6 +342,7 @@ function projectReady(root: JsonRecord): SourceInspectionProjection {
       inventory,
       statistics: projectStatistics(report.statistics, "ingestJson.report.statistics"),
       boneCount: uniqueJointNodeIds.size,
+      skinnedMeshNodeCount,
       clips,
       gates: array(report.gates, "ingestJson.report.gates").map(projectGate),
       diagnostics: array(report.diagnostics, "ingestJson.report.diagnostics").map(projectDiagnostic),

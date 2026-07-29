@@ -1,0 +1,122 @@
+.animation-studio-mode-switch {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(10rem, 1fr));
+  margin-bottom: 1rem;
+}
+
+.animation-studio-mode-switch [aria-selected="true"],
+.animation-clip-library [role="tab"][aria-selected="true"],
+.bone-transform-inspector [role="tab"][aria-selected="true"] {
+  border-color: var(--accent, #38bdf8);
+  color: var(--accent, #38bdf8);
+}
+
+.animation-studio-beta {
+  border: 1px solid currentColor;
+  border-radius: .25rem;
+  font-size: .65rem;
+  margin-left: .4rem;
+  padding: .1rem .25rem;
+}
+
+.animation-studio-workspace {
+  display: grid;
+  gap: .75rem;
+  min-width: 0;
+}
+
+.animation-studio-workspace__toolbar,
+.animation-studio-workspace__status {
+  align-items: center;
+  background: rgba(8, 18, 30, .88);
+  border: 1px solid rgba(148, 163, 184, .22);
+  border-radius: .65rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .65rem;
+  padding: .75rem;
+}
+
+.animation-studio-workspace__toolbar > div:first-child {
+  margin-right: auto;
+}
+
+.animation-studio-workspace__toolbar h1,
+.animation-studio-workspace__toolbar p,
+.animation-clip-library h2,
+.animation-bone-tree h3,
+.bone-transform-inspector h3,
+.animation-clip-settings h3 {
+  margin: 0;
+}
+
+.animation-studio-autosave[data-state="SAVED"] {
+  color: #a3e635;
+}
+
+.animation-studio-autosave[data-state="ERROR"],
+.animation-clip-status[data-status="INVALID"] {
+  color: #fb7185;
+}
+
+.animation-clip-status[data-status="VALID"] {
+  color: #a3e635;
+}
+
+.animation-clip-status[data-status="DRAFT"] {
+  color: #fbbf24;
+}
+
+.animation-clip-status[data-status="SOURCE"] {
+  color: #cbd5e1;
+}
+
+.animation-clip-status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: .25rem;
+}
+
+.animation-clip-status > span {
+  border: 1px solid currentColor;
+  border-radius: .25rem;
+  padding: .05rem .25rem;
+}
+
+.animation-studio-workspace__main {
+  display: grid;
+  gap: .65rem;
+  grid-template-columns: minmax(14rem, .7fr) minmax(28rem, 1.6fr) minmax(15rem, .75fr);
+}
+
+.animation-clip-library,
+.animation-studio-workspace__center,
+.animation-studio-workspace__inspector,
+.animation-editor-diagnostics,
+.animation-event-editor,
+.animation-clip-dialog {
+  background: rgba(8, 18, 30, .84);
+  border: 1px solid rgba(148, 163, 184, .22);
+  border-radius: .65rem;
+  min-width: 0;
+  padding: .75rem;
+}
+
+.animation-clip-library,
+.animation-studio-workspace__center,
+.animation-studio-workspace__inspector,
+.animation-bone-tree,
+.bone-transform-inspector,
+.animation-clip-settings {
+  display: grid;
+  gap: .65rem;
+}
+
+.animation-clip-library > [role="tablist"],
+.animation-clip-library__actions,
+.bone-transform-inspector > [role="tablist"] {
+  display: grid;
+  gap: .35rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+

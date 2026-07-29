@@ -1,0 +1,223 @@
+.project-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(0 8 14 / 78%);
+  backdrop-filter: blur(8px);
+}
+
+.project-dialog__card {
+  width: min(900px, 100%);
+  max-height: min(820px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 52%);
+}
+
+.project-dialog__header,
+.project-dialog__recovery > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.project-dialog__header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.project-dialog__header h2,
+.project-dialog__recovery h3 {
+  margin: 0;
+}
+
+.project-dialog__eyebrow {
+  margin: 0 0 4px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.project-dialog__current,
+.project-dialog__recovery {
+  padding: 22px 24px;
+}
+
+.project-dialog__identity label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.project-dialog__identity > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.project-dialog__identity input {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
+.project-dialog button,
+.project-dialog .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface-raised);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.project-dialog button:disabled,
+.project-dialog .button[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: .48;
+}
+
+.project-dialog__metadata {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.project-dialog__metadata > div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+}
+
+.project-dialog__metadata dt {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.project-dialog__metadata dd {
+  min-width: 0;
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.project-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.project-dialog__file {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.project-dialog__danger {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--border)) !important;
+  color: var(--danger) !important;
+}
+
+.project-dialog__privacy,
+.project-dialog__error {
+  margin: 16px 0 0;
+}
+
+.project-dialog__privacy {
+  color: var(--text-muted);
+}
+
+.project-dialog__error {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--danger) 55%, var(--border));
+  border-radius: 8px;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.project-dialog__recovery {
+  border-top: 1px solid var(--border);
+}
+
+.project-dialog__recovery ul {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.project-dialog__recovery li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+}
+
+.project-dialog__recovery li > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.project-dialog__recovery li > div:last-child {
+  flex-direction: row;
+  align-items: center;
+}
+
+.project-dialog__recovery code {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .project-dialog {
+    padding: 8px;
+  }
+
+  .project-dialog__card {
+    max-height: calc(100vh - 16px);
+  }
+
+  .project-dialog__metadata {
+    grid-template-columns: 1fr;
+  }
+
+  .project-dialog__recovery li {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,53 @@
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport {
+  gap: 0;
+  min-height: 100%;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport > header {
+  align-items: center;
+  min-height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--animation-border);
+  background: #0a1923;
+  color: var(--animation-muted);
+  font-size: .68rem;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport > header strong {
+  color: var(--animation-text);
+  font-size: .75rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport__canvas {
+  min-height: 426px;
+  border-radius: 0;
+  background:
+    radial-gradient(circle at 50% 38%, #1a3548 0, #0b202d 36%, #06121b 78%);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-viewport__canvas > .viewport {
+  min-height: 426px;
+  border: 0;
+  border-radius: 0;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-gizmo {
+  bottom: 12px;
+  width: min(20rem, 78%);
+  padding: 7px 9px;
+  border: 1px solid rgb(49 86 107 / 78%);
+  border-radius: 6px;
+  background: rgb(3 13 20 / 84%);
+  color: var(--animation-muted);
+  font-size: .67rem;
+  backdrop-filter: blur(8px);
+}
+

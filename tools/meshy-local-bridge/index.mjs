@@ -11,6 +11,7 @@ const MAX_THUMBNAIL_BYTES = 8 * 1024 * 1024;
 const HISTORY_PAGE_SIZE_MAX = 50;
 const POLL_INTERVAL_MS = 3_000;
 const MAX_POLLS = 180;
+const AURORA_MODEL_TRIANGLE_BUDGET_V1 = 20_000;
 const GEOMETRY_TARGETS = new Set(["AURORA_PROOF", "LOWER_DETAIL", "BALANCED", "HIGHER_DETAIL"]);
 const IMAGE_MODELS = new Set(["nano-banana", "nano-banana-2", "nano-banana-pro", "gpt-image-2"]);
 const IMAGE_RATIOS = new Set(["1:1", "16:9", "9:16", "4:3", "3:4"]);
@@ -51,7 +52,13 @@ function maximumCredits(profile) {
 }
 
 function targetPolycount(target) {
-  return target === "AURORA_PROOF" ? 1_500 : target === "LOWER_DETAIL" ? 10_000 : target === "HIGHER_DETAIL" ? 60_000 : 30_000;
+  return target === "AURORA_PROOF"
+    ? 1_500
+    : target === "LOWER_DETAIL"
+      ? 10_000
+      : target === "BALANCED"
+        ? 15_000
+        : AURORA_MODEL_TRIANGLE_BUDGET_V1;
 }
 
 function validImageDataUri(value) {
@@ -94,7 +101,9 @@ function validApiOptions(options, source) {
   if (options.modelType !== "smart-topology" && !["latest", "meshy-5", "meshy-6"].includes(options.aiModel)) return false;
   if (source === "MULTI_IMAGE" && options.modelType !== "standard") return false;
   if (typeof options.shouldRemesh !== "boolean" || !["triangle", "quad"].includes(options.topology)) return false;
-  const maxPolycount = options.modelType === "smart-topology" && options.aiModel === "meshy-t2" ? 15000 : 300000;
+  const maxPolycount = options.modelType === "smart-topology" && options.aiModel === "meshy-t2"
+    ? 15_000
+    : AURORA_MODEL_TRIANGLE_BUDGET_V1;
   if (!Number.isInteger(options.targetPolycount) || options.targetPolycount < 100 || options.targetPolycount > maxPolycount) return false;
   if (options.decimationMode !== undefined && ![1, 2, 3, 4].includes(options.decimationMode)) return false;
   if (!["", "a-pose", "t-pose"].includes(options.poseMode) || typeof options.moderation !== "boolean") return false;

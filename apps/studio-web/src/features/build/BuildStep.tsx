@@ -1,23 +1,14 @@
 import "./build.css";
+import { buildFailureStageLabel } from "./projectBuildFailure";
 
 export const BUILD_STAGE_IDS = [
-  "INGEST_SOURCE",
-  "NORMALIZE_CANONICAL_IR",
-  "WRITE_BINARY_MDL",
-  "CANONICAL_BINARY_READBACK",
-  "UPDATE_APPEARANCE_2DA",
-  "PACKAGE_HAK",
+  "CANONICAL_LOCAL_BUILD",
 ] as const;
 
 export type BuildStageId = typeof BUILD_STAGE_IDS[number];
 
 const BUILD_STAGE_LABELS: Readonly<Record<BuildStageId, string>> = {
-  INGEST_SOURCE: "Ingest source",
-  NORMALIZE_CANONICAL_IR: "Normalize canonical IR",
-  WRITE_BINARY_MDL: "Write binary MDL",
-  CANONICAL_BINARY_READBACK: "Canonical binary readback",
-  UPDATE_APPEARANCE_2DA: "Update appearance.2da",
-  PACKAGE_HAK: "Package HAK",
+  CANONICAL_LOCAL_BUILD: "Canonical local package build",
 };
 
 export interface BuildFailureEvidence {
@@ -58,19 +49,20 @@ export type BuildStepState =
     }
   | {
       readonly kind: "RUNNING";
-      readonly activeStage?: BuildStageId;
-      readonly completedStages: readonly BuildStageId[];
       readonly message: string;
     }
   | {
       readonly kind: "FAILED";
-      readonly failedStage?: BuildStageId;
-      readonly completedStages: readonly BuildStageId[];
       readonly failure: BuildFailureEvidence;
     };
 
 export interface BuildStepProps {
   readonly state: BuildStepState;
+  readonly backLabel?: "Back to Inspect" | "Back to Animation Mapping";
+  readonly projectIdentity?: {
+    readonly projectId: string;
+    readonly revision: number;
+  };
   readonly canGoBack: boolean;
   readonly canBuild: boolean;
   readonly canRetry: boolean;
@@ -82,41 +74,30 @@ export interface BuildStepProps {
   readonly failureDiagnostics?: BuildFailureDiagnosticsProps;
 }
 
-type StagePresentationStatus = "Pending" | "Complete" | "Running" | "Failed" | "Not run" | "Unknown";
+type StagePresentationStatus = "Pending" | "Running" | "Failed";
 
-function stageStatus(state: BuildStepState, stage: BuildStageId): StagePresentationStatus {
+function stageStatus(state: BuildStepState): StagePresentationStatus {
   if (state.kind === "IDLE") return "Pending";
-  if (state.kind === "RUNNING") {
-    if (state.completedStages.includes(stage)) return "Complete";
-    return state.activeStage === stage ? "Running" : "Pending";
-  }
-  if (!state.failedStage) {
-    return state.completedStages.includes(stage) ? "Complete" : "Unknown";
-  }
-  if (state.failedStage === stage) return "Failed";
-  const failedIndex = BUILD_STAGE_IDS.indexOf(state.failedStage);
-  const stageIndex = BUILD_STAGE_IDS.indexOf(stage);
-  if (stageIndex > failedIndex) return "Not run";
-  return state.completedStages.includes(stage) ? "Complete" : "Not run";
+  return state.kind === "RUNNING" ? "Running" : "Failed";
 }
 
 function BuildLedger({ state }: { readonly state: BuildStepState }) {
   return (
     <ol className="build-ledger" aria-label="Build pipeline stages">
       {BUILD_STAGE_IDS.map((stage, index) => {
-        const status = stageStatus(state, stage);
+        const status = stageStatus(state);
         return (
           <li className="build-ledger__stage" data-status={status.toUpperCase().replace(" ", "_")} key={stage}>
             <span className="build-ledger__index" aria-hidden="true">{index + 1}</span>
             <div className="build-ledger__stage-body">
               <strong>{BUILD_STAGE_LABELS[stage]}</strong>
               <span>{status}</span>
-              {state.kind === "RUNNING" && state.activeStage === stage ? (
+              {state.kind === "RUNNING" ? (
                 <span className="build-ledger__indeterminate" aria-label="Build running without percentage">
                   <span aria-hidden="true" />
                 </span>
               ) : null}
-              {state.kind === "FAILED" && state.failedStage === stage ? (
+              {state.kind === "FAILED" ? (
                 <div className="build-ledger__failure">
                   {state.failure.code ? <code>{state.failure.code}</code> : null}
                   <span>{state.failure.message}</span>
@@ -132,6 +113,8 @@ function BuildLedger({ state }: { readonly state: BuildStepState }) {
 
 export function BuildStep({
   state,
+  backLabel = "Back to Inspect",
+  projectIdentity,
   canGoBack,
   canBuild,
   canRetry,
@@ -152,7 +135,7 @@ export function BuildStep({
     <section className="build-step" aria-labelledby="build-step-heading">
       <header className="build-step__header">
         <div>
-          <p className="build-step__eyebrow">Step 3</p>
+          <p className="build-step__eyebrow">Build</p>
           <h1 id="build-step-heading">Build</h1>
         </div>
         <span className="build-step__state" data-state={state.kind}>{headingStatus}</span>
@@ -162,13 +145,19 @@ export function BuildStep({
         <section className="build-step__pipeline" aria-labelledby="build-pipeline-heading">
           <header>
             <h2 id="build-pipeline-heading">Build pipeline</h2>
-            <span>6 stages</span>
+            <span>1 atomic Worker request</span>
           </header>
           <BuildLedger state={state} />
         </section>
 
         <aside className="build-step__status" aria-labelledby="build-status-heading">
           <h2 id="build-status-heading">Build status</h2>
+          {projectIdentity ? (
+            <dl className="build-step__project-identity" aria-label="Build project identity">
+              <div><dt>Project ID</dt><dd><code>{projectIdentity.projectId}</code></dd></div>
+              <div><dt>Project revision</dt><dd>{projectIdentity.revision}</dd></div>
+            </dl>
+          ) : null}
           {state.kind === "IDLE" ? (
             <p>{state.message ?? "Build has not started."}</p>
           ) : state.kind === "RUNNING" ? (
@@ -224,7 +213,11 @@ export function BuildStep({
             <span>Failure code</span>
             <strong>{state.failure.code ?? "Unavailable"}</strong>
             <span>Pipeline stage</span>
-            <strong>{state.failure.stage ?? "Unknown"}</strong>
+            <strong>
+              {state.failure.stage
+                ? `${buildFailureStageLabel(state.failure.stage)} (${state.failure.stage})`
+                : "Unknown"}
+            </strong>
             <span>Failure path</span>
             <code>{state.failure.path ?? "Unavailable"}</code>
             <span>Failure message</span>
@@ -247,7 +240,7 @@ export function BuildStep({
 
       <footer className="build-step__actions">
         <button type="button" className="build-step__button build-step__button--secondary" onClick={onBack} disabled={!canGoBack}>
-          Back to Inspect
+          {backLabel}
         </button>
         {state.kind === "RUNNING" ? (
           <button type="button" className="build-step__button build-step__button--danger" onClick={onCancel} disabled={!canCancel}>

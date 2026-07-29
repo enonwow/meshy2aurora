@@ -38,10 +38,11 @@ use m2a_core::{
         M0_APPEARANCE_LABEL, M0_CONTROL_APPEARANCE_LABEL, M0_MODEL_RESREF, M0_TEXTURE_RESREF,
         M0RuntimeResourceBindingV1, M6_APPEARANCE_LABEL, M6_HAK_FILE_NAME, M6_MODEL_RESREF,
         M6_PROOF_MODULE_FILE_NAME, M6_TEXTURE_RESREF, ProceduralCreaturePackageIdentityV1,
-        build_m6_model_package_v1, build_m6_model_package_with_profile_v1,
+        ProjectBuildIdentityV1, build_m6_model_package_v1, build_m6_model_package_with_profile_v1,
         build_m6_model_package_with_profile_v2, build_m6_model_package_with_profile_v3,
         build_meshy_h1_model_package_v2, build_meshy_h1_model_package_v3,
         build_meshy_h1_model_package_v4, build_meshy_h1_model_package_v4_with_identity,
+        build_meshy_h1_model_package_v4_with_project_identity,
         build_meshy_h1_rigid_runtime_diagnostic_package_v1,
         build_meshy_m0_canonical_runtime_package_v1,
         build_meshy_m0_canonical_runtime_package_with_identity_and_profile_v2,
@@ -883,6 +884,55 @@ fn automatic_h1_v2_accepts_exactly_named_full_source_and_rejects_idle_only_sourc
         custom_module.scene.fixtures[0].template_resref,
         custom_identity.creature_resref
     );
+    let project_identity = ProjectBuildIdentityV1 {
+        schema_version: 1,
+        project_id: "project-animation-e3".to_owned(),
+        project_name: "Animation E3".to_owned(),
+        project_revision: 11,
+    };
+    let project_runtime_identity = project_identity
+        .runtime_identity_v1()
+        .expect("project runtime identity");
+    assert_eq!(project_runtime_identity.model_resref.len(), 16);
+    assert!(
+        project_runtime_identity
+            .model_resref
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+    );
+    let next_revision = ProjectBuildIdentityV1 {
+        project_revision: 12,
+        ..project_identity.clone()
+    }
+    .runtime_identity_v1()
+    .expect("next project runtime identity");
+    assert_ne!(
+        project_runtime_identity.model_resref,
+        next_revision.model_resref
+    );
+    let project_v4 = build_meshy_h1_model_package_v4_with_project_identity(
+        &full_source,
+        &appearance_fixture(),
+        &authored,
+        None,
+        &project_identity,
+    )
+    .expect("authored V4 must carry project identity into the package");
+    assert_eq!(
+        project_v4.manifest.project_identity,
+        Some(project_identity.clone())
+    );
+    assert_eq!(
+        project_v4.summary.model_resref,
+        project_runtime_identity.model_resref
+    );
+    assert!(project_v4.manifest.generated_files.iter().any(|file| {
+        file.relative_path
+            == format!(
+                "generated/{}.mod",
+                project_runtime_identity.module.module_resref
+            )
+    }));
 
     let indistinguishable_movement = mutate_glb(full_source.clone(), |root| {
         let animations = root["animations"]

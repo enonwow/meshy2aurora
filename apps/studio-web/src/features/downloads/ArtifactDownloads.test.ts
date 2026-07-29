@@ -1,8 +1,12 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { downloadWorkerArtifact } from "./ArtifactDownloads";
+import {
+  downloadManifestJsonV1,
+  downloadWorkerArtifact,
+} from "./ArtifactDownloads";
 import type { WorkerArtifact } from "../../worker/types";
+import { createDownloadManifestV1 } from "./downloadManifest";
 
 const validArtifact = (): WorkerArtifact => ({
   artifactId: "hak",
@@ -65,5 +69,40 @@ describe("canonical Worker downloads", () => {
     }))
       .rejects.toThrow("SHA-256 mismatch");
     expect(URL.createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it("downloads the deterministic project manifest only for the exact artifact inventory", () => {
+    const artifacts = [
+      {
+        ...validArtifact(),
+        artifactId: "proof-module",
+        kind: "MODULE" as const,
+        fileName: "m2abcdef12345678.mod",
+      },
+      validArtifact(),
+    ];
+    const manifest = createDownloadManifestV1({
+      projectIdentity: {
+        schemaVersion: 1,
+        projectId: "project-download-01",
+        projectName: "Download project",
+        projectRevision: 7,
+      },
+      target: "CREATURE",
+      inputs: [{
+        role: "SOURCE_GLB",
+        fileName: "source.glb",
+        byteLength: 3,
+        sha256: "a".repeat(64),
+      }],
+      artifacts,
+      offlineReconciled: true,
+    });
+
+    downloadManifestJsonV1(manifest, artifacts);
+    const click = vi.mocked(HTMLAnchorElement.prototype.click);
+    expect(click).toHaveBeenCalledOnce();
+    expect(() => downloadManifestJsonV1(manifest, artifacts.slice(0, 1)))
+      .toThrow("exact artifact inventory");
   });
 });

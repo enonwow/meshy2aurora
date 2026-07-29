@@ -44,8 +44,8 @@ async function main() {
   if (!Number.isFinite(maxCredits) || maxCredits <= 0) throw new Error("MESHY_MAX_CREDITS must be a positive number.");
   if (!profiles.has(profileId)) throw new Error("MESHY_REAL_E2E_PROFILE must be H1-humanoid-animated/v1, N1-quadruped/v1, or S1-static-prop/v1.");
   if (!geometryTargets.has(geometryTarget)) throw new Error("MESHY_REAL_E2E_GEOMETRY_TARGET must be AURORA_PROOF, LOWER_DETAIL, BALANCED, or HIGHER_DETAIL.");
-  if (targetPolycount !== undefined && (!Number.isInteger(targetPolycount) || targetPolycount < 100 || targetPolycount > 300_000)) {
-    throw new Error("MESHY_REAL_E2E_TARGET_POLYCOUNT must be an integer in 100..=300000.");
+  if (targetPolycount !== undefined && (!Number.isInteger(targetPolycount) || targetPolycount < 100 || targetPolycount > 20_000)) {
+    throw new Error("MESHY_REAL_E2E_TARGET_POLYCOUNT must be an integer in 100..=20000.");
   }
   const apiOptions = targetPolycount === undefined ? undefined : {
     modelType: "standard",

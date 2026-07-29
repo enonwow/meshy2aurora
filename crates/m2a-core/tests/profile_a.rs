@@ -1082,7 +1082,7 @@ fn options_and_preallocation_limits_fail_before_output_allocation() {
     );
 
     let mut wrong_threshold = ProfileAOptionsV1::default();
-    wrong_threshold.limits.triangle_warning_above = 4_999;
+    wrong_threshold.limits.triangle_warning_above = 9_999;
     assert_eq!(
         convert_profile_a(&source, &profile(1.0), &wrong_threshold)
             .unwrap_err()
@@ -1114,7 +1114,7 @@ fn options_and_preallocation_limits_fail_before_output_allocation() {
     let exact_diagnostic = convert_profile_a(&path_source, &profile(1.0), &one_diagnostic).unwrap();
     assert_eq!(exact_diagnostic.report.diagnostics.len(), 1);
     let mut warning_source =
-        ingest_glb(&fixtures::triangle_budget(5_001), &GlbLimits::default()).unwrap();
+        ingest_glb(&fixtures::triangle_budget(10_001), &GlbLimits::default()).unwrap();
     warning_source.ir.materials[0].name = Some("data:image/png;base64,AAAA".to_owned());
     assert_eq!(
         convert_profile_a(&warning_source, &profile(1.0), &one_diagnostic)

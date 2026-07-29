@@ -4,31 +4,38 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "catalog:generate": "node ../../scripts/generate-creature-animation-catalog.mjs",
+    "catalog:check": "node ../../scripts/generate-creature-animation-catalog.mjs --check",
+    "contract:check": "node scripts/check-worker-wasm-contract.mjs",
     "predev": "npm run build:wasm",
     "dev": "vite",
     "build:wasm": "wasm-pack build ../../crates/m2a-wasm --target web --out-dir pkg",
-    "build": "npm run build:wasm && tsc -b && vite build",
+    "prebuild": "npm run catalog:check",
+    "build": "npm run build:wasm && npm run contract:check && tsc -b && vite build && npm run budget:check",
+    "budget:check": "node scripts/check-bundle-budget.mjs",
+    "pretypecheck": "npm run catalog:check && npm run contract:check",
     "typecheck": "tsc -b --pretty false",
+    "pretest": "npm run catalog:check && npm run contract:check",
     "test": "vitest run",
     "test:browser-persistence": "vitest run --config src/features/animation-studio/vitest.browser.config.ts",
-    "test:worker-integration": "npm run build:wasm && node tests/prepare-worker-fixture.mjs && vitest run --config vitest.worker-integration.config.ts && npm run test:browser-persistence"
+    "test:worker-integration": "npm run build:wasm && npm run contract:check && node tests/prepare-worker-fixture.mjs && vitest run --config vitest.worker-integration.config.ts && npm run test:browser-persistence"
   },
   "dependencies": {
-    "react": "latest",
-    "react-dom": "latest",
-    "three": "latest"
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "three": "0.185.1"
   },
   "devDependencies": {
     "@vitest/browser-playwright": "4.1.10",
-    "@types/node": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "@types/three": "latest",
-    "@vitejs/plugin-react": "latest",
-    "jsdom": "latest",
+    "@types/node": "26.1.1",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@types/three": "0.185.1",
+    "@vitejs/plugin-react": "6.0.3",
+    "jsdom": "29.1.1",
     "playwright": "1.61.1",
-    "typescript": "latest",
-    "vite": "latest",
-    "vitest": "latest"
+    "typescript": "7.0.2",
+    "vite": "8.1.4",
+    "vitest": "4.1.10"
   }
 }

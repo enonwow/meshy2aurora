@@ -1,0 +1,78 @@
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-bone-tree label {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  color: var(--animation-muted);
+  font-size: .66rem;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-library > h2,
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-workspace__inspector-title {
+  margin: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--animation-border);
+  font-size: .76rem;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .bone-transform-inspector > p:first-of-type {
+  display: none;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-settings label {
+  grid-template-columns: minmax(72px, .8fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: 7px;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-settings input,
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-settings select {
+  min-height: 28px;
+  padding-block: 3px;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-inspector-canonical {
+  margin-block: 1px;
+  font-size: .61rem;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-bone-tree select {
+  width: 100%;
+  background:
+    linear-gradient(90deg, rgb(35 201 238 / 8%), transparent 52%),
+    #07141d;
+  color: #dce8ed;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .bone-transform-inspector__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .bone-transform-inspector__actions button:first-child {
+  border-color: #648d25;
+  background: #122117;
+  color: var(--animation-lime);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .bone-transform-inspector__actions button:last-child {
+  border-color: #67323a;
+  background: #211318;
+  color: #f6848d;
+}
+

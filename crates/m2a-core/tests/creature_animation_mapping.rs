@@ -68,6 +68,7 @@ struct SharedCatalogStateV1 {
     label: String,
     description: String,
     slot: String,
+    gameplay_floor: bool,
 }
 
 #[test]
@@ -108,7 +109,20 @@ fn rust_catalog_matches_the_shared_cross_layer_contract() {
         assert_eq!(actual.label, expected.label);
         assert_eq!(actual.description, expected.description);
         assert_eq!(actual.slot, expected.slot);
+        assert_eq!(
+            m2a_core::creature_animation_mapping::is_gameplay_floor_slot_v1(actual.slot),
+            expected.gameplay_floor
+        );
     }
+    assert_eq!(
+        AURORA_ANIMATION_STATE_CATALOG_V1
+            .iter()
+            .filter(|state| {
+                m2a_core::creature_animation_mapping::is_gameplay_floor_slot_v1(state.slot)
+            })
+            .count(),
+        7
+    );
 }
 
 #[test]

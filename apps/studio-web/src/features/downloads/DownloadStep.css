@@ -1,0 +1,47 @@
+.download-step {
+  display: grid;
+  gap: 16px;
+}
+
+.download-step__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+}
+
+.download-step__header h1,
+.download-step__header p {
+  margin: 0;
+}
+
+.download-step__header > div {
+  display: grid;
+  gap: 6px;
+}
+
+.download-step__header > div > p:last-child {
+  max-width: 54rem;
+  color: var(--text-muted);
+  font-size: .78rem;
+}
+
+.download-step__header > button {
+  flex: none;
+  padding: 9px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel-raised);
+  color: var(--text);
+  cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  .download-step__header {
+    flex-direction: column;
+  }
+}

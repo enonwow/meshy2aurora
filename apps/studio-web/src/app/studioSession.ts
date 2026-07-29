@@ -139,6 +139,7 @@ export type StudioSessionEvent<
   | { readonly type: "CONTINUE_TO_INSPECT" }
   | { readonly type: "CONTINUE_TO_ANIMATION_MAPPING" }
   | { readonly type: "CONTINUE_TO_BUILD" }
+  | { readonly type: "CONTINUE_TO_DOWNLOAD" }
   | {
       readonly type: "ANIMATION_MAPPING_INITIALIZED";
       readonly revision: number;
@@ -175,6 +176,7 @@ export type StudioSessionEvent<
       readonly revision: number;
     }
   | { readonly type: "NAVIGATE"; readonly step: WorkflowStep }
+  | { readonly type: "PROJECT_OPENED"; readonly target: StudioTarget }
   | { readonly type: "START_NEW_CONVERSION" }
   | CreatureAnimationAuthoringEventV1;
 
@@ -196,10 +198,11 @@ export function createInitialStudioSession<
   TAppearanceInspection = unknown,
 >(
   revision = 0,
+  target: StudioTarget = "CREATURE",
 ): StudioSessionState<TInspection, TResult, TAppearanceInspection> {
   return {
     revision,
-    target: "CREATURE",
+    target,
     currentStep: "SOURCE",
     lastAvailableStep: "SOURCE",
     source: null,
@@ -587,6 +590,19 @@ export function studioSessionReducer<TInspection, TResult, TAppearanceInspection
         result: null,
         download: { kind: "LOCKED" },
       };
+    case "CONTINUE_TO_DOWNLOAD":
+      if (
+        state.currentStep !== "REVIEW"
+        || state.build.kind !== "SUCCEEDED"
+        || state.build.revision !== state.revision
+        || state.result?.revision !== state.revision
+      ) return state;
+      return {
+        ...state,
+        currentStep: "DOWNLOAD",
+        lastAvailableStep: "DOWNLOAD",
+        download: { kind: "READY", revision: state.revision },
+      };
     case "NAVIGATE":
       if (state.build.kind === "RUNNING") return state;
       if (!getWorkflowStepsForTarget(state.target).includes(event.step)) return state;
@@ -595,6 +611,11 @@ export function studioSessionReducer<TInspection, TResult, TAppearanceInspection
       return { ...state, currentStep: event.step };
     case "START_NEW_CONVERSION":
       return createInitialStudioSession<TInspection, TResult, TAppearanceInspection>(state.revision + 1);
+    case "PROJECT_OPENED":
+      return createInitialStudioSession<TInspection, TResult, TAppearanceInspection>(
+        state.revision + 1,
+        event.target,
+      );
   }
 }
 

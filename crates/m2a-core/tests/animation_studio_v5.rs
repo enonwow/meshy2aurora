@@ -4,11 +4,12 @@ use m2a_core::{
     animation_studio::{
         AnimationStudioDocumentStatusV1, AnimationStudioDocumentV1,
         AnimationStudioReadbackStatusV1, AuthoredAnimationClipInputV1,
-        AuthoredAnimationClipStatusV1, AuthoredAnimationEventV1,
+        AuthoredAnimationClipStatusV1, AuthoredAnimationEventV1, AuthoredAnimationSourceKindV1,
         CustomAnimationClipReferenceKindV2, CustomAnimationClipReferenceV2,
         CustomAnimationDefinitionV2, ProceduralAnimationTemplateV1,
         create_procedural_template_clip_v1, evaluate_edited_animation_conformance_v1,
-        migrate_creature_animation_authoring_v1_to_v2, reconcile_animation_studio_readback_v1,
+        materialize_authored_animation_library_v1, migrate_creature_animation_authoring_v1_to_v2,
+        reconcile_animation_studio_readback_v1,
     },
     creature_animation_mapping::{
         AnimationMappingProvenanceV1, AnimationOwnershipV1, AnimationProviderV1,
@@ -124,6 +125,45 @@ fn additive_v5_without_authored_clips_preserves_every_v4_binary() {
     assert_eq!(
         first.animation_studio_readback.status,
         AnimationStudioReadbackStatusV1::Match
+    );
+}
+
+#[test]
+fn imported_model_copy_materializes_without_reopening_the_donor_glb() {
+    let source = synthetic_owned_m6_full_native_42_glb_v1().unwrap();
+    let inspection = inspect_editable_animation_source_v1(&source).unwrap();
+    let mut imported = m2a_core::animation_studio::clone_source_clip_for_editing_v1(
+        &inspection.animations,
+        "cpause1",
+        AuthoredAnimationClipInputV1 {
+            id: "imported-idle".to_owned(),
+            name: "imp_cpause1".to_owned(),
+            source_revision: "b".repeat(64),
+            length_seconds: 1.0,
+            transition_seconds: 0.1,
+            animation_root: inspection.rig.animation_root.clone(),
+        },
+    )
+    .unwrap();
+    imported.source.kind = AuthoredAnimationSourceKindV1::ImportedModelCopy;
+    imported.status = AuthoredAnimationClipStatusV1::Valid;
+    let studio = AnimationStudioDocumentV1 {
+        schema_version: 1,
+        source_revision: inspection.source_revision.clone(),
+        authoring_revision: 2,
+        status: AnimationStudioDocumentStatusV1::Valid,
+        authored_clips: vec![imported],
+    };
+
+    let library =
+        materialize_authored_animation_library_v1(&inspection.animations, &studio, &inspection.rig)
+            .expect("imported tracks are self-contained after the exact rig gate");
+
+    assert_eq!(library.clips.len(), 1);
+    assert_eq!(library.clips[0].source.source_revision, "b".repeat(64));
+    assert_eq!(
+        library.clips[0].source.kind,
+        AuthoredAnimationSourceKindV1::ImportedModelCopy
     );
 }
 

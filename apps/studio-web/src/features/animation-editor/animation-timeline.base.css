@@ -1,0 +1,168 @@
+.animation-dope-sheet {
+  display: grid;
+  gap: .4rem;
+  min-width: 0;
+}
+
+.animation-dope-sheet > header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+}
+
+.animation-dope-sheet h2 {
+  margin: 0 auto 0 0;
+}
+
+.animation-timeline-edit-controls {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+.animation-timeline-edit-controls fieldset,
+.animation-timeline-edit-controls [role="group"] {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+}
+
+.animation-timeline-edit-controls label {
+  display: grid;
+  font-size: .72rem;
+  gap: .15rem;
+}
+
+.animation-timeline-edit-controls input {
+  width: 6rem;
+}
+
+.animation-timeline-view-status {
+  color: #cbd5e1;
+  font-size: .75rem;
+}
+
+.animation-timeline-viewport {
+  border: 1px solid rgba(148, 163, 184, .22);
+  max-height: 20rem;
+  overflow: auto;
+}
+
+.animation-timeline-surface {
+  min-width: 100%;
+}
+
+.animation-transport {
+  align-items: center;
+  display: flex;
+  gap: .25rem;
+}
+
+.animation-timeline-ruler {
+  display: flex;
+  font-size: .65rem;
+  justify-content: space-between;
+  margin-left: 11rem;
+}
+
+.animation-dope-sheet__grid {
+  position: relative;
+}
+
+.animation-track-row,
+.animation-event-track {
+  display: grid;
+  grid-template-columns: 10.5rem minmax(30rem, 1fr);
+  min-height: 2rem;
+}
+
+.animation-track-row > span,
+.animation-event-track > span {
+  background: #111827;
+  border-right: 1px solid rgba(148, 163, 184, .22);
+  left: 0;
+  padding: .4rem;
+  position: sticky;
+  z-index: 4;
+}
+
+.animation-track-row > div,
+.animation-event-track > div {
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0,
+    transparent calc(10% - 1px),
+    rgba(148, 163, 184, .12) 10%
+  );
+  position: relative;
+}
+
+.animation-keyframe-marker,
+.animation-event-track > div > button {
+  background: transparent;
+  border: 0;
+  color: #93c5fd;
+  padding: 0;
+  position: absolute;
+  top: .25rem;
+  transform: translateX(-50%);
+}
+
+.animation-keyframe-marker[data-selected="true"] {
+  color: #bef264;
+  outline: 2px solid #bef264;
+}
+
+.animation-clip-repair-action {
+  color: #fca5a5;
+  display: block;
+  flex-basis: 100%;
+  font-size: .72rem;
+  margin-top: .3rem;
+  text-align: left;
+}
+
+.animation-studio-workspace :focus-visible,
+.animation-studio-mode-switch :focus-visible,
+.custom-animation-mapping-panel :focus-visible {
+  outline: 3px solid #facc15;
+  outline-offset: 2px;
+}
+
+.animation-event-track > div > button {
+  color: #f59e0b;
+}
+
+.animation-event-track > div > button span {
+  background: #111827;
+  border: 1px solid #f59e0b;
+  margin-left: .2rem;
+  padding: .1rem;
+}
+
+.animation-playhead {
+  background: #22d3ee;
+  bottom: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  width: 1px;
+  z-index: 3;
+}
+
+.animation-studio-workspace__status {
+  justify-content: space-between;
+}
+
+.animation-editor-diagnostics ul {
+  display: grid;
+  gap: .35rem;
+}
+
+.animation-editor-diagnostics li span {
+  color: #94a3b8;
+}
+

@@ -1,5 +1,23 @@
 use wasm_bindgen::prelude::*;
 
+mod placeable_boundary;
+mod tile_boundary;
+
+pub use placeable_boundary::{
+    build_meshy_static_placeable_package_v1, build_meshy_static_placeable_package_v2,
+    build_meshy_static_placeable_package_v3_project_v1,
+    inspect_meshy_static_placeable_authoring_v1,
+};
+pub use tile_boundary::{StudioTilePackageArtifactV1, build_meshy_static_tile_package_v1};
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+use placeable_boundary::{
+    build_meshy_static_placeable_package_v1_inner, build_meshy_static_placeable_package_v2_inner,
+    build_meshy_static_placeable_package_v3_project_v1_inner,
+};
+#[cfg(all(test, not(target_arch = "wasm32")))]
+use tile_boundary::build_meshy_static_tile_package_v1_inner;
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ProfileAJsonInputError<'a> {
@@ -116,25 +134,6 @@ struct M7BoundaryErrorV1<'a> {
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PlaceableBoundaryErrorV1<'a> {
-    schema_version: u32,
-    code: &'a str,
-    path: &'a str,
-    message: &'a str,
-}
-
-#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct StaticTileBoundaryOptionsV1 {
-    schema_version: u32,
-    identity: m2a_core::tile::StaticTileIdentityV1,
-    interior: bool,
-    terrain_name: String,
-    surface: m2a_core::tile::TileSurfaceV1,
-}
-
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct TileBoundaryErrorV1<'a> {
     schema_version: u32,
     code: &'a str,
     path: &'a str,
@@ -1225,10 +1224,19 @@ struct EditableAnimationRigNodeBoundaryV1 {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+struct EditableAnimationClipBoundaryV1 {
+    name: String,
+    duration_seconds: f32,
+    track_count: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 struct EditableAnimationSourceBoundaryV1 {
     schema_version: u32,
     source_revision: String,
     rig: Vec<EditableAnimationRigNodeBoundaryV1>,
+    clips: Vec<EditableAnimationClipBoundaryV1>,
     clip: Option<m2a_core::animation_studio::AuthoredAnimationClipV1>,
 }
 
@@ -1255,6 +1263,20 @@ fn animation_studio_json_error(code: &str, path: &str, message: &str) -> String 
         "path": path,
         "message": message
     }))
+}
+
+fn parse_project_build_identity_v1(
+    value: &str,
+) -> Result<m2a_core::model_pipeline::ProjectBuildIdentityV1, String> {
+    serde_json::from_str(value).map_err(|_| {
+        serialize_json(&serde_json::json!({
+            "schemaVersion": 1,
+            "stage": "PROJECT",
+            "code": "M2A-PROJECT-BUILD-IDENTITY-JSON",
+            "path": "projectIdentityJson",
+            "message": "project identity JSON does not match the strict ProjectBuildIdentityV1 schema"
+        }))
+    })
 }
 
 /// Projects the exact immutable source GLB to the canonical output rig. When
@@ -1318,6 +1340,16 @@ fn inspect_editable_animation_source_v1_inner(
                 parent_id: node.parent_id,
                 translation: node.translation,
                 rotation: node.rotation,
+            })
+            .collect(),
+        clips: inspection
+            .animations
+            .clips
+            .into_iter()
+            .map(|clip| EditableAnimationClipBoundaryV1 {
+                name: clip.name,
+                duration_seconds: clip.length_seconds,
+                track_count: clip.tracks.len(),
             })
             .collect(),
         clip,
@@ -1564,11 +1596,45 @@ pub fn build_meshy_h1_model_package_v4(
     .map_err(|error| JsValue::from_str(&error))
 }
 
+#[wasm_bindgen(js_name = buildMeshyH1ModelPackageV4ProjectV1)]
+pub fn build_meshy_h1_model_package_v4_project_v1(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring_json: &str,
+    project_identity_json: &str,
+    event_authoring_json: Option<String>,
+) -> Result<StudioModelPackageArtifactV1, JsValue> {
+    build_meshy_h1_model_package_v4_inner_with_project(
+        source_glb,
+        appearance_two_da,
+        animation_authoring_json,
+        event_authoring_json.as_deref(),
+        Some(project_identity_json),
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
 fn build_meshy_h1_model_package_v4_inner(
     source_glb: &[u8],
     appearance_two_da: &[u8],
     animation_authoring_json: &str,
     event_authoring_json: Option<&str>,
+) -> Result<StudioModelPackageArtifactV1, String> {
+    build_meshy_h1_model_package_v4_inner_with_project(
+        source_glb,
+        appearance_two_da,
+        animation_authoring_json,
+        event_authoring_json,
+        None,
+    )
+}
+
+fn build_meshy_h1_model_package_v4_inner_with_project(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring_json: &str,
+    event_authoring_json: Option<&str>,
+    project_identity_json: Option<&str>,
 ) -> Result<StudioModelPackageArtifactV1, String> {
     let authoring = serde_json::from_str::<
         m2a_core::creature_animation_mapping::CreatureAnimationAuthoringV1,
@@ -1597,12 +1663,25 @@ fn build_meshy_h1_model_package_v4_inner(
                 })
         })
         .transpose()?;
-    let artifact = m2a_core::model_pipeline::build_meshy_h1_model_package_v4_with_events(
-        source_glb,
-        appearance_two_da,
-        &authoring,
-        event_authoring.as_ref(),
-    )
+    let project_identity = project_identity_json
+        .map(parse_project_build_identity_v1)
+        .transpose()?;
+    let artifact = if let Some(project_identity) = project_identity.as_ref() {
+        m2a_core::model_pipeline::build_meshy_h1_model_package_v4_with_project_identity(
+            source_glb,
+            appearance_two_da,
+            &authoring,
+            event_authoring.as_ref(),
+            project_identity,
+        )
+    } else {
+        m2a_core::model_pipeline::build_meshy_h1_model_package_v4_with_events(
+            source_glb,
+            appearance_two_da,
+            &authoring,
+            event_authoring.as_ref(),
+        )
+    }
     .map_err(|error| serialize_json(&error))?;
     let readback =
         m2a_core::inspect_binary_mdl(&artifact.model).map_err(|error| serialize_json(&error))?;
@@ -1640,12 +1719,50 @@ pub fn build_meshy_h1_model_package_v5(
     .map_err(|error| JsValue::from_str(&error))
 }
 
+#[wasm_bindgen(js_name = buildMeshyH1ModelPackageV5ProjectV1)]
+pub fn build_meshy_h1_model_package_v5_project_v1(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring_json: &str,
+    animation_studio_document_json: &str,
+    project_identity_json: &str,
+    event_authoring_json: Option<String>,
+) -> Result<StudioModelPackageArtifactV1, JsValue> {
+    build_meshy_h1_model_package_v5_inner_with_project(
+        source_glb,
+        appearance_two_da,
+        animation_authoring_json,
+        animation_studio_document_json,
+        event_authoring_json.as_deref(),
+        Some(project_identity_json),
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
 fn build_meshy_h1_model_package_v5_inner(
     source_glb: &[u8],
     appearance_two_da: &[u8],
     animation_authoring_json: &str,
     animation_studio_document_json: &str,
     event_authoring_json: Option<&str>,
+) -> Result<StudioModelPackageArtifactV1, String> {
+    build_meshy_h1_model_package_v5_inner_with_project(
+        source_glb,
+        appearance_two_da,
+        animation_authoring_json,
+        animation_studio_document_json,
+        event_authoring_json,
+        None,
+    )
+}
+
+fn build_meshy_h1_model_package_v5_inner_with_project(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring_json: &str,
+    animation_studio_document_json: &str,
+    event_authoring_json: Option<&str>,
+    project_identity_json: Option<&str>,
 ) -> Result<StudioModelPackageArtifactV1, String> {
     let authoring =
         serde_json::from_str::<m2a_core::animation_studio::CreatureAnimationAuthoringV2>(
@@ -1681,13 +1798,27 @@ fn build_meshy_h1_model_package_v5_inner(
                 })
         })
         .transpose()?;
-    let artifact = m2a_core::model_pipeline::build_meshy_h1_model_package_v5_with_events(
-        source_glb,
-        appearance_two_da,
-        &authoring,
-        &studio,
-        event_authoring.as_ref(),
-    )
+    let project_identity = project_identity_json
+        .map(parse_project_build_identity_v1)
+        .transpose()?;
+    let artifact = if let Some(project_identity) = project_identity.as_ref() {
+        m2a_core::model_pipeline::build_meshy_h1_model_package_v5_with_project_identity(
+            source_glb,
+            appearance_two_da,
+            &authoring,
+            &studio,
+            event_authoring.as_ref(),
+            project_identity,
+        )
+    } else {
+        m2a_core::model_pipeline::build_meshy_h1_model_package_v5_with_events(
+            source_glb,
+            appearance_two_da,
+            &authoring,
+            &studio,
+            event_authoring.as_ref(),
+        )
+    }
     .map_err(|error| serialize_json(&error))?;
     let readback =
         m2a_core::inspect_binary_mdl(&artifact.model).map_err(|error| serialize_json(&error))?;
@@ -1733,313 +1864,6 @@ pub fn build_meshy_m0_static_rigid_package_v1(
             .map_err(|error| JsValue::from_str(&error.to_string()))?,
         readback_json: serialize_json(&readback),
     })
-}
-
-fn build_meshy_static_placeable_package_v1_inner(
-    source_glb: &[u8],
-    placeables_two_da: &[u8],
-    identity_json: &str,
-    placement_json: &str,
-    palette_id: u8,
-) -> Result<StudioModelPackageArtifactV1, String> {
-    let identity =
-        serde_json::from_str::<m2a_core::placeable::StaticPlaceableIdentityV1>(identity_json)
-            .map_err(|_| {
-                serialize_json(&PlaceableBoundaryErrorV1 {
-                    schema_version: 1,
-                    code: "PLACEABLE-IDENTITY-JSON-INVALID",
-                    path: "identityJson",
-                    message: "identity JSON does not match the strict static placeable schema",
-                })
-            })?;
-    let placement = serde_json::from_str::<m2a_core::placeable::PlaceablePlacementV1>(
-        placement_json,
-    )
-    .map_err(|_| {
-        serialize_json(&PlaceableBoundaryErrorV1 {
-            schema_version: 1,
-            code: "PLACEABLE-PLACEMENT-JSON-INVALID",
-            path: "placementJson",
-            message: "placement JSON does not match the strict static placeable schema",
-        })
-    })?;
-    let artifact = m2a_core::placeable::build_meshy_static_placeable_package_v1(
-        source_glb,
-        placeables_two_da,
-        &identity,
-        placement,
-        palette_id,
-    )
-    .map_err(|error| serialize_json(&error))?;
-    finish_static_placeable_artifact_v1(artifact, &identity)
-}
-
-fn build_meshy_static_placeable_package_v2_inner(
-    source_glb: &[u8],
-    placeables_two_da: &[u8],
-    identity_json: &str,
-    placement_json: &str,
-    palette_id: u8,
-    authoring_json: &str,
-) -> Result<StudioModelPackageArtifactV1, String> {
-    let identity =
-        serde_json::from_str::<m2a_core::placeable::StaticPlaceableIdentityV1>(identity_json)
-            .map_err(|_| {
-                serialize_json(&PlaceableBoundaryErrorV1 {
-                    schema_version: 1,
-                    code: "PLACEABLE-IDENTITY-JSON-INVALID",
-                    path: "identityJson",
-                    message: "identity JSON does not match the strict static placeable schema",
-                })
-            })?;
-    let placement = serde_json::from_str::<m2a_core::placeable::PlaceablePlacementV1>(
-        placement_json,
-    )
-    .map_err(|_| {
-        serialize_json(&PlaceableBoundaryErrorV1 {
-            schema_version: 1,
-            code: "PLACEABLE-PLACEMENT-JSON-INVALID",
-            path: "placementJson",
-            message: "placement JSON does not match the strict static placeable schema",
-        })
-    })?;
-    let authoring = serde_json::from_str::<
-        m2a_core::placeable_authoring::PlaceableAuthoringDocumentV1,
-    >(authoring_json)
-    .map_err(|_| {
-        serialize_json(&PlaceableBoundaryErrorV1 {
-            schema_version: 1,
-            code: "PLACEABLE-AUTHORING-JSON-INVALID",
-            path: "authoringJson",
-            message: "authoring JSON does not match the strict placeable authoring schema",
-        })
-    })?;
-    let artifact = m2a_core::placeable::build_meshy_static_placeable_package_v2(
-        source_glb,
-        placeables_two_da,
-        &identity,
-        placement,
-        palette_id,
-        &authoring,
-    )
-    .map_err(|error| serialize_json(&error))?;
-    finish_static_placeable_artifact_v1(artifact, &identity)
-}
-
-fn finish_static_placeable_artifact_v1(
-    artifact: m2a_core::placeable::StaticPlaceablePackageArtifactV1,
-    identity: &m2a_core::placeable::StaticPlaceableIdentityV1,
-) -> Result<StudioModelPackageArtifactV1, String> {
-    let hak = m2a_core::erf::ErfArchive::parse(&artifact.hak_payload)
-        .map_err(|error| serialize_json(&error))?;
-    let model = hak
-        .find(
-            &identity.model_resref,
-            m2a_core::placeable::MDL_RESOURCE_TYPE,
-        )
-        .map_err(|error| serialize_json(&error))?
-        .to_vec();
-    let readback = m2a_core::inspect_binary_mdl(&model).map_err(|error| serialize_json(&error))?;
-    let report_json = serialize_json(&artifact.report);
-
-    Ok(StudioModelPackageArtifactV1 {
-        hak_bytes: artifact.hak_payload,
-        model_bytes: model,
-        proof_module_bytes: artifact.module_payload,
-        report_json: report_json.clone(),
-        manifest_json: report_json.clone(),
-        summary_json: report_json,
-        readback_json: serialize_json(&readback),
-    })
-}
-
-/// Inspects one placeable GLB and returns the default immutable element
-/// authoring document plus stable connected-component identities.
-#[wasm_bindgen(js_name = inspectMeshyStaticPlaceableAuthoringV1)]
-pub fn inspect_meshy_static_placeable_authoring_v1(source_glb: &[u8]) -> Result<String, JsValue> {
-    m2a_core::placeable::inspect_meshy_static_placeable_authoring_v1(source_glb)
-        .map(|bootstrap| serialize_json(&bootstrap))
-        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
-}
-
-/// Executes the static Meshy GLB -> common model IR -> placeable resource
-/// resolver pipeline. HAK, MOD and model bytes are transferred separately;
-/// the three JSON getters expose the same immutable machine-readable report.
-#[wasm_bindgen(js_name = buildMeshyStaticPlaceablePackageV1)]
-pub fn build_meshy_static_placeable_package_v1(
-    source_glb: &[u8],
-    placeables_two_da: &[u8],
-    identity_json: &str,
-    placement_json: &str,
-    palette_id: u8,
-) -> Result<StudioModelPackageArtifactV1, JsValue> {
-    build_meshy_static_placeable_package_v1_inner(
-        source_glb,
-        placeables_two_da,
-        identity_json,
-        placement_json,
-        palette_id,
-    )
-    .map_err(|error| JsValue::from_str(&error))
-}
-
-/// Executes the authored placeable lane. The immutable authoring document is
-/// applied before the shared Profile A conversion, while PWK uses the collision
-/// projection of the same document.
-#[wasm_bindgen(js_name = buildMeshyStaticPlaceablePackageV2)]
-pub fn build_meshy_static_placeable_package_v2(
-    source_glb: &[u8],
-    placeables_two_da: &[u8],
-    identity_json: &str,
-    placement_json: &str,
-    palette_id: u8,
-    authoring_json: &str,
-) -> Result<StudioModelPackageArtifactV1, JsValue> {
-    build_meshy_static_placeable_package_v2_inner(
-        source_glb,
-        placeables_two_da,
-        identity_json,
-        placement_json,
-        palette_id,
-        authoring_json,
-    )
-    .map_err(|error| JsValue::from_str(&error))
-}
-
-/// Browser-transferable result for the complete static tile lane. Every
-/// binary payload remains an owned byte buffer; JSON getters contain only
-/// reports/readbacks and never filesystem paths.
-#[wasm_bindgen]
-pub struct StudioTilePackageArtifactV1 {
-    hak_bytes: Vec<u8>,
-    module_bytes: Vec<u8>,
-    model_bytes: Vec<u8>,
-    wok_bytes: Vec<u8>,
-    set_bytes: Vec<u8>,
-    texture_bytes: Vec<u8>,
-    image_map_bytes: Vec<u8>,
-    report_json: String,
-    model_readback_json: String,
-    wok_readback_json: String,
-    set_readback_json: String,
-}
-
-#[wasm_bindgen]
-impl StudioTilePackageArtifactV1 {
-    #[wasm_bindgen(js_name = takeHakBytes)]
-    pub fn take_hak_bytes(&mut self) -> Vec<u8> {
-        std::mem::take(&mut self.hak_bytes)
-    }
-
-    #[wasm_bindgen(js_name = takeModuleBytes)]
-    pub fn take_module_bytes(&mut self) -> Vec<u8> {
-        std::mem::take(&mut self.module_bytes)
-    }
-
-    #[wasm_bindgen(js_name = takeModelBytes)]
-    pub fn take_model_bytes(&mut self) -> Vec<u8> {
-        std::mem::take(&mut self.model_bytes)
-    }
-
-    #[wasm_bindgen(js_name = takeWokBytes)]
-    pub fn take_wok_bytes(&mut self) -> Vec<u8> {
-        std::mem::take(&mut self.wok_bytes)
-    }
-
-    #[wasm_bindgen(js_name = takeSetBytes)]
-    pub fn take_set_bytes(&mut self) -> Vec<u8> {
-        std::mem::take(&mut self.set_bytes)
-    }
-
-    #[wasm_bindgen(js_name = takeTextureBytes)]
-    pub fn take_texture_bytes(&mut self) -> Vec<u8> {
-        std::mem::take(&mut self.texture_bytes)
-    }
-
-    #[wasm_bindgen(js_name = takeImageMapBytes)]
-    pub fn take_image_map_bytes(&mut self) -> Vec<u8> {
-        std::mem::take(&mut self.image_map_bytes)
-    }
-
-    #[wasm_bindgen(getter, js_name = reportJson)]
-    pub fn report_json(&self) -> String {
-        self.report_json.clone()
-    }
-
-    #[wasm_bindgen(getter, js_name = modelReadbackJson)]
-    pub fn model_readback_json(&self) -> String {
-        self.model_readback_json.clone()
-    }
-
-    #[wasm_bindgen(getter, js_name = wokReadbackJson)]
-    pub fn wok_readback_json(&self) -> String {
-        self.wok_readback_json.clone()
-    }
-
-    #[wasm_bindgen(getter, js_name = setReadbackJson)]
-    pub fn set_readback_json(&self) -> String {
-        self.set_readback_json.clone()
-    }
-}
-
-fn build_meshy_static_tile_package_v1_inner(
-    source_glb: &[u8],
-    options_json: &str,
-) -> Result<StudioTilePackageArtifactV1, String> {
-    let options = serde_json::from_str::<StaticTileBoundaryOptionsV1>(options_json).map_err(|_| {
-        serialize_json(&TileBoundaryErrorV1 {
-            schema_version: 1,
-            code: "TILE-OPTIONS-JSON-INVALID",
-            path: "optionsJson",
-            message: "options JSON does not match the strict StaticTileBoundaryOptionsV1 schema",
-        })
-    })?;
-    if options.schema_version != 1 {
-        return Err(serialize_json(&TileBoundaryErrorV1 {
-            schema_version: 1,
-            code: "TILE-OPTIONS-SCHEMA-INVALID",
-            path: "optionsJson.schemaVersion",
-            message: "tile boundary options must use schema version 1",
-        }));
-    }
-    let artifact = m2a_core::tile::build_meshy_static_tile_package_v1(
-        source_glb,
-        &options.identity,
-        options.interior,
-        &options.terrain_name,
-        options.surface,
-    )
-    .map_err(|error| serialize_json(&error))?;
-    let model_readback = m2a_core::inspect_binary_mdl(&artifact.mdl_payload)
-        .map_err(|error| serialize_json(&error))?;
-    let wok_readback = m2a_core::walkmesh::inspect_ascii_tile_wok_v1(&artifact.wok_payload)
-        .map_err(|error| serialize_json(&error))?;
-    let set_readback = m2a_core::tile::parse_tileset_v1(&artifact.set_payload)
-        .map_err(|error| serialize_json(&error))?;
-    Ok(StudioTilePackageArtifactV1 {
-        hak_bytes: artifact.hak_payload,
-        module_bytes: artifact.module_payload,
-        model_bytes: artifact.mdl_payload,
-        wok_bytes: artifact.wok_payload,
-        set_bytes: artifact.set_payload,
-        texture_bytes: artifact.texture_payload,
-        image_map_bytes: artifact.image_map_payload,
-        report_json: serialize_json(&artifact.report),
-        model_readback_json: serialize_json(&model_readback),
-        wok_readback_json: serialize_json(&wok_readback),
-        set_readback_json: serialize_json(&set_readback),
-    })
-}
-
-/// Executes `GLB bytes + strict JSON options -> HAK/MOD/report/readbacks`
-/// entirely inside Rust/WASM. No DOM, backend or filesystem is consulted.
-#[wasm_bindgen(js_name = buildMeshyStaticTilePackageV1)]
-pub fn build_meshy_static_tile_package_v1(
-    source_glb: &[u8],
-    options_json: &str,
-) -> Result<StudioTilePackageArtifactV1, JsValue> {
-    build_meshy_static_tile_package_v1_inner(source_glb, options_json)
-        .map_err(|error| JsValue::from_str(&error))
 }
 
 /// Validates the strict, versioned M7 corpus manifest through `m2a-core`.
@@ -2898,16 +2722,18 @@ mod m5_native_tests {
         build_meshy_h1_model_package_v5_inner,
         build_meshy_procedural_humanoid_model_package_v1_inner,
         build_meshy_static_placeable_package_v1_inner,
-        build_meshy_static_placeable_package_v2_inner, build_meshy_static_tile_package_v1_inner,
-        direct_creature_animation_catalog_v1_json, inspect_editable_animation_source_v1_inner,
-        inspect_two_da_v2_json, inspect_two_da_v2_json_inner,
-        materialize_animation_studio_document_v1_inner, materialize_hak_resources,
-        preview_authored_animation_clip_v1_inner, resolve_creature_animation_mapping_v1,
-        serialize_json, validate_animation_studio_document_v1_inner,
-        validate_creature_animation_authoring_v1, write_hak_artifact_json, write_hak_v1,
-        write_hak_v1_report_json, write_model_package_v1, write_model_package_v1_inner,
-        write_package_manifest_v1_json, write_package_manifest_v1_json_inner,
-        write_tga_artifact_json, write_tga_v1, write_tga_v1_report_json,
+        build_meshy_static_placeable_package_v2_inner,
+        build_meshy_static_placeable_package_v3_project_v1_inner,
+        build_meshy_static_tile_package_v1_inner, direct_creature_animation_catalog_v1_json,
+        inspect_editable_animation_source_v1_inner, inspect_two_da_v2_json,
+        inspect_two_da_v2_json_inner, materialize_animation_studio_document_v1_inner,
+        materialize_hak_resources, preview_authored_animation_clip_v1_inner,
+        resolve_creature_animation_mapping_v1, serialize_json,
+        validate_animation_studio_document_v1_inner, validate_creature_animation_authoring_v1,
+        write_hak_artifact_json, write_hak_v1, write_hak_v1_report_json, write_model_package_v1,
+        write_model_package_v1_inner, write_package_manifest_v1_json,
+        write_package_manifest_v1_json_inner, write_tga_artifact_json, write_tga_v1,
+        write_tga_v1_report_json,
     };
     use m2a_core::hak::{HakResourceInputV1, HakWriterOptionsV1};
     use m2a_core::tga::{TgaImageV1, TgaPixelFormatV1, TgaWriterOptionsV1};
@@ -3175,6 +3001,54 @@ mod m5_native_tests {
         assert_eq!(boundary.take_proof_module_bytes(), core.module_payload);
         assert_eq!(boundary.report_json(), serialize_json(&core.report));
         assert!(core.report.authoring.is_some());
+    }
+
+    #[test]
+    fn project_placeable_boundary_preserves_identity_and_derived_names() {
+        let source = static_owned_glb();
+        let table = placeables_two_da();
+        let placement = m2a_core::placeable::PlaceablePlacementV1 {
+            x: 10.0,
+            y: 14.5,
+            z: 0.0,
+            bearing: 0.0,
+        };
+        let project = m2a_core::model_pipeline::ProjectBuildIdentityV1 {
+            schema_version: 1,
+            project_id: "browser-placeable-project".to_owned(),
+            project_name: "Browser Ritual Pedestal".to_owned(),
+            project_revision: 11,
+        };
+        let bootstrap = m2a_core::placeable::inspect_meshy_static_placeable_authoring_v1(&source)
+            .expect("authoring bootstrap");
+        let mut boundary = build_meshy_static_placeable_package_v3_project_v1_inner(
+            &source,
+            &table,
+            &serde_json::to_string(&project).unwrap(),
+            &serde_json::to_string(&placement).unwrap(),
+            7,
+            Some(&serde_json::to_string(&bootstrap.document).unwrap()),
+        )
+        .expect("project-owned placeable boundary");
+        let report: serde_json::Value =
+            serde_json::from_str(&boundary.report_json()).expect("report JSON");
+
+        assert_eq!(report["projectIdentity"]["projectId"], project.project_id);
+        assert_eq!(
+            report["projectIdentity"]["projectRevision"],
+            project.project_revision
+        );
+        assert_eq!(
+            report["moduleFileName"],
+            format!("{}.mod", report["modelResref"].as_str().unwrap())
+        );
+        assert_eq!(
+            report["hakFileName"],
+            format!("{}.hak", report["modelResref"].as_str().unwrap())
+        );
+        assert!(!boundary.take_hak_bytes().is_empty());
+        assert!(!boundary.take_proof_module_bytes().is_empty());
+        assert!(!boundary.take_model_bytes().is_empty());
     }
 
     #[test]
@@ -3728,6 +3602,12 @@ mod m5_native_tests {
         assert!(inspection["rig"].as_array().unwrap().iter().all(|node| {
             node["translation"].as_array().map(Vec::len) == Some(3)
                 && node["rotation"].as_array().map(Vec::len) == Some(4)
+        }));
+        assert_eq!(inspection["clips"].as_array().map(Vec::len), Some(42));
+        assert!(inspection["clips"].as_array().unwrap().iter().all(|clip| {
+            clip["name"].as_str().is_some()
+                && clip["durationSeconds"].as_f64().is_some()
+                && clip["trackCount"].as_u64().is_some()
         }));
         assert_eq!(inspection["clip"]["source"]["sourceClipName"], "cpause1");
 

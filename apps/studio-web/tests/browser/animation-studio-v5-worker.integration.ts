@@ -310,11 +310,18 @@ describe("Animation Studio V5 through the real Worker and WASM", () => {
 
     const sourceGlb = await fetchBytes(sourceUrl);
     const appearanceTwoDa = await fetchBytes(appearanceUrl);
+    const projectIdentity = {
+      schemaVersion: 1,
+      projectId: "browser-edited-project",
+      projectName: "Browser edited project",
+      projectRevision: 3,
+    } as const;
     const built = await client.buildEditedCreatureModelPackage(
       sourceGlb,
       appearanceTwoDa,
       authoringJson,
       studioJson,
+      JSON.stringify(projectIdentity),
       undefined,
       "studio-v5-build",
     );
@@ -330,6 +337,7 @@ describe("Animation Studio V5 through the real Worker and WASM", () => {
       built.manifestJson,
       built.artifacts,
     );
+    expect(canonical.projectIdentity).toEqual(projectIdentity);
     expect(canonical.animationStudioEvidence).toMatchObject({
       animationStudioRevision: 2,
       authoredClipIds: ["authored-stable-id"],
@@ -369,6 +377,7 @@ describe("Animation Studio V5 through the real Worker and WASM", () => {
       await fetchBytes(appearanceUrl),
       authoringJson,
       studioJson,
+      JSON.stringify(projectIdentity),
       undefined,
       "studio-v5-build-repeat",
     );

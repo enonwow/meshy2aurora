@@ -1,0 +1,249 @@
+/* Animation Studio visual parity pass — dense Aurora workbench */
+.animation-studio-workspace[data-layout="aurora-animation-workbench"] {
+  --animation-bg: #07131d;
+  --animation-panel: #0a1823;
+  --animation-panel-raised: #0d202d;
+  --animation-panel-soft: #0b1c28;
+  --animation-border: #203847;
+  --animation-border-strong: #31566b;
+  --animation-text: #edf5f8;
+  --animation-muted: #8ca6b5;
+  --animation-cyan: #23c9ee;
+  --animation-cyan-soft: rgb(35 201 238 / 12%);
+  --animation-lime: #b9ef38;
+  --animation-orange: #f6a61b;
+  --animation-red: #f0646e;
+  gap: 7px;
+  color: var(--animation-text);
+  font-size: .79rem;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"] button,
+.animation-studio-workspace[data-layout="aurora-animation-workbench"] input,
+.animation-studio-workspace[data-layout="aurora-animation-workbench"] select {
+  min-width: 0;
+  min-height: 31px;
+  border: 1px solid var(--animation-border-strong);
+  border-radius: 5px;
+  background: #0b1924;
+  color: var(--animation-text);
+  font: inherit;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"] button {
+  padding: 5px 10px;
+  cursor: pointer;
+  transition:
+    border-color .14s ease,
+    background-color .14s ease,
+    color .14s ease,
+    transform .14s ease;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"] button:not(:disabled):hover {
+  border-color: var(--animation-cyan);
+  background: #102734;
+  color: #fff;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"] button:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"] button:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"] input,
+.animation-studio-workspace[data-layout="aurora-animation-workbench"] select {
+  padding: 5px 8px;
+  outline: none;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"] input:focus,
+.animation-studio-workspace[data-layout="aurora-animation-workbench"] select:focus {
+  border-color: var(--animation-cyan);
+  box-shadow: 0 0 0 2px rgb(35 201 238 / 12%);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"] input[type="range"] {
+  min-height: 18px;
+  padding: 0;
+  accent-color: var(--animation-cyan);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"] h2,
+.animation-studio-workspace[data-layout="aurora-animation-workbench"] h3 {
+  color: #f5fafc;
+  letter-spacing: -.015em;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"] h2 {
+  font-size: 1rem;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"] h3 {
+  font-size: .76rem;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-workspace__toolbar {
+  min-height: 54px;
+  padding: 8px 12px;
+  border-color: var(--animation-border);
+  border-radius: 7px;
+  background:
+    linear-gradient(180deg, rgb(12 29 40 / 98%), rgb(7 19 29 / 98%));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 3%);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-workspace__toolbar > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-workspace__toolbar p {
+  margin: 0;
+  color: var(--animation-muted);
+  font-size: .7rem;
+}
+
+.animation-studio-workspace__toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-autosave {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 4px;
+  font-size: .7rem;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-autosave::before {
+  content: "✓";
+  display: grid;
+  width: 17px;
+  height: 17px;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: .62rem;
+}
+
+.animation-studio-action {
+  white-space: nowrap;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-action--quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--animation-muted);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-action--quiet::before {
+  margin-right: 5px;
+  color: #c3d0d7;
+  font-size: .9rem;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-action[data-action="undo"]::before {
+  content: "↶";
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-action[data-action="redo"]::before {
+  content: "↷";
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-action--primary {
+  border-color: #8eb929;
+  background: #15251a;
+  color: var(--animation-lime);
+  box-shadow: inset 0 0 0 1px rgb(185 239 56 / 8%);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-workspace__main {
+  display: grid;
+  grid-template-columns:
+    minmax(230px, 282px)
+    minmax(460px, 1fr)
+    minmax(252px, 304px);
+  grid-template-areas:
+    "library viewport inspector"
+    "timeline timeline timeline";
+  align-items: stretch;
+  gap: 7px;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-library {
+  grid-area: library;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-workspace__center {
+  grid-area: viewport;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-workspace__inspector {
+  grid-area: inspector;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-dope-sheet {
+  grid-area: timeline;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-library,
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-workspace__center,
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-workspace__inspector,
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-dope-sheet,
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-diagnostics,
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-workspace__status {
+  border: 1px solid var(--animation-border);
+  border-radius: 7px;
+  background:
+    linear-gradient(180deg, rgb(10 25 36 / 98%), rgb(6 17 26 / 98%));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 2%),
+    0 8px 24px rgb(0 0 0 / 10%);
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-library,
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-workspace__inspector {
+  align-content: start;
+  min-height: 468px;
+  padding: 11px;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-workspace__center {
+  min-height: 468px;
+  padding: 0;
+  overflow: hidden;
+}
+

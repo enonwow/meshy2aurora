@@ -30,8 +30,15 @@ function fixture() {
     schemaVersion: 1,
     status: "OFFLINE_ADMISSION_PASSED",
     profile: "STATIC_PLACEABLE",
+    projectIdentity: {
+      schemaVersion: 1,
+      projectId: "placeable-project",
+      projectName: "Placeable Project",
+      projectRevision: 7,
+    },
     componentStatuses: {
       mdl: "passed",
+      pwk: "passed",
       twoDa: "passed",
       utp: "passed",
       gitGic: "passed",
@@ -52,6 +59,7 @@ function fixture() {
     placement: { x: 10, y: 14.5, z: 0, bearing: 0 },
     sourceModelSha256: hash("0"),
     mdlSha256: hash("b"),
+    pwkSha256: hash("9"),
     textureSha256: hash("c"),
     placeables2daSha256: hash("d"),
     utpSha256: hash("e"),
@@ -60,15 +68,16 @@ function fixture() {
     gicSha256: hash("2"),
     hakSha256: hash("a"),
     moduleSha256: hash("7"),
-    hakResourceCount: 3,
+    hakResourceCount: 4,
     moduleResourceCount: 7,
     modelVisibility: "not_tested",
     proofCompleteness: "missing",
     paletteCompleteness: "custom_itp_emitted",
-    collisionCompleteness: "pwk_not_implemented",
+    collisionCompleteness: "ascii_pwk_emitted_runtime_readback_passed",
     resources: [
       { container: "HAK", role: "PLACEABLES_2DA", resref: "placeables", resourceType: 2017, byteLength: 11, sha256: hash("d") },
       { container: "HAK", role: "MODEL", resref: "m2a_s1_plc_ped", resourceType: 2002, byteLength: 2, sha256: hash("b") },
+      { container: "HAK", role: "PLACEABLE_WALKMESH", resref: "m2a_s1_plc_ped", resourceType: 2053, byteLength: 3, sha256: hash("9") },
       { container: "HAK", role: "TEXTURE", resref: "m2a_s1_plc_tex", resourceType: 3, byteLength: 3, sha256: hash("c") },
       { container: "MOD", role: "MODULE_INFO", resref: "module", resourceType: 2014, byteLength: 5, sha256: hash("3") },
       { container: "MOD", role: "FACTIONS", resref: "repute", resourceType: 2038, byteLength: 5, sha256: hash("4") },
@@ -84,7 +93,7 @@ function fixture() {
     artifact("placeable-package-hak", "HAK", report.hakFileName, [1, 2, 3], report.hakSha256),
     artifact("placeable-model-mdl", "MODEL", `${report.modelResref}.mdl`, [4, 5], report.mdlSha256),
     artifact("placeable-proof-module", "MODULE", report.moduleFileName, [6, 7, 8, 9], report.moduleSha256),
-    artifact("placeable-report-json", "JSON_REPORT", "placeable-materialization-report.json", [...new TextEncoder().encode(reportJson)], hash("9")),
+    artifact("placeable-report-json", "JSON_REPORT", "m2a_s1_plc_mod-placeable-materialization-report.json", [...new TextEncoder().encode(reportJson)], hash("9")),
   ];
   return { report, reportJson, artifacts };
 }
@@ -95,6 +104,7 @@ describe("projectPlaceableResult", () => {
     const result = projectPlaceableResult(value.reportJson, value.artifacts);
     expect(result.status).toBe("OFFLINE_ADMISSION_PASSED");
     expect(result.profile).toBe("STATIC_PLACEABLE");
+    expect(result.projectIdentity).toEqual(value.report.projectIdentity);
     expect(result.appearanceRow).toBe(16500);
     expect(result.componentStatuses.proof).toBe("not_tested");
     expect(result.modelVisibility).toBe("not_tested");

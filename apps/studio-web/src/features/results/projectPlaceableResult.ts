@@ -1,7 +1,9 @@
 import type { WorkerArtifact } from "../../worker/types";
+import type { ProjectBuildIdentityV1 } from "../project";
 
 export interface PlaceableComponentStatuses {
   mdl: "passed";
+  pwk: "passed";
   twoDa: "passed";
   utp: "passed";
   gitGic: "passed";
@@ -22,6 +24,7 @@ export interface PlaceableResourceSnapshot {
 export interface PlaceableResultSnapshot {
   status: "OFFLINE_ADMISSION_PASSED";
   profile: "STATIC_PLACEABLE";
+  projectIdentity: ProjectBuildIdentityV1;
   componentStatuses: PlaceableComponentStatuses;
   moduleFileName: string;
   moduleDisplayName: string;
@@ -126,12 +129,40 @@ export function projectPlaceableResult(
   const statuses = record(report.componentStatuses, "report.componentStatuses");
   const componentStatuses: PlaceableComponentStatuses = {
     mdl: exact(statuses.mdl, "passed", "report.componentStatuses.mdl"),
+    pwk: exact(statuses.pwk, "passed", "report.componentStatuses.pwk"),
     twoDa: exact(statuses.twoDa, "passed", "report.componentStatuses.twoDa"),
     utp: exact(statuses.utp, "passed", "report.componentStatuses.utp"),
     gitGic: exact(statuses.gitGic, "passed", "report.componentStatuses.gitGic"),
     palette: exact(statuses.palette, "passed", "report.componentStatuses.palette"),
     package: exact(statuses.package, "passed", "report.componentStatuses.package"),
     proof: exact(statuses.proof, "not_tested", "report.componentStatuses.proof"),
+  };
+  const projectIdentityRecord = record(
+    report.projectIdentity,
+    "report.projectIdentity",
+  );
+  const projectRevision = integer(
+    projectIdentityRecord.projectRevision,
+    "report.projectIdentity.projectRevision",
+  );
+  if (
+    integer(
+      projectIdentityRecord.schemaVersion,
+      "report.projectIdentity.schemaVersion",
+    ) !== 1
+    || projectRevision < 1
+  ) fail("report.projectIdentity");
+  const projectIdentity: ProjectBuildIdentityV1 = {
+    schemaVersion: 1,
+    projectId: string(
+      projectIdentityRecord.projectId,
+      "report.projectIdentity.projectId",
+    ),
+    projectName: string(
+      projectIdentityRecord.projectName,
+      "report.projectIdentity.projectName",
+    ),
+    projectRevision,
   };
   const appearance = record(report.appearanceRow, "report.appearanceRow");
   const placementJson = record(report.placement, "report.placement");
@@ -160,6 +191,7 @@ export function projectPlaceableResult(
   ) fail("report.resources");
 
   const moduleFileName = string(report.moduleFileName, "report.moduleFileName");
+  if (!moduleFileName.toLowerCase().endsWith(".mod")) fail("report.moduleFileName");
   const hakFileName = string(report.hakFileName, "report.hakFileName");
   const modelResref = string(report.modelResref, "report.modelResref");
   const modelSha256 = sha256(report.mdlSha256, "report.mdlSha256");
@@ -188,7 +220,7 @@ export function projectPlaceableResult(
     artifactsInput,
     "placeable-report-json",
     "JSON_REPORT",
-    "placeable-materialization-report.json",
+    `${moduleFileName.slice(0, -4)}-placeable-materialization-report.json`,
     undefined,
   );
 
@@ -217,6 +249,7 @@ export function projectPlaceableResult(
   return {
     status,
     profile,
+    projectIdentity,
     componentStatuses,
     moduleFileName,
     moduleDisplayName: string(report.moduleDisplayName, "report.moduleDisplayName"),

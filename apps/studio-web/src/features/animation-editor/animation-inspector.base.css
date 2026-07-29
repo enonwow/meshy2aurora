@@ -1,0 +1,41 @@
+.animation-bone-tree [role="tree"] {
+  display: grid;
+  max-height: 12rem;
+  overflow: auto;
+}
+
+.animation-bone-tree [role="treeitem"] {
+  text-align: left;
+}
+
+.animation-bone-tree [aria-selected="true"] {
+  border-color: #38bdf8;
+}
+
+.bone-transform-inspector fieldset,
+.animation-clip-settings {
+  border: 1px solid rgba(148, 163, 184, .2);
+  display: grid;
+  gap: .35rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: .5rem;
+}
+
+.bone-transform-inspector label,
+.animation-clip-settings label,
+.animation-event-editor label,
+.animation-clip-dialog label {
+  display: grid;
+  gap: .2rem;
+}
+
+.animation-clip-settings {
+  grid-template-columns: 1fr;
+}
+
+.animation-inspector-canonical {
+  color: #94a3b8;
+  font-size: .75rem;
+  overflow-wrap: anywhere;
+}
+

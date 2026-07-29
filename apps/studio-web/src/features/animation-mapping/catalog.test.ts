@@ -183,6 +183,19 @@ describe("creature animation mapping contract v1", () => {
 
     expect(filterAnimationCatalogV1(rows, "", "BASE_42")).toHaveLength(42);
     expect(filterAnimationCatalogV1(rows, "", "CUSTOM")).toHaveLength(1);
+    expect(filterAnimationCatalogV1(rows, "", "MISSING_GAMEPLAY_7")).toHaveLength(6);
+    expect(filterAnimationCatalogV1(rows, "", "MISSING_BASE_42")).toHaveLength(41);
+    expect(
+      filterAnimationCatalogV1(rows, "", "MISSING_GAMEPLAY_7")
+        .map(({ slot }) => slot),
+    ).toEqual([
+      "ca1slashl",
+      "cdamagel",
+      "crun",
+      "cpause1",
+      "cappear",
+      "cdead",
+    ]);
     expect(rows.find(({ slot }) => slot === "cwalk")).toMatchObject({
       kind: "BASE",
       status: "MAPPED",

@@ -1,9 +1,20 @@
 export type StudioTheme = "dark" | "light" | "system";
+export type StudioProjectPersistence = "NOT_SAVED" | "DIRTY" | "SAVED";
+
+export interface StudioProjectStatus {
+  readonly name: string;
+  readonly target: string;
+  readonly sourceSha256?: string | null;
+  readonly persistence: StudioProjectPersistence;
+}
 
 export interface StudioHeaderProps {
   version: string;
   environment: string;
   theme: StudioTheme;
+  context?: string;
+  project?: StudioProjectStatus;
+  onProjectMenu?: () => void;
   onHelp?: () => void;
   onThemeMenu?: () => void;
   onSettings?: () => void;
@@ -73,6 +84,9 @@ export function StudioHeader({
   version,
   environment,
   theme,
+  context,
+  project,
+  onProjectMenu,
   onHelp,
   onThemeMenu,
   onSettings,
@@ -84,34 +98,75 @@ export function StudioHeader({
         <span className="studio-header__product-name">meshy2aurora</span>
         <span className="studio-header__version">{version}</span>
         <span className="studio-header__environment">{environment}</span>
+        {context ? (
+          <>
+            <span className="studio-header__context-divider" aria-hidden="true" />
+            <span className="studio-header__context">{context}</span>
+          </>
+        ) : null}
       </div>
 
-      <div className="studio-header__actions" aria-label="Studio controls">
-        <button type="button" className="studio-header__action studio-header__help" disabled={!onHelp} onClick={onHelp}>
+      {project ? (
+        <div className="studio-header__project-group">
+          <div
+            className="studio-header__project"
+            aria-label="Project status"
+            data-persistence={project.persistence}
+          >
+            <strong>{project.name}</strong>
+            <span>{project.target}</span>
+            <code title={project.sourceSha256 ?? undefined}>
+              {project.sourceSha256 ? project.sourceSha256.slice(0, 12) : "No source"}
+            </code>
+            <span className="studio-header__project-persistence">
+              {project.persistence === "SAVED"
+                ? "Saved"
+                : project.persistence === "DIRTY"
+                  ? "Unsaved changes"
+                  : "Not saved"}
+            </span>
+          </div>
+          {onProjectMenu ? (
+            <button
+              type="button"
+              className="studio-header__project-menu"
+              aria-label="Manage project"
+              onClick={onProjectMenu}
+            >
+              Manage
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {onHelp || onThemeMenu || onSettings ? (
+        <div className="studio-header__actions" aria-label="Studio controls">
+        {onHelp ? <button type="button" className="studio-header__action studio-header__help" onClick={onHelp}>
           <HelpIcon />
           <span>Help</span>
-        </button>
-        <button
+        </button> : null}
+        {onThemeMenu ? <button
           type="button"
           className="studio-header__action studio-header__theme"
           aria-label={`Theme: ${theme}`}
           aria-haspopup="menu"
-          disabled={!onThemeMenu}
           onClick={onThemeMenu}
         >
           <ThemeIcon theme={theme} />
-          <span aria-hidden="true" className="studio-header__chevron">⌄</span>
-        </button>
-        <button
+          <span aria-hidden="true" className="studio-header__chevron">
+            {"\u2304"}
+          </span>
+        </button> : null}
+        {onSettings ? <button
           type="button"
           className="studio-header__action studio-header__settings"
           aria-label="Settings"
-          disabled={!onSettings}
           onClick={onSettings}
         >
           <SettingsIcon />
-        </button>
-      </div>
+        </button> : null}
+        </div>
+      ) : null}
     </header>
   );
 }

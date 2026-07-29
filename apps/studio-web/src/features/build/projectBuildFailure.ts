@@ -1,9 +1,42 @@
 import type { BuildFailureSnapshot } from "../../app/studioSession";
-import type { BuildStageId } from "./BuildStep";
-
 type JsonRecord = Record<string, unknown>;
 
 const EXPECTED_FIELDS = ["schemaVersion", "stage", "code", "path", "message"] as const;
+export const CORE_BUILD_FAILURE_STAGES = [
+  "ANIMATION",
+  "APPEARANCE",
+  "FIXTURE",
+  "INGEST",
+  "MODEL",
+  "OUTPUT",
+  "PACKAGE",
+  "PROFILE",
+  "PROJECT",
+  "PROOF_MODULE",
+  "READBACK",
+  "REPORT",
+  "RUNTIME_FIXTURE_CONTRACT",
+  "TEXTURE",
+] as const;
+
+export type CoreBuildFailureStage = typeof CORE_BUILD_FAILURE_STAGES[number];
+
+const CORE_BUILD_FAILURE_STAGE_LABELS: Readonly<Record<CoreBuildFailureStage, string>> = {
+  ANIMATION: "Animation authoring",
+  APPEARANCE: "2DA appearance",
+  FIXTURE: "Fixture contract",
+  INGEST: "Source ingest",
+  MODEL: "Binary model",
+  OUTPUT: "Output materialization",
+  PACKAGE: "HAK package",
+  PROFILE: "Canonical profile",
+  PROJECT: "Project identity",
+  PROOF_MODULE: "Proof module",
+  READBACK: "Binary readback",
+  REPORT: "Evidence report",
+  RUNTIME_FIXTURE_CONTRACT: "Runtime fixture contract",
+  TEXTURE: "Texture conversion",
+};
 
 const isRecord = (value: unknown): value is JsonRecord =>
   value !== null && typeof value === "object" && !Array.isArray(value);
@@ -15,6 +48,17 @@ function hasExactFields(value: JsonRecord): boolean {
   const keys = Object.keys(value);
   return keys.length === EXPECTED_FIELDS.length
     && EXPECTED_FIELDS.every((field) => Object.hasOwn(value, field));
+}
+
+export function isCoreBuildFailureStage(value: unknown): value is CoreBuildFailureStage {
+  return typeof value === "string"
+    && (CORE_BUILD_FAILURE_STAGES as readonly string[]).includes(value);
+}
+
+export function buildFailureStageLabel(stage?: string) {
+  return isCoreBuildFailureStage(stage)
+    ? CORE_BUILD_FAILURE_STAGE_LABELS[stage]
+    : "Unclassified Worker failure";
 }
 
 /**
@@ -29,7 +73,7 @@ export function projectBuildFailure(rawMessage: string): BuildFailureSnapshot {
       !isRecord(value)
       || !hasExactFields(value)
       || value.schemaVersion !== 1
-      || !isNonEmptyString(value.stage)
+      || !isCoreBuildFailureStage(value.stage)
       || !isNonEmptyString(value.code)
       || !isNonEmptyString(value.path)
       || !isNonEmptyString(value.message)
@@ -44,18 +88,4 @@ export function projectBuildFailure(rawMessage: string): BuildFailureSnapshot {
   } catch {
     return { message: rawMessage };
   }
-}
-
-const PIPELINE_STAGE_TO_BUILD_STAGE: Readonly<Record<string, BuildStageId>> = {
-  INGEST: "INGEST_SOURCE",
-  PROFILE: "NORMALIZE_CANONICAL_IR",
-  MODEL: "WRITE_BINARY_MDL",
-  READBACK: "CANONICAL_BINARY_READBACK",
-  APPEARANCE: "UPDATE_APPEARANCE_2DA",
-  HAK: "PACKAGE_HAK",
-};
-
-/** Maps only stages with an unambiguous one-to-one V1 ledger equivalent. */
-export function buildStageForPipelineStage(stage?: string): BuildStageId | undefined {
-  return stage === undefined ? undefined : PIPELINE_STAGE_TO_BUILD_STAGE[stage];
 }

@@ -15,6 +15,7 @@ interface Props {
   authoredClip?: AuthoredAnimationClipV1 | null;
   authoredRig?: readonly AnimationRigNodeV1[];
   controlledAnimationTimeSeconds?: number;
+  hideAnimationControls?: boolean;
 }
 
 export function SourceViewport({
@@ -25,6 +26,7 @@ export function SourceViewport({
   authoredClip,
   authoredRig = [],
   controlledAnimationTimeSeconds,
+  hideAnimationControls,
 }: Props) {
   const buildRoot = useCallback(async () => {
     const manager = new THREE.LoadingManager();
@@ -62,7 +64,7 @@ export function SourceViewport({
       initialAnimationName={authoredClip?.name ?? initialAnimationName}
       initialAnimationLoop={initialAnimationLoop}
       controlledAnimationTimeSeconds={controlledAnimationTimeSeconds}
-      hideAnimationControls={Boolean(authoredClip)}
+      hideAnimationControls={hideAnimationControls ?? Boolean(authoredClip)}
       onError={onError}
     />
   );

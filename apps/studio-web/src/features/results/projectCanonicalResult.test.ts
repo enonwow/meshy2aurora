@@ -37,6 +37,49 @@ function fixture() {
     appearance: { appendedRowIndex: 1, sourcePrefixPreserved: true, outputByteLength: 7, outputSha256: "e".repeat(64) },
     hak: { byteLength: 3, archiveSha256: "a".repeat(64), entryCount: 3 },
     proofModule: { byteLength: 4, sha256: "7".repeat(64), appearanceRow: 1, semanticReadbackStatus: "PASS" },
+    animationCompleteness: {
+      profile: "FULL_NATIVE42_EXPLICIT_V1",
+      requiredClipCount: 42,
+      explicitClipCount: 42,
+      proceduralClipCount: 0,
+      fallbackAliasCount: 0,
+      complete: true,
+    },
+    animationBehavior: {
+      schemaVersion: 1,
+      requiredNamespaceClipCount: 42,
+      observedClipCount: 42,
+      fullNamespaceComplete: true,
+      allRequiredContentPresent: true,
+      activeMotionComplete: true,
+      walkRunDistinct: true,
+      essentialStatesDistinct: true,
+      deathTransitionTerminalPose: true,
+      behaviorCandidateEligible: true,
+      clips: [{
+        name: "cwalk",
+        decodedControllerCount: 3,
+        changingControllerCount: 2,
+        terminalPoseControllerCount: 0,
+        motionSha256: "1".repeat(64),
+        semanticSha256: "2".repeat(64),
+      }],
+      violations: [],
+    },
+    skinAnimationConformance: {
+      schemaVersion: 1,
+      activeJointCount: 2,
+      requiredClipCount: 5,
+      clips: [{
+        clipName: "cwalk",
+        sampledTimeCount: 3,
+        maxMovedVertexCount: 24,
+        maxDisplacement: 0.5,
+        nonRigidDeformationObserved: true,
+      }],
+      complete: true,
+      violations: [],
+    },
   };
   const reportJson = JSON.stringify(report);
   const summary = {
@@ -117,10 +160,56 @@ describe("canonical result projector", () => {
         diagnostics: [],
       },
       packageAssemblyEvidence: { strictReconciled: true, resourceCount: 3, artifactCount: 6 },
+      animationCompletenessEvidence: {
+        profile: "FULL_NATIVE42_EXPLICIT_V1",
+        requiredClipCount: 42,
+        explicitClipCount: 42,
+        proceduralClipCount: 0,
+        fallbackAliasCount: 0,
+        complete: true,
+      },
+      animationBehaviorEvidence: {
+        schemaVersion: 1,
+        requiredNamespaceClipCount: 42,
+        observedClipCount: 42,
+        behaviorCandidateEligible: true,
+        violations: [],
+      },
+      skinAnimationEvidence: {
+        schemaVersion: 1,
+        activeJointCount: 2,
+        requiredClipCount: 5,
+        complete: true,
+        violations: [],
+      },
     });
     expect(result.resources.map(({ role, resref }) => [role, resref])).toEqual([
       ["APPEARANCE_TABLE", "appearance"], ["MODEL", "m2a_model"], ["TEXTURE", "m2a_texture"],
     ]);
+  });
+
+  it("projects the caller-owned build identity from the manifest", () => {
+    const value = fixture();
+    const projectIdentity = {
+      schemaVersion: 1,
+      projectId: "project-result-01",
+      projectName: "Result project",
+      projectRevision: 9,
+    } as const;
+    Object.assign(value.manifest, { projectIdentity });
+    const manifestJson = JSON.stringify(value.manifest);
+    const artifacts = value.artifacts.map((artifact) => (
+      artifact.artifactId === "manifest-json"
+        ? { ...artifact, bytes: bytes(manifestJson), byteLength: bytes(manifestJson).byteLength }
+        : artifact
+    ));
+
+    expect(projectCanonicalResult(
+      value.reportJson,
+      value.summaryJson,
+      manifestJson,
+      artifacts,
+    ).projectIdentity).toEqual(projectIdentity);
   });
 
   it("accepts the separately identified static M0 runtime package", () => {

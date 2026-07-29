@@ -120,10 +120,17 @@ describe("authored Creature animation mapping through the real Worker and WASM",
 
     const sourceGlb = await fetchBytes(sourceUrl);
     const appearanceTwoDa = await fetchBytes(appearanceUrl);
+    const projectIdentity = {
+      schemaVersion: 1,
+      projectId: "browser-authored-project",
+      projectName: "Browser authored project",
+      projectRevision: 7,
+    } as const;
     const built = await client.buildAuthoredCreatureModelPackage(
       sourceGlb,
       appearanceTwoDa,
       authoringJson,
+      JSON.stringify(projectIdentity),
       undefined,
       "animation-mapping-build",
     );
@@ -139,6 +146,17 @@ describe("authored Creature animation mapping through the real Worker and WASM",
       built.summaryJson,
       built.manifestJson,
       built.artifacts,
+    );
+    expect(snapshot.projectIdentity).toEqual(projectIdentity);
+    expect(built.artifacts.map(({ fileName }) => fileName)).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^m2[a-f0-9]{14}\.hak$/),
+        expect.stringMatching(/^m2[a-f0-9]{14}\.mdl$/),
+        expect.stringMatching(/^m2[a-f0-9]{14}\.mod$/),
+        expect.stringMatching(/^m2[a-f0-9]{14}-inspection\.json$/),
+        expect.stringMatching(/^m2[a-f0-9]{14}-conversion-manifest\.json$/),
+        expect.stringMatching(/^m2[a-f0-9]{14}-summary\.json$/),
+      ]),
     );
     expect(snapshot.animationMappingEvidence).toMatchObject({
       authoringRevision: 7,

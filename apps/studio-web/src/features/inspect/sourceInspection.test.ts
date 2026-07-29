@@ -16,7 +16,10 @@ function readyFixture() {
         generator: "meshy2aurora-test",
       },
       scenes: [{}],
-      nodes: [{}, {}],
+      nodes: [
+        { meshId: 0, skinId: 0 },
+        { meshId: null, skinId: null },
+      ],
       meshes: [{}],
       primitives: [{}],
       materials: [{}],
@@ -105,6 +108,7 @@ describe("projectSourceInspection", () => {
         inventory: readyFixture().report.inventory,
         statistics: readyFixture().report.statistics,
         boneCount: 2,
+        skinnedMeshNodeCount: 1,
         clips: [{
           id: 0,
           name: "idle",

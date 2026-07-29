@@ -12,6 +12,7 @@ export function AnimationRetimeDialog({
   const [length, setLength] = useState(lengthSeconds);
   return (
     <div
+      className="animation-clip-dialog"
       role="dialog"
       aria-modal="true"
       aria-labelledby="retime-dialog-title"

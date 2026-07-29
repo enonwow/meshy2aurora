@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  AURORA_MODEL_TRIANGLE_BUDGET_V1,
+  DEFAULT_MESHY_TEXT_TO_3D_OPTIONS,
   InMemoryMeshyBridgeClient,
   MESHY_PROFILES,
   MeshyBridgeError,
   findMeshyProfile,
+  maximumMeshyTargetPolycount,
   resolveLocalMeshyBridgeOrigin,
 } from "./bridge";
 
@@ -29,6 +32,31 @@ describe("Meshy Lab profiles", () => {
       prompt: "A small wooden treasure chest",
       geometryTarget: "AURORA_PROOF",
     })).resolves.toMatchObject({});
+  });
+
+  it("uses the shared Aurora triangle budget for Studio generation inputs", async () => {
+    expect(AURORA_MODEL_TRIANGLE_BUDGET_V1).toBe(20_000);
+    expect(DEFAULT_MESHY_TEXT_TO_3D_OPTIONS.targetPolycount).toBe(20_000);
+    expect(maximumMeshyTargetPolycount(DEFAULT_MESHY_TEXT_TO_3D_OPTIONS)).toBe(20_000);
+    expect(maximumMeshyTargetPolycount({ modelType: "smart-topology", aiModel: "meshy-t2" }))
+      .toBe(15_000);
+
+    const bridge = new InMemoryMeshyBridgeClient();
+    const { sessionToken } = await bridge.pair({ pairingCode: "local-proof" });
+    const request = {
+      profileId: "S1-static-prop/v1" as const,
+      prompt: "A small wooden treasure chest",
+      geometryTarget: "BALANCED" as const,
+      apiOptions: DEFAULT_MESHY_TEXT_TO_3D_OPTIONS,
+    };
+    await expect(bridge.previewRun(sessionToken, request)).resolves.toMatchObject({});
+    await expect(bridge.previewRun(sessionToken, {
+      ...request,
+      apiOptions: {
+        ...DEFAULT_MESHY_TEXT_TO_3D_OPTIONS,
+        targetPolycount: AURORA_MODEL_TRIANGLE_BUDGET_V1 + 1,
+      },
+    })).rejects.toMatchObject({ code: "PREVIEW_NOT_FOUND" });
   });
 
   it("accepts image and multi-image preview contracts without inventing a text prompt", async () => {

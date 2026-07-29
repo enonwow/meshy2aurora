@@ -1,0 +1,174 @@
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-diagnostics {
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 12px;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-diagnostics h3 {
+  margin: 0;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-editor-diagnostics p {
+  margin: 0;
+  color: var(--animation-lime);
+  font-size: .68rem;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-workspace__status {
+  min-height: 38px;
+  padding: 6px 12px;
+  color: var(--animation-muted);
+  font-size: .66rem;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-workspace__status strong {
+  color: var(--animation-lime);
+  letter-spacing: .05em;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-action--quiet::before {
+  content: none;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-action[data-action="undo"]::before,
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-studio-action[data-action="redo"]::before {
+  content: none;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-library label::before {
+  content: "";
+  top: 9px;
+  left: 10px;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--animation-muted);
+  border-radius: 50%;
+}
+
+.animation-studio-workspace[data-layout="aurora-animation-workbench"]
+  .animation-clip-library label::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: 18px;
+  left: 18px;
+  width: 6px;
+  height: 1.5px;
+  background: var(--animation-muted);
+  transform: rotate(45deg);
+  transform-origin: left center;
+}
+
+@media (max-width: 1180px) {
+  .animation-studio-workspace[data-layout="aurora-animation-workbench"]
+    .animation-studio-workspace__main {
+    grid-template-columns: minmax(220px, .64fr) minmax(430px, 1.36fr);
+    grid-template-areas:
+      "library viewport"
+      "inspector inspector"
+      "timeline timeline";
+  }
+
+  .animation-studio-workspace[data-layout="aurora-animation-workbench"]
+    .animation-studio-workspace__inspector {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: auto;
+    min-height: 0;
+  }
+
+  .animation-studio-workspace[data-layout="aurora-animation-workbench"]
+    .animation-bone-tree,
+  .animation-studio-workspace[data-layout="aurora-animation-workbench"]
+    .bone-transform-inspector {
+    padding-right: 10px;
+    padding-bottom: 0;
+    border-right: 1px solid var(--animation-border);
+    border-bottom: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .animation-studio-workspace[data-layout="aurora-animation-workbench"]
+    .animation-studio-workspace__toolbar {
+    align-items: stretch;
+  }
+
+  .animation-studio-workspace__toolbar-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .animation-studio-workspace[data-layout="aurora-animation-workbench"]
+    .animation-studio-workspace__main {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "library"
+      "viewport"
+      "inspector"
+      "timeline";
+  }
+
+  .animation-studio-workspace[data-layout="aurora-animation-workbench"]
+    .animation-studio-workspace__inspector {
+    grid-template-columns: 1fr;
+  }
+
+  .animation-studio-workspace[data-layout="aurora-animation-workbench"]
+    .animation-bone-tree,
+  .animation-studio-workspace[data-layout="aurora-animation-workbench"]
+    .bone-transform-inspector {
+    padding-right: 0;
+    padding-bottom: 9px;
+    border-right: 0;
+    border-bottom: 1px solid var(--animation-border);
+  }
+
+  .animation-studio-workspace[data-layout="aurora-animation-workbench"]
+    .animation-dope-sheet > header {
+    flex-wrap: wrap;
+  }
+}
+
+/* Accepted Animation Studio mockup parity. */
+.animation-studio-mode-switch {
+  grid-template-columns: repeat(2, minmax(168px, 1fr));
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid #203847;
+  border-radius: 6px;
+  background: #07141d;
+}
+
+.animation-studio-mode-switch [role="tab"] {
+  min-height: 33px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #a5bac5;
+}
+
+.animation-studio-mode-switch [role="tab"][aria-selected="true"] {
+  border-color: #1683ab;
+  background: #0a2a3a;
+  color: #3bd6fa;
+  box-shadow: inset 0 -1px 0 rgb(35 201 238 / 30%);
+}
+
+.animation-studio-beta {
+  border-color: #426477;
+  background: #112b3a;
+  color: #b9cbd5;
+}
+

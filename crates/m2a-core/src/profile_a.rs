@@ -57,9 +57,6 @@ pub use crate::model_ir::{
 };
 
 pub const PROFILE_A_SCHEMA_VERSION: u32 = 1;
-pub const PROFILE_A_PLACEABLE_TRIANGLE_WARNING_ABOVE_V1: u64 = 10_000;
-pub const PROFILE_A_PLACEABLE_TRIANGLE_BLOCKING_ABOVE_V1: u64 = 21_845;
-
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RigProvenanceKindV1 {
@@ -197,8 +194,8 @@ impl Default for ProfileALimitsV1 {
             max_work_bytes: 256 * 1024 * 1024,
             max_diagnostics: 2_048,
             max_unique_materials: 1,
-            triangle_warning_above: 5_000,
-            triangle_blocking_above: 10_000,
+            triangle_warning_above: crate::AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 as u64,
+            triangle_blocking_above: crate::AURORA_MODEL_TRIANGLE_BUDGET_V1 as u64,
         }
     }
 }
@@ -3312,16 +3309,12 @@ fn validate_options(options: &ProfileAOptionsV1) -> Result<(), ProfileAConversio
     }
     let limits = &options.limits;
     let hard = ProfileALimitsV1::default();
-    let triangle_thresholds_are_compiled_profile = matches!(
-        (
-            limits.triangle_warning_above,
-            limits.triangle_blocking_above
-        ),
-        (5_000, 10_000)
-            | (
-                PROFILE_A_PLACEABLE_TRIANGLE_WARNING_ABOVE_V1,
-                PROFILE_A_PLACEABLE_TRIANGLE_BLOCKING_ABOVE_V1
-            )
+    let triangle_thresholds_are_compiled_profile = (
+        limits.triangle_warning_above,
+        limits.triangle_blocking_above,
+    ) == (
+        crate::AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 as u64,
+        crate::AURORA_MODEL_TRIANGLE_BUDGET_V1 as u64,
     );
     let pairs = [
         (limits.max_rig_nodes, hard.max_rig_nodes),

@@ -21,11 +21,12 @@ use crate::{
     hak::{HakResourceInputV1, HakWriterOptionsV1, write_erf_archive_v1, write_hak_v1},
     mdl::{
         MdlFormatProfileV1, MdlMaterialTextureBindingV1, MdlStateProjectionProfileV1,
-        MdlWriterOptionsV1, NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1, write_binary_mdl,
+        MdlWriterOptionsV1, write_binary_mdl,
     },
     model_ir::{AuroraModelIrV1, AuroraSegmentDeformationV1},
     model_pipeline::{
-        resolve_base_color_image_index_v1, sanitize_meshy_h1_degenerate_triangles_v1,
+        ProjectBuildIdentityV1, resolve_base_color_image_index_v1,
+        sanitize_meshy_h1_degenerate_triangles_v1,
     },
     placeable_authoring::{
         PlaceableAuthoringApplyReportV1, PlaceableAuthoringDocumentV1,
@@ -36,9 +37,8 @@ use crate::{
     },
     placeable_collision::{inspect_ascii_placeable_walkmesh_v1, write_placeable_walkmesh_v1},
     profile_a::{
-        PROFILE_A_PLACEABLE_TRIANGLE_BLOCKING_ABOVE_V1,
-        PROFILE_A_PLACEABLE_TRIANGLE_WARNING_ABOVE_V1, ProfileAMaterialPolicyV1, ProfileAOptionsV1,
-        convert_profile_a, derive_meshy_m0_static_rigid_profile_v1,
+        ProfileALimitsV1, ProfileAMaterialPolicyV1, ProfileAOptionsV1, convert_profile_a,
+        derive_meshy_m0_static_rigid_profile_v1,
     },
     proof_module::{
         M0_RUNTIME_FIXTURE_X, M0_RUNTIME_FIXTURE_Y, M0_RUNTIME_FIXTURE_Z,
@@ -72,27 +72,26 @@ pub const PWK_RESOURCE_TYPE: u16 = 2053;
 /// placeable and future tile profiles must enter the same binary MDL pipeline.
 pub type AuroraPlaceableIrV1 = AuroraModelIrV1;
 
-/// Profile A admission tuned to the native NWN EE limit for one placeable
-/// render mesh. Creature defaults remain unchanged; only the placeable route
-/// may consume the full 16-bit triangle/index envelope.
+/// Profile A admission for a static placeable.
+///
+/// Triangle admission remains the shared product budget; this helper only
+/// widens the placeable material policy.
 pub fn static_placeable_profile_a_options_v1() -> ProfileAOptionsV1 {
-    let mut options = ProfileAOptionsV1::default();
-    options.limits.triangle_warning_above = PROFILE_A_PLACEABLE_TRIANGLE_WARNING_ABOVE_V1;
-    options.limits.triangle_blocking_above = PROFILE_A_PLACEABLE_TRIANGLE_BLOCKING_ABOVE_V1;
-    options.material_policy = ProfileAMaterialPolicyV1::BoundedSourceSlots;
-    options.limits.max_unique_materials = 256;
-    options
+    ProfileAOptionsV1 {
+        material_policy: ProfileAMaterialPolicyV1::BoundedSourceSlots,
+        limits: ProfileALimitsV1 {
+            max_unique_materials: 256,
+            ..ProfileALimitsV1::default()
+        },
+        ..ProfileAOptionsV1::default()
+    }
 }
 
 /// GLB admission for the static-placeable route. Resource and allocation
-/// ceilings stay shared; only the triangle diagnostics follow the placeable
-/// Profile A envelope.
+/// ceilings, including triangle diagnostics, stay shared with every render
+/// model route.
 pub fn static_placeable_glb_limits_v1() -> GlbLimits {
-    GlbLimits {
-        triangle_warning_above: PROFILE_A_PLACEABLE_TRIANGLE_WARNING_ABOVE_V1 as usize,
-        triangle_blocking_above: NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1,
-        ..GlbLimits::default()
-    }
+    GlbLimits::default()
 }
 
 const REQUIRED_PLACEABLES_COLUMNS: [&str; 13] = [
@@ -260,6 +259,8 @@ pub struct StaticPlaceablePackageReportV1 {
     pub schema_version: u32,
     pub status: String,
     pub profile: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_identity: Option<ProjectBuildIdentityV1>,
     pub component_statuses: StaticPlaceableComponentStatusesV1,
     pub module_file_name: String,
     pub module_display_name: String,
@@ -1002,6 +1003,53 @@ pub fn build_meshy_static_placeable_package_v2(
     )
 }
 
+/// Builds the authored static-placeable package under the same caller-owned
+/// project identity used by Creature. The identity is the only source of
+/// runtime resrefs and artifact filenames for a fresh project revision.
+pub fn build_meshy_static_placeable_package_v3_with_project_identity(
+    source_glb: &[u8],
+    base_placeables_2da: &[u8],
+    project_identity: &ProjectBuildIdentityV1,
+    placement: PlaceablePlacementV1,
+    palette_id: u8,
+    authoring: Option<&PlaceableAuthoringDocumentV1>,
+) -> Result<StaticPlaceablePackageArtifactV1, PlaceableErrorV1> {
+    let namespace = project_identity.namespace_resref_v1().map_err(|source| {
+        error(
+            "PLACEABLE-PROJECT-BUILD-IDENTITY-INVALID",
+            source.path,
+            source.message,
+        )
+    })?;
+    let identity = StaticPlaceableIdentityV1 {
+        module_resref: namespace.clone(),
+        module_file_name: format!("{namespace}.mod"),
+        module_display_name: format!(
+            "Meshy2Aurora {} r{} Placeable",
+            project_identity.project_name, project_identity.project_revision
+        ),
+        area_resref: namespace.clone(),
+        area_name: format!("{} Placeable", project_identity.project_name),
+        hak_resref: namespace.clone(),
+        hak_file_name: format!("{namespace}.hak"),
+        model_resref: namespace.clone(),
+        texture_resref: namespace.clone(),
+        blueprint_resref: namespace.clone(),
+        object_tag: namespace,
+        display_name: project_identity.project_name.clone(),
+    };
+    let mut artifact = build_meshy_static_placeable_package_inner_v1(
+        source_glb,
+        base_placeables_2da,
+        &identity,
+        placement,
+        palette_id,
+        authoring,
+    )?;
+    artifact.report.project_identity = Some(project_identity.clone());
+    Ok(artifact)
+}
+
 fn ingest_static_placeable_source_v1(
     source_glb: &[u8],
 ) -> Result<crate::glb::GlbIngestResult, PlaceableErrorV1> {
@@ -1347,6 +1395,7 @@ pub fn build_static_placeable_package_v1(
             schema_version: 1,
             status: "OFFLINE_ADMISSION_PASSED".to_owned(),
             profile: "STATIC_PLACEABLE".to_owned(),
+            project_identity: None,
             component_statuses: StaticPlaceableComponentStatusesV1 {
                 mdl: "passed".to_owned(),
                 pwk: "passed".to_owned(),

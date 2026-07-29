@@ -21,6 +21,7 @@ const row: AnimationCatalogRowV1 = {
   label: "Idle",
   description: "Idle",
   slot: "cpause1",
+  gameplayFloor: true,
   modelType: "S",
   playbackPolicy: "ENGINE_MANAGED",
   sourceLabel: "Idle Source",

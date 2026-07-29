@@ -29,6 +29,7 @@ export type AuthoredAnimationClipStatusV1 =
 export type AuthoredAnimationSourceKindV1 =
   | "BLANK_POSE"
   | "SOURCE_CLIP_COPY"
+  | "IMPORTED_MODEL_COPY"
   | "PROCEDURAL_TEMPLATE";
 export type AuthoredAnimationTrackPathV1 = "TRANSLATION" | "ROTATION";
 export type AuthoredAnimationInterpolationV1 = "LINEAR";

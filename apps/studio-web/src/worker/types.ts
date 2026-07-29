@@ -68,6 +68,7 @@ export type StudioWorkerRequest =
       appearanceTwoDa: ArrayBuffer;
       packageLane: "H1_SKINNED_FULL_42_AUTHORED";
       animationAuthoringJson: string;
+      projectIdentityJson: string;
       eventAuthoringJson?: string;
     }
   | {
@@ -78,6 +79,7 @@ export type StudioWorkerRequest =
       packageLane: "H1_SKINNED_FULL_42_EDITED";
       animationAuthoringJson: string;
       animationStudioDocumentJson: string;
+      projectIdentityJson: string;
       eventAuthoringJson?: string;
     }
   | {
@@ -85,7 +87,7 @@ export type StudioWorkerRequest =
       type: "BUILD_PLACEABLE_PACKAGE";
       sourceGlb: ArrayBuffer;
       placeablesTwoDa: ArrayBuffer;
-      identityJson: string;
+      projectIdentityJson: string;
       placementJson: string;
       paletteId: number;
       authoringJson?: string;

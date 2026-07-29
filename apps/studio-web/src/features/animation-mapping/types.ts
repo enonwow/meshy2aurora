@@ -13,6 +13,7 @@ export interface AuroraAnimationStateDefinitionV1 {
   readonly label: string;
   readonly description: string;
   readonly slot: DirectCreatureBaseSlotV1;
+  readonly gameplayFloor: boolean;
   readonly supportedModelTypes: readonly DirectCreatureModelTypeV1[];
   readonly playbackPolicy: PlaybackPolicyV1;
 }
@@ -24,7 +25,7 @@ export interface CreatureAnimationCatalogContractV1 {
   playbackPolicy: PlaybackPolicyV1;
   states: Array<Pick<
     AuroraAnimationStateDefinitionV1,
-    "stateId" | "label" | "description" | "slot"
+    "stateId" | "label" | "description" | "slot" | "gameplayFloor"
   >>;
 }
 
@@ -198,6 +199,8 @@ export interface CreatureAnimationInspectionV1 {
 
 export type AnimationCatalogFilterV1 =
   | "NEEDS_ATTENTION"
+  | "MISSING_GAMEPLAY_7"
+  | "MISSING_BASE_42"
   | "BASE_42"
   | "CUSTOM";
 
@@ -214,6 +217,7 @@ export interface AnimationCatalogRowV1 {
   readonly label: string;
   readonly description: string;
   readonly slot: DirectCreatureBaseSlotV1 | null;
+  readonly gameplayFloor: boolean;
   readonly modelType: DirectCreatureModelTypeV1;
   readonly playbackPolicy: PlaybackPolicyV1 | CustomAnimationPlaybackV1;
   readonly sourceLabel: string | null;

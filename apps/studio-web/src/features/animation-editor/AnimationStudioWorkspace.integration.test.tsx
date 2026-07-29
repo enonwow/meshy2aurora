@@ -53,6 +53,152 @@ afterEach(async () => {
 });
 
 describe("AnimationStudioWorkspace integration", () => {
+  it("copies sequential compatible donors into one Custom library without losing provenance", async () => {
+    let latestDocument = emptyDocument();
+    const donorRevision = "b".repeat(64);
+    const secondDonorRevision = "d".repeat(64);
+    const importedClip = animationStudioClipFixtureV1({
+      id: "authored-imported-walk",
+      name: "walk_imported",
+      source: {
+        kind: "IMPORTED_MODEL_COPY",
+        sourceRevision: donorRevision,
+        sourceClipName: "walk",
+        sourceClipFingerprint: "c".repeat(64),
+        proceduralTemplate: null,
+      },
+    });
+    const secondImportedClip = animationStudioClipFixtureV1({
+      id: "authored-imported-attack",
+      name: "attack_imported",
+      source: {
+        kind: "IMPORTED_MODEL_COPY",
+        sourceRevision: secondDonorRevision,
+        sourceClipName: "attack",
+        sourceClipFingerprint: "e".repeat(64),
+        proceduralTemplate: null,
+      },
+    });
+    const inspect = vi.fn().mockImplementation(async (file: File) => (
+      file.name === "donor-two.glb"
+        ? {
+            sourceRevision: secondDonorRevision,
+            rig,
+            clips: [{ name: "attack", durationSeconds: 0.75, trackCount: 9 }],
+          }
+        : {
+            sourceRevision: donorRevision,
+            rig,
+            clips: [{ name: "walk", durationSeconds: 1.25, trackCount: 8 }],
+          }
+    ));
+    const importClip = vi.fn().mockImplementation(async (file: File) => (
+      file.name === "donor-two.glb" ? secondImportedClip : importedClip
+    ));
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+
+    function Harness() {
+      const [studio, setStudio] = useState(emptyDocument());
+      latestDocument = studio;
+      return (
+        <AnimationStudioWorkspace
+          document={studio}
+          authoring={emptyAuthoring()}
+          sourceInventory={[]}
+          rig={rig}
+          viewport={<div />}
+          autosaveState={{ kind: "SAVED" }}
+          diagnostics={[]}
+          onDocumentChange={setStudio}
+          onAuthoringChange={vi.fn()}
+          onInspectAnimationModel={inspect}
+          onImportAnimationModelClip={importClip}
+          onUndo={vi.fn()}
+          onRedo={vi.fn()}
+          canUndo={false}
+          canRedo={false}
+        />
+      );
+    }
+
+    await act(async () => root.render(<Harness />));
+    await click(buttonByText(container, "+ New animation"));
+    await click(buttonByText(container, "Copy from another model…"));
+    expect(container.querySelector('[role="dialog"]')?.textContent)
+      .toContain("Copy animation from another model");
+
+    const file = new File(["glb"], "donor.glb", {
+      type: "model/gltf-binary",
+    });
+    const input = required<HTMLInputElement>(
+      container.querySelector('.animation-import-dialog input[type="file"]'),
+    );
+    await act(async () => {
+      Object.defineProperty(input, "files", {
+        configurable: true,
+        value: [file],
+      });
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(inspect).toHaveBeenCalledWith(file);
+    expect(container.textContent).toContain("Compatible rig");
+    expect(container.textContent).toContain("walk · 1.25 s · 8 tracks");
+
+    await click(buttonByText(container, "Copy to Custom"));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(importClip).toHaveBeenCalledWith(
+      file,
+      "walk",
+      expect.stringMatching(/^authored-/),
+      "imp_walk",
+    );
+    expect(latestDocument.authoredClips).toEqual([importedClip]);
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(container.textContent).toContain("walk_imported");
+
+    await click(buttonByText(container, "+ New animation"));
+    await click(buttonByText(container, "Copy from another model…"));
+    const secondFile = new File(["glb-two"], "donor-two.glb", {
+      type: "model/gltf-binary",
+    });
+    const secondInput = required<HTMLInputElement>(
+      container.querySelector('.animation-import-dialog input[type="file"]'),
+    );
+    await act(async () => {
+      Object.defineProperty(secondInput, "files", {
+        configurable: true,
+        value: [secondFile],
+      });
+      secondInput.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(container.textContent).toContain("attack · 0.75 s · 9 tracks");
+    await click(buttonByText(container, "Copy to Custom"));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(latestDocument.authoredClips).toHaveLength(2);
+    expect(latestDocument.authoredClips.map(({ source }) => (
+      source.sourceRevision
+    ))).toEqual([donorRevision, secondDonorRevision]);
+    expect(latestDocument.authoredClips.map(({ source }) => (
+      source.sourceClipFingerprint
+    ))).toEqual(["c".repeat(64), "e".repeat(64)]);
+  });
+
   it("creates from the current pose, edits translation and rotation at one playhead, saves to Custom, and keeps rename identity stable", async () => {
     let latestDocument = emptyDocument();
     let latestAuthoring = emptyAuthoring();
@@ -855,7 +1001,7 @@ describe("CustomAnimationMappingPanel integration", () => {
     expect(onOpenClip).toHaveBeenCalledWith(start.id);
   });
 
-  it("keeps Draft and Invalid entries unassignable, assigns Valid by stable ID, and opens the exact authored clip after rename", async () => {
+  it("keeps Draft and Invalid entries unassignable, previews before explicit assignment, and opens the exact authored clip after rename", async () => {
     const draft = animationStudioClipFixtureV1({
       id: "clip-draft",
       name: "draft_output",
@@ -938,6 +1084,20 @@ describe("CustomAnimationMappingPanel integration", () => {
     expect(latestAuthoring.assignments).toHaveLength(0);
 
     await click(validRow);
+    expect(latestAuthoring.assignments).toHaveLength(0);
+    expect(validRow.getAttribute("aria-label")).toContain("provider USER_CUSTOM");
+    expect(validRow.getAttribute("aria-label")).toContain(
+      "asset clip-valid-stable",
+    );
+    expect(container.textContent).toContain(
+      "Provider: USER_CUSTOM · Asset: clip-valid-stable · Ownership: USER_OWNED",
+    );
+
+    await click(buttonByText(container, "Preview selected Custom"));
+    expect(onOpenClip).toHaveBeenCalledWith("clip-valid-stable");
+    expect(latestAuthoring.assignments).toHaveLength(0);
+
+    await click(buttonByText(container, "Assign custom animation"));
     expect(latestAuthoring.assignments).toEqual([
       expect.objectContaining({
         targetSlot: "cwalk",
@@ -958,7 +1118,7 @@ describe("CustomAnimationMappingPanel integration", () => {
     ).toBe("custom-valid-stable");
 
     await click(buttonByText(container, "Open selected in editor"));
-    expect(onOpenClip).toHaveBeenCalledWith("clip-valid-stable");
+    expect(onOpenClip).toHaveBeenLastCalledWith("clip-valid-stable");
   });
 
   it("assigns a migrated source-backed Custom while keeping Open in editor disabled", async () => {
@@ -1014,10 +1174,16 @@ describe("CustomAnimationMappingPanel integration", () => {
     expect(row.getAttribute("aria-disabled")).toBe("false");
     expect(row.getAttribute("aria-label")).toContain("read-only source clips");
     const open = buttonByText(container, "Open selected in editor");
+    const preview = buttonByText(container, "Preview selected Custom");
     expect(open.disabled).toBe(true);
+    expect(preview.disabled).toBe(true);
     expect(open.title).toContain("Edit copy");
+    expect(row.getAttribute("aria-label")).toContain("provider SOURCE_GLB");
+    expect(row.getAttribute("aria-label")).toContain(`asset ${sourceRevision}`);
 
     await click(row);
+    expect(latestAuthoring.assignments).toHaveLength(0);
+    await click(buttonByText(container, "Assign custom animation"));
     expect(latestAuthoring.assignments).toEqual([
       expect.objectContaining({
         targetSlot: "cwalk",

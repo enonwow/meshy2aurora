@@ -1,0 +1,100 @@
+[aria-label="Canonical Worker artifact downloads"] {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+[aria-label="Canonical Worker artifact downloads"] > .status {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+[aria-label="Canonical Worker artifact downloads"] > .status span,
+[aria-label="Canonical Worker artifact downloads"] > p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: .72rem;
+}
+
+.download-manifest {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid var(--accent-soft);
+  border-radius: var(--radius-sm);
+  background: rgb(24 204 225 / 6%);
+}
+
+.download-manifest > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.download-manifest strong {
+  overflow-wrap: anywhere;
+}
+
+.download-manifest span {
+  color: var(--text-muted);
+  font-size: .7rem;
+}
+
+.download-manifest button,
+[aria-label="Canonical Worker artifact downloads"] li button {
+  flex: none;
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel-raised);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.download-manifest button:disabled,
+[aria-label="Canonical Worker artifact downloads"] li button:disabled {
+  cursor: not-allowed;
+  opacity: .4;
+}
+
+[aria-label="Canonical Worker artifact downloads"] > ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+[aria-label="Canonical Worker artifact downloads"] > ul > li {
+  display: grid;
+  grid-template-columns: minmax(180px, .7fr) minmax(220px, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+}
+
+[aria-label="Canonical Worker artifact downloads"] li code {
+  min-width: 0;
+  overflow: hidden;
+  font-size: .66rem;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 760px) {
+  [aria-label="Canonical Worker artifact downloads"] > .status,
+  .download-manifest {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  [aria-label="Canonical Worker artifact downloads"] > ul > li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

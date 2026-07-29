@@ -53,6 +53,16 @@ export function CustomAnimationPicker({
           type="button"
           disabled={!selected?.openableInEditor}
           title={selected && !selected.openableInEditor
+            ? "Preview requires an authored clip. Create an editable copy first."
+            : undefined}
+          onClick={() => selectedId && onOpenSelected(selectedId)}
+        >
+          Preview selected Custom
+        </button>
+        <button
+          type="button"
+          disabled={!selected?.openableInEditor}
+          title={selected && !selected.openableInEditor
             ? "This Custom item references a read-only source clip. Use Edit copy to create an authored clip."
             : undefined}
           onClick={() => selectedId && onOpenSelected(selectedId)}
@@ -60,6 +70,20 @@ export function CustomAnimationPicker({
           Open selected in editor
         </button>
       </footer>
+      {selected ? (
+        <section
+          className="custom-animation-picker__preview"
+          aria-label="Selected Custom preview"
+        >
+          <strong>{selected.name}</strong>
+          <span>{selected.durationSeconds.toFixed(2)} s · {selected.status}</span>
+          <span>
+            {selected.openableInEditor
+              ? "Preview opens this exact authored clip without assigning it."
+              : "Create an editable copy to preview this read-only source realization."}
+          </span>
+        </section>
+      ) : null}
     </section>
   );
 }

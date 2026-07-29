@@ -1,0 +1,79 @@
+.authored-animation-review__comparison {
+  display: grid;
+  gap: 8px;
+}
+
+.authored-animation-review__comparison > div {
+  overflow-x: auto;
+}
+
+.authored-animation-review__comparison table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .72rem;
+}
+
+.authored-animation-review__comparison th,
+.authored-animation-review__comparison td {
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.authored-animation-review__comparison thead th {
+  color: var(--text-muted);
+}
+
+.authored-animation-review__comparison td[data-status="match"] {
+  color: var(--success);
+}
+
+.authored-animation-review__comparison td[data-status="mismatch"] {
+  color: var(--danger);
+}
+
+.authored-animation-review__first-mismatch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+}
+
+.authored-animation-review__first-mismatch span,
+.authored-animation-review__first-mismatch p {
+  color: var(--text-muted);
+  font-size: .72rem;
+}
+
+.authored-animation-review__first-mismatch p {
+  grid-column: 1;
+  margin: 0;
+}
+
+.authored-animation-review__first-mismatch button {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  align-self: center;
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel-raised);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  .authored-animation-review__first-mismatch {
+    grid-template-columns: 1fr;
+  }
+
+  .authored-animation-review__first-mismatch button {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+  }
+}

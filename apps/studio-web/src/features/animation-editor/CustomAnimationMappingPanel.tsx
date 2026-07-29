@@ -75,13 +75,6 @@ export function CustomAnimationMappingPanel({
           const item = items.find((candidate) => candidate.id === id);
           if (!item?.assignable) return;
           setPreferredCustomId(id);
-          onAuthoringChange(assignCustomAnimationToBaseSlotV2(
-            authoring,
-            slot,
-            id,
-            studio,
-            sourceInventory,
-          ));
         }}
         onCreate={onCreate}
         onOpenSelected={openSelected}

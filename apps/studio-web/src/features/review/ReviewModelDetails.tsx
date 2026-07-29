@@ -49,6 +49,65 @@ function rootCount(readback: BinaryMdlInspectionReport) {
   return readback.nodeTree.roots.length;
 }
 
+function isBlockingSeverity(value: string) {
+  return ["BLOCKING", "ERROR", "FATAL", "FAIL", "FAILED"]
+    .includes(value.trim().toUpperCase());
+}
+
+function firstMismatch(
+  result: CanonicalResultSnapshot,
+  readback: BinaryMdlInspectionReport,
+) {
+  if (result.semanticEvidence.semanticDiff[0]) {
+    return {
+      code: "WRITER-SEMANTIC-DIFF",
+      path: "artifacts.model-mdl",
+      message: result.semanticEvidence.semanticDiff[0],
+      target: "artifact-model-mdl",
+    };
+  }
+  const deviation = result.semanticEvidence.deviations[0];
+  if (deviation) {
+    return {
+      ...deviation,
+      target: "artifact-model-mdl",
+    };
+  }
+  const gate = result.conversionEvidence.gates.find(({ severity }) => (
+    isBlockingSeverity(severity)
+  ));
+  if (gate) {
+    return {
+      code: gate.code,
+      path: gate.path,
+      message: gate.message,
+      target: "artifact-report-json",
+    };
+  }
+  const diagnostic = result.conversionEvidence.diagnostics.find(({ severity }) => (
+    isBlockingSeverity(severity)
+  ));
+  if (diagnostic) {
+    return {
+      code: diagnostic.code,
+      path: diagnostic.path,
+      message: diagnostic.message,
+      target: "artifact-report-json",
+    };
+  }
+  const readbackDiagnostic = readback.diagnostics.find(({ severity }) => (
+    isBlockingSeverity(severity)
+  ));
+  return readbackDiagnostic
+    ? {
+        code: readbackDiagnostic.code,
+        path: `byteOffset:${readbackDiagnostic.offset}`,
+        message: readbackDiagnostic.context,
+        target: "artifact-model-mdl",
+      }
+    : undefined;
+}
+
 export function ReviewModelDetails({
   result,
   readback,
@@ -60,6 +119,10 @@ export function ReviewModelDetails({
 }: ReviewModelDetailsProps) {
   const metrics = pairedReviewMetrics(result.sourceMetrics, result.convertedMetrics);
   const semanticPass = result.semanticEvidence.semanticDiff.length === 0;
+  const mismatch = firstMismatch(result, readback);
+  const readbackAnimationNames = new Set(
+    readback.animations.map(({ name }) => name.toLowerCase()),
+  );
   const readbackStatus = readback.validation?.status ?? "UNAVAILABLE";
   const readbackLabel = readbackStatus === "PASS"
     ? "Verified by binary readback"
@@ -132,7 +195,9 @@ export function ReviewModelDetails({
                   <th scope="col">Aurora slot</th>
                   <th scope="col">Source</th>
                   <th scope="col">Provider / asset</th>
+                  <th scope="col">Ownership</th>
                   <th scope="col">Fallback path</th>
+                  <th scope="col">Binary readback</th>
                 </tr>
               </thead>
               <tbody>
@@ -141,10 +206,20 @@ export function ReviewModelDetails({
                     <th scope="row">{animation.targetSlot}</th>
                     <td>{animation.sourceClipName ?? animation.sourceKind}</td>
                     <td>{animation.provider} · {animation.assetId}</td>
+                    <td>{animation.ownership}</td>
                     <td>
                       {animation.viaFallbackSlots.length > 0
                         ? `${animation.viaFallbackSlots.join(" → ")} → ${animation.resolvedSourceSlot}`
                         : "Direct"}
+                    </td>
+                    <td data-status={
+                      readbackAnimationNames.has(animation.targetSlot.toLowerCase())
+                        ? "pass"
+                        : "fail"
+                    }>
+                      {readbackAnimationNames.has(animation.targetSlot.toLowerCase())
+                        ? "MATCH"
+                        : "MISSING"}
                     </td>
                   </tr>
                 ))}
@@ -154,25 +229,119 @@ export function ReviewModelDetails({
           {result.animationMappingEvidence.customAnimations.length > 0 ? (
             <div>
               <h4>Custom animations</h4>
-              <ul>
-                {result.animationMappingEvidence.customAnimations.map((custom) => (
-                  <li key={custom.id}>
-                    <strong>{custom.id} · {custom.playback}</strong>
-                    {custom.outputClipNames.map((output, index) => (
-                      <span key={output}>
-                        {` ${custom.phases[index] ?? "ONE_SHOT"}: ${output} ← ${
-                          custom.sourceClipNames[index]
-                        }`}
-                      </span>
+              <div className="review-model__animation-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">Custom ID</th>
+                      <th scope="col">Playback / phase</th>
+                      <th scope="col">Source → output</th>
+                      <th scope="col">Provider / asset</th>
+                      <th scope="col">Ownership</th>
+                      <th scope="col">Binary readback</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.animationMappingEvidence.customAnimations.flatMap((custom) => (
+                      custom.outputClipNames.map((output, index) => (
+                        <tr key={`${custom.id}:${output}`}>
+                          <th scope="row">{custom.id}</th>
+                          <td>{custom.playback} · {custom.phases[index] ?? "ONE_SHOT"}</td>
+                          <td>{custom.sourceClipNames[index]} → {output}</td>
+                          <td>{custom.provider} · {custom.assetId}</td>
+                          <td>{custom.ownership}</td>
+                          <td data-status={
+                            readbackAnimationNames.has(output.toLowerCase())
+                              ? "pass"
+                              : "fail"
+                          }>
+                            {readbackAnimationNames.has(output.toLowerCase())
+                              ? "MATCH"
+                              : "MISSING"}
+                          </td>
+                        </tr>
+                      ))
                     ))}
-                    {` · ${custom.provider}`}
-                  </li>
-                ))}
-              </ul>
+                  </tbody>
+                </table>
+              </div>
             </div>
           ) : <p>No custom animations were included.</p>}
         </section>
       ) : null}
+
+      <section className="review-model__animation-evidence" aria-labelledby="review-animation-evidence-heading">
+        <header>
+          <h3 id="review-animation-evidence-heading">Animation evidence</h3>
+          <span>Exact Core report and binary-readback facts</span>
+        </header>
+        <div>
+          <article>
+            <span>Completeness</span>
+            <strong data-status={
+              result.animationCompletenessEvidence?.complete ? "pass" : "unavailable"
+            }>
+              {result.animationCompletenessEvidence?.complete ? "COMPLETE" : "NOT EMITTED"}
+            </strong>
+            <small>
+              {result.animationCompletenessEvidence
+                ? `${result.animationCompletenessEvidence.requiredClipCount} required · ${result.animationCompletenessEvidence.explicitClipCount} explicit · ${result.animationCompletenessEvidence.proceduralClipCount} procedural · ${result.animationCompletenessEvidence.fallbackAliasCount} fallback alias(es) · ${result.animationCompletenessEvidence.profile}`
+                : "This package emitted no direct-creature completeness contract."}
+            </small>
+          </article>
+          <article>
+            <span>Behavior</span>
+            <strong data-status={
+              result.animationBehaviorEvidence?.behaviorCandidateEligible
+                ? "pass"
+                : "unavailable"
+            }>
+              {result.animationBehaviorEvidence?.behaviorCandidateEligible
+                ? "CANDIDATE ELIGIBLE"
+                : "NOT EMITTED"}
+            </strong>
+            <small>
+              {result.animationBehaviorEvidence
+                ? `${result.animationBehaviorEvidence.observedClipCount}/${result.animationBehaviorEvidence.requiredNamespaceClipCount} states · walk/run distinct ${result.animationBehaviorEvidence.walkRunDistinct ? "yes" : "no"} · essential states distinct ${result.animationBehaviorEvidence.essentialStatesDistinct ? "yes" : "no"} · ${result.animationBehaviorEvidence.violations.length} violation(s)`
+                : "This package emitted no behavior-candidate contract."}
+            </small>
+          </article>
+          <article>
+            <span>Events</span>
+            <strong data-status={result.animationEventEvidence?.complete ? "pass" : "unavailable"}>
+              {result.animationEventEvidence?.complete ? "COMPLETE" : "NOT EMITTED"}
+            </strong>
+            <small>
+              {result.animationEventEvidence
+                ? `${result.animationEventEvidence.satisfiedPairCount}/${result.animationEventEvidence.requiredPairCount} required pairs · ${result.animationEventEvidence.totalEventCount} event(s) · ${result.animationEventEvidence.unknownEventNames.length} unknown`
+                : "Per-clip authored markers remain visible below; no aggregate event conformance was emitted."}
+            </small>
+          </article>
+          <article>
+            <span>Deformation</span>
+            <strong data-status={result.skinAnimationEvidence?.complete ? "pass" : "unavailable"}>
+              {result.geometry.deformation}
+              {result.skinAnimationEvidence?.complete ? " · COMPLETE" : ""}
+            </strong>
+            <small>
+              {result.skinAnimationEvidence
+                ? `${result.skinAnimationEvidence.activeJointCount} active joints · ${result.skinAnimationEvidence.clips.length}/${result.skinAnimationEvidence.requiredClipCount} sampled clips · ${result.skinAnimationEvidence.violations.length} violation(s)`
+                : `${result.geometry.joints} active joints; no sampled skin-conformance evidence was emitted.`}
+            </small>
+          </article>
+        </div>
+      </section>
+
+      <section className="review-model__first-mismatch" aria-labelledby="review-first-mismatch-heading">
+        <div>
+          <span>First mismatch</span>
+          <h3 id="review-first-mismatch-heading">
+            {mismatch ? mismatch.code : "None in canonical offline reconciliation"}
+          </h3>
+          <p>{mismatch ? `${mismatch.path} · ${mismatch.message}` : "Source, generated evidence and binary readback have no reported blocking mismatch."}</p>
+        </div>
+        {mismatch ? <a href={`#${mismatch.target}`}>Open exact artifact</a> : null}
+      </section>
 
       <div className="review-model__evidence" aria-label="Canonical evidence">
         {result.runtimeFixtureContract && (

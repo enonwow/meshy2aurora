@@ -214,6 +214,16 @@ export interface MeshyTextTo3DOptions {
   readonly animationActionId?: number;
 }
 
+export const AURORA_MODEL_TRIANGLE_BUDGET_V1 = 20_000;
+
+export function maximumMeshyTargetPolycount(
+  options: Pick<MeshyTextTo3DOptions, "modelType" | "aiModel">,
+): number {
+  return options.modelType === "smart-topology" && options.aiModel === "meshy-t2"
+    ? 15_000
+    : AURORA_MODEL_TRIANGLE_BUDGET_V1;
+}
+
 export const DEFAULT_MESHY_TEXT_TO_3D_OPTIONS: MeshyTextTo3DOptions = {
   modelType: "standard",
   // Keep generation reproducible in the Studio. "latest" is still accepted by
@@ -222,7 +232,7 @@ export const DEFAULT_MESHY_TEXT_TO_3D_OPTIONS: MeshyTextTo3DOptions = {
   aiModel: "meshy-6",
   shouldRemesh: true,
   topology: "triangle",
-  targetPolycount: 30_000,
+  targetPolycount: AURORA_MODEL_TRIANGLE_BUDGET_V1,
   poseMode: "",
   moderation: true,
   targetFormats: ["glb"],
@@ -434,6 +444,19 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
     const hasTaskInput = Boolean(input.inputTaskId?.trim());
     if (!profile) {
       throw new MeshyBridgeError("PREVIEW_NOT_FOUND", "Select a supported generation profile.");
+    }
+    if (
+      input.apiOptions
+      && (
+        !Number.isInteger(input.apiOptions.targetPolycount)
+        || input.apiOptions.targetPolycount < 100
+        || input.apiOptions.targetPolycount > maximumMeshyTargetPolycount(input.apiOptions)
+      )
+    ) {
+      throw new MeshyBridgeError(
+        "PREVIEW_NOT_FOUND",
+        `Target polycount must be between 100 and ${maximumMeshyTargetPolycount(input.apiOptions)}.`,
+      );
     }
     if (source === "TEXT" && !input.prompt.trim()) {
       throw new MeshyBridgeError("PREVIEW_NOT_FOUND", "Text to 3D requires an asset prompt.");

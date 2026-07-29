@@ -4,6 +4,7 @@ use m2a_core::{
     erf::ErfArchive,
     gff::{GffLimitsV1, GffValueV1, read_gff_v32},
     mdl::MdlMaterialTextureBindingV1,
+    model_pipeline::ProjectBuildIdentityV1,
     owned_fixture::synthetic_owned_m6_glb_v1,
     placeable::{
         GIC_RESOURCE_TYPE, GIT_RESOURCE_TYPE, IFO_RESOURCE_TYPE, ITP_RESOURCE_TYPE,
@@ -11,6 +12,7 @@ use m2a_core::{
         PlaceableTextureInputV1, StaticPlaceableBlueprintV1, StaticPlaceableBuildRequestV1,
         StaticPlaceableIdentityV1, UTP_RESOURCE_TYPE, append_static_placeable_2da_v1,
         build_meshy_static_placeable_package_v1, build_meshy_static_placeable_package_v2,
+        build_meshy_static_placeable_package_v3_with_project_identity,
         build_static_placeable_package_v1, inspect_meshy_static_placeable_authoring_v1,
         static_placeable_glb_limits_v1, static_placeable_profile_a_options_v1,
         write_placeable_palette_itp_v1, write_static_placeable_utp_v1,
@@ -581,19 +583,87 @@ fn inspect_owner_placeable_glb_without_materializing_a_candidate() {
 }
 
 #[test]
-fn placeable_profile_admits_the_native_single_mesh_triangle_boundary() {
+fn placeable_profile_uses_the_shared_product_budget_below_the_binary_boundary() {
     let options = static_placeable_profile_a_options_v1();
     let glb_limits = static_placeable_glb_limits_v1();
     assert_eq!(
         options.limits.triangle_blocking_above,
-        m2a_core::mdl::NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1 as u64
+        m2a_core::AURORA_MODEL_TRIANGLE_BUDGET_V1 as u64
     );
     assert_eq!(
         glb_limits.triangle_blocking_above,
-        m2a_core::mdl::NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1
+        m2a_core::AURORA_MODEL_TRIANGLE_BUDGET_V1
     );
-    assert!(options.limits.triangle_warning_above < 20_000);
-    assert!(glb_limits.triangle_warning_above < 20_000);
+    assert_eq!(
+        options.limits.triangle_warning_above,
+        m2a_core::AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 as u64
+    );
+    assert_eq!(
+        glb_limits.triangle_warning_above,
+        m2a_core::AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1
+    );
     assert_eq!(m2a_core::mdl::NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1, 21_845);
     assert_eq!(m2a_core::mdl::NWN_EE_MAX_MESH_INDEX_COUNT_V1, 65_535);
+}
+
+#[test]
+fn project_identity_owns_placeable_names_and_report_lineage() {
+    let source = static_source_glb();
+    let project = ProjectBuildIdentityV1 {
+        schema_version: 1,
+        project_id: "owner-placeable-project".to_owned(),
+        project_name: "Owner Ritual Pedestal".to_owned(),
+        project_revision: 7,
+    };
+    let first = build_meshy_static_placeable_package_v3_with_project_identity(
+        &source,
+        &base_placeables_2da(),
+        &project,
+        PlaceablePlacementV1::default(),
+        7,
+        None,
+    )
+    .expect("project-owned placeable");
+    let second = build_meshy_static_placeable_package_v3_with_project_identity(
+        &source,
+        &base_placeables_2da(),
+        &project,
+        PlaceablePlacementV1::default(),
+        7,
+        None,
+    )
+    .expect("same revision");
+
+    assert_eq!(first.report.project_identity, Some(project.clone()));
+    assert_eq!(
+        first.report.module_file_name,
+        second.report.module_file_name
+    );
+    assert_eq!(first.report.hak_file_name, second.report.hak_file_name);
+    assert_eq!(first.report.module_sha256, second.report.module_sha256);
+    assert_eq!(first.report.hak_sha256, second.report.hak_sha256);
+    assert_eq!(first.report.model_resref.len(), 16);
+    assert_eq!(
+        first.report.module_file_name,
+        format!("{}.mod", first.report.model_resref)
+    );
+    assert_eq!(
+        first.report.hak_file_name,
+        format!("{}.hak", first.report.model_resref)
+    );
+
+    let changed = build_meshy_static_placeable_package_v3_with_project_identity(
+        &source,
+        &base_placeables_2da(),
+        &ProjectBuildIdentityV1 {
+            project_revision: 8,
+            ..project
+        },
+        PlaceablePlacementV1::default(),
+        7,
+        None,
+    )
+    .expect("next revision");
+    assert_ne!(first.report.model_resref, changed.report.model_resref);
+    assert_ne!(first.report.module_sha256, changed.report.module_sha256);
 }

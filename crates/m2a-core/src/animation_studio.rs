@@ -98,6 +98,7 @@ pub enum AuthoredAnimationClipStatusV1 {
 pub enum AuthoredAnimationSourceKindV1 {
     BlankPose,
     SourceClipCopy,
+    ImportedModelCopy,
     ProceduralTemplate,
 }
 
@@ -540,7 +541,9 @@ pub fn validate_animation_studio_schema_v1(
                 "Rename one clip so output names are unique case-insensitively.",
             ));
         }
-        if clip.source.source_revision != document.source_revision {
+        if clip.source.kind != AuthoredAnimationSourceKindV1::ImportedModelCopy
+            && clip.source.source_revision != document.source_revision
+        {
             diagnostics.push(diagnostic(
                 DIAGNOSTIC_SOURCE_STALE,
                 format!("authoredClips[{index}].source.sourceRevision"),
@@ -2110,6 +2113,17 @@ fn validate_authored_source_shape(
                 && source.procedural_template.is_none()
         }
         AuthoredAnimationSourceKindV1::SourceClipCopy => {
+            source
+                .source_clip_name
+                .as_deref()
+                .is_some_and(|name| !name.trim().is_empty())
+                && source
+                    .source_clip_fingerprint
+                    .as_deref()
+                    .is_some_and(is_sha256)
+                && source.procedural_template.is_none()
+        }
+        AuthoredAnimationSourceKindV1::ImportedModelCopy => {
             source
                 .source_clip_name
                 .as_deref()

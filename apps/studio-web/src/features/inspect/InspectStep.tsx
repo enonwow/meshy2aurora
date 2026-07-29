@@ -9,13 +9,24 @@ import {
 } from "./ValidationPanel";
 import "./inspect.css";
 
+export interface InspectProfileRequirement {
+  readonly id: string;
+  readonly label: string;
+  readonly expected: string;
+  readonly actual: string;
+  readonly status: "PASS" | "ERROR" | "UNAVAILABLE";
+  readonly repair: string;
+}
+
 export interface InspectStepProps {
   readonly viewport: ReactNode;
   readonly sourceMetrics: SourceInspectionMetrics;
   readonly validationChecks: readonly InspectValidationCheck[];
+  readonly profileRequirements?: readonly InspectProfileRequirement[];
   readonly animationPlayer?: ReactNode;
   readonly debugOverlays?: ReactNode;
   readonly canContinue: boolean;
+  readonly continueLabel?: "Continue to Animation Mapping" | "Continue to Build";
   readonly wideViewport?: boolean;
   readonly onBack: () => void;
   readonly onContinue: () => void;
@@ -26,9 +37,11 @@ export function InspectStep({
   viewport,
   sourceMetrics,
   validationChecks,
+  profileRequirements = [],
   animationPlayer,
   debugOverlays,
   canContinue,
+  continueLabel = "Continue to Build",
   wideViewport = false,
   onBack,
   onContinue,
@@ -42,8 +55,8 @@ export function InspectStep({
     >
       <header className="inspect-step__heading">
         <div>
-          <p className="inspect-step__eyebrow">Step 2</p>
-          <h1 id="inspect-step-heading">Inspect source</h1>
+          <p className="inspect-step__eyebrow">Inspect</p>
+          <h1 id="inspect-step-heading">Inspect</h1>
         </div>
         <p>Review the source model and validation evidence before building.</p>
       </header>
@@ -59,6 +72,35 @@ export function InspectStep({
 
         <aside className="inspect-step__evidence" aria-label="Source inspection evidence">
           <SourceInspectionPanel metrics={sourceMetrics} />
+          {profileRequirements.length > 0 ? (
+            <section
+              className="inspect-panel inspect-profile-requirements"
+              aria-labelledby="inspect-profile-requirements-heading"
+            >
+              <header className="inspect-panel__header">
+                <h2 id="inspect-profile-requirements-heading">Creature H1 profile</h2>
+                <span>Pre-build requirements</span>
+              </header>
+              <ul>
+                {profileRequirements.map((requirement) => (
+                  <li key={requirement.id} data-status={requirement.status}>
+                    <header>
+                      <strong>{requirement.label}</strong>
+                      <span>{requirement.status}</span>
+                    </header>
+                    <p>
+                      Expected: {requirement.expected}
+                      <br />
+                      Actual: {requirement.actual}
+                    </p>
+                    {requirement.status === "ERROR" ? (
+                      <small>Repair: {requirement.repair}</small>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           <ValidationPanel checks={validationChecks} onSelectCheck={onSelectValidationCheck} />
         </aside>
       </div>
@@ -78,7 +120,7 @@ export function InspectStep({
           onClick={onContinue}
           disabled={!canContinue}
         >
-          Continue to Build
+          {continueLabel}
         </button>
       </footer>
     </section>

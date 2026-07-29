@@ -1,50 +1,305 @@
 {
-  "schemaVersion": 1,
-  "profile": "DIRECT_CREATURE_S_L_BASE_42_CATALOG_V1",
-  "supportedModelTypes": ["S", "L"],
   "playbackPolicy": "ENGINE_MANAGED",
+  "profile": "DIRECT_CREATURE_S_L_BASE_42_CATALOG_V1",
+  "schemaVersion": 1,
   "states": [
-    {"stateId": "aurora.direct-creature.attack.slash-left", "label": "Attack — slash left", "description": "Primary left slash attack state.", "slot": "ca1slashl"},
-    {"stateId": "aurora.direct-creature.attack.slash-right", "label": "Attack — slash right", "description": "Primary right slash attack state.", "slot": "ca1slashr"},
-    {"stateId": "aurora.direct-creature.attack.stab", "label": "Attack — stab", "description": "Primary stab attack state.", "slot": "ca1stab"},
-    {"stateId": "aurora.direct-creature.attack.reach", "label": "Attack — reach", "description": "Reach attack state.", "slot": "creach"},
-    {"stateId": "aurora.direct-creature.spell.conjure", "label": "Spell — conjure", "description": "Spell preparation state.", "slot": "cconjure1"},
-    {"stateId": "aurora.direct-creature.spell.cast-out", "label": "Spell — cast out", "description": "Spell release state.", "slot": "ccastout"},
-    {"stateId": "aurora.direct-creature.defense.parry-left", "label": "Defense — parry left", "description": "Left parry state.", "slot": "cparryl"},
-    {"stateId": "aurora.direct-creature.defense.parry-right", "label": "Defense — parry right", "description": "Right parry state.", "slot": "cparryr"},
-    {"stateId": "aurora.direct-creature.defense.dodge-lateral", "label": "Defense — lateral dodge", "description": "Lateral dodge state.", "slot": "cdodgelr"},
-    {"stateId": "aurora.direct-creature.defense.dodge-short", "label": "Defense — short dodge", "description": "Short dodge state.", "slot": "cdodges"},
-    {"stateId": "aurora.direct-creature.combat.ready-right", "label": "Combat ready — right", "description": "Right-side combat-ready state.", "slot": "creadyr"},
-    {"stateId": "aurora.direct-creature.combat.ready-left", "label": "Combat ready — left", "description": "Left-side combat-ready state.", "slot": "creadyl"},
-    {"stateId": "aurora.direct-creature.damage.left", "label": "Damage — left", "description": "Left damage-response state.", "slot": "cdamagel"},
-    {"stateId": "aurora.direct-creature.damage.right", "label": "Damage — right", "description": "Right damage-response state.", "slot": "cdamager"},
-    {"stateId": "aurora.direct-creature.damage.short", "label": "Damage — short", "description": "Short damage-response state.", "slot": "cdamages"},
-    {"stateId": "aurora.direct-creature.knockdown.fall", "label": "Knockdown — fall", "description": "Knockdown transition state.", "slot": "ckdbck"},
-    {"stateId": "aurora.direct-creature.knockdown.prone", "label": "Knockdown — prone", "description": "Knocked-down pose state.", "slot": "ckdbckps"},
-    {"stateId": "aurora.direct-creature.death.knockdown", "label": "Death — knockdown", "description": "Terminal knockdown death transition.", "slot": "ckdbckdie"},
-    {"stateId": "aurora.direct-creature.recovery.from-knockdown", "label": "Recovery — from knockdown", "description": "Get-up transition after knockdown.", "slot": "cguptokdb"},
-    {"stateId": "aurora.direct-creature.recovery.stand-back", "label": "Recovery — stand back", "description": "Back-facing stand-up state.", "slot": "cgustandb"},
-    {"stateId": "aurora.direct-creature.locomotion.walk", "label": "Locomotion — walk", "description": "Standard walk state.", "slot": "cwalk"},
-    {"stateId": "aurora.direct-creature.locomotion.run", "label": "Locomotion — run", "description": "Standard run state.", "slot": "crun"},
-    {"stateId": "aurora.direct-creature.locomotion.combat-walk-forward", "label": "Combat walk — forward", "description": "Forward combat-walk state.", "slot": "ccwalkf"},
-    {"stateId": "aurora.direct-creature.locomotion.combat-walk-back", "label": "Combat walk — back", "description": "Backward combat-walk state.", "slot": "ccwalkb"},
-    {"stateId": "aurora.direct-creature.locomotion.combat-walk-left", "label": "Combat walk — left", "description": "Left combat-walk state.", "slot": "ccwalkl"},
-    {"stateId": "aurora.direct-creature.locomotion.combat-walk-right", "label": "Combat walk — right", "description": "Right combat-walk state.", "slot": "ccwalkr"},
-    {"stateId": "aurora.direct-creature.idle.pause", "label": "Idle — pause", "description": "Standard idle/pause state.", "slot": "cpause1"},
-    {"stateId": "aurora.direct-creature.head.turn-left", "label": "Head turn — left", "description": "Left head-turn state.", "slot": "chturnl"},
-    {"stateId": "aurora.direct-creature.head.turn-right", "label": "Head turn — right", "description": "Right head-turn state.", "slot": "chturnr"},
-    {"stateId": "aurora.direct-creature.action.taunt", "label": "Action — taunt", "description": "Taunt state.", "slot": "ctaunt"},
-    {"stateId": "aurora.direct-creature.attack.close-low", "label": "Close attack — low", "description": "Low close-range attack state.", "slot": "cclosel"},
-    {"stateId": "aurora.direct-creature.attack.close-high", "label": "Close attack — high", "description": "High close-range attack state.", "slot": "ccloseh"},
-    {"stateId": "aurora.direct-creature.interaction.get-middle", "label": "Interaction — get middle", "description": "Get-middle transition state.", "slot": "cgetmid"},
-    {"stateId": "aurora.direct-creature.damage.knockdown", "label": "Damage — knockdown", "description": "Knockdown damage-response state.", "slot": "ckdbckdmg"},
-    {"stateId": "aurora.direct-creature.spell.cast-out-loop", "label": "Spell — cast hold", "description": "Cast-out hold state; exact runtime routing remains engine-managed.", "slot": "ccastoutlp"},
-    {"stateId": "aurora.direct-creature.condition.spasm", "label": "Condition — spasm", "description": "Spasm state.", "slot": "cspasm"},
-    {"stateId": "aurora.direct-creature.visibility.appear", "label": "Visibility — appear", "description": "Appearance transition state.", "slot": "cappear"},
-    {"stateId": "aurora.direct-creature.visibility.disappear", "label": "Visibility — disappear", "description": "Disappearance transition state.", "slot": "cdisappear"},
-    {"stateId": "aurora.direct-creature.interaction.get-middle-loop", "label": "Interaction — middle hold", "description": "Get-middle hold state; exact runtime routing remains engine-managed.", "slot": "cgetmidlp"},
-    {"stateId": "aurora.direct-creature.death.dead", "label": "Death — dead", "description": "Dead-state pose; family motion semantics remain engine-managed.", "slot": "cdead"},
-    {"stateId": "aurora.direct-creature.visibility.disappear-loop", "label": "Visibility — disappeared hold", "description": "Disappearance hold state; exact runtime routing remains engine-managed.", "slot": "cdisappearlp"},
-    {"stateId": "aurora.direct-creature.locomotion.combat-turn-right", "label": "Combat turn — right", "description": "Right combat-turn state.", "slot": "ccturnr"}
+    {
+      "description": "Primary left slash attack state.",
+      "gameplayFloor": true,
+      "label": "Attack — slash left",
+      "slot": "ca1slashl",
+      "stateId": "aurora.direct-creature.attack.slash-left"
+    },
+    {
+      "description": "Primary right slash attack state.",
+      "gameplayFloor": false,
+      "label": "Attack — slash right",
+      "slot": "ca1slashr",
+      "stateId": "aurora.direct-creature.attack.slash-right"
+    },
+    {
+      "description": "Primary stab attack state.",
+      "gameplayFloor": false,
+      "label": "Attack — stab",
+      "slot": "ca1stab",
+      "stateId": "aurora.direct-creature.attack.stab"
+    },
+    {
+      "description": "Reach attack state.",
+      "gameplayFloor": false,
+      "label": "Attack — reach",
+      "slot": "creach",
+      "stateId": "aurora.direct-creature.attack.reach"
+    },
+    {
+      "description": "Spell preparation state.",
+      "gameplayFloor": false,
+      "label": "Spell — conjure",
+      "slot": "cconjure1",
+      "stateId": "aurora.direct-creature.spell.conjure"
+    },
+    {
+      "description": "Spell release state.",
+      "gameplayFloor": false,
+      "label": "Spell — cast out",
+      "slot": "ccastout",
+      "stateId": "aurora.direct-creature.spell.cast-out"
+    },
+    {
+      "description": "Left parry state.",
+      "gameplayFloor": false,
+      "label": "Defense — parry left",
+      "slot": "cparryl",
+      "stateId": "aurora.direct-creature.defense.parry-left"
+    },
+    {
+      "description": "Right parry state.",
+      "gameplayFloor": false,
+      "label": "Defense — parry right",
+      "slot": "cparryr",
+      "stateId": "aurora.direct-creature.defense.parry-right"
+    },
+    {
+      "description": "Lateral dodge state.",
+      "gameplayFloor": false,
+      "label": "Defense — lateral dodge",
+      "slot": "cdodgelr",
+      "stateId": "aurora.direct-creature.defense.dodge-lateral"
+    },
+    {
+      "description": "Short dodge state.",
+      "gameplayFloor": false,
+      "label": "Defense — short dodge",
+      "slot": "cdodges",
+      "stateId": "aurora.direct-creature.defense.dodge-short"
+    },
+    {
+      "description": "Right-side combat-ready state.",
+      "gameplayFloor": false,
+      "label": "Combat ready — right",
+      "slot": "creadyr",
+      "stateId": "aurora.direct-creature.combat.ready-right"
+    },
+    {
+      "description": "Left-side combat-ready state.",
+      "gameplayFloor": false,
+      "label": "Combat ready — left",
+      "slot": "creadyl",
+      "stateId": "aurora.direct-creature.combat.ready-left"
+    },
+    {
+      "description": "Left damage-response state.",
+      "gameplayFloor": true,
+      "label": "Damage — left",
+      "slot": "cdamagel",
+      "stateId": "aurora.direct-creature.damage.left"
+    },
+    {
+      "description": "Right damage-response state.",
+      "gameplayFloor": false,
+      "label": "Damage — right",
+      "slot": "cdamager",
+      "stateId": "aurora.direct-creature.damage.right"
+    },
+    {
+      "description": "Short damage-response state.",
+      "gameplayFloor": false,
+      "label": "Damage — short",
+      "slot": "cdamages",
+      "stateId": "aurora.direct-creature.damage.short"
+    },
+    {
+      "description": "Knockdown transition state.",
+      "gameplayFloor": false,
+      "label": "Knockdown — fall",
+      "slot": "ckdbck",
+      "stateId": "aurora.direct-creature.knockdown.fall"
+    },
+    {
+      "description": "Knocked-down pose state.",
+      "gameplayFloor": false,
+      "label": "Knockdown — prone",
+      "slot": "ckdbckps",
+      "stateId": "aurora.direct-creature.knockdown.prone"
+    },
+    {
+      "description": "Terminal knockdown death transition.",
+      "gameplayFloor": false,
+      "label": "Death — knockdown",
+      "slot": "ckdbckdie",
+      "stateId": "aurora.direct-creature.death.knockdown"
+    },
+    {
+      "description": "Get-up transition after knockdown.",
+      "gameplayFloor": false,
+      "label": "Recovery — from knockdown",
+      "slot": "cguptokdb",
+      "stateId": "aurora.direct-creature.recovery.from-knockdown"
+    },
+    {
+      "description": "Back-facing stand-up state.",
+      "gameplayFloor": false,
+      "label": "Recovery — stand back",
+      "slot": "cgustandb",
+      "stateId": "aurora.direct-creature.recovery.stand-back"
+    },
+    {
+      "description": "Standard walk state.",
+      "gameplayFloor": true,
+      "label": "Locomotion — walk",
+      "slot": "cwalk",
+      "stateId": "aurora.direct-creature.locomotion.walk"
+    },
+    {
+      "description": "Standard run state.",
+      "gameplayFloor": true,
+      "label": "Locomotion — run",
+      "slot": "crun",
+      "stateId": "aurora.direct-creature.locomotion.run"
+    },
+    {
+      "description": "Forward combat-walk state.",
+      "gameplayFloor": false,
+      "label": "Combat walk — forward",
+      "slot": "ccwalkf",
+      "stateId": "aurora.direct-creature.locomotion.combat-walk-forward"
+    },
+    {
+      "description": "Backward combat-walk state.",
+      "gameplayFloor": false,
+      "label": "Combat walk — back",
+      "slot": "ccwalkb",
+      "stateId": "aurora.direct-creature.locomotion.combat-walk-back"
+    },
+    {
+      "description": "Left combat-walk state.",
+      "gameplayFloor": false,
+      "label": "Combat walk — left",
+      "slot": "ccwalkl",
+      "stateId": "aurora.direct-creature.locomotion.combat-walk-left"
+    },
+    {
+      "description": "Right combat-walk state.",
+      "gameplayFloor": false,
+      "label": "Combat walk — right",
+      "slot": "ccwalkr",
+      "stateId": "aurora.direct-creature.locomotion.combat-walk-right"
+    },
+    {
+      "description": "Standard idle/pause state.",
+      "gameplayFloor": true,
+      "label": "Idle — pause",
+      "slot": "cpause1",
+      "stateId": "aurora.direct-creature.idle.pause"
+    },
+    {
+      "description": "Left head-turn state.",
+      "gameplayFloor": false,
+      "label": "Head turn — left",
+      "slot": "chturnl",
+      "stateId": "aurora.direct-creature.head.turn-left"
+    },
+    {
+      "description": "Right head-turn state.",
+      "gameplayFloor": false,
+      "label": "Head turn — right",
+      "slot": "chturnr",
+      "stateId": "aurora.direct-creature.head.turn-right"
+    },
+    {
+      "description": "Taunt state.",
+      "gameplayFloor": false,
+      "label": "Action — taunt",
+      "slot": "ctaunt",
+      "stateId": "aurora.direct-creature.action.taunt"
+    },
+    {
+      "description": "Low close-range attack state.",
+      "gameplayFloor": false,
+      "label": "Close attack — low",
+      "slot": "cclosel",
+      "stateId": "aurora.direct-creature.attack.close-low"
+    },
+    {
+      "description": "High close-range attack state.",
+      "gameplayFloor": false,
+      "label": "Close attack — high",
+      "slot": "ccloseh",
+      "stateId": "aurora.direct-creature.attack.close-high"
+    },
+    {
+      "description": "Get-middle transition state.",
+      "gameplayFloor": false,
+      "label": "Interaction — get middle",
+      "slot": "cgetmid",
+      "stateId": "aurora.direct-creature.interaction.get-middle"
+    },
+    {
+      "description": "Knockdown damage-response state.",
+      "gameplayFloor": false,
+      "label": "Damage — knockdown",
+      "slot": "ckdbckdmg",
+      "stateId": "aurora.direct-creature.damage.knockdown"
+    },
+    {
+      "description": "Cast-out hold state; exact runtime routing remains engine-managed.",
+      "gameplayFloor": false,
+      "label": "Spell — cast hold",
+      "slot": "ccastoutlp",
+      "stateId": "aurora.direct-creature.spell.cast-out-loop"
+    },
+    {
+      "description": "Spasm state.",
+      "gameplayFloor": false,
+      "label": "Condition — spasm",
+      "slot": "cspasm",
+      "stateId": "aurora.direct-creature.condition.spasm"
+    },
+    {
+      "description": "Appearance transition state.",
+      "gameplayFloor": true,
+      "label": "Visibility — appear",
+      "slot": "cappear",
+      "stateId": "aurora.direct-creature.visibility.appear"
+    },
+    {
+      "description": "Disappearance transition state.",
+      "gameplayFloor": false,
+      "label": "Visibility — disappear",
+      "slot": "cdisappear",
+      "stateId": "aurora.direct-creature.visibility.disappear"
+    },
+    {
+      "description": "Get-middle hold state; exact runtime routing remains engine-managed.",
+      "gameplayFloor": false,
+      "label": "Interaction — middle hold",
+      "slot": "cgetmidlp",
+      "stateId": "aurora.direct-creature.interaction.get-middle-loop"
+    },
+    {
+      "description": "Dead-state pose; family motion semantics remain engine-managed.",
+      "gameplayFloor": true,
+      "label": "Death — dead",
+      "slot": "cdead",
+      "stateId": "aurora.direct-creature.death.dead"
+    },
+    {
+      "description": "Disappearance hold state; exact runtime routing remains engine-managed.",
+      "gameplayFloor": false,
+      "label": "Visibility — disappeared hold",
+      "slot": "cdisappearlp",
+      "stateId": "aurora.direct-creature.visibility.disappear-loop"
+    },
+    {
+      "description": "Right combat-turn state.",
+      "gameplayFloor": false,
+      "label": "Combat turn — right",
+      "slot": "ccturnr",
+      "stateId": "aurora.direct-creature.locomotion.combat-turn-right"
+    }
+  ],
+  "supportedModelTypes": [
+    "S",
+    "L"
   ]
 }

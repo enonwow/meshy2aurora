@@ -71,6 +71,8 @@ const FILTERS: readonly {
   label: string;
 }[] = [
   { id: "NEEDS_ATTENTION", label: "Needs attention" },
+  { id: "MISSING_GAMEPLAY_7", label: "Missing gameplay 7" },
+  { id: "MISSING_BASE_42", label: "Missing full 42" },
   { id: "BASE_42", label: "Base 42" },
   { id: "CUSTOM", label: "Custom" },
 ];
@@ -143,21 +145,38 @@ export function CreatureAnimationMappingStep({
     id,
     filterAnimationCatalogV1(rows, "", id).length,
   ])) as Record<AnimationCatalogFilterV1, number>;
+  const customLibraryCount = animationAuthoringV2?.customAnimations.length
+    ?? authoring.customAnimations.length;
+  const baseSlotsUsingCustomCount = new Set(
+    (animationAuthoringV2?.assignments ?? authoring.assignments)
+      .filter(({ sourceKind, customAnimationId }) => (
+        sourceKind === "CUSTOM" && customAnimationId !== null
+      ))
+      .map(({ targetSlot }) => targetSlot),
+  ).size;
 
   useEffect(() => {
     persistAnimationMappingModeV1(mode);
   }, [mode]);
 
   return (
-    <section className="animation-mapping-step" aria-labelledby="animation-mapping-title">
+    <section
+      className="animation-mapping-step"
+      aria-labelledby="animation-mapping-title"
+      data-animation-mode={mode}
+    >
       <header className="animation-mapping-step__header">
         <div>
-          <p className="animation-mapping-step__eyebrow">Creature profile · MODELTYPE {authoring.modelType}</p>
+          <p className="animation-mapping-step__eyebrow">Animation Mapping · Creature profile · MODELTYPE {authoring.modelType}</p>
           <h1 id="animation-mapping-title">Creature Animation Mapping</h1>
           <p>
             Map 42 Aurora base slots to source, inherited or generated motion.
             Derived Aurora fields stay read-only.
           </p>
+          <div className="animation-mapping-step__custom-counts" aria-label="Custom animation counts">
+            <span>Custom library: <strong>{customLibraryCount}</strong></span>
+            <span>Base slots using Custom: <strong>{baseSlotsUsingCustomCount}</strong></span>
+          </div>
         </div>
         <div className="animation-mapping-step__header-actions">
           <button type="button" onClick={onApplySuggestions}>Apply safe suggestions</button>

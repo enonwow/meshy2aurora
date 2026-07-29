@@ -96,6 +96,7 @@ function DropZone({
         type="file"
         accept={accept}
         required={required}
+        aria-label={`${label} file`}
         aria-describedby={`${descriptionId}${error ? ` ${errorId}` : ""}`}
         aria-invalid={error ? true : undefined}
         onClick={(event) => { event.currentTarget.value = ""; }}
@@ -169,7 +170,8 @@ export function SourceStep({
   return (
     <section className="source-step" aria-labelledby={headingId}>
       <header className="source-step__intro">
-        <h1 id={headingId}>Start a new conversion</h1>
+        <p className="eyebrow">Source</p>
+        <h1 id={headingId}>Select source files</h1>
         <p>
           Select a Meshy GLB model and choose {
             tileTargetEnabled ? "Creature, Placeable, or Tile." : "Creature or Placeable."
@@ -190,10 +192,13 @@ export function SourceStep({
                 type="radio"
                 name="conversion-target"
                 value={value as StudioTarget}
+                aria-label={value === "TILE" ? "Tile" : undefined}
                 checked={target === value}
                 onChange={() => onTargetChange(value as StudioTarget)}
               />
-              {value === "CREATURE" ? "Creature" : value === "PLACEABLE" ? "Placeable" : "Tile"}
+              {value === "CREATURE" ? "Creature" : value === "PLACEABLE" ? "Placeable" : (
+                <>Tile <small>Experimental</small></>
+              )}
             </label>
           ))}
         </fieldset>
@@ -286,7 +291,10 @@ export function SourceStep({
 
       {onOpenMeshyLab ? (
         <aside className="source-step__meshy-lab" aria-label="Optional Meshy Lab integration">
-          <div><strong>Need a reproducible proof asset?</strong><span>Use the optional local Meshy Lab, then import its verified GLB here.</span></div>
+          <div>
+            <strong>Meshy Lab · developer tool</strong>
+            <span>Optional local Bridge workflow for preparing a verified GLB; it is not part of the MVP conversion path.</span>
+          </div>
           <button type="button" className="button button--secondary" onClick={onOpenMeshyLab}>Open Meshy Lab</button>
         </aside>
       ) : null}

@@ -2,11 +2,13 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   AnimationStudioDocumentV1,
   CreatureAnimationAuthoringV2,
 } from "../animation-studio/types";
+import type { BinaryMdlInspectionReport } from "../preview/types";
+import type { CanonicalAnimationStudioEvidenceV1 } from "../results/projectCanonicalResult";
 import { AuthoredAnimationReview } from "./AuthoredAnimationReview";
 import type { AnimationStudioReadbackReconciliationV1 } from "./reconcileAnimationStudioReadback";
 
@@ -137,8 +139,125 @@ function authoringFixture(): CreatureAnimationAuthoringV2 {
   };
 }
 
+function evidenceFixture(): CanonicalAnimationStudioEvidenceV1 {
+  return {
+    animationStudioSchemaVersion: 1,
+    animationStudioFingerprintSha256: "a".repeat(64),
+    animationStudioRevision: 4,
+    creatureAnimationAuthoringSchemaVersion: 2,
+    creatureAnimationAuthoringFingerprintSha256: "b".repeat(64),
+    authoredClipCount: 3,
+    authoredClipIds: ["clip-one", "clip-loop", "clip-end"],
+    authoredClipOutputNames: ["owned_wave", "owned_loop", "owned_end"],
+    authoredEventCount: 0,
+    customAssignmentCount: 2,
+    sourceRevision: "c".repeat(64),
+    readbackStatus: "MATCH",
+    animationStudioReadback: {
+      schemaVersion: 1,
+      studioFingerprint: "a".repeat(64),
+      sourceRevision: "c".repeat(64),
+      status: "MATCH",
+      clips: [],
+      diagnostics: [],
+    },
+    sourceGlbUnchanged: true,
+    authoredClips: [
+      {
+        id: "clip-one",
+        outputName: "owned_wave",
+        kind: "MOTION",
+        status: "VALID",
+        revision: 1,
+        source: {
+          kind: "SOURCE_CLIP_COPY",
+          sourceRevision: "c".repeat(64),
+          sourceClipName: "wave",
+          sourceClipFingerprint: "d".repeat(64),
+          proceduralTemplate: null,
+        },
+        keyframeCount: 2,
+        eventCount: 0,
+        usages: [{
+          authoredClipId: "clip-one",
+          outputClipName: "cpause1",
+          usageKind: "BASE_SLOT",
+          baseSlot: "cpause1",
+          customAnimationId: "custom-one",
+          phase: null,
+        }],
+      },
+      {
+        id: "clip-loop",
+        outputName: "owned_loop",
+        kind: "MOTION",
+        status: "VALID",
+        revision: 1,
+        source: {
+          kind: "SOURCE_CLIP_COPY",
+          sourceRevision: "c".repeat(64),
+          sourceClipName: "loop",
+          sourceClipFingerprint: "e".repeat(64),
+          proceduralTemplate: null,
+        },
+        keyframeCount: 2,
+        eventCount: 0,
+        usages: [],
+      },
+      {
+        id: "clip-end",
+        outputName: "owned_end",
+        kind: "MOTION",
+        status: "VALID",
+        revision: 1,
+        source: {
+          kind: "SOURCE_CLIP_COPY",
+          sourceRevision: "c".repeat(64),
+          sourceClipName: "end",
+          sourceClipFingerprint: "f".repeat(64),
+          proceduralTemplate: null,
+        },
+        keyframeCount: 2,
+        eventCount: 0,
+        usages: [],
+      },
+    ],
+  };
+}
+
+function readbackFixture(): BinaryMdlInspectionReport {
+  return {
+    schemaVersion: 1,
+    format: "BINARY_MDL",
+    nodeTree: { roots: [] },
+    animations: [{
+      offset: 1,
+      name: "cpause1",
+      length: 1,
+      transition: 0.1,
+      animationRoot: "root",
+      events: [{ name: "impact", time: 0.5 }],
+      nodeTree: {
+        roots: [{
+          offset: 2,
+          number: 0,
+          name: "root",
+          controllers: [{
+            controllerName: "position",
+            times: [0, 1],
+            values: [[0, 0, 0], [1, 0, 0]],
+          }],
+          children: [],
+        }],
+      },
+    }],
+    diagnostics: [],
+  };
+}
+
 describe("AuthoredAnimationReview", () => {
   it("shows clip status, provenance, Base 42 usage, custom modes, fingerprint and readback", async () => {
+    const openMismatch = vi.fn();
     const reconciliation: AnimationStudioReadbackReconciliationV1 = {
       schemaVersion: 1,
       status: "MISMATCH",
@@ -159,6 +278,9 @@ describe("AuthoredAnimationReview", () => {
         authoring={authoringFixture()}
         studioFingerprintSha256={"a".repeat(64)}
         reconciliation={reconciliation}
+        evidence={evidenceFixture()}
+        readback={readbackFixture()}
+        onOpenMismatch={openMismatch}
       />,
     );
 
@@ -178,5 +300,13 @@ describe("AuthoredAnimationReview", () => {
     expect(container.textContent).toContain("LOOP: owned_loop");
     expect(container.textContent).toContain("END: owned_end");
     expect(container.textContent).toContain("M2A-ANIMATION-READBACK-CLIP-NOT-VALID");
+    expect(container.textContent).toContain("Source → Edited → Binary readback");
+    expect(container.textContent).toContain("impact@0.500s");
+    expect(container.textContent).toContain("Δ [1.000, 0.000, 0.000] · 1.000 m");
+
+    const mismatchButton = Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent?.includes("Open clip or track"));
+    await act(async () => mismatchButton?.click());
+    expect(openMismatch).toHaveBeenCalledWith("authoredClips.clip-loop.status");
   });
 });

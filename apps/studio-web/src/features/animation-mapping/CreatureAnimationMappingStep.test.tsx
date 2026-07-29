@@ -70,11 +70,15 @@ describe("CreatureAnimationMappingStep", () => {
 
     expect(container.querySelector("h1")?.textContent).toBe("Creature Animation Mapping");
     expect(container.textContent).toContain("42 Aurora base slots");
+    expect(container.textContent).toContain("Custom library: 0");
+    expect(container.textContent).toContain("Base slots using Custom: 0");
     const tabs = Array.from(container.querySelectorAll<HTMLButtonElement>(
       '.animation-catalog__tabs [role="tab"]',
     ));
     expect(tabs.map(({ textContent }) => textContent)).toEqual([
       expect.stringMatching(/Needs attention/),
+      expect.stringMatching(/Missing gameplay 7/),
+      expect.stringMatching(/Missing full 42/),
       expect.stringMatching(/Base 42/),
       expect.stringMatching(/Custom/),
     ]);
@@ -89,7 +93,7 @@ describe("CreatureAnimationMappingStep", () => {
     expect(document.activeElement).toBe(tabs[1]);
     expect(tabs[1].getAttribute("aria-selected")).toBe("true");
 
-    await act(async () => tabs[1].click());
+    await act(async () => tabs[3].click());
     expect(container.querySelectorAll('[role="option"]')).toHaveLength(42);
     const firstRow = container.querySelector<HTMLButtonElement>('[role="option"]')!;
     await act(async () => {
@@ -187,9 +191,34 @@ describe("CreatureAnimationMappingStep", () => {
       modelType: "S",
       sourceRevision,
       authoringRevision: 1,
-      assignments: [],
+      assignments: [{
+        targetSlot: "cwalk",
+        sourceKind: "CUSTOM",
+        sourceClipName: null,
+        customAnimationId: "custom-authored-walk",
+        provenance: {
+          provider: "USER_CUSTOM",
+          assetId: "custom-authored-walk",
+          ownership: "USER_OWNED",
+        },
+      }],
       fallbacks: [],
-      customAnimations: [],
+      customAnimations: [{
+        id: "custom-authored-walk",
+        name: "authored_walk",
+        playback: "ONE_SHOT",
+        clipReference: {
+          sourceKind: "AUTHORED_CLIP",
+          sourceClipName: null,
+          authoredClipId: "clip-authored-walk",
+        },
+        phases: [],
+        provenance: {
+          provider: "USER_CUSTOM",
+          assetId: "custom-authored-walk",
+          ownership: "USER_OWNED",
+        },
+      }],
     };
     const onCreate = vi.fn();
     const container = document.createElement("div");
@@ -217,6 +246,8 @@ describe("CreatureAnimationMappingStep", () => {
       );
     });
 
+    expect(container.textContent).toContain("Custom library: 1");
+    expect(container.textContent).toContain("Base slots using Custom: 1");
     expect(container.querySelector(".custom-animation-mapping-panel")).toBeNull();
     const realization = container.querySelector<HTMLElement>(
       '[role="radiogroup"][aria-label="Source realization"]',

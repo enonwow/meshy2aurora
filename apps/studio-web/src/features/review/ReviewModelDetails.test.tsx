@@ -128,6 +128,126 @@ describe("ReviewModelDetails", () => {
     );
     expect(container.textContent).toContain("DIFFERENCE REPORTED");
     expect(container.textContent).toContain("mesh[0].faces differs");
+    expect(container.textContent).toContain("First mismatch");
+    expect(container.querySelector<HTMLAnchorElement>(
+      'a[href="#artifact-model-mdl"]',
+    )).not.toBeNull();
+  });
+
+  it("shows full animation contracts and binary readback for Base 42 and Custom rows", async () => {
+    const result = resultFixture();
+    result.animationCompletenessEvidence = {
+      profile: "FULL_NATIVE42_EXPLICIT_V1",
+      requiredClipCount: 42,
+      explicitClipCount: 42,
+      proceduralClipCount: 0,
+      fallbackAliasCount: 0,
+      complete: true,
+    };
+    result.animationBehaviorEvidence = {
+      schemaVersion: 1,
+      requiredNamespaceClipCount: 42,
+      observedClipCount: 42,
+      fullNamespaceComplete: true,
+      allRequiredContentPresent: true,
+      activeMotionComplete: true,
+      walkRunDistinct: true,
+      essentialStatesDistinct: true,
+      deathTransitionTerminalPose: true,
+      behaviorCandidateEligible: true,
+      clips: [],
+      violations: [],
+    };
+    result.skinAnimationEvidence = {
+      schemaVersion: 1,
+      activeJointCount: 24,
+      requiredClipCount: 5,
+      clips: [{
+        clipName: "cwalk",
+        sampledTimeCount: 3,
+        maxMovedVertexCount: 20,
+        maxDisplacement: 0.5,
+        nonRigidDeformationObserved: true,
+      }],
+      complete: true,
+      violations: [],
+    };
+    result.animationMappingEvidence = {
+      schemaVersion: 1,
+      profile: "DIRECT_CREATURE_BASE42_V1",
+      sourceRevision: "a".repeat(64),
+      authoringRevision: 4,
+      authoringFingerprintSha256: "b".repeat(64),
+      baseAnimations: [{
+        targetSlot: "cwalk",
+        resolvedSourceSlot: "cwalk",
+        sourceKind: "CUSTOM",
+        sourceClipName: "donor_walk",
+        customAnimationId: "custom_walk",
+        provider: "MESHY",
+        assetId: "asset-01",
+        ownership: "OWNER_SELECTED",
+        viaFallbackSlots: [],
+      }],
+      customAnimations: [{
+        id: "custom_emote",
+        playback: "ONE_SHOT",
+        phases: [],
+        outputClipNames: ["custom_emote"],
+        sourceClipNames: ["donor_emote"],
+        provider: "LOCAL_FILE",
+        assetId: "donor-02",
+        ownership: "OWNER_SELECTED",
+      }],
+      conformance: {
+        status: "READY",
+        expectedBaseSlotCount: 42,
+        materializedBaseSlotCount: 42,
+        expectedCustomClipNames: ["custom_emote"],
+        materializedCustomClipNames: ["custom_emote"],
+      },
+    };
+    const readback: BinaryMdlInspectionReport = {
+      ...readbackFixture,
+      animations: [
+        {
+          offset: 1,
+          name: "cwalk",
+          length: 1,
+          transition: 0.1,
+          animationRoot: "root",
+          events: [],
+          nodeTree: { roots: [] },
+        },
+        {
+          offset: 2,
+          name: "custom_emote",
+          length: 1,
+          transition: 0.1,
+          animationRoot: "root",
+          events: [],
+          nodeTree: { roots: [] },
+        },
+      ],
+    };
+    const container = await render(
+      <ReviewModelDetails
+        result={result}
+        readback={readback}
+        activeViewport="CONVERTED"
+        onViewportChange={vi.fn()}
+        onInspectBinary={vi.fn()}
+        sourceViewport={<div />}
+        convertedReadbackViewport={<div />}
+      />,
+    );
+
+    expect(container.textContent).toContain("42 required · 42 explicit");
+    expect(container.textContent).toContain("CANDIDATE ELIGIBLE");
+    expect(container.textContent).toContain("24 active joints");
+    expect(container.textContent).toContain("donor_walk");
+    expect(container.textContent).toContain("donor_emote → custom_emote");
+    expect(container.querySelectorAll('td[data-status="pass"]')).toHaveLength(2);
   });
 
   it("distinguishes an event-complete creature package from a non-eventful skin package", async () => {

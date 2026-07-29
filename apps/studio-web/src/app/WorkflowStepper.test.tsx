@@ -43,7 +43,7 @@ describe("WorkflowStepper", () => {
       "2InspectValidate & preview",
       "3Animation MappingMap Aurora states",
       "4BuildConvert & validate",
-      "5Review OutputVerify results",
+      "5ReviewVerify results",
       "6DownloadGet your results",
     ]);
     expect(buttons[1].getAttribute("aria-current")).toBe("step");

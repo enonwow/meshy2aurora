@@ -330,6 +330,15 @@ describe("Studio session reducer", () => {
     expect(succeeded.build.kind).toBe("SUCCEEDED");
     if (succeeded.build.kind !== "SUCCEEDED") throw new Error("expected success");
     expect(succeeded.build.result).toBe(succeeded.result);
+
+    const downloadable = studioSessionReducer(succeeded, {
+      type: "CONTINUE_TO_DOWNLOAD",
+    });
+    expect(downloadable).toMatchObject({
+      currentStep: "DOWNLOAD",
+      lastAvailableStep: "DOWNLOAD",
+      download: { kind: "READY", revision: ready.revision },
+    });
   });
 
   it("ignores stale Build success responses by request and revision", () => {
@@ -592,5 +601,18 @@ describe("Studio session reducer", () => {
       source: null,
       appearance: null,
     });
+  });
+
+  it("opens a project as a clean session with its selected target", () => {
+    const initial = createInitialStudioSession(4);
+    const opened = studioSessionReducer(initial, {
+      type: "PROJECT_OPENED",
+      target: "PLACEABLE",
+    });
+
+    expect(opened.revision).toBe(5);
+    expect(opened.target).toBe("PLACEABLE");
+    expect(opened.currentStep).toBe("SOURCE");
+    expect(opened.source).toBeNull();
   });
 });

@@ -1,0 +1,36 @@
+.animation-editor-viewport {
+  display: grid;
+  gap: .4rem;
+}
+
+.animation-editor-viewport > header {
+  display: flex;
+  justify-content: space-between;
+}
+
+.animation-editor-viewport__canvas {
+  background: radial-gradient(circle at 50% 40%, #20334a, #07111d 72%);
+  border-radius: .5rem;
+  min-height: 25rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.animation-editor-viewport__canvas > .viewport {
+  min-height: 25rem;
+}
+
+.animation-editor-gizmo {
+  background: rgba(5, 14, 24, .82);
+  bottom: .5rem;
+  left: 50%;
+  padding: .4rem;
+  position: absolute;
+  transform: translateX(-50%);
+  width: min(22rem, 80%);
+}
+
+.animation-editor-gizmo label {
+  display: grid;
+}
+

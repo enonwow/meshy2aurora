@@ -31,19 +31,27 @@ export function validateDirectCreatureCatalogContractV1(
     throw new Error("Invalid shared creature animation catalog v1");
   }
   const stateIds = new Set<string>();
+  let gameplayFloorCount = 0;
   contract.states.forEach((state, index) => {
     const expectedSlot = FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1[index];
     if (
       state.slot !== expectedSlot
       || !state.stateId
+      || typeof state.gameplayFloor !== "boolean"
       || stateIds.has(state.stateId)
     ) {
       throw new Error(
         `Shared creature animation catalog state ${state.stateId} / slot ${state.slot} is invalid at ${index}`,
       );
     }
+    if (state.gameplayFloor) gameplayFloorCount += 1;
     stateIds.add(state.stateId);
   });
+  if (gameplayFloorCount !== 7) {
+    throw new Error(
+      "Shared creature animation catalog must contain exactly 7 gameplay-floor slots",
+    );
+  }
 }
 
 validateDirectCreatureCatalogContractV1(
@@ -63,6 +71,7 @@ export const AURORA_ANIMATION_STATE_CATALOG_V1 = Object.freeze(
       label: state.label,
       description: state.description,
       slot: expectedSlot,
+      gameplayFloor: state.gameplayFloor,
       supportedModelTypes: Object.freeze(["S", "L"] as const),
       playbackPolicy: "ENGINE_MANAGED",
     });
@@ -149,6 +158,7 @@ export function assertDirectCreatureCatalogParityV1(rustCatalogJson?: string): t
       label: definition.label,
       description: definition.description,
       slot: definition.slot,
+      gameplayFloor: definition.gameplayFloor,
       supportedModelTypes: definition.supportedModelTypes,
       playbackPolicy: definition.playbackPolicy,
     }));
@@ -203,6 +213,7 @@ export function projectAnimationCatalogRowsV1(
       label: definition.label,
       description: definition.description,
       slot: definition.slot,
+      gameplayFloor: definition.gameplayFloor,
       modelType: authoring.modelType,
       playbackPolicy: definition.playbackPolicy,
       ...projection,
@@ -220,6 +231,7 @@ export function projectAnimationCatalogRowsV1(
         ? "User-defined one-shot animation."
         : "User-defined phased looping animation.",
       slot: null,
+      gameplayFloor: false,
       modelType: authoring.modelType,
       playbackPolicy: custom.playback,
       ...projection,
@@ -238,9 +250,13 @@ export function filterAnimationCatalogV1(
   return rows.filter((row) => {
     const inFilter = filter === "NEEDS_ATTENTION"
       ? row.status !== "MAPPED"
-      : filter === "BASE_42"
-        ? row.kind === "BASE"
-        : row.kind === "CUSTOM";
+      : filter === "MISSING_GAMEPLAY_7"
+        ? row.kind === "BASE" && row.gameplayFloor && row.status !== "MAPPED"
+        : filter === "MISSING_BASE_42"
+          ? row.kind === "BASE" && row.status !== "MAPPED"
+          : filter === "BASE_42"
+            ? row.kind === "BASE"
+            : row.kind === "CUSTOM";
     if (!inFilter) return false;
     if (!normalizedQuery) return true;
     return [

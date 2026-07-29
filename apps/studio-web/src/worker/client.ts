@@ -6,36 +6,56 @@ import type {
 type Pending = {
   resolve: (response: StudioWorkerResponse) => void;
   reject: (error: Error) => void;
+  lane: "MAIN" | "PREVIEW";
 };
 
 export class StudioWorkerClient {
-  private readonly worker = new Worker(
-    new URL("./m2a.worker.ts", import.meta.url),
-    { type: "module" },
-  );
   private readonly pending = new Map<string, Pending>();
+  private readonly worker: Worker;
+  private previewWorker: Worker | null = null;
   private animationPreviewRequestId: string | null = null;
 
   constructor() {
-    this.worker.addEventListener("message", (event: MessageEvent<StudioWorkerResponse>) => {
+    this.worker = this.createWorker("MAIN");
+  }
+
+  private createWorker(lane: Pending["lane"]) {
+    const worker = new Worker(
+      new URL("./m2a.worker.ts", import.meta.url),
+      { type: "module" },
+    );
+    worker.addEventListener("message", (event: MessageEvent<StudioWorkerResponse>) => {
       const pending = this.pending.get(event.data.requestId);
-      if (!pending) return;
+      if (!pending || pending.lane !== lane) return;
       this.pending.delete(event.data.requestId);
       if (event.data.ok) pending.resolve(event.data);
       else pending.reject(new Error(event.data.message));
     });
-    this.worker.addEventListener("error", (event) => {
-      for (const pending of this.pending.values()) {
+    worker.addEventListener("error", (event) => {
+      for (const [requestId, pending] of this.pending) {
+        if (pending.lane !== lane) continue;
         pending.reject(new Error(event.message || "Studio Worker failed"));
+        this.pending.delete(requestId);
       }
-      this.pending.clear();
+      if (lane === "PREVIEW" && this.previewWorker === worker) {
+        this.previewWorker = null;
+        this.animationPreviewRequestId = null;
+      }
     });
+    return worker;
   }
 
-  request(request: StudioWorkerRequest, transfer: Transferable[] = []) {
+  request(
+    request: StudioWorkerRequest,
+    transfer: Transferable[] = [],
+    lane: Pending["lane"] = "MAIN",
+  ) {
+    const worker = lane === "PREVIEW"
+      ? (this.previewWorker ??= this.createWorker("PREVIEW"))
+      : this.worker;
     return new Promise<StudioWorkerResponse>((resolve, reject) => {
-      this.pending.set(request.requestId, { resolve, reject });
-      this.worker.postMessage(request, transfer);
+      this.pending.set(request.requestId, { resolve, reject, lane });
+      worker.postMessage(request, transfer);
     });
   }
 
@@ -81,14 +101,16 @@ export class StudioWorkerClient {
     animationStudioDocumentJson: string,
     requestId = workerRequestId(),
   ) {
-    if (this.animationPreviewRequestId) this.cancel(this.animationPreviewRequestId);
+    if (this.animationPreviewRequestId) {
+      this.cancelAnimationStudioPreviewBuild();
+    }
     this.animationPreviewRequestId = requestId;
     return this.request({
       requestId,
       type: "MATERIALIZE_ANIMATION_STUDIO_DOCUMENT",
       sourceGlb,
       animationStudioDocumentJson,
-    }, [sourceGlb]).finally(() => {
+    }, [sourceGlb], "PREVIEW").finally(() => {
       if (this.animationPreviewRequestId === requestId) {
         this.animationPreviewRequestId = null;
       }
@@ -100,14 +122,16 @@ export class StudioWorkerClient {
     clipId: string,
     requestId = workerRequestId(),
   ) {
-    if (this.animationPreviewRequestId) this.cancel(this.animationPreviewRequestId);
+    if (this.animationPreviewRequestId) {
+      this.cancelAnimationStudioPreviewBuild();
+    }
     this.animationPreviewRequestId = requestId;
     return this.request({
       requestId,
       type: "PREVIEW_AUTHORED_ANIMATION_CLIP",
       animationStudioDocumentJson,
       clipId,
-    }).finally(() => {
+    }, [], "PREVIEW").finally(() => {
       if (this.animationPreviewRequestId === requestId) {
         this.animationPreviewRequestId = null;
       }
@@ -118,6 +142,7 @@ export class StudioWorkerClient {
     sourceGlb: ArrayBuffer,
     appearanceTwoDa: ArrayBuffer,
     animationAuthoringJson: string,
+    projectIdentityJson: string,
     eventAuthoringJson?: string,
     requestId = workerRequestId(),
   ) {
@@ -128,6 +153,7 @@ export class StudioWorkerClient {
       appearanceTwoDa,
       packageLane: "H1_SKINNED_FULL_42_AUTHORED",
       animationAuthoringJson,
+      projectIdentityJson,
       eventAuthoringJson,
     }, [sourceGlb, appearanceTwoDa]);
   }
@@ -137,6 +163,7 @@ export class StudioWorkerClient {
     appearanceTwoDa: ArrayBuffer,
     animationAuthoringJson: string,
     animationStudioDocumentJson: string,
+    projectIdentityJson: string,
     eventAuthoringJson?: string,
     requestId = workerRequestId(),
   ) {
@@ -148,18 +175,37 @@ export class StudioWorkerClient {
       packageLane: "H1_SKINNED_FULL_42_EDITED",
       animationAuthoringJson,
       animationStudioDocumentJson,
+      projectIdentityJson,
       eventAuthoringJson,
     }, [sourceGlb, appearanceTwoDa]);
   }
 
   cancelAnimationStudioPreviewBuild() {
-    if (!this.animationPreviewRequestId) return false;
-    return this.cancel(this.animationPreviewRequestId);
+    const worker = this.previewWorker;
+    const pendingPreviewIds = [...this.pending.entries()]
+      .filter(([, pending]) => pending.lane === "PREVIEW")
+      .map(([requestId]) => requestId);
+    if (pendingPreviewIds.length === 0) return false;
+    worker?.terminate();
+    if (this.previewWorker === worker) this.previewWorker = null;
+    this.animationPreviewRequestId = null;
+    for (const requestId of pendingPreviewIds) {
+      const pending = this.pending.get(requestId);
+      this.pending.delete(requestId);
+      pending?.reject(new DOMException(
+        "Animation preview Worker was terminated",
+        "AbortError",
+      ));
+    }
+    return true;
   }
 
   cancel(requestId: string) {
     const pending = this.pending.get(requestId);
     if (!pending) return false;
+    if (pending.lane === "PREVIEW") {
+      return this.cancelAnimationStudioPreviewBuild();
+    }
     this.pending.delete(requestId);
     pending.reject(new DOMException("Studio Worker request cancelled", "AbortError"));
     return true;
@@ -167,6 +213,9 @@ export class StudioWorkerClient {
 
   dispose() {
     this.worker.terminate();
+    this.previewWorker?.terminate();
+    this.previewWorker = null;
+    this.animationPreviewRequestId = null;
     for (const pending of this.pending.values()) {
       pending.reject(new Error("Studio Worker disposed"));
     }

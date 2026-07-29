@@ -13,6 +13,7 @@ export function AnimationTrimDialog({
   const [end, setEnd] = useState(lengthSeconds);
   return (
     <div
+      className="animation-clip-dialog"
       role="dialog"
       aria-modal="true"
       aria-labelledby="trim-dialog-title"

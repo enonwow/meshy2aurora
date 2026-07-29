@@ -206,7 +206,9 @@ export function AnimationDopeSheet({
         <button type="button" onClick={onOpenTrim}>Trim</button>
         <button type="button" onClick={onOpenRetime}>Retime</button>
       </header>
-      <div className="animation-timeline-edit-controls" aria-label="Timeline editing controls">
+      <details className="animation-timeline-advanced">
+        <summary>Timeline tools</summary>
+        <div className="animation-timeline-edit-controls" aria-label="Timeline editing controls">
         <fieldset>
           <legend>Range selection</legend>
           <label>
@@ -297,15 +299,18 @@ export function AnimationDopeSheet({
             Pan right
           </button>
         </div>
-      </div>
+        </div>
+      </details>
       <p id="animation-timeline-keyboard-help" className="sr-only">
         Select a key, then press Alt plus Left or Right Arrow to move it.
         Press Delete to remove selected keys, Plus or Minus to zoom, and
         Shift plus Left or Right Arrow to pan.
       </p>
       <output className="animation-timeline-view-status" aria-live="polite">
-        {selectedKeyIds.size} selected · {view.pixelsPerSecond.toFixed(0)} pixels per second
-        {" · "}
+        {selectedKeyIds.size} selected
+        {" \u00b7 "}
+        {view.pixelsPerSecond.toFixed(0)} pixels per second
+        {" \u00b7 "}
         pan {view.offsetSeconds.toFixed(2)} seconds
       </output>
       <div
