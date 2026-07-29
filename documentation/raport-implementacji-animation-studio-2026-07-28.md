@@ -58,7 +58,7 @@ mismatchu. Źródłowy GLB pozostaje niezmieniony.
 | `cargo test --workspace` | PASS; wszystkie testy nieignorowane, 0 failures |
 | ignored `r46_v4_compatibility_audit` | PASS 1/1 |
 | `npm run typecheck` | PASS |
-| `npm test` | PASS: 59 plików + 1 skipped; 317 testów + 1 skipped |
+| `npm test` | PASS: 60 plików + 1 skipped; 324 testy + 1 skipped |
 | `npm run build` | PASS |
 | `npm run test:worker-integration` | PASS: 6 plików, 16/16 testów |
 | browser IndexedDB persistence | PASS: 1/1 |
@@ -107,3 +107,58 @@ dokładnego kandydata V5 albo świeży, exact candidate-bound wynik
 
 Pełny zapis blokady:
 [`evidence/animation-studio-v5-owner-proof-gate-2026-07-28.md`](evidence/animation-studio-v5-owner-proof-gate-2026-07-28.md).
+
+## Korekta zgodności wizualnej z mockupem 02
+
+Pierwsza funkcjonalna wersja F5/F6 nie realizowała wystarczająco wiernie
+hierarchii wizualnej zaakceptowanego mockupu
+`02-animation-studio-within-mapping.png`. Dnia 2026-07-28 wykonano osobny pass
+visual parity:
+
+- `Create & edit` pozostaje sub-mode kroku `Animation Mapping`;
+- wszystkie standardowe ekrany Studio używają jednego pionowego workflow raila;
+- `Create & edit` nie przełącza aplikacji na osobny shell ani layout;
+- biblioteka, viewport i inspector tworzą jeden trzykolumnowy workbench;
+- dope sheet zajmuje pełną szerokość pod trzema panelami;
+- toolbar viewportu obsługuje prawdziwe przełączanie `Source | Edited` oraz
+  fullscreen;
+- inspector używa kompaktowego wyboru kości, transformacji i akcji keyframe;
+- zapis do Custom, undo/redo, autosave oraz status pozostają częścią tego
+  samego ekranu;
+- układ mieści kompletny stan roboczy w widoku 1600 x 1000 i ma breakpointy
+  dla węższych ekranów.
+
+Weryfikacja po korekcie: `npm test` — 319 passed, 1 skipped; `npm run build` —
+PASS.
+
+## F12: kopiowanie animacji z innego modelu
+
+Dnia 2026-07-28 dodano opcję `Copy from another model...` wewnątrz menu
+`+ New animation`. Nie powstał nowy krok workflow. Lokalny donor GLB jest
+inspektowany w pamięci, a Studio pokazuje inventory klipów, czas, liczbę
+tracków, liczbę kości oraz skrót SHA-256.
+
+Import jest fail-closed. Output rig bieżącego modelu i dawcy musi mieć te same
+ID kości, nazwy, parenty oraz local rest translation/rotation. Różny rig zwraca
+`M2A-ANIMATION-IMPORT-RIG-MISMATCH`; UI pokazuje pierwszą różnicę i nie
+odblokowuje `Copy to Custom`. Automatyczny retarget różnych szkieletów nie jest
+częścią tej fazy.
+
+Zgodny klip jest kopiowany jako self-contained authored tracks z provenance
+`IMPORTED_MODEL_COPY`: SHA-256 dawcy, source clip name i exact clip
+fingerprint. Donor GLB nie jest przechowywany w projekcie ani potrzebny do
+późniejszego builda. Automatyczna nazwa `imp_<clip>` jest ograniczona do 16
+znaków.
+
+Weryfikacja:
+
+- TypeScript: 29/29 testów celowanych;
+- pełny `npm test`: 60 plików i 324 testy PASS, 1 plik/test skipped;
+- Rust/WASM: boundary inventory test PASS;
+- `cargo test --workspace`: PASS;
+- `cargo clippy --workspace --all-targets -- -D warnings`: PASS;
+- `npm run build`: PASS;
+- browser compatible fixture: import, Save i status `VALID`;
+- browser real H1 24-bone przeciwko fixture 2-bone: `Different rig`, akcja
+  kopiowania disabled;
+- console errors: 0.

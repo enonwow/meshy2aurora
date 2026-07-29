@@ -1,0 +1,108 @@
+{
+  "testModuleFilename": "m2a_h2r46.mod",
+  "toolsetModuleName": "Meshy2Aurora procedural humanoid proof",
+  "areaName": "Meshy2Aurora M0 binary vertical-slice area",
+  "schemaVersion": 1,
+  "status": "EXACT_REUSABLE_R46_HANDOFF",
+  "candidate": {
+    "lineage": "h2-r46-root-first-full-appearance-20260727",
+    "newModelIterationCreated": false,
+    "immutableProofPacketModified": false,
+    "sourceAssetId": "h2-clockwork-sentinel-1500",
+    "sourceSha256": "f8cf0af21c8143a62b64c490a81dd2855ad3c3f9865922e3854f84b714dec3a3",
+    "authoringRevision": 1,
+    "mappingFingerprint": "9e09be1e1307f96ae9a6b7e91a5cf6b33e6105d2ff3b1981df4ffe06d618affe"
+  },
+  "runtimeIdentity": {
+    "hakFileName": "m2a_h2r46.hak",
+    "orderedHakResrefs": [
+      "m2a_h2r46"
+    ],
+    "modelResref": "m2a_h2p46",
+    "textureResref": "m2a_h2t46",
+    "moduleResref": "m2a_h2r46",
+    "areaResref": "m2a_h2a46",
+    "creatureTemplateResref": "m2a_h2utc46",
+    "appearanceRow": 15220
+  },
+  "object": {
+    "displayName": "Meshy procedural humanoid",
+    "tag": "m2a_procedural_creature",
+    "position": [
+      10.0,
+      14.5,
+      0.0
+    ],
+    "orientation": [
+      0.0,
+      -1.0
+    ]
+  },
+  "playerEntry": {
+    "position": [
+      10.0,
+      10.0,
+      0.0
+    ],
+    "direction": [
+      0.0,
+      1.0
+    ]
+  },
+  "expectedAnimationInvocation": {
+    "stateId": "aurora.direct-creature.idle.pause",
+    "outputSlot": "cpause1",
+    "primaryMethod": "Leave the exact creature in the engine-managed idle/pause state.",
+    "explicitNwScriptProbe": "object oCreature = GetObjectByTag(\"m2a_procedural_creature\"); AssignCommand(oCreature, ActionPlayAnimation(ANIMATION_LOOPING_PAUSE, 1.0, 6.0));",
+    "claimBoundary": "This invocation is the expected test route. The existing owner evidence proves visibility, not a new agent-run animation behavior verdict."
+  },
+  "artifacts": {
+    "module": {
+      "canonicalPath": "proof-output/h2-r46-root-first-full-appearance-20260727/generated/m2a_h2r46.mod",
+      "nativeDestination": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\modules\\m2a_h2r46.mod",
+      "byteLength": 15157,
+      "sha256": "b206f5507ce14406d62716f9e75c029044e9090f8ead1cdebfc2574e887b959c",
+      "sourceDestinationIdenticalOn2026-07-29": true
+    },
+    "hak": {
+      "canonicalPath": "proof-output/h2-r46-root-first-full-appearance-20260727/generated/m2a_h2r46.hak",
+      "nativeDestination": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\hak\\m2a_h2r46.hak",
+      "byteLength": 20851627,
+      "sha256": "027a9fc32fee9f75447c63f7308def35a1d098018d68d4d788d39c1174c7f98a",
+      "sourceDestinationIdenticalOn2026-07-29": true
+    },
+    "model": {
+      "fileName": "m2a_h2p46.mdl",
+      "byteLength": 612752,
+      "sha256": "d788f07137c7bf713f18654a14f0ce0559e46315cbb2558ea6dcb6fb7fc8d739"
+    }
+  },
+  "preOwnerStatus": {
+    "toolset": {
+      "modelVisibility": "not_tested",
+      "proofCompleteness": "missing"
+    },
+    "nwn": {
+      "modelVisibility": "not_tested",
+      "proofCompleteness": "missing"
+    },
+    "source": "documentation/evidence/h2-r46-root-first-full-appearance-ready-for-owner-proof-2026-07-27.md"
+  },
+  "recordedOwnerResult": {
+    "toolset": {
+      "modelVisibility": "visible",
+      "proofCompleteness": "missing"
+    },
+    "nwn": {
+      "modelVisibility": "visible",
+      "proofCompleteness": "verified"
+    },
+    "source": "documentation/evidence/h2-r46-owner-toolset-nwn-visual-result-2026-07-27.json"
+  },
+  "animationStudioV5": {
+    "status": "NOT_ADMITTED_BY_MODEL_ITERATION_GATE",
+    "newModOrHakFrozen": false,
+    "requiredResumeCondition": "A direct owner exception for one exact V5 candidate or a fresh exact candidate-bound modelVisibility=not_visible result."
+  },
+  "agentStartedOrControlledToolsetOrNwn": false
+}

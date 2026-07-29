@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "recordedAtLocalDate": "2026-07-29",
+  "implementationRevision": {
+    "gitCommit": "8a7a10f2e079f25ee86ee95e15cdaf1c7455f95f",
+    "workingTreeCommitted": false,
+    "note": "E0-E7 implementation changes are intentionally uncommitted because the owner did not request a commit. A release version must not be assigned from this draft state."
+  },
+  "status": "PARTIAL_RELEASE_GATE",
+  "releaseBlockedBy": [
+    {
+      "code": "E7-V5-MODEL-ITERATION-GATE",
+      "message": "The compatible donor clip is validated, previewed and materialized, but no new Animation Studio MOD/HAK may be frozen until a direct owner exception or a fresh exact candidate-bound modelVisibility=not_visible result admits a new iteration."
+    },
+    {
+      "code": "E7-RELEASE-VERSION-NOT_ASSIGNED",
+      "message": "The product version remains unchanged until green final CI, the admitted exact Animation Studio candidate and the required owner proof are complete."
+    }
+  ],
+  "ownerAssets": [
+    {
+      "assetId": "h1-humanoid-1500",
+      "manifest": "sample-3d/h1-humanoid-1500/manifest.yaml",
+      "payload": "sample-3d/h1-humanoid-1500/source.glb",
+      "byteLength": 7944380,
+      "sha256": "3071664994aec7d71f8a6fb8808587161dab9e09816f1a78b8562380e967485f"
+    },
+    {
+      "assetId": "h2-clockwork-sentinel-1500",
+      "manifest": "sample-3d/h2-clockwork-sentinel-1500/manifest.yaml",
+      "payload": "sample-3d/h2-clockwork-sentinel-1500/source.glb",
+      "byteLength": 8234708,
+      "sha256": "f8cf0af21c8143a62b64c490a81dd2855ad3c3f9865922e3854f84b714dec3a3"
+    },
+    {
+      "assetId": "s1-placeable-ritual-pedestal-1500",
+      "manifest": "sample-3d/s1-placeable-ritual-pedestal-1500/manifest.yaml",
+      "payload": "sample-3d/s1-placeable-ritual-pedestal-1500/source.glb",
+      "byteLength": 10011256,
+      "sha256": "dad22a5c3490242458cb7a81e50c53e265abf75886f57f6bd8a770938c2f7372"
+    }
+  ],
+  "cases": {
+    "humanoidCreature": {
+      "test": "apps/studio-web/tests/browser/worker-wasm.integration.ts :: materializes the owned single-idle H2 through the procedural 42-state Worker lane",
+      "result": "PASS",
+      "sourceAssetId": "h2-clockwork-sentinel-1500",
+      "sourceSha256": "f8cf0af21c8143a62b64c490a81dd2855ad3c3f9865922e3854f84b714dec3a3",
+      "baseAppearanceTwoDa": {
+        "path": "apps/studio-web/tests/fixtures/appearance.2da",
+        "byteLength": 526,
+        "sha256": "6528fdb5965bf0b9549e92db421b99346c0aa518cba3d656e4bb3d29965f69e7"
+      },
+      "projectRevision": null,
+      "projectRevisionStatus": "LEGACY_FIXED_IDENTITY_LANE",
+      "animationProfile": "FULL_NATIVE42_PROCEDURAL_HUMANOID_V1",
+      "animationCount": 42,
+      "repeatBuildMatched": true,
+      "browserArtifacts": [
+        {
+          "fileName": "m2a_codex_aproof.hak",
+          "byteLength": 13196629,
+          "sha256": "af3c72508d3a4bc046a30850b035139789e535391218b4a4e48668d514d002b9"
+        },
+        {
+          "fileName": "m2a_m6p01.mdl",
+          "byteLength": 612752,
+          "sha256": "18a11e9985949e9c6fd0e3e503f0c667206b1fdff90527afd458a077cd761002"
+        },
+        {
+          "fileName": "m2a_codex_aproof.mod",
+          "byteLength": 15205,
+          "sha256": "71fc3fcf781fe4532be4342aaf19db850905896eaa45f1c766afc0e29fa23caa"
+        },
+        {
+          "fileName": "m2a_codex_aproof-inspection.json",
+          "byteLength": 1061704,
+          "sha256": "36ac48b832c33fb45d960080a27b20f6c74a298cd32979be2d3b45500da4be18"
+        },
+        {
+          "fileName": "m2a_codex_aproof-conversion-manifest.json",
+          "byteLength": 3153,
+          "sha256": "58d4f10fa3884040e39c9d80519b92a3abdd00476aa2f5cfab521ba6b3dd3603"
+        },
+        {
+          "fileName": "m2a_codex_aproof-summary.json",
+          "byteLength": 1726,
+          "sha256": "19690a7e784cfcb78d9f1662f50839700d031f92ace70f35cafc1c4b761c62ff"
+        }
+      ],
+      "exactReusableCandidate": {
+        "testModuleFilename": "m2a_h2r46.mod",
+        "projectRevision": null,
+        "projectRevisionStatus": "PREDATES_PROJECT_LIFECYCLE",
+        "authoringRevision": 1,
+        "mappingFingerprint": "9e09be1e1307f96ae9a6b7e91a5cf6b33e6105d2ff3b1981df4ffe06d618affe",
+        "artifacts": [
+          {
+            "fileName": "m2a_h2p46.mdl",
+            "byteLength": 612752,
+            "sha256": "d788f07137c7bf713f18654a14f0ce0559e46315cbb2558ea6dcb6fb7fc8d739"
+          },
+          {
+            "fileName": "m2a_h2t46.tga",
+            "byteLength": 12582956,
+            "sha256": "03169b1493ed4b2f5269ed6fa611aef787e219cddd08661c9135a7f82191c167"
+          },
+          {
+            "fileName": "appearance.2da",
+            "byteLength": 7655663,
+            "sha256": "c32dce7cdd2c87af21762f828e305e5a8ee303e204330ea02b9571f95d3290f5"
+          },
+          {
+            "fileName": "m2a_h2r46.hak",
+            "byteLength": 20851627,
+            "sha256": "027a9fc32fee9f75447c63f7308def35a1d098018d68d4d788d39c1174c7f98a"
+          },
+          {
+            "fileName": "m2a_h2r46.mod",
+            "byteLength": 15157,
+            "sha256": "b206f5507ce14406d62716f9e75c029044e9090f8ead1cdebfc2574e887b959c"
+          }
+        ],
+        "preOwnerStatus": {
+          "toolset": {
+            "modelVisibility": "not_tested",
+            "proofCompleteness": "missing"
+          },
+          "nwn": {
+            "modelVisibility": "not_tested",
+            "proofCompleteness": "missing"
+          }
+        },
+        "ownerResult": {
+          "toolset": {
+            "modelVisibility": "visible",
+            "proofCompleteness": "missing"
+          },
+          "nwn": {
+            "modelVisibility": "visible",
+            "proofCompleteness": "verified"
+          }
+        }
+      }
+    },
+    "creatureWithCompatibleDonorClip": {
+      "test": "apps/studio-web/tests/browser/release-donor-e2e.integration.ts",
+      "result": "PASS_READY_MATERIALIZED_NO_PACKAGE",
+      "sourceAssetId": "h1-humanoid-1500",
+      "sourceSha256": "3071664994aec7d71f8a6fb8808587161dab9e09816f1a78b8562380e967485f",
+      "projectIdentity": {
+        "schemaVersion": 1,
+        "projectId": "e7-owner-h1-donor",
+        "projectName": "E7 Owner H1 Donor",
+        "projectRevision": 3
+      },
+      "animationStudioFingerprint": "1750fdf134dd472916d02ffd004a0a502ce8c605a0ca5ac542bac05b0382ab0a",
+      "animationMappingFingerprint": "b7a426f3b7c7dd5a3e2a12dce68b660a8b99d2cb9d9f6645d3fecedbb7074c8e",
+      "animationMappingFingerprintKind": "SHA256_OF_CANONICAL_SERIALIZED_CREATURE_ANIMATION_AUTHORING_V2",
+      "donorDerivation": {
+        "kind": "FIXED_LENGTH_GLB_JSON_CLIP_LABEL_MUTATION",
+        "sourceClipName": "Armature|Idle|baselayer",
+        "donorClipName": "donor_wave",
+        "donorSha256": "298d3418c460aada80e3868f95ed99e8a768e74579c94f4034731e7e7f16f3e5",
+        "payloadPersisted": false
+      },
+      "importedClip": {
+        "id": "e7-owner-donor-idle",
+        "name": "e7_donor_idle",
+        "trackCount": 48
+      },
+      "artifacts": [
+        {
+          "fileName": "e7-owner-h1-donor-animation-materialization.json",
+          "byteLength": 173500,
+          "sha256": "0abfd4ce8e41cf2756e1f6c793aac05f780bb74cd932bc22d44875bf0076488e"
+        }
+      ],
+      "repeatMaterializationMatched": true,
+      "artifactStatus": "MATERIALIZATION_ONLY_NO_PACKAGE_BY_MODEL_ITERATION_GATE",
+      "newModelIterationCreated": false,
+      "v5ProofArtifactsFrozen": false,
+      "modelVisibility": "not_tested",
+      "proofCompleteness": "missing"
+    },
+    "placeable": {
+      "test": "apps/studio-web/tests/browser/worker-wasm.integration.ts :: builds the canonical owner Placeable sample with revision-owned evidence",
+      "result": "PASS_REPEAT_BUILD_MATCHED",
+      "sourceAssetId": "s1-placeable-ritual-pedestal-1500",
+      "sourceSha256": "dad22a5c3490242458cb7a81e50c53e265abf75886f57f6bd8a770938c2f7372",
+      "basePlaceablesTwoDa": {
+        "path": "apps/studio-web/tests/fixtures/placeables.2da",
+        "byteLength": 206,
+        "sha256": "b60321fee26ca5fe336dc0f9d472326395b4602c50b9e0fcdd059e16369f5e30"
+      },
+      "projectIdentity": {
+        "schemaVersion": 1,
+        "projectId": "owner-s1-placeable-ritual-pedestal",
+        "projectName": "Owner Ritual Pedestal",
+        "projectRevision": 1
+      },
+      "authoringFingerprint": "6acb06c903391a77ea4c2e04662b928e1d1a393f7ec5b0c8c93e5030b6c93db8",
+      "artifacts": [
+        {
+          "fileName": "m26823ef58e43c67-placeable-materialization-report.json",
+          "byteLength": 4563,
+          "sha256": "442b6314631624506412183fa6e7381902fe4bd2340358a28886dc3606552f6c"
+        },
+        {
+          "fileName": "m26823ef58e43c67.hak",
+          "byteLength": 12721219,
+          "sha256": "8db6bf111656baad2ecaf728bd004fda49e406f761b367d77748e6d8f6ca71c7"
+        },
+        {
+          "fileName": "m26823ef58e43c67.mdl",
+          "byteLength": 137244,
+          "sha256": "4a923e659d5d320af22a97fddd9395f803abbe58d569ac6c9a74024a6d629fa0"
+        },
+        {
+          "fileName": "m26823ef58e43c67.mod",
+          "byteLength": 13420,
+          "sha256": "b3c8fb15bd898d8aae53c1307f07dc6b6ee8f5f59141ca60463b5283e6becf09"
+        }
+      ],
+      "repeatBuildMatched": true,
+      "modelVisibility": "not_tested",
+      "proofCompleteness": "missing"
+    }
+  },
+  "verificationCommands": [
+    "npx vitest run --config vitest.worker-integration.config.ts tests/browser/release-donor-e2e.integration.ts --reporter=verbose",
+    "npx vitest run --config vitest.worker-integration.config.ts tests/browser/worker-wasm.integration.ts -t \"materializes the owned single-idle H2\" --reporter=verbose",
+    "npx vitest run --config vitest.worker-integration.config.ts tests/browser/worker-wasm.integration.ts -t \"builds the canonical owner Placeable\" --reporter=verbose",
+    "cargo test -p m2a-core --test r46_v4_compatibility_audit -- --ignored --nocapture"
+  ],
+  "agentStartedOrControlledToolsetOrNwn": false
+}

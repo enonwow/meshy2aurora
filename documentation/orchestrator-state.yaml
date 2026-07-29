@@ -1,6 +1,6 @@
 # WORKSPACE-INVARIANT: Canonical repo C:\Projects\meshy2aurora. Never use C:\Users\enonw\Documents\meshy2aurora for project work.
 schema_version: 1
-last_updated: "2026-07-14"
+last_updated: "2026-07-29"
 project:
   canonical_repo: "C:\\Projects\\meshy2aurora"
   canonical_workspace_enforcement: "HARD_STOP_BEFORE_FIRST_WRITE"
@@ -24,22 +24,36 @@ status_vocabulary:
   - "SUPERSEDED"
 
 orchestration:
-  active_stage: "M7_V5_S1_REAL_E2E_INPUT_GATE"
-  next_ready_stage: "REAL_MESHY_EXECUTION_AFTER_OWNER_INPUT"
-  next_ready_slices: []
-  goal_stages: ["M6", "M7", "S1"]
-  goal_sequence: "Implementation-first wave: build the first pass of most M7/S1 vertical slices, then run the shared test/review phase; real Meshy execution and external acceptance remain later gates."
-  goal_exclusions: ["S2", "F1-F10", "gameplay classes", "full generated module pipeline"]
-  goal_terminal_condition: "M6, M7 and S1 are DONE with their required code, artifacts, independent reviews and live/e2e evidence."
-  next_action: "Preserve the review-clean visible S1-V5R workspace; after owner-approved original Meshy inputs, execute M7-V5 and final real browser E2E without touching Aurora configuration."
-  one_active_stage_only: false
-  current_attempt_id: "M7-S1-FIRST-PASS-20260714-01"
+  active_stage: "E7_REAL_E2E_AND_OWNER_HANDOFF"
+  next_ready_stage: "E7_REAL_E2E_AND_OWNER_HANDOFF"
+  next_ready_slices: ["E7_V5_GATE_ADMISSION", "E7_EXACT_V5_CANDIDATE", "E7_RELEASE_VERSION"]
+  goal_stages: ["E0", "E1", "E2", "E3", "E4", "E5", "E6", "E7"]
+  goal_sequence: "Implement the audited application roadmap in dependency order. E0-E6 are closed; E7 is active. Owner-owned Aurora/NWN proof remains a separate final acceptance boundary."
+  goal_exclusions: ["agent-run Aurora/NWN proof", "unadmitted model iteration", "silent mutation of frozen proof lineages"]
+  goal_terminal_condition: "E0-E7 satisfy every checklist and Definition of Done in the current application audit, with offline/browser evidence and an owner-proof handoff where required."
+  next_action: "Preserve the green owner-asset E2E, exact draft manifest, user guide and reusable r46 handoff. Do not freeze a V5 MOD/HAK until the owner directly admits one exact candidate or a fresh candidate-bound not_visible result opens the model-iteration gate; assign the product version only after that candidate and required owner proof."
+  active_stage_evidence:
+    owner_asset_browser_e2e: "PASS_OFFICIAL_WORKER_INTEGRATION_9_FILES_23_TESTS"
+    unit: "PASS_67_FILES_357_TESTS_2_BROWSER_ONLY_SKIPPED"
+    browser_persistence: "PASS_2_FILES_2_TESTS"
+    typecheck_contract_build_budgets: "PASS"
+    exact_manifest: "documentation/evidence/e7-release-evidence-manifest-2026-07-29.json"
+    owner_handoff: "documentation/evidence/e7-owner-proof-handoff-2026-07-29.md"
+    user_guide: "documentation/instrukcja-uzytkownika-creature-animation-placeable-2026-07-29.md"
+    completion_audit: "documentation/evidence/e0-e7-completion-audit-2026-07-29.md"
+    reproducibility: "H2 repeat build MATCH; donor repeat materialization MATCH; Placeable repeat build MATCH; r46 ignored compatibility audit PASS"
+  active_stage_blockers:
+    - id: "E7-V5-MODEL-ITERATION-GATE"
+      status: "WAITING_FOR_OWNER_ADMISSION_OR_FRESH_EXACT_NOT_VISIBLE"
+      detail: "Compatible donor import is READY_MATERIALIZED_NO_PACKAGE. No new Animation Studio MOD/HAK, resref or release version was created."
+  one_active_stage_only: true
+  current_attempt_id: "APPLICATION-E0-E7-20260728-01"
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
   done_rule: "A stage may be DONE only when every definition_of_done item has evidence."
-  stop_rule: "Stop only when a dependency of the currently implemented slice is missing. Deferred Meshy inputs and external acceptance do not block M7-V1 through M7-V4 or S1 first pass."
+  stop_rule: "Stop only when a dependency of the active E-stage is missing or when work would cross the human-owned Aurora/NWN proof or model-iteration gates."
   workspace_stop_rule: "Before every write resolve repo root. If it is not exactly C:\\Projects\\meshy2aurora, stop without creating a fallback or staging directory and reopen the task in the canonical workspace."
-  implementation_supplement: "documentation/suplement-implementation-first-m7-s1-codex.md"
-  implementation_wave:
+  implementation_supplement: "documentation/audyt-aplikacji-i-plan-etapowy-2026-07-28.md"
+  legacy_implementation_wave_20260714:
     inventory_total: 10
     first_pass_complete: 9
     first_pass_completed_slices: ["M7-V1", "M7-V2", "M7-V3", "M7-V4", "S1-V1", "S1-V2", "S1-V3", "S1-V4", "S1-V5"]
@@ -552,16 +566,27 @@ stages:
       - "documentation/orchestrator-state.yaml"
 
   S2:
-    status: "NOT_STARTED"
-    status_reason: "Future Studio backlog is intentionally deferred."
+    status: "VERIFYING"
+    status_reason: "Animation Studio F1-F10 is implemented and passes native, WASM, Worker, browser-persistence and UI tests. F11 remains outside an offline completion claim because the human-owned proof and model-iteration gate forbid a new proof candidate without a fresh candidate-bound visual failure."
     owner: "product/UI implementation agent"
     risk: "MEDIUM"
-    dependencies: ["S1 DONE"]
+    dependencies: ["Animation Mapping V2", "human-owned final proof policy"]
     current_problems:
-      - "Future features must not displace native E2E proof."
+      - "F11 cannot become ready_for_owner_proof without satisfying the model iteration gate."
     bugs: []
-    next_actions: ["Follow documented F1-F10 order after S1."]
-    evidence: []
-    documentation: ["documentation/przyszle-featurey-studio-codex.md", "documentation/evidence/S2-evidence.md"]
-    expected_artifacts: ["Per-feature evidence packets"]
-    changed_files: []
+    next_actions:
+      - "Preserve the completed F1-F10 implementation while E1-E7 close the application around it."
+      - "Do not create or install a new F11 MOD/HAK candidate until the gate admits one."
+    evidence:
+      - "documentation/raport-implementacji-animation-studio-2026-07-28.md"
+      - "documentation/evidence/animation-studio-v5-owner-proof-gate-2026-07-28.md"
+    documentation:
+      - "documentation/plan-implementacji-animation-studio-2026-07-28.md"
+      - "documentation/raport-implementacji-animation-studio-2026-07-28.md"
+      - "documentation/audyt-aplikacji-i-plan-etapowy-2026-07-28.md"
+    expected_artifacts: ["F1-F10 implementation and test evidence", "F11 owner-proof handoff only after gate admission"]
+    changed_files:
+      - "apps/studio-web/src/features/animation-editor"
+      - "apps/studio-web/src/features/animation-studio"
+      - "crates/m2a-core/src/animation_studio.rs"
+      - "crates/m2a-wasm/src/lib.rs"

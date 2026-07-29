@@ -17,6 +17,8 @@ Interfejsy referencyjne:
 
 - [Animation Studio wewnątrz kroku Animation Mapping](mockups/animation-studio-v1-2026-07-28/02-animation-studio-within-mapping.png)
 - [Wybór zapisanej animacji Custom dla slotu Base 42](mockups/animation-studio-v1-2026-07-28/03-custom-animation-picker.png)
+- [Kopiowanie klipu ze zgodnego modelu](mockups/animation-studio-v1-2026-07-28/04-copy-animation-from-model-compatible.png)
+- [Blokada importu z innym rigiem](mockups/animation-studio-v1-2026-07-28/05-copy-animation-rig-mismatch.png)
 - [Bazowy ekran mapowania 42 slotów](mockups/creature-animation-mapping-v2-2026-07-28/02-aurora-state-mapping-ux-corrected.png)
 
 Pierwszy mockup `01-animation-studio-create-edit.png` pozostaje zapisem
@@ -981,6 +983,45 @@ niezaznaczone — nie są pominięte ani zastąpione wynikami testowej fixture.
 - [ ] Status `ready_for_owner_proof`.
 - [ ] Właściciel ma komplet danych bez domysłów.
 
+### F12. Kopiowanie animacji z innego modelu
+
+Cel: dodac import jako opcje biblioteki `Custom` wewnatrz `Create & edit`,
+bez nowego kroku workflow i bez modyfikowania zrodlowych GLB.
+
+#### Kontrakt
+
+- [x] Worker/WASM zwraca inventory klipow dawcy, exact SHA-256 i output rig.
+- [x] `IMPORTED_MODEL_COPY` zachowuje nazwe klipu, fingerprint klipu i SHA-256
+  modelu dawcy.
+- [x] Tracki i eventy sa materializowane w dokumencie Studio; plik dawcy nie
+  jest wymagany przy pozniejszym buildzie.
+- [x] Exact rig gate porownuje ID, nazwy, parenty i local rest pose.
+- [x] Rozny rig jest blokowany kodem
+  `M2A-ANIMATION-IMPORT-RIG-MISMATCH`.
+- [ ] Automatyczny retarget roznych rigow (osobna przyszla funkcja).
+
+#### UI/UX
+
+- [x] Przygotowano mockup zgodnego rigu i mockup blokady mismatch.
+- [x] Opcja `Copy from another model...` jest w menu `+ New animation`.
+- [x] Modal pokazuje plik, liste klipow, czas, liczbe trackow, kosci i skrot
+  SHA-256 dawcy.
+- [x] Zgodny rig odblokowuje `Copy to Custom`.
+- [x] Rozny rig pokazuje pierwsza konkretna roznice i blokuje akcje.
+- [x] Automatyczna nazwa `imp_<clip>` miesci sie w limicie 16 znakow Aurory.
+- [x] Po imporcie klip pojawia sie jako Draft w `Custom`, a po Save jako Valid.
+- [x] Source GLB i donor GLB pozostaja niezmienione.
+
+#### Testy
+
+- [x] Unit: exact rig i quaternion sign equivalence.
+- [x] Unit: fail-closed przy roznym rest pose.
+- [x] Unit: donor provenance i self-contained authored tracks.
+- [x] Integration: import do biblioteki Custom.
+- [x] Rust/WASM: inventory 42 klipow na realnej fixture.
+- [x] Browser: compatible 2-bone donor -> import -> Save -> `VALID`.
+- [x] Browser: real H1 donor 24-bone -> `Different rig` -> przycisk disabled.
+
 ## 10. Macierz scenariuszy akceptacyjnych
 
 | ID | Scenariusz | Oczekiwany wynik | Status |
@@ -1005,12 +1046,17 @@ niezaznaczone — nie są pominięte ani zastąpione wynikami testowej fixture.
 | AS-18 | Readback mismatch | Download zablokowany | [x] |
 | AS-19 | V4 regression | Exact dotychczasowy wynik bez zmian | [x] |
 | AS-20 | Keyboard only | Pełny podstawowy authoring dostępny | [x] |
+| AS-21 | Import zgodnego modelu | Nowy Draft w Custom z donor provenance | [x] |
+| AS-22 | Import modelu z innym rigiem | Fail-closed, brak nowego klipu | [x] |
+| AS-23 | Save importowanego klipu | Core validation i status Valid | [x] |
 
 ## 11. Definition of Done całej funkcji
 
 - [x] `Create & edit` działa jako sub-mode kroku 3.
 - [x] Użytkownik może utworzyć klip bez edycji JSON.
 - [x] Użytkownik może edytować kopię klipu źródłowego.
+- [x] Użytkownik może skopiować klip ze zgodnego lokalnego modelu GLB.
+- [x] Import modelu z innym rigiem jest blokowany przed zapisem.
 - [x] Źródłowy GLB pozostaje byte-identical.
 - [x] Użytkownik może edytować translation i rotation keyframes.
 - [x] Użytkownik może edytować eventy.
@@ -1077,6 +1123,7 @@ Checkboxy w tej sekcji oznaczają przyszłe commity, nie status funkcji.
 | 2026-07-28 | F8-F9 | Dodano picker Custom/Base 42, build V5, manifest, Review i exact binary readback reconciliation | `crates/m2a-core/tests/animation_studio_v5.rs`, `apps/studio-web/tests/browser/animation-studio-v5-worker.integration.ts` |
 | 2026-07-28 | F10 | Wszystkie offline gate'y, real Worker/WASM, persistence, accessibility i benchmark przeszły | [`raport-implementacji-animation-studio-2026-07-28.md`](raport-implementacji-animation-studio-2026-07-28.md) |
 | 2026-07-28 | F11 | Handoff zatrzymany fail-closed: r46 jest `visible`, więc brak uprawnienia do nowej lineage V5 | [`evidence/animation-studio-v5-owner-proof-gate-2026-07-28.md`](evidence/animation-studio-v5-owner-proof-gate-2026-07-28.md) |
+| 2026-07-28 | F12 | Dodano kopiowanie klipu z lokalnego GLB, exact rig gate i zapis do Custom | `animationImport.ts`, `ImportAnimationFromModelDialog.tsx`, `m2a-wasm/src/lib.rs` |
 
 ## 15. Źródła i dokumenty powiązane
 
