@@ -1,8 +1,8 @@
 # Audyt aplikacji Meshy2Aurora i plan etapowy
 
-Data: 2026-07-28  
-Branch: `animation`  
-Worktree: `C:\Projects\meshy2aurora\.worktrees\animation`  
+Data: 2026-07-28
+Branch: `animation`
+Worktree: `C:\Projects\meshy2aurora\.worktrees\animation`
 Zakres: Studio Web, Worker, WASM, `m2a-core`, przepływy Creature, Placeable,
 Tile, Animation Studio, persistence, build, review, download, CI i aktywna
 dokumentacja.
@@ -257,7 +257,7 @@ loading. Meshy Lab, Tile, Placeable authoring i Animation Studio powinny być
 
 ### E0. Przywrócić jedną prawdę i zielony gate
 
-Priorytet: `P0`  
+Priorytet: `P0`
 Zależności: brak
 
 - [x] Przepisać czerwony test Worker/web-WASM na role/label nowego Source UI.
@@ -293,7 +293,7 @@ Evidence 2026-07-28:
 
 ### E1. Domknąć globalny shell i nawigację
 
-Priorytet: `P1`  
+Priorytet: `P1`
 Zależności: E0
 
 - [x] Dodać target-aware tekst w Inspect:
@@ -339,7 +339,7 @@ Evidence 2026-07-28:
 
 ### E2. Wprowadzić prawdziwy projekt local-first
 
-Priorytet: `P1`  
+Priorytet: `P1`
 Zależności: E1
 
 - [x] Zdefiniować `Meshy2AuroraProjectV1`.
@@ -390,7 +390,7 @@ Evidence 2026-07-28:
 
 ### E3. Domknąć Creature i Animation Studio jako jeden produkt
 
-Priorytet: `P1`  
+Priorytet: `P1`
 Zależności: E2
 
 - [x] Base 42 jest stałym katalogiem slotów Aurora.
@@ -460,7 +460,7 @@ Evidence 2026-07-28:
 
 ### E4. Domknąć Build, Review i Download
 
-Priorytet: `P1`  
+Priorytet: `P1`
 Zależności: E3
 
 - [x] Rozszerzyć kontrakt Workera o rzeczywiste etapy albo uprościć UI do
@@ -515,7 +515,7 @@ Evidence 2026-07-29:
 
 ### E5. Ujednolicić pozostałe targety i funkcje opcjonalne
 
-Priorytet: `P1/P2`  
+Priorytet: `P1/P2`
 Zależności: E2, może być realizowane niezależnie od E3-E4
 
 - [x] Przenieść Placeable na wspólny project lifecycle, identity i build
@@ -576,7 +576,7 @@ Evidence 2026-07-29:
 
 ### E6. Wydajność, architektura i jakość utrzymania
 
-Priorytet: `P1` przed większymi nowymi funkcjami  
+Priorytet: `P1` przed większymi nowymi funkcjami
 Zależności: E0-E4
 
 - [x] Podzielić `App.tsx` na kontrolery targetów i hooki sesji/builda.
@@ -651,7 +651,7 @@ Evidence 2026-07-29:
 
 ### E7. Realne E2E, handoff i wydanie
 
-Priorytet: `P0 release gate`  
+Priorytet: `P0 release gate`
 Zależności: E0-E6
 
 - [x] Uruchomić realne browser E2E na właścicielskich modelach z

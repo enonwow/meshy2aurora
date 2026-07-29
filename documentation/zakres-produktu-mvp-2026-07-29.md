@@ -1,6 +1,6 @@
 # Zakres produktu MVP
 
-Data decyzji: 2026-07-29  
+Data decyzji: 2026-07-29
 Dotyczy: etap E5 planu aplikacji
 
 ## Widoczne targety MVP
@@ -52,4 +52,3 @@ Aurora Toolset/NWN. Przed wynikiem właściciela manifest zachowuje:
 - `modelVisibility=not_tested`;
 - `proofCompleteness=missing`;
 - `ownerProof.status=PENDING_OWNER`.
-

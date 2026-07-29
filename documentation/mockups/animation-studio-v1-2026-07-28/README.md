@@ -31,4 +31,3 @@ Zestaw pokazuje rozwój `Create & edit` jako sub-mode kroku
 - inny rig nie oferuje pozornego sukcesu — automatyczny retarget jest osobną
   przyszłą funkcją;
 - skopiowany klip trafia do biblioteki `Custom`.
-

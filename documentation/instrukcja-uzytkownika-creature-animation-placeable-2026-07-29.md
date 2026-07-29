@@ -1,6 +1,6 @@
 # Instrukcja użytkownika: Creature, Animation Studio i Placeable
 
-Stan: MVP przed końcowym gate E7  
+Stan: MVP przed końcowym gate E7
 Data: 2026-07-29
 
 ## Wspólna zasada projektu
