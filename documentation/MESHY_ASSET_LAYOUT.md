@@ -24,6 +24,13 @@ lineage proof.
 Katalog `test-assets\meshy` jest wycofany i zabroniony. Kod produktu, testy,
 narzedzia i nowe dokumenty nie moga go odtwarzac ani wskazywac.
 
+Zarejestrowany linked worktree wewnatrz `C:\Projects\meshy2aurora` korzysta z
+tej samej pojedynczej biblioteki zrodlowej
+`C:\Projects\meshy2aurora\sample-3d`. Worktree moze zawierac sledzone
+manifesty swojej rewizji, ale nie tworzy drugiej biblioteki lokalnych
+payloadow. Gate sprawdza kanoniczne payloady w glownym rootcie oraz kod i
+dokumentacje aktywnego worktree.
+
 ## Klasy danych
 
 | Katalog | Rola | Czy jest biblioteka zrodel Meshy |
