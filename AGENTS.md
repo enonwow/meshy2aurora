@@ -6,14 +6,12 @@ The canonical repository and primary writable project workspace is:
 
 `C:\Projects\meshy2aurora`
 
-One parallel worktree is explicitly authorized by the owner on 2026-07-28:
-
-`C:\Projects\meshy2aurora\.worktrees\animation`
-
-This exception is valid only when that exact path is checked out on branch
-`animation` and its Git common directory is the canonical repository's
-`C:\Projects\meshy2aurora\.git`. No other worktree, clone, sibling directory or
-branch/path pairing is authorized.
+The owner decision of 2026-07-29 also authorizes registered Git worktrees whose
+resolved worktree roots remain inside `C:\Projects\meshy2aurora`. Every such
+worktree must use the canonical repository's shared Git directory
+`C:\Projects\meshy2aurora\.git`. Worktrees outside the canonical root, separate
+clones, sibling directories and repositories with different Git metadata
+remain forbidden.
 
 The following path is forbidden for every project operation:
 
@@ -27,11 +25,12 @@ Before any implementation or documentation write, run:
 
 `powershell -NoProfile -ExecutionPolicy Bypass -File assert-canonical-workspace.ps1`
 
-The check must resolve the repository root.
-It must resolve either the primary root or the exact authorized `animation`
-worktree above. Otherwise stop. Do not work around the problem by writing
-elsewhere and do not repeatedly request permissions for out-of-workspace
-writes. Reopen or resume the task with an approved workspace root.
+The check must resolve the repository root. It must resolve either the primary
+root or a registered linked worktree located inside the canonical root and
+sharing its exact Git common directory. Otherwise stop. Do not work around the
+problem by writing elsewhere and do not repeatedly request permissions for
+out-of-workspace writes. Reopen or resume the task with an approved workspace
+root.
 
 All durable project documentation belongs in the active approved worktree's
 `documentation` directory. Read

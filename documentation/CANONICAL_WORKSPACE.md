@@ -1,22 +1,22 @@
 # Canonical workspace invariant
 
-<!-- WORKSPACE-INVARIANT: Canonical Git metadata C:\Projects\meshy2aurora\.git; approved roots C:\Projects\meshy2aurora and its exact .worktrees\animation worktree. Never use C:\Users\enonw\Documents\meshy2aurora for project work. -->
+<!-- WORKSPACE-INVARIANT: Canonical Git metadata C:\Projects\meshy2aurora\.git; approved roots are the primary root and registered linked worktrees contained within C:\Projects\meshy2aurora. Never use C:\Users\enonw\Documents\meshy2aurora for project work. -->
 
 Status: `MANDATORY / HARD STOP`
 
-## One repository, two approved worktree roots
+## One repository, contained registered worktrees
 
 The canonical Git metadata and primary worktree are:
 
 `C:\Projects\meshy2aurora`
 
-The owner decision of 2026-07-28 authorizes exactly one parallel worktree:
+The owner decision of 2026-07-29 authorizes registered linked worktrees whose
+resolved roots remain inside `C:\Projects\meshy2aurora`. Each approved
+worktree must resolve its Git common directory to
+`C:\Projects\meshy2aurora\.git`.
 
-`C:\Projects\meshy2aurora\.worktrees\animation`
-
-The exception is valid only while the exact worktree is on branch `animation`
-and resolves its Git common directory to `C:\Projects\meshy2aurora\.git`.
-No other worktree, clone, sibling path or branch/path pairing is approved.
+Worktrees outside the canonical root, separate clones, sibling paths and
+repositories using different Git metadata are not approved.
 
 The following path is explicitly forbidden:
 
@@ -32,9 +32,9 @@ canonical repository is outside the current sandbox.
 Before the first write, every root agent, subagent and local automation must:
 
 1. resolve the repository root;
-2. confirm it is exactly the primary root or the approved `animation` root;
-3. for the parallel root, confirm branch `animation` and the canonical Git
-   common directory;
+2. confirm it is the primary root or a registered worktree contained within
+   the canonical root;
+3. confirm the canonical Git common directory for every linked worktree;
 4. stop without writing when the check fails;
 5. resume only in a task whose workspace root is approved.
 
@@ -53,8 +53,8 @@ documents without rewriting historical snapshots or `*-cloud.md` files.
 
 The visible source of truth is this document together with `PROJECT_RULES.md`,
 root `AGENTS.md`, `documentation/AGENTS.md` and `orchestrator-state.yaml`.
-The exception applies only on branch `animation`; it does not authorize
-additional worktrees from either approved root.
+The exception applies only to worktrees registered by the canonical
+repository and physically contained within its root.
 
 ## Consolidation record
 

@@ -3,15 +3,15 @@
 This rule applies to every file and subdirectory under `documentation`.
 
 Meshy2Aurora documentation may be created, edited, generated or staged only in
-the active approved worktree's `documentation` directory:
+the active approved worktree's `documentation` directory. The primary location
+is:
 
 `C:\Projects\meshy2aurora\documentation`
 
-or, only on branch `animation` linked to the canonical Git metadata:
-
-`C:\Projects\meshy2aurora\.worktrees\animation\documentation`
-
-No other documentation worktree or path is authorized.
+Registered linked worktrees are also approved when their resolved roots remain
+inside `C:\Projects\meshy2aurora` and their Git common directory is exactly
+`C:\Projects\meshy2aurora\.git`. No documentation worktree outside the
+canonical root and no path using different Git metadata is authorized.
 
 Never use or recreate:
 

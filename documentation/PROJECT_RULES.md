@@ -6,14 +6,12 @@ Kanoniczne metadane repozytorium i glowny zapisywalny workspace projektu sa w:
 
 `C:\Projects\meshy2aurora`
 
-Decyzja wlasciciela z 2026-07-28 dopuszcza jeden dodatkowy, rownolegly
-worktree:
-
-`C:\Projects\meshy2aurora\.worktrees\animation`
-
-Wyjatek jest wazny tylko dla brancha `animation` polaczonego ze wspolnym Git
-directory `C:\Projects\meshy2aurora\.git`. Inne worktree, klony, sciezki i
-polaczenia branch/path pozostaja zabronione.
+Decyzja wlasciciela z 2026-07-29 dopuszcza rowniez zarejestrowane worktree,
+jezeli ich rozwiazany root pozostaje wewnatrz `C:\Projects\meshy2aurora`, a Git
+common directory jest dokladnie kanonicznym
+`C:\Projects\meshy2aurora\.git`. Worktree poza kanonicznym rootem, osobne
+klony, sciezki siostrzane i repozytoria z innymi metadanymi Git pozostaja
+zabronione.
 
 `C:\Users\enonw\Documents\meshy2aurora` jest sciezka bezwzglednie zakazana.
 Nie wolno tam tworzyc, edytowac, stage'owac, kopiowac, migrowac, testowac,
@@ -22,9 +20,10 @@ staging, scratch, mirror ani fallback. Wlasciciel nigdy nie wskazal ani nie
 autoryzowal tej sciezki.
 
 Kazdy agent i subagent przed pierwszym zapisem musi rozwiazac repo root. Musi
-nim byc dokladnie glowny workspace albo zatwierdzony worktree `animation`
-opisany powyzej. Kazdy inny wynik oznacza HARD STOP bez tworzenia plikow i bez
-obchodzenia problemu przez kolejny katalog. Pelny kontrakt znajduje sie w
+nim byc dokladnie glowny workspace albo zarejestrowany linked worktree
+wewnatrz kanonicznego rootu, korzystajacy z jego Git common directory. Kazdy
+inny wynik oznacza HARD STOP bez tworzenia plikow i bez obchodzenia problemu
+przez kolejny katalog. Pelny kontrakt znajduje sie w
 `documentation/CANONICAL_WORKSPACE.md` i root `AGENTS.md`.
 
 Obowiazkowy preflight:
@@ -38,9 +37,9 @@ zatwierdzonego worktree i tam ma byc dopisywana. Nie tworzymy rozproszonych
 notatek poza tym folderem bez rownoczesnego wpisu lub przeniesienia do
 `documentation`.
 
-Foldery o podobnej nazwie poza dwoma dokladnie zatwierdzonymi rootami nie sa
-kanoniczne dla tego projektu i nie wolno uzywac ich nawet jako tymczasowego
-stagingu.
+Foldery o podobnej nazwie poza kanonicznym rootem i jego zarejestrowanymi
+linked worktree nie sa kanoniczne dla tego projektu i nie wolno uzywac ich
+nawet jako tymczasowego stagingu.
 
 ### 1.1 Rejestr istotnych problemow i wynikow
 
