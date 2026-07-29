@@ -29,8 +29,8 @@ const budgets = {
   maximumJsChunkBytes: 620_000,
   totalJsBytes: 1_450_000,
   totalCssBytes: 150_000,
-  wasmBytes: 3_820_000,
-  wasmGzipBytes: 1_380_000,
+  wasmBytes: 4_000_000,
+  wasmGzipBytes: 1_420_000,
 };
 
 const sum = (items, field) => items.reduce((total, item) => total + item[field], 0);

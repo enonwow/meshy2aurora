@@ -96,6 +96,13 @@ describe("DownloadManifestV1", () => {
     })).toMatchObject({ allowed: true, status: "READY" });
   });
 
+  it("names a product-only manifest from its exact HAK when no demo module exists", () => {
+    expect(downloadManifestFileNameV1([
+      artifact("package-hak", "HAK", "m2a_product01.hak", "a"),
+      artifact("model-mdl", "MODEL", "m2a_product01.mdl", "b"),
+    ])).toBe("m2a_product01-download-manifest.json");
+  });
+
   it("rejects malformed hashes and unverified output identities", () => {
     expect(() => createDownloadManifestV1({
       projectIdentity,

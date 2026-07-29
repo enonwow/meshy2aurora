@@ -162,10 +162,20 @@ export function downloadManifestFileNameV1(
   artifacts: readonly WorkerArtifact[],
 ) {
   const modules = artifacts.filter(({ kind }) => kind === "MODULE");
-  if (modules.length !== 1 || !modules[0]!.fileName.toLowerCase().endsWith(".mod")) {
-    throw new Error("Download manifest requires exactly one generated module artifact");
+  if (modules.length === 1 && modules[0]!.fileName.toLowerCase().endsWith(".mod")) {
+    return `${modules[0]!.fileName.slice(0, -4)}-download-manifest.json`;
   }
-  return `${modules[0]!.fileName.slice(0, -4)}-download-manifest.json`;
+  const haks = artifacts.filter(({ kind }) => kind === "HAK");
+  if (
+    modules.length === 0
+    && haks.length === 1
+    && haks[0]!.fileName.toLowerCase().endsWith(".hak")
+  ) {
+    return `${haks[0]!.fileName.slice(0, -4)}-download-manifest.json`;
+  }
+  throw new Error(
+    "Download manifest requires exactly one generated module or product HAK artifact",
+  );
 }
 
 export function validateDownloadManifestInventoryV1(

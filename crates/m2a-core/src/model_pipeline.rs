@@ -7,15 +7,18 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 pub use crate::direct_creature_animation::{
-    COMMON_NATIVE_DIRECT_CREATURE_EVENT_PAIRS_V1, DirectCreatureAnimationBehaviorV1,
-    DirectCreatureAnimationCompletenessV1, DirectCreatureAnimationEventConformanceV1,
-    DirectCreatureAnimationEventProfileV1, DirectCreatureAnimationProfileV1,
-    DirectCreatureClipEventAuthoringV1, DirectCreatureEventAuthoringV1,
-    FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1, ProceduralHumanoidRigV1,
-    apply_direct_creature_event_authoring_v1, author_procedural_common_native_events_v1,
-    author_procedural_humanoid_full_native_42_v1, evaluate_direct_creature_animation_behavior_v1,
+    COMMON_NATIVE_DIRECT_CREATURE_EVENT_PAIRS_V1, DirectCreatureAnimationBehaviorV2,
+    DirectCreatureAnimationClipLineageV2, DirectCreatureAnimationClipOriginV2,
+    DirectCreatureAnimationCompletenessV2, DirectCreatureAnimationEventConformanceV1,
+    DirectCreatureAnimationEventProfileV1, DirectCreatureAnimationLineageV2,
+    DirectCreatureAnimationProfileV1, DirectCreatureClipEventAuthoringV1,
+    DirectCreatureEventAuthoringV1, DirectCreatureEventTimingPolicyV2,
+    FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1, ProceduralHumanoidKinematicsConformanceV2,
+    ProceduralHumanoidRigV1, apply_direct_creature_event_authoring_v1,
+    author_procedural_common_native_events_v2, author_procedural_humanoid_full_native_42_v2,
+    evaluate_direct_creature_animation_behavior_v2,
     evaluate_direct_creature_event_conformance_from_inspection_v1,
-    evaluate_direct_creature_event_conformance_v1,
+    evaluate_direct_creature_event_conformance_v1, evaluate_procedural_humanoid_kinematics_v2,
 };
 
 use crate::{
@@ -50,17 +53,25 @@ use crate::{
         MdlAnimationInterpolationV1, MdlAnimationSetV1, MdlAnimationTrackPathV1,
         MdlAnimationTrackV1, MdlFormatProfileV1, MdlMaterialTextureBindingV1,
         MdlStateProjectionProfileV1, MdlStateProjectionProvenanceV1, MdlWriterOptionsV1,
-        MdlWriterReportV1, NodeReport, direct_creature_structural_summary_digest_v1,
-        evaluate_skin_deformation_v1, inspect_binary_mdl,
-        inspect_direct_creature_engine_envelope_v1, verify_direct_creature_state_projection_v1,
-        write_binary_mdl_with_animations,
+        MdlWriterReportV1, NWN_EE_BINARY_MDL_EPSILON_V1, NodeReport,
+        direct_creature_structural_summary_digest_v1, evaluate_skin_deformation_v1,
+        inspect_binary_mdl, inspect_direct_creature_engine_envelope_v1,
+        verify_direct_creature_state_projection_v1, write_binary_mdl_with_animations,
+        write_binary_mdl_with_animations_exact_face_planes_v1,
     },
+    model_limits::MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_CEILING_V1,
+    model_segmentation::segment_model_for_binary_mdl_v1,
     owned_fixture::{synthetic_owned_m6_animation_mapping_v1, synthetic_owned_m6_rig_v1},
     package::{PackageManifestV1, write_model_package_v1},
     profile_a::{
         AuroraCreatureIrV1, CreatureRigProfileV1, ProfileAAnimationMappingV1,
         ProfileAConversionReportV1, RigProvenanceV1, RigSegmentDeformationV1,
-        canonical_profile_sha256, convert_profile_a, convert_profile_a_with_animations_v1,
+        canonical_profile_sha256, convert_profile_a, convert_profile_a_with_animations_exact_v1,
+        convert_profile_a_with_animations_p100k_experiment_v1,
+        convert_profile_a_with_animations_p300k_experiment_v1,
+        convert_profile_a_with_animations_v1, derive_meshy_h1_profile_and_mapping_exact_v1,
+        derive_meshy_h1_profile_and_mapping_p100k_experiment_v1,
+        derive_meshy_h1_profile_and_mapping_p300k_experiment_v1,
         derive_meshy_h1_profile_and_mapping_v1, derive_meshy_m0_static_rigid_profile_v1,
     },
     proof_module::{
@@ -70,9 +81,13 @@ use crate::{
         build_binary_m0_vertical_slice_module_with_identity_v1,
         build_canonical_m0_creature_proof_module_v1, build_creature_proof_module_v1,
         build_single_profiled_creature_proof_module_with_identity_v3,
+        inspect_binary_creature_profile_matrix_module_v2,
         inspect_binary_m0_vertical_slice_module_v1,
     },
-    tga::{TgaWriterOptionsV1, TgaWriterReportV1, write_tga_v1},
+    tga::{
+        TextureArtifactCleanupOptionsV1, TextureArtifactCleanupReportV1, TgaWriterOptionsV1,
+        TgaWriterReportV1, cleanup_texture_artifacts_v1, write_tga_v1,
+    },
     two_da::{
         TwoDaAppendReportV1, TwoDaAppendRequestV1, TwoDaCellAssignmentV1, TwoDaCellValueV1,
         TwoDaInspectionV1, TwoDaLimitsV1, append_two_da_row_v1, clone_two_da_row_request_v1,
@@ -87,6 +102,11 @@ pub const M6_APPEARANCE_LABEL: &str = "M2A_M6_PROOF";
 pub const M6_HAK_FILE_NAME: &str = "m2a_codex_aproof.hak";
 pub const M6_PROOF_MODULE_FILE_NAME: &str = "m2a_codex_aproof.mod";
 pub const M6_MANIFEST_FILE_NAME: &str = "materialization-manifest.json";
+pub const MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_COUNT_V1: usize = 100_000;
+const MESHY_CREATURE_P100K_EXPERIMENT_RAW_TRIANGLE_CEILING_V1: usize =
+    MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_CEILING_V1;
+pub const MESHY_CREATURE_P300K_EXPERIMENT_TRIANGLE_COUNT_V1: usize = 300_000;
+const MESHY_CREATURE_P300K_EXPERIMENT_RAW_TRIANGLE_CEILING_V1: usize = 330_000;
 const DIRECT_CREATURE_APPEARANCE_DONOR_ROW_V1: u32 = 102;
 const DIRECT_CREATURE_APPEARANCE_DONOR_RACE_V1: &str = "c_horror";
 const DIRECT_CREATURE_RUNTIME_APPEARANCE_COLUMNS_V1: [&str; 35] = [
@@ -126,6 +146,22 @@ const DIRECT_CREATURE_RUNTIME_APPEARANCE_COLUMNS_V1: [&str; 35] = [
     "BODY_BAG",
     "TARGETABLE",
 ];
+
+/// Runtime semantics applied after the structurally eligible direct-model
+/// donor row has been cloned.
+///
+/// The donor proves the Aurora `MODELTYPE=S` shape of the row. It does not
+/// define the gameplay identity of a generated humanoid creature.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum DirectCreatureAppearanceSemanticProfileV2 {
+    /// Historical compatibility lane: preserves every donor cell except the
+    /// generated label and model resref.
+    LegacyDirectMonsterDonorV1,
+    /// Medium biped values copied from the stock Human runtime row, with
+    /// `MODELTYPE=S` and the generated direct-model resref retained.
+    HumanoidMediumV1,
+}
 
 /// Exact immutable resource identity for a production procedural creature
 /// package. Historical M6 entry points retain their fixed compatibility names;
@@ -231,6 +267,33 @@ fn project_identity_error(path: &str, message: &str) -> M6PipelineErrorV1 {
     )
 }
 
+/// Collision-free identity of the production resources only. A MOD, Area and
+/// UTC belong to a separate demo/proof request and are intentionally absent.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProceduralCreatureProductIdentityV2 {
+    pub model_resref: String,
+    pub texture_resref: String,
+    pub hak_resref: String,
+    pub appearance_label: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProceduralCreatureBuildOptionsV1 {
+    pub schema_version: u32,
+    pub texture_artifact_cleanup: bool,
+}
+
+impl Default for ProceduralCreatureBuildOptionsV1 {
+    fn default() -> Self {
+        Self {
+            schema_version: 1,
+            texture_artifact_cleanup: false,
+        }
+    }
+}
+
 impl ProceduralCreaturePackageIdentityV1 {
     fn historical_default() -> Self {
         Self {
@@ -246,12 +309,24 @@ impl ProceduralCreaturePackageIdentityV1 {
     }
 }
 
-fn complete_direct_creature_appearance_request_v1(
+impl ProceduralCreatureProductIdentityV2 {
+    fn from_legacy(identity: &ProceduralCreaturePackageIdentityV1) -> Self {
+        Self {
+            model_resref: identity.model_resref.clone(),
+            texture_resref: identity.texture_resref.clone(),
+            hak_resref: identity.module.hak_resref.clone(),
+            appearance_label: M6_APPEARANCE_LABEL.to_owned(),
+        }
+    }
+}
+
+fn complete_direct_creature_appearance_request_v2(
     appearance_two_da: &[u8],
     inspection: &TwoDaInspectionV1,
     label: &str,
     race: &str,
     error_prefix: &str,
+    semantic_profile: DirectCreatureAppearanceSemanticProfileV2,
 ) -> Result<TwoDaAppendRequestV1, M6PipelineErrorV1> {
     for required in DIRECT_CREATURE_RUNTIME_APPEARANCE_COLUMNS_V1 {
         if !inspection
@@ -306,23 +381,64 @@ fn complete_direct_creature_appearance_request_v1(
         ));
     }
 
+    let text_assignment = |column_name: &str, value: &str| TwoDaCellAssignmentV1 {
+        column_name: column_name.to_owned(),
+        value: TwoDaCellValueV1::Text {
+            value: value.to_owned(),
+        },
+    };
+    let mut assignments = vec![
+        text_assignment("LABEL", label),
+        text_assignment("RACE", race),
+    ];
+    if semantic_profile == DirectCreatureAppearanceSemanticProfileV2::HumanoidMediumV1 {
+        assignments.extend([
+            TwoDaCellAssignmentV1 {
+                column_name: "STRING_REF".to_owned(),
+                value: TwoDaCellValueV1::Null,
+            },
+            text_assignment("NAME", label),
+            text_assignment("ENVMAP", "default"),
+            text_assignment("BLOODCOLR", "R"),
+            text_assignment("MODELTYPE", "S"),
+            text_assignment("WEAPONSCALE", "1"),
+            text_assignment("WING_TAIL_SCALE", "1"),
+            text_assignment("HELMET_SCALE_M", "1.05"),
+            text_assignment("HELMET_SCALE_F", "0.85"),
+            text_assignment("MOVERATE", "NORM"),
+            text_assignment("WALKDIST", "1.6"),
+            text_assignment("RUNDIST", "3.2"),
+            text_assignment("PERSPACE", "0.3"),
+            text_assignment("CREPERSPACE", "0.5"),
+            text_assignment("HEIGHT", "2"),
+            text_assignment("HITDIST", "0.3"),
+            text_assignment("PREFATCKDIST", "1.7"),
+            text_assignment("TARGETHEIGHT", "H"),
+            text_assignment("ABORTONPARRY", "1"),
+            text_assignment("RACIALTYPE", "11"),
+            text_assignment("HASLEGS", "1"),
+            text_assignment("HASARMS", "1"),
+            TwoDaCellAssignmentV1 {
+                column_name: "PORTRAIT".to_owned(),
+                value: TwoDaCellValueV1::Null,
+            },
+            text_assignment("SIZECATEGORY", "3"),
+            text_assignment("PERCEPTIONDIST", "9"),
+            text_assignment("FOOTSTEPTYPE", "0"),
+            text_assignment("SOUNDAPPTYPE", "0"),
+            text_assignment("HEADTRACK", "1"),
+            text_assignment("HEAD_ARC_H", "60"),
+            text_assignment("HEAD_ARC_V", "30"),
+            text_assignment("HEAD_NAME", "head_g"),
+            text_assignment("BODY_BAG", "6"),
+            text_assignment("TARGETABLE", "1"),
+        ]);
+    }
+
     clone_two_da_row_request_v1(
         appearance_two_da,
         donor_row,
-        &[
-            TwoDaCellAssignmentV1 {
-                column_name: "LABEL".to_owned(),
-                value: TwoDaCellValueV1::Text {
-                    value: label.to_owned(),
-                },
-            },
-            TwoDaCellAssignmentV1 {
-                column_name: "RACE".to_owned(),
-                value: TwoDaCellValueV1::Text {
-                    value: race.to_owned(),
-                },
-            },
-        ],
+        &assignments,
         &TwoDaLimitsV1::default(),
     )
     .map_err(|error| pipeline_error("appearance", error.code, error.path, error.message))
@@ -677,15 +793,21 @@ pub struct M6MaterializationReportV1 {
     pub conversion: ProfileAConversionReportV1,
     pub model: MdlWriterReportV1,
     pub texture: TgaWriterReportV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub texture_artifact_cleanup: Option<TextureArtifactCleanupReportV1>,
     pub appearance: TwoDaAppendReportV1,
     pub hak: HakWriterReportV1,
     pub proof_module: ProofModuleReportV1,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub animation_completeness: Option<DirectCreatureAnimationCompletenessV1>,
+    pub animation_completeness: Option<DirectCreatureAnimationCompletenessV2>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub animation_behavior: Option<DirectCreatureAnimationBehaviorV1>,
+    pub animation_behavior: Option<DirectCreatureAnimationBehaviorV2>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub animation_kinematics_conformance: Option<ProceduralHumanoidKinematicsConformanceV2>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub animation_event_conformance: Option<DirectCreatureAnimationEventConformanceV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub animation_event_timing_policy: Option<DirectCreatureEventTimingPolicyV2>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub animation_event_authoring_canonical: Option<M6ByteIdentityV1>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -790,6 +912,16 @@ pub struct AnimationStudioBuildAuditV1 {
     pub authored_clips: Vec<AnimationStudioAuthoredClipAuditV1>,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProceduralCreatureProductOutputIdentitiesV2 {
+    pub model: M6ByteIdentityV1,
+    pub texture: M6ByteIdentityV1,
+    pub appearance_two_da: M6ByteIdentityV1,
+    pub hak: M6ByteIdentityV1,
+    pub report: M6ByteIdentityV1,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct M6MaterializationReportV5 {
@@ -799,6 +931,32 @@ pub struct M6MaterializationReportV5 {
     pub animation_studio: AnimationStudioBuildAuditV1,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProceduralCreatureProductReportV2 {
+    pub schema_version: u32,
+    pub identity: ProceduralCreatureProductIdentityV2,
+    pub appearance_semantic_profile: DirectCreatureAppearanceSemanticProfileV2,
+    pub resolved_base_color_image_index: usize,
+    pub texture_selection: M6TextureSelectionV1,
+    pub geometry: M6GeometryReportV1,
+    pub ingest: crate::glb::GlbInspectionReport,
+    pub conversion: ProfileAConversionReportV1,
+    pub model: MdlWriterReportV1,
+    pub texture: TgaWriterReportV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub texture_artifact_cleanup: Option<TextureArtifactCleanupReportV1>,
+    pub appearance: TwoDaAppendReportV1,
+    pub hak: HakWriterReportV1,
+    pub animation_completeness: DirectCreatureAnimationCompletenessV2,
+    pub animation_behavior: DirectCreatureAnimationBehaviorV2,
+    pub animation_kinematics_conformance: ProceduralHumanoidKinematicsConformanceV2,
+    pub animation_event_conformance: DirectCreatureAnimationEventConformanceV1,
+    pub animation_event_timing_policy: DirectCreatureEventTimingPolicyV2,
+    pub animation_event_authoring_canonical: M6ByteIdentityV1,
+    pub skin_animation_conformance: M6SkinAnimationConformanceV1,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct M6MaterializationManifestV5 {
@@ -806,6 +964,22 @@ pub struct M6MaterializationManifestV5 {
     pub base: M6MaterializationManifestV1,
     #[serde(flatten)]
     pub animation_studio: AnimationStudioBuildAuditV1,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProceduralCreatureProductSummaryV2 {
+    pub schema_version: u32,
+    pub status: String,
+    pub input_glb: M6ByteIdentityV1,
+    pub input_appearance_two_da: M6ByteIdentityV1,
+    pub identity: ProceduralCreatureProductIdentityV2,
+    pub outputs: ProceduralCreatureProductOutputIdentitiesV2,
+    pub appended_physical_row: u16,
+    pub animation: M6AnimationSummaryV1,
+    pub provenance: RigProvenanceV1,
+    pub zero_reference_model_payload_copied: bool,
+    pub appearance_payload_policy: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -834,6 +1008,89 @@ pub struct M6ModelPackageArtifactV5 {
     pub summary_json: Vec<u8>,
     pub animation_studio_readback: AnimationStudioReadbackV1,
     pub materialized_animations: MaterializedCreatureAnimationAuthoringV2,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProceduralCreatureProductManifestV2 {
+    pub schema_version: u32,
+    pub status: String,
+    pub input_glb: M6ByteIdentityV1,
+    pub input_appearance_two_da: M6ByteIdentityV1,
+    pub identity: ProceduralCreatureProductIdentityV2,
+    pub texture_selection: M6TextureSelectionV1,
+    pub appended_physical_row: u16,
+    pub generated_files: Vec<M6GeneratedFileV1>,
+    pub package_manifest: PackageManifestV1,
+    pub appearance_payload_policy: String,
+    pub manifest_self_hash_policy: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct ProceduralCreatureProductArtifactV2 {
+    pub model: Vec<u8>,
+    pub texture: Vec<u8>,
+    pub appearance_two_da: Vec<u8>,
+    pub hak: Vec<u8>,
+    pub package_manifest: PackageManifestV1,
+    pub manifest: ProceduralCreatureProductManifestV2,
+    pub manifest_json: Vec<u8>,
+    pub report: ProceduralCreatureProductReportV2,
+    pub report_json: Vec<u8>,
+    pub summary: ProceduralCreatureProductSummaryV2,
+    pub summary_json: Vec<u8>,
+}
+
+enum M6BuildArtifactV2 {
+    LegacyBundle(Box<M6ModelPackageInternalV5>),
+    ProceduralProduct(Box<ProceduralCreatureProductArtifactV2>),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum M6BuildOutputV2 {
+    LegacyBundle,
+    ProceduralProduct,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum M6GeometryPolicyV1 {
+    ProductBudget,
+    P100kSegmentedExperiment,
+    P300kSegmentedExperiment,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TriangleDegeneracyPolicyV1 {
+    LegacyAbsoluteEpsilon,
+    ExactFiniteNonCollinear,
+}
+
+impl TriangleDegeneracyPolicyV1 {
+    fn accepts_cross_length(self, length: f64) -> bool {
+        match self {
+            Self::LegacyAbsoluteEpsilon => {
+                length.is_finite() && length > f64::from(NWN_EE_BINARY_MDL_EPSILON_V1)
+            }
+            Self::ExactFiniteNonCollinear => length.is_finite() && length > 0.0,
+        }
+    }
+}
+
+fn triangle_degeneracy_policy_for_build_v1(
+    output: M6BuildOutputV2,
+    geometry_policy: M6GeometryPolicyV1,
+) -> TriangleDegeneracyPolicyV1 {
+    match (output, geometry_policy) {
+        (M6BuildOutputV2::LegacyBundle, M6GeometryPolicyV1::ProductBudget) => {
+            TriangleDegeneracyPolicyV1::LegacyAbsoluteEpsilon
+        }
+        _ => TriangleDegeneracyPolicyV1::ExactFiniteNonCollinear,
+    }
+}
+
+fn p100k_experiment_triangle_count_is_eligible_v1(triangle_count: usize) -> bool {
+    triangle_count > 20_000
+        && triangle_count <= MESHY_CREATURE_P100K_EXPERIMENT_RAW_TRIANGLE_CEILING_V1
 }
 
 pub fn build_m6_model_package_v1(
@@ -964,8 +1221,8 @@ pub fn build_meshy_h1_model_package_v2(
             error.message,
         )
     })?;
-    sanitize_meshy_h1_degenerate_triangles_v1(&mut source)?;
-    let (rig, mut mapping) = derive_meshy_h1_profile_and_mapping_v1(&source)
+    sanitize_meshy_h1_degenerate_triangles_exact_v1(&mut source)?;
+    let (rig, mut mapping) = derive_meshy_h1_profile_and_mapping_exact_v1(&source)
         .map_err(|error| pipeline_error("profile", error.code, error.path, error.message))?;
     apply_automatic_h1_animation_profile_names_v1(&source, &mut mapping, animation_profile);
     build_m6_model_package_with_ingest_v2(
@@ -979,13 +1236,15 @@ pub fn build_meshy_h1_model_package_v2(
     )
 }
 
-/// Builds a complete clean-room direct-creature animation set for a skinned
-/// Meshy humanoid that owns a `cpause1` clip and the required semantic joints.
+/// Builds a complete direct-creature animation set for a skinned Meshy
+/// humanoid that owns `cpause1`, any caller-selected native-name source
+/// motions, and the required semantic joints.
 ///
 /// This is the production replacement for the legacy seven-state idle-alias
-/// route. It preserves the caller-owned idle, authors 41 distinct gameplay
-/// clips plus their event callbacks, emits the controllerless Aurora skin root,
-/// and applies the full behavior and non-rigid deformation gates.
+/// route. It preserves every explicit caller-owned native clip, authors only
+/// the missing gameplay states plus their event callbacks, emits the
+/// controllerless Aurora skin root, and applies the full behavior and
+/// non-rigid deformation gates.
 pub fn build_meshy_procedural_humanoid_model_package_v1(
     source_glb: &[u8],
     appearance_two_da: &[u8],
@@ -1013,8 +1272,13 @@ pub fn build_meshy_procedural_humanoid_model_package_with_identity_v1(
         )
     })?;
     sanitize_meshy_h1_degenerate_triangles_v1(&mut source)?;
-    let (rig, mapping) = derive_meshy_h1_profile_and_mapping_v1(&source)
+    let (rig, mut mapping) = derive_meshy_h1_profile_and_mapping_v1(&source)
         .map_err(|error| pipeline_error("profile", error.code, error.path, error.message))?;
+    apply_automatic_h1_animation_profile_names_v1(
+        &source,
+        &mut mapping,
+        DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1,
+    );
     build_m6_model_package_with_ingest_v4(
         source_glb,
         appearance_two_da,
@@ -1026,6 +1290,314 @@ pub fn build_meshy_procedural_humanoid_model_package_with_identity_v1(
         None,
         runtime_identity,
     )
+}
+
+/// Builds only the production creature resources. It cannot create a MOD,
+/// Area or UTC because their identities are not part of this contract.
+pub fn build_meshy_procedural_humanoid_product_v2(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    product_identity: &ProceduralCreatureProductIdentityV2,
+) -> Result<ProceduralCreatureProductArtifactV2, M6PipelineErrorV1> {
+    build_meshy_procedural_humanoid_product_with_options_v3(
+        source_glb,
+        appearance_two_da,
+        product_identity,
+        &ProceduralCreatureBuildOptionsV1::default(),
+    )
+}
+
+/// Builds the production procedural creature with caller-selected texture
+/// processing. The default V2 entry point remains byte-compatible with cleanup
+/// disabled.
+pub fn build_meshy_procedural_humanoid_product_with_options_v3(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    product_identity: &ProceduralCreatureProductIdentityV2,
+    build_options: &ProceduralCreatureBuildOptionsV1,
+) -> Result<ProceduralCreatureProductArtifactV2, M6PipelineErrorV1> {
+    let mut source = ingest_glb(source_glb, &GlbLimits::default()).map_err(|error| {
+        pipeline_error(
+            "ingest",
+            error.code,
+            error.json_path.unwrap_or_else(|| "input".to_owned()),
+            error.message,
+        )
+    })?;
+    sanitize_meshy_h1_degenerate_triangles_exact_v1(&mut source)?;
+    let (rig, mut mapping) = derive_meshy_h1_profile_and_mapping_exact_v1(&source)
+        .map_err(|error| pipeline_error("profile", error.code, error.path, error.message))?;
+    apply_automatic_h1_animation_profile_names_v1(
+        &source,
+        &mut mapping,
+        DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1,
+    );
+    let compatibility_identity = ProceduralCreaturePackageIdentityV1 {
+        model_resref: product_identity.model_resref.clone(),
+        texture_resref: product_identity.texture_resref.clone(),
+        module: BinaryCreatureModuleIdentityV1 {
+            module_resref: String::new(),
+            area_resref: String::new(),
+            hak_resref: product_identity.hak_resref.clone(),
+        },
+        creature_resref: String::new(),
+    };
+    match build_m6_model_package_with_ingest_v5(
+        source_glb,
+        appearance_two_da,
+        source,
+        &rig,
+        &Default::default(),
+        &mapping,
+        DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1,
+        None,
+        &compatibility_identity,
+        product_identity,
+        M6BuildOutputV2::ProceduralProduct,
+        M6GeometryPolicyV1::ProductBudget,
+        build_options,
+        None,
+        None,
+        None,
+    )? {
+        M6BuildArtifactV2::ProceduralProduct(artifact) => Ok(*artifact),
+        M6BuildArtifactV2::LegacyBundle(_) => unreachable!("product output mode is exact"),
+    }
+}
+
+/// Materializes the historical P100K compatibility profile. The shared product
+/// route now accepts up to 300K; this entry point remains only for deterministic
+/// replay of the earlier bounded 100K lineage.
+///
+/// The source must be a Meshy H1 animated GLB with more than 20K triangles.
+/// `100K` is the Meshy generation target; a bounded 10% overshoot is accepted
+/// explicitly so valid microtriangles are never deleted to force the source
+/// below that target. The converted SkinMesh is deterministically partitioned
+/// into binary-MDL-safe streams before writing.
+pub fn build_meshy_procedural_humanoid_p100k_experiment_with_identity_v1(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    runtime_identity: &ProceduralCreaturePackageIdentityV1,
+) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
+    build_meshy_procedural_humanoid_p100k_experiment_with_options_v2(
+        source_glb,
+        appearance_two_da,
+        runtime_identity,
+        &ProceduralCreatureBuildOptionsV1::default(),
+    )
+}
+
+pub fn build_meshy_procedural_humanoid_p100k_experiment_with_options_v2(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    runtime_identity: &ProceduralCreaturePackageIdentityV1,
+    build_options: &ProceduralCreatureBuildOptionsV1,
+) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
+    let experiment_limits = p100k_experiment_glb_limits_v1();
+    let mut source = ingest_glb(source_glb, &experiment_limits).map_err(|error| {
+        pipeline_error(
+            "ingest",
+            error.code,
+            error.json_path.unwrap_or_else(|| "input".to_owned()),
+            error.message,
+        )
+    })?;
+    sanitize_meshy_h1_degenerate_triangles_exact_v1(&mut source)?;
+    let triangle_count = source.report.statistics.triangle_count;
+    if !p100k_experiment_triangle_count_is_eligible_v1(triangle_count) {
+        return Err(pipeline_error(
+            "ingest",
+            "M6-P100K-EXPERIMENT-TRIANGLE-COUNT",
+            "sourceGlb",
+            format!(
+                "the isolated 100K-target experiment requires 20001..={} exact finite non-collinear source triangles (requested target {}, bounded Meshy overshoot {}%), got {triangle_count}",
+                MESHY_CREATURE_P100K_EXPERIMENT_RAW_TRIANGLE_CEILING_V1,
+                MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_COUNT_V1,
+                (MESHY_CREATURE_P100K_EXPERIMENT_RAW_TRIANGLE_CEILING_V1
+                    - MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_COUNT_V1)
+                    * 100
+                    / MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_COUNT_V1
+            ),
+        ));
+    }
+    let (rig, mut mapping) = derive_meshy_h1_profile_and_mapping_p100k_experiment_v1(&source)
+        .map_err(|error| pipeline_error("profile", error.code, error.path, error.message))?;
+    apply_automatic_h1_animation_profile_names_v1(
+        &source,
+        &mut mapping,
+        DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1,
+    );
+    let product_identity = ProceduralCreatureProductIdentityV2::from_legacy(runtime_identity);
+    match build_m6_model_package_with_ingest_v5(
+        source_glb,
+        appearance_two_da,
+        source,
+        &rig,
+        &Default::default(),
+        &mapping,
+        DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1,
+        None,
+        runtime_identity,
+        &product_identity,
+        M6BuildOutputV2::LegacyBundle,
+        M6GeometryPolicyV1::P100kSegmentedExperiment,
+        build_options,
+        None,
+        None,
+        None,
+    )? {
+        M6BuildArtifactV2::LegacyBundle(built) => Ok(built.artifact),
+        M6BuildArtifactV2::ProceduralProduct(_) => {
+            unreachable!("the P100K experiment output mode is exact")
+        }
+    }
+}
+
+/// Inspects a source through the historical P100K compatibility envelope.
+pub fn inspect_meshy_procedural_humanoid_p100k_experiment_v1(
+    source_glb: &[u8],
+) -> Result<GlbIngestResult, crate::glb::GlbFatalError> {
+    ingest_glb(source_glb, &p100k_experiment_glb_limits_v1())
+}
+
+/// Materializes the historical P300K compatibility profile. New conversions
+/// use the shared product profile, which now has the same 300K total budget.
+pub fn build_meshy_procedural_humanoid_p300k_experiment_with_identity_v1(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    runtime_identity: &ProceduralCreaturePackageIdentityV1,
+) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
+    build_meshy_procedural_humanoid_p300k_experiment_with_options_v2(
+        source_glb,
+        appearance_two_da,
+        runtime_identity,
+        &ProceduralCreatureBuildOptionsV1::default(),
+    )
+}
+
+pub fn build_meshy_procedural_humanoid_p300k_experiment_with_options_v2(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    runtime_identity: &ProceduralCreaturePackageIdentityV1,
+    build_options: &ProceduralCreatureBuildOptionsV1,
+) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
+    let experiment_limits = p300k_experiment_glb_limits_v1();
+    let mut source = ingest_glb(source_glb, &experiment_limits).map_err(|error| {
+        pipeline_error(
+            "ingest",
+            error.code,
+            error.json_path.unwrap_or_else(|| "input".to_owned()),
+            error.message,
+        )
+    })?;
+    sanitize_meshy_h1_degenerate_triangles_exact_v1(&mut source)?;
+    let triangle_count = source.report.statistics.triangle_count;
+    if triangle_count <= MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_COUNT_V1
+        || triangle_count > MESHY_CREATURE_P300K_EXPERIMENT_TRIANGLE_COUNT_V1
+    {
+        return Err(pipeline_error(
+            "ingest",
+            "M6-P300K-EXPERIMENT-TRIANGLE-COUNT",
+            "sourceGlb",
+            format!(
+                "the isolated experiment requires 100001..={} source triangles, got {triangle_count}",
+                MESHY_CREATURE_P300K_EXPERIMENT_TRIANGLE_COUNT_V1
+            ),
+        ));
+    }
+    let (rig, mut mapping) = derive_meshy_h1_profile_and_mapping_p300k_experiment_v1(&source)
+        .map_err(|error| pipeline_error("profile", error.code, error.path, error.message))?;
+    apply_automatic_h1_animation_profile_names_v1(
+        &source,
+        &mut mapping,
+        DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1,
+    );
+    let product_identity = ProceduralCreatureProductIdentityV2::from_legacy(runtime_identity);
+    match build_m6_model_package_with_ingest_v5(
+        source_glb,
+        appearance_two_da,
+        source,
+        &rig,
+        &Default::default(),
+        &mapping,
+        DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1,
+        None,
+        runtime_identity,
+        &product_identity,
+        M6BuildOutputV2::LegacyBundle,
+        M6GeometryPolicyV1::P300kSegmentedExperiment,
+        build_options,
+        None,
+        None,
+        None,
+    )? {
+        M6BuildArtifactV2::LegacyBundle(built) => Ok(built.artifact),
+        M6BuildArtifactV2::ProceduralProduct(_) => {
+            unreachable!("the P300K experiment output mode is exact")
+        }
+    }
+}
+
+/// Inspects a source through the elevated envelope owned only by the explicit
+/// P300K experiment.
+pub fn inspect_meshy_procedural_humanoid_p300k_experiment_v1(
+    source_glb: &[u8],
+) -> Result<GlbIngestResult, crate::glb::GlbFatalError> {
+    ingest_glb(source_glb, &p300k_experiment_glb_limits_v1())
+}
+
+fn p100k_experiment_glb_limits_v1() -> GlbLimits {
+    GlbLimits {
+        max_input_bytes: 256 * 1024 * 1024,
+        max_decoded_geometry_bytes: 512 * 1024 * 1024,
+        max_decoded_skin_animation_bytes: 512 * 1024 * 1024,
+        triangle_warning_above: 50_000,
+        // Meshy treats 100K as a target and may produce a bounded amount of
+        // valid geometry above it. The explicit envelope admits that variance;
+        // only non-finite, zero-area or exactly collinear faces are removed.
+        triangle_blocking_above: MESHY_CREATURE_P100K_EXPERIMENT_RAW_TRIANGLE_CEILING_V1,
+        ..GlbLimits::default()
+    }
+}
+
+fn p300k_experiment_glb_limits_v1() -> GlbLimits {
+    GlbLimits {
+        max_input_bytes: 256 * 1024 * 1024,
+        max_decoded_geometry_bytes: 512 * 1024 * 1024,
+        max_decoded_skin_animation_bytes: 512 * 1024 * 1024,
+        triangle_warning_above: 150_000,
+        // Meshy may emit degenerate faces above the requested target. They are
+        // removed before the exact post-sanitize 300K experiment gate.
+        triangle_blocking_above: MESHY_CREATURE_P300K_EXPERIMENT_RAW_TRIANGLE_CEILING_V1,
+        ..GlbLimits::default()
+    }
+}
+
+/// Adds an optional fixture-only MOD/UTC around an already materialized
+/// production product. The product bytes are neither rebuilt nor mutated.
+pub fn build_procedural_creature_demo_v2(
+    product: &ProceduralCreatureProductArtifactV2,
+    module_identity: &BinaryCreatureModuleIdentityV1,
+    creature_resref: &str,
+) -> Result<ProofModuleArtifactV1, M6PipelineErrorV1> {
+    if module_identity.hak_resref != product.report.identity.hak_resref {
+        return Err(pipeline_error(
+            "proof_module",
+            "M6-DEMO-HAK-IDENTITY-MISMATCH",
+            "moduleIdentity.hakResref",
+            format!(
+                "demo HAK resref {} does not match the immutable product HAK resref {}",
+                module_identity.hak_resref, product.report.identity.hak_resref
+            ),
+        ));
+    }
+    build_single_profiled_creature_proof_module_with_identity_v3(
+        product.report.appearance.appended_row_index,
+        BinaryCreatureRuntimeProfileV2::ActiveMonsterBaseline,
+        module_identity,
+        creature_resref,
+    )
+    .map_err(|error| pipeline_error("proof_module", error.code, error.path, error.message))
 }
 
 /// Automatic H1 route with caller-owned event authoring and exact binary
@@ -1199,7 +1771,8 @@ fn build_meshy_h1_model_package_v4_internal(
         .iter()
         .any(|assignment| assignment.source_kind == AnimationSourceKindV1::Procedural);
     apply_authored_h1_source_names_v1(&source, &mut mapping, uses_procedural);
-    build_m6_model_package_with_ingest_v5(
+    let product_identity = ProceduralCreatureProductIdentityV2::from_legacy(runtime_identity);
+    match build_m6_model_package_with_ingest_v5(
         source_glb,
         appearance_two_da,
         source,
@@ -1218,11 +1791,19 @@ fn build_meshy_h1_model_package_v4_internal(
             )
         }),
         runtime_identity,
+        &product_identity,
+        M6BuildOutputV2::LegacyBundle,
+        M6GeometryPolicyV1::ProductBudget,
+        &ProceduralCreatureBuildOptionsV1::default(),
         project_identity,
         Some(animation_authoring),
         None,
-    )
-    .map(|built| built.artifact)
+    )? {
+        M6BuildArtifactV2::LegacyBundle(built) => Ok(built.artifact),
+        M6BuildArtifactV2::ProceduralProduct(_) => {
+            unreachable!("authored V4 output mode is exact")
+        }
+    }
 }
 
 pub fn build_meshy_h1_model_package_v5(
@@ -1347,7 +1928,8 @@ fn build_meshy_h1_model_package_v5_internal(
         .iter()
         .any(|assignment| assignment.source_kind == AnimationSourceKindV1::Procedural);
     apply_authored_h1_source_names_v1(&source, &mut mapping, uses_procedural);
-    let built = build_m6_model_package_with_ingest_v5(
+    let product_identity = ProceduralCreatureProductIdentityV2::from_legacy(runtime_identity);
+    let built = match build_m6_model_package_with_ingest_v5(
         source_glb,
         appearance_two_da,
         source,
@@ -1366,10 +1948,19 @@ fn build_meshy_h1_model_package_v5_internal(
             )
         }),
         runtime_identity,
+        &product_identity,
+        M6BuildOutputV2::LegacyBundle,
+        M6GeometryPolicyV1::ProductBudget,
+        &ProceduralCreatureBuildOptionsV1::default(),
         project_identity,
         None,
         Some((animation_authoring, animation_studio)),
-    )?;
+    )? {
+        M6BuildArtifactV2::LegacyBundle(built) => *built,
+        M6BuildArtifactV2::ProceduralProduct(_) => {
+            unreachable!("authored V5 output mode is exact")
+        }
+    };
     let base = built.artifact;
     let expected = built.animation_studio_materialization.ok_or_else(|| {
         pipeline_error(
@@ -1712,9 +2303,13 @@ fn apply_automatic_h1_animation_profile_names_v1(
     mapping: &mut ProfileAAnimationMappingV1,
     animation_profile: DirectCreatureAnimationProfileV1,
 ) {
-    if animation_profile != DirectCreatureAnimationProfileV1::FullNative42ExplicitV1 {
+    if !is_full_native_42_profile(animation_profile) {
         return;
     }
+    let procedural_idle_only_compatibility = animation_profile
+        == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1
+        && mapping.clip_mappings.len() == 1
+        && source.ir.animations.len() == 1;
     for (index, clip_mapping) in mapping.clip_mappings.iter_mut().enumerate() {
         let source_name = source
             .ir
@@ -1722,15 +2317,19 @@ fn apply_automatic_h1_animation_profile_names_v1(
             .iter()
             .find(|animation| animation.id == clip_mapping.source_animation_id)
             .and_then(|animation| animation.name.as_deref());
-        clip_mapping.output_clip_name = source_name
-            .and_then(|name| {
-                FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1
-                    .iter()
-                    .find(|candidate| candidate.eq_ignore_ascii_case(name))
-                    .copied()
-            })
-            .map(str::to_owned)
-            .unwrap_or_else(|| format!("m2a_h1_{index}"));
+        clip_mapping.output_clip_name = if procedural_idle_only_compatibility {
+            "cpause1".to_owned()
+        } else {
+            source_name
+                .and_then(|name| {
+                    FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1
+                        .iter()
+                        .find(|candidate| candidate.eq_ignore_ascii_case(name))
+                        .copied()
+                })
+                .map(str::to_owned)
+                .unwrap_or_else(|| format!("m2a_h1_{index}"))
+        };
     }
 }
 
@@ -1884,6 +2483,7 @@ fn build_meshy_m0_static_rigid_package_internal(
         })?;
     let mut animations = static_direct_creature_runtime_clips(M0_MODEL_RESREF, root_node_id);
     normalize_direct_creature_runtime_root(&mut creature, &mut animations, M0_MODEL_RESREF)?;
+    split_creature_segments_for_binary_mdl_v1(&mut creature)?;
 
     let input_glb_identity = identity(source_glb);
     let input_appearance_identity = identity(appearance_two_da);
@@ -1923,12 +2523,13 @@ fn build_meshy_m0_static_rigid_package_internal(
     let appearance_inspection = inspect_two_da_v2(appearance_two_da, &TwoDaLimitsV1::default())
         .map_err(|error| pipeline_error("appearance", error.code, error.path, error.message))?;
     let m0_appearance_cells = |label: &str, race: &str| {
-        complete_direct_creature_appearance_request_v1(
+        complete_direct_creature_appearance_request_v2(
             appearance_two_da,
             &appearance_inspection,
             label,
             race,
             "M0",
+            DirectCreatureAppearanceSemanticProfileV2::LegacyDirectMonsterDonorV1,
         )
     };
     let (
@@ -2112,12 +2713,15 @@ fn build_meshy_m0_static_rigid_package_internal(
         conversion: conversion.report,
         model: mdl.report,
         texture: tga.report,
+        texture_artifact_cleanup: None,
         appearance: appearance.report,
         hak: package.hak.report,
         proof_module: proof_module.report.clone(),
         animation_completeness: None,
         animation_behavior: None,
+        animation_kinematics_conformance: None,
         animation_event_conformance: None,
+        animation_event_timing_policy: None,
         animation_event_authoring_canonical: None,
         skin_animation_conformance: None,
         m0_runtime_fixture_contract: m0_runtime_fixture_contract.clone(),
@@ -3051,7 +3655,8 @@ fn build_m6_model_package_with_ingest_v4(
     )>,
     runtime_identity: &ProceduralCreaturePackageIdentityV1,
 ) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
-    build_m6_model_package_with_ingest_v5(
+    let product_identity = ProceduralCreatureProductIdentityV2::from_legacy(runtime_identity);
+    match build_m6_model_package_with_ingest_v5(
         source_glb,
         appearance_two_da,
         ingest,
@@ -3061,11 +3666,17 @@ fn build_m6_model_package_with_ingest_v4(
         animation_profile,
         event_configuration,
         runtime_identity,
+        &product_identity,
+        M6BuildOutputV2::LegacyBundle,
+        M6GeometryPolicyV1::ProductBudget,
+        &ProceduralCreatureBuildOptionsV1::default(),
         None,
         None,
         None,
-    )
-    .map(|built| built.artifact)
+    )? {
+        M6BuildArtifactV2::LegacyBundle(built) => Ok(built.artifact),
+        M6BuildArtifactV2::ProceduralProduct(_) => unreachable!("legacy output mode is exact"),
+    }
 }
 
 struct M6ModelPackageInternalV5 {
@@ -3089,28 +3700,85 @@ fn build_m6_model_package_with_ingest_v5(
         &DirectCreatureEventAuthoringV1,
     )>,
     runtime_identity: &ProceduralCreaturePackageIdentityV1,
+    product_identity: &ProceduralCreatureProductIdentityV2,
+    output: M6BuildOutputV2,
+    geometry_policy: M6GeometryPolicyV1,
+    build_options: &ProceduralCreatureBuildOptionsV1,
     project_identity: Option<&ProjectBuildIdentityV1>,
     animation_authoring: Option<&CreatureAnimationAuthoringV1>,
     animation_studio_authoring: Option<(&CreatureAnimationAuthoringV2, &AnimationStudioDocumentV1)>,
-) -> Result<M6ModelPackageInternalV5, M6PipelineErrorV1> {
+) -> Result<M6BuildArtifactV2, M6PipelineErrorV1> {
+    validate_procedural_creature_product_identity_v2(product_identity)?;
+    if build_options.schema_version != 1 {
+        return Err(pipeline_error(
+            "texture",
+            "M6-TEXTURE-CLEANUP-OPTIONS-SCHEMA",
+            "buildOptions.schemaVersion",
+            format!(
+                "expected procedural creature build-options schema 1, got {}",
+                build_options.schema_version
+            ),
+        ));
+    }
     let input_glb_identity = identity(source_glb);
     let input_appearance_identity = identity(appearance_two_da);
-    let glb_limits = GlbLimits::default();
-    let animated = convert_profile_a_with_animations_v1(&ingest, rig, profile_options, mapping)
-        .map_err(|error| {
-            let stage = if error.code.starts_with("M4A-") {
-                "animation"
-            } else {
-                "profile"
-            };
-            pipeline_error(stage, error.code, error.path, error.message)
-        })?;
+    let glb_limits = match geometry_policy {
+        M6GeometryPolicyV1::ProductBudget => GlbLimits::default(),
+        M6GeometryPolicyV1::P100kSegmentedExperiment => p100k_experiment_glb_limits_v1(),
+        M6GeometryPolicyV1::P300kSegmentedExperiment => p300k_experiment_glb_limits_v1(),
+    };
+    let degeneracy_policy = triangle_degeneracy_policy_for_build_v1(output, geometry_policy);
+    let animated = match (geometry_policy, degeneracy_policy) {
+        (
+            M6GeometryPolicyV1::ProductBudget,
+            TriangleDegeneracyPolicyV1::ExactFiniteNonCollinear,
+        ) => convert_profile_a_with_animations_exact_v1(&ingest, rig, profile_options, mapping),
+        (M6GeometryPolicyV1::ProductBudget, TriangleDegeneracyPolicyV1::LegacyAbsoluteEpsilon) => {
+            convert_profile_a_with_animations_v1(&ingest, rig, profile_options, mapping)
+        }
+        (
+            M6GeometryPolicyV1::P100kSegmentedExperiment,
+            TriangleDegeneracyPolicyV1::ExactFiniteNonCollinear,
+        ) => convert_profile_a_with_animations_p100k_experiment_v1(&ingest, rig, mapping),
+        (
+            M6GeometryPolicyV1::P300kSegmentedExperiment,
+            TriangleDegeneracyPolicyV1::ExactFiniteNonCollinear,
+        ) => convert_profile_a_with_animations_p300k_experiment_v1(&ingest, rig, mapping),
+        (
+            M6GeometryPolicyV1::P100kSegmentedExperiment
+            | M6GeometryPolicyV1::P300kSegmentedExperiment,
+            TriangleDegeneracyPolicyV1::LegacyAbsoluteEpsilon,
+        ) => unreachable!("segmented Creature experiments always use exact geometry sanitation"),
+    }
+    .map_err(|error| {
+        let stage = if error.code.starts_with("M4A-") {
+            "animation"
+        } else {
+            "profile"
+        };
+        pipeline_error(stage, error.code, error.path, error.message)
+    })?;
     if !animated.base.report.conversion_eligible {
+        let blocking = animated
+            .base
+            .report
+            .gates
+            .iter()
+            .filter(|gate| gate.severity == "BLOCKING")
+            .map(|gate| format!("{} at {}: {}", gate.code, gate.path, gate.message))
+            .collect::<Vec<_>>();
         return Err(pipeline_error(
             "profile",
             "M6-PROFILE-INELIGIBLE",
             "conversion.report",
-            "Profile A conversion did not produce an eligible model",
+            format!(
+                "Profile A conversion did not produce an eligible model{}",
+                if blocking.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {}", blocking.join("; "))
+                }
+            ),
         ));
     }
     let mut creature = animated.base.creature.as_ref().cloned().ok_or_else(|| {
@@ -3150,12 +3818,13 @@ fn build_m6_model_package_with_ingest_v5(
     } else {
         None
     };
-    let procedural_animations = if animation_profile
-        == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1
-    {
-        let procedural_rig = procedural_humanoid_rig_from_creature_v1(&creature)?;
+    let procedural_rig = (animation_profile
+        == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1)
+        .then(|| procedural_humanoid_rig_from_creature_v1(&creature))
+        .transpose()?;
+    let procedural_authoring = if let Some(procedural_rig) = procedural_rig {
         Some(
-            author_procedural_humanoid_full_native_42_v1(source_animations, procedural_rig)
+            author_procedural_humanoid_full_native_42_v2(source_animations, procedural_rig)
                 .map_err(|error| {
                     pipeline_error("animation", error.code, error.path, error.message)
                 })?,
@@ -3163,6 +3832,9 @@ fn build_m6_model_package_with_ingest_v5(
     } else {
         None
     };
+    let procedural_animations = procedural_authoring
+        .as_ref()
+        .map(|authored| &authored.animations);
     let mut animation_studio_rig = animation_studio_authoring
         .map(|(_, studio)| {
             animation_studio_rig_from_creature_v1(
@@ -3185,7 +3857,7 @@ fn build_m6_model_package_with_ingest_v5(
                     animation_studio_source_animations
                         .as_ref()
                         .unwrap_or(source_animations),
-                    procedural_animations.as_ref(),
+                    procedural_animations,
                     authoring,
                     studio,
                     animation_studio_rig
@@ -3202,14 +3874,37 @@ fn build_m6_model_package_with_ingest_v5(
     } else if let Some(authoring) = animation_authoring {
         materialize_authored_direct_creature_clips_v1(
             source_animations,
-            procedural_animations.as_ref(),
+            procedural_animations,
             authoring,
         )
         .map_err(|error| pipeline_error("animation", error.code, error.path, error.message))?
     } else if let Some(procedural) = procedural_animations {
-        procedural
+        procedural.clone()
     } else {
         materialize_direct_creature_runtime_clips_v1(source_animations, animation_profile)?
+    };
+    let animation_lineage = if let Some(authored) = procedural_authoring.as_ref() {
+        Some(authored.lineage.clone())
+    } else {
+        (animation_profile == DirectCreatureAnimationProfileV1::FullNative42ExplicitV1).then(|| {
+            DirectCreatureAnimationLineageV2 {
+                schema_version: 2,
+                input_source_clip_count: source_animations.clips.len() as u32,
+                preserved_source_clip_count: animations.clips.len() as u32,
+                source_derived_clip_count: 0,
+                procedural_clip_count: 0,
+                discarded_source_clips: Vec::new(),
+                clips: animations
+                    .clips
+                    .iter()
+                    .map(|clip| DirectCreatureAnimationClipLineageV2 {
+                        clip_name: clip.name.clone(),
+                        origin: DirectCreatureAnimationClipOriginV2::PreservedSource,
+                        source_clip_name: Some(clip.name.clone()),
+                    })
+                    .collect(),
+            }
+        })
     };
     let resolved_animation_authoring = animation_authoring
         .map(resolve_creature_animation_mapping_v1)
@@ -3232,8 +3927,11 @@ fn build_m6_model_package_with_ingest_v5(
         == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1
         && event_configuration.is_none()
     {
-        let required = author_procedural_common_native_events_v1(&animations)
-            .map_err(|error| pipeline_error("animation", error.code, error.path, error.message))?;
+        let required = author_procedural_common_native_events_v2(
+            &animations,
+            procedural_rig.expect("the procedural profile established its semantic humanoid rig"),
+        )
+        .map_err(|error| pipeline_error("animation", error.code, error.path, error.message))?;
         Some(if animation_studio_authoring.is_some() {
             merge_required_events_with_integrated_authored_v1(&animations, &required)
         } else {
@@ -3255,8 +3953,17 @@ fn build_m6_model_package_with_ingest_v5(
             .map_err(|error| pipeline_error("animation", error.code, error.path, error.message))?;
     }
     if animation_profile == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1 {
-        insert_controllerless_aurora_skin_root_v1(&mut creature, &runtime_identity.model_resref)?;
+        insert_controllerless_aurora_skin_root_v1(&mut creature, &product_identity.model_resref)?;
     }
+    match degeneracy_policy {
+        TriangleDegeneracyPolicyV1::LegacyAbsoluteEpsilon => {
+            sanitize_runtime_creature_face_planes_v1(&mut creature)?;
+        }
+        TriangleDegeneracyPolicyV1::ExactFiniteNonCollinear => {
+            sanitize_runtime_creature_face_planes_exact_v1(&mut creature)?;
+        }
+    }
+    split_creature_segments_for_binary_mdl_v1(&mut creature)?;
     let runtime_root_id = creature
         .nodes
         .iter()
@@ -3265,17 +3972,17 @@ fn build_m6_model_package_with_ingest_v5(
     normalize_direct_creature_runtime_root(
         &mut creature,
         &mut animations,
-        &runtime_identity.model_resref,
+        &product_identity.model_resref,
     )?;
     if let Some(rig) = animation_studio_rig.as_mut() {
-        rig.animation_root = runtime_identity.model_resref.clone();
+        rig.animation_root = product_identity.model_resref.clone();
         if let Some(runtime_root_id) = runtime_root_id
             && let Some(root) = rig
                 .nodes
                 .iter_mut()
                 .find(|node| node.node_id == runtime_root_id)
         {
-            root.name.clone_from(&runtime_identity.model_resref);
+            root.name.clone_from(&product_identity.model_resref);
         }
     }
     if let Some(materialized) = animation_studio_materialization.as_mut() {
@@ -3321,34 +4028,53 @@ fn build_m6_model_package_with_ingest_v5(
             error.message,
         )
     })?;
-    let tga = write_tga_v1(&texture_image, &TgaWriterOptionsV1::default())
-        .map_err(|error| pipeline_error("texture", error.code, error.path, error.message))?;
-
-    let mdl = write_binary_mdl_with_animations(
-        &creature,
-        &animations,
-        &MdlWriterOptionsV1 {
+    let texture_cleanup = cleanup_texture_artifacts_v1(
+        &texture_image,
+        &TextureArtifactCleanupOptionsV1 {
             schema_version: 1,
-            format_profile: if animation_profile
-                == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1
-            {
-                MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedControllerlessRootV3
-            } else {
-                MdlFormatProfileV1::M4DirectCreatureExtended64V1
-            },
-            state_projection_profile: MdlStateProjectionProfileV1::RetailDirectCreatureType5DummyV1,
-            state_projection_provenance: None,
-            model_resource_resref: runtime_identity.model_resref.clone(),
-            diffuse_texture_resref_by_material_slot: vec![MdlMaterialTextureBindingV1 {
-                material_slot: texture_selection.material_slot,
-                resref: runtime_identity.texture_resref.clone(),
-            }],
+            enabled: build_options.texture_artifact_cleanup,
         },
     )
+    .map_err(|error| pipeline_error("texture", error.code, error.path, error.message))?;
+    let texture_artifact_cleanup = build_options
+        .texture_artifact_cleanup
+        .then_some(texture_cleanup.report);
+    let tga = write_tga_v1(&texture_cleanup.image, &TgaWriterOptionsV1::default())
+        .map_err(|error| pipeline_error("texture", error.code, error.path, error.message))?;
+
+    let writer_options = MdlWriterOptionsV1 {
+        schema_version: 1,
+        format_profile: if animation_profile
+            == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1
+        {
+            MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedControllerlessRootV3
+        } else {
+            MdlFormatProfileV1::M4DirectCreatureExtended64V1
+        },
+        state_projection_profile: MdlStateProjectionProfileV1::RetailDirectCreatureType5DummyV1,
+        state_projection_provenance: None,
+        model_resource_resref: product_identity.model_resref.clone(),
+        diffuse_texture_resref_by_material_slot: vec![MdlMaterialTextureBindingV1 {
+            material_slot: texture_selection.material_slot,
+            resref: product_identity.texture_resref.clone(),
+        }],
+    };
+    let mdl = match degeneracy_policy {
+        TriangleDegeneracyPolicyV1::LegacyAbsoluteEpsilon => {
+            write_binary_mdl_with_animations(&creature, &animations, &writer_options)
+        }
+        TriangleDegeneracyPolicyV1::ExactFiniteNonCollinear => {
+            write_binary_mdl_with_animations_exact_face_planes_v1(
+                &creature,
+                &animations,
+                &writer_options,
+            )
+        }
+    }
     .map_err(|error| pipeline_error("model", error.code, error.path, error.message))?;
     let writer_readback = mdl.inspection.clone();
     let animation_behavior = is_full_native_42_profile(animation_profile)
-        .then(|| evaluate_direct_creature_animation_behavior_v1(&mdl.inspection));
+        .then(|| evaluate_direct_creature_animation_behavior_v2(&mdl.inspection));
     if let Some(behavior) = animation_behavior.as_ref()
         && !behavior.behavior_candidate_eligible
     {
@@ -3362,11 +4088,36 @@ fn build_m6_model_package_with_ingest_v5(
             ),
         ));
     }
+    let animation_kinematics_conformance = (animation_profile
+        == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1
+        && animation_authoring.is_none()
+        && animation_studio_authoring.is_none())
+    .then(|| evaluate_procedural_humanoid_kinematics_v2(&mdl.inspection));
+    if let Some(kinematics) = animation_kinematics_conformance.as_ref()
+        && !kinematics.complete
+    {
+        return Err(pipeline_error(
+            "animation",
+            "M6-ANIMATION-KINEMATICS-INELIGIBLE",
+            "model.animations",
+            format!(
+                "procedural humanoid kinematics gate failed: {}",
+                kinematics.violations.join(", ")
+            ),
+        ));
+    }
     let animation_event_conformance = effective_event_configuration.map(|(event_profile, _)| {
         evaluate_direct_creature_event_conformance_from_inspection_v1(
             &mdl.inspection,
             event_profile,
         )
+    });
+    let animation_event_timing_policy = effective_event_configuration.map(|_| {
+        if procedural_event_authoring.is_some() {
+            DirectCreatureEventTimingPolicyV2::KinematicPeakV2
+        } else {
+            DirectCreatureEventTimingPolicyV2::CallerOwnedExplicitV1
+        }
     });
     let animation_event_authoring_canonical = effective_event_configuration
         .map(|(_, event_authoring)| {
@@ -3424,12 +4175,17 @@ fn build_m6_model_package_with_ingest_v5(
 
     let appearance_inspection = inspect_two_da_v2(appearance_two_da, &TwoDaLimitsV1::default())
         .map_err(|error| pipeline_error("appearance", error.code, error.path, error.message))?;
-    let appearance_request = complete_direct_creature_appearance_request_v1(
+    let appearance_request = complete_direct_creature_appearance_request_v2(
         appearance_two_da,
         &appearance_inspection,
-        M6_APPEARANCE_LABEL,
-        &runtime_identity.model_resref,
+        &product_identity.appearance_label,
+        &product_identity.model_resref,
         "M6",
+        if is_full_native_42_profile(animation_profile) {
+            DirectCreatureAppearanceSemanticProfileV2::HumanoidMediumV1
+        } else {
+            DirectCreatureAppearanceSemanticProfileV2::LegacyDirectMonsterDonorV1
+        },
     )?;
     let appearance = append_two_da_row_v1(
         appearance_two_da,
@@ -3440,12 +4196,12 @@ fn build_m6_model_package_with_ingest_v5(
 
     let resources = vec![
         HakResourceInputV1 {
-            resref: runtime_identity.model_resref.clone(),
+            resref: product_identity.model_resref.clone(),
             resource_type: 2002,
             payload: mdl.payload.clone(),
         },
         HakResourceInputV1 {
-            resref: runtime_identity.texture_resref.clone(),
+            resref: product_identity.texture_resref.clone(),
             resource_type: 3,
             payload: tga.payload.clone(),
         },
@@ -3467,11 +4223,11 @@ fn build_m6_model_package_with_ingest_v5(
         )
     })?;
     let model = archive
-        .find(&runtime_identity.model_resref, 2002)
+        .find(&product_identity.model_resref, 2002)
         .map_err(map_erf_readback)?
         .to_vec();
     let texture = archive
-        .find(&runtime_identity.texture_resref, 3)
+        .find(&product_identity.texture_resref, 3)
         .map_err(map_erf_readback)?
         .to_vec();
     let appearance_two_da = archive
@@ -3480,6 +4236,217 @@ fn build_m6_model_package_with_ingest_v5(
         .to_vec();
     let hak = package.hak.payload.clone();
     let package_manifest = package.manifest;
+
+    let output_segment = creature.segments.first().ok_or_else(|| {
+        pipeline_error(
+            "profile",
+            "M6-GEOMETRY-MISSING",
+            "creature.segments",
+            "converted model has no segment",
+        )
+    })?;
+    let source_animation = ingest.ir.animations.first().ok_or_else(|| {
+        pipeline_error(
+            "animation",
+            "M6-ANIMATION-MISSING",
+            "animations",
+            "source GLB has no animation",
+        )
+    })?;
+    let animation_summary = M6AnimationSummaryV1 {
+        source_name: source_animation.name.clone().unwrap_or_default(),
+        output_name: proof_clip.name.clone(),
+        duration_seconds: proof_clip.length_seconds,
+        has_motion,
+    };
+    let output_vertex_count = creature
+        .segments
+        .iter()
+        .try_fold(0usize, |sum, segment| {
+            sum.checked_add(segment.positions.len())
+        })
+        .ok_or_else(|| {
+            pipeline_error(
+                "model",
+                "M6-RUNTIME-GEOMETRY-OVERFLOW",
+                "creature.segments",
+                "runtime vertex count overflow",
+            )
+        })?;
+    let output_triangle_count = creature
+        .segments
+        .iter()
+        .try_fold(0usize, |sum, segment| {
+            sum.checked_add(segment.indices.len() / 3)
+        })
+        .ok_or_else(|| {
+            pipeline_error(
+                "model",
+                "M6-RUNTIME-GEOMETRY-OVERFLOW",
+                "creature.segments",
+                "runtime triangle count overflow",
+            )
+        })?;
+    let mut output_bounds_min = [f32::INFINITY; 3];
+    let mut output_bounds_max = [f32::NEG_INFINITY; 3];
+    for position in creature
+        .segments
+        .iter()
+        .flat_map(|segment| segment.positions.iter())
+    {
+        for (axis, value) in position.iter().copied().enumerate() {
+            output_bounds_min[axis] = output_bounds_min[axis].min(value);
+            output_bounds_max[axis] = output_bounds_max[axis].max(value);
+        }
+    }
+    let geometry_report = M6GeometryReportV1 {
+        vertex_count: output_vertex_count,
+        triangle_count: output_triangle_count,
+        bounds_min: output_bounds_min,
+        bounds_max: output_bounds_max,
+        output_segment_deformation: format!("{:?}", output_segment.deformation)
+            .to_ascii_uppercase(),
+        active_joint_count,
+    };
+
+    if output == M6BuildOutputV2::ProceduralProduct {
+        let lineage = animation_lineage.clone().ok_or_else(|| {
+            pipeline_error(
+                "animation",
+                "M6-PRODUCT-ANIMATION-LINEAGE-MISSING",
+                "animationLineage",
+                "the procedural product requires exact V2 clip lineage",
+            )
+        })?;
+        let report = ProceduralCreatureProductReportV2 {
+            schema_version: 2,
+            identity: product_identity.clone(),
+            appearance_semantic_profile:
+                DirectCreatureAppearanceSemanticProfileV2::HumanoidMediumV1,
+            resolved_base_color_image_index: texture_selection.source_image_index,
+            texture_selection: texture_selection.clone(),
+            geometry: geometry_report,
+            ingest: ingest.report,
+            conversion: animated.base.report,
+            model: mdl.report,
+            texture: tga.report,
+            texture_artifact_cleanup: texture_artifact_cleanup.clone(),
+            appearance: appearance.report,
+            hak: package.hak.report,
+            animation_completeness: DirectCreatureAnimationCompletenessV2 {
+                schema_version: 2,
+                profile: animation_profile,
+                required_clip_count: FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1.len() as u32,
+                input_source_clip_count: lineage.input_source_clip_count,
+                preserved_source_clip_count: lineage.preserved_source_clip_count,
+                source_derived_clip_count: lineage.source_derived_clip_count,
+                procedural_clip_count: lineage.procedural_clip_count,
+                discarded_source_clip_count: lineage.discarded_source_clips.len() as u32,
+                discarded_source_clips: lineage.discarded_source_clips,
+                clips: lineage.clips,
+                fallback_alias_count: 0,
+                complete: true,
+            },
+            animation_behavior: animation_behavior.expect("procedural behavior was evaluated"),
+            animation_kinematics_conformance: animation_kinematics_conformance
+                .expect("procedural kinematics were evaluated"),
+            animation_event_conformance: animation_event_conformance
+                .expect("procedural events were evaluated"),
+            animation_event_timing_policy: animation_event_timing_policy
+                .expect("procedural event policy was evaluated"),
+            animation_event_authoring_canonical: animation_event_authoring_canonical
+                .expect("procedural event authoring was hashed"),
+            skin_animation_conformance: skin_animation_conformance
+                .expect("procedural skin animation was evaluated"),
+        };
+        let report_json = json_bytes(&report, "report")?;
+        let summary = ProceduralCreatureProductSummaryV2 {
+            schema_version: 2,
+            status: "PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED".to_owned(),
+            input_glb: input_glb_identity.clone(),
+            input_appearance_two_da: input_appearance_identity.clone(),
+            identity: product_identity.clone(),
+            outputs: ProceduralCreatureProductOutputIdentitiesV2 {
+                model: identity(&model),
+                texture: identity(&texture),
+                appearance_two_da: identity(&appearance_two_da),
+                hak: identity(&hak),
+                report: identity(&report_json),
+            },
+            appended_physical_row: report.appearance.appended_row_index,
+            animation: animation_summary,
+            provenance: rig.provenance.clone(),
+            zero_reference_model_payload_copied: rig
+                .provenance
+                .attestations
+                .no_reference_payload_copied,
+            appearance_payload_policy: "PRESERVED_AND_APPENDED".to_owned(),
+        };
+        let summary_json = json_bytes(&summary, "summary")?;
+        let generated_files = [
+            (
+                format!("generated/{}.mdl", product_identity.model_resref),
+                model.as_slice(),
+            ),
+            (
+                format!("generated/{}.tga", product_identity.texture_resref),
+                texture.as_slice(),
+            ),
+            (
+                "generated/appearance.2da".to_owned(),
+                appearance_two_da.as_slice(),
+            ),
+            (
+                format!("generated/{}.hak", product_identity.hak_resref),
+                hak.as_slice(),
+            ),
+            (
+                "reports/materialization-report.json".to_owned(),
+                report_json.as_slice(),
+            ),
+            ("reports/summary.json".to_owned(), summary_json.as_slice()),
+        ]
+        .into_iter()
+        .map(|(relative_path, bytes)| {
+            let identity = identity(bytes);
+            M6GeneratedFileV1 {
+                relative_path,
+                byte_length: identity.byte_length,
+                sha256: identity.sha256,
+            }
+        })
+        .collect();
+        let manifest = ProceduralCreatureProductManifestV2 {
+            schema_version: 2,
+            status: "PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED".to_owned(),
+            input_glb: input_glb_identity,
+            input_appearance_two_da: input_appearance_identity,
+            identity: product_identity.clone(),
+            texture_selection,
+            appended_physical_row: report.appearance.appended_row_index,
+            generated_files,
+            package_manifest: package_manifest.clone(),
+            appearance_payload_policy: "PRESERVED_AND_APPENDED".to_owned(),
+            manifest_self_hash_policy: "EXCLUDED_TO_AVOID_SELF_REFERENCE".to_owned(),
+        };
+        let manifest_json = json_bytes(&manifest, "manifest")?;
+        return Ok(M6BuildArtifactV2::ProceduralProduct(Box::new(
+            ProceduralCreatureProductArtifactV2 {
+                model,
+                texture,
+                appearance_two_da,
+                hak,
+                package_manifest,
+                manifest,
+                manifest_json,
+                report,
+                report_json,
+                summary,
+                summary_json,
+            },
+        )));
+    }
+
     let proof_module = if animation_profile
         == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1
         || runtime_identity != &ProceduralCreaturePackageIdentityV1::historical_default()
@@ -3495,66 +4462,39 @@ fn build_m6_model_package_with_ingest_v5(
     }
     .map_err(|error| pipeline_error("proof_module", error.code, error.path, error.message))?;
 
-    let primitive = ingest.ir.primitives.first().ok_or_else(|| {
-        pipeline_error(
-            "ingest",
-            "M6-GEOMETRY-MISSING",
-            "meshes",
-            "source GLB has no primitive",
-        )
-    })?;
-    let output_segment = creature.segments.first().ok_or_else(|| {
-        pipeline_error(
-            "profile",
-            "M6-GEOMETRY-MISSING",
-            "creature.segments",
-            "converted model has no segment",
-        )
-    })?;
     let report = M6MaterializationReportV1 {
         schema_version: 1,
         resolved_base_color_image_index: texture_selection.source_image_index,
         texture_selection: texture_selection.clone(),
-        geometry: M6GeometryReportV1 {
-            vertex_count: primitive.positions.len(),
-            triangle_count: primitive.indices.len() / 3,
-            bounds_min: primitive.bounds_min,
-            bounds_max: primitive.bounds_max,
-            output_segment_deformation: format!("{:?}", output_segment.deformation)
-                .to_ascii_uppercase(),
-            active_joint_count,
-        },
+        geometry: geometry_report,
         ingest: ingest.report,
         conversion: animated.base.report,
         model: mdl.report,
         texture: tga.report,
+        texture_artifact_cleanup,
         appearance: appearance.report,
         hak: package.hak.report,
         proof_module: proof_module.report.clone(),
-        animation_completeness: is_full_native_42_profile(animation_profile).then_some(
-            DirectCreatureAnimationCompletenessV1 {
+        animation_completeness: animation_lineage.map(|lineage| {
+            DirectCreatureAnimationCompletenessV2 {
+                schema_version: 2,
                 profile: animation_profile,
                 required_clip_count: FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1.len() as u32,
-                explicit_clip_count: if animation_profile
-                    == DirectCreatureAnimationProfileV1::FullNative42ExplicitV1
-                {
-                    FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1.len() as u32
-                } else {
-                    1
-                },
-                procedural_clip_count: if animation_profile
-                    == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1
-                {
-                    FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1.len() as u32 - 1
-                } else {
-                    0
-                },
+                input_source_clip_count: lineage.input_source_clip_count,
+                preserved_source_clip_count: lineage.preserved_source_clip_count,
+                source_derived_clip_count: lineage.source_derived_clip_count,
+                procedural_clip_count: lineage.procedural_clip_count,
+                discarded_source_clip_count: lineage.discarded_source_clips.len() as u32,
+                discarded_source_clips: lineage.discarded_source_clips,
+                clips: lineage.clips,
                 fallback_alias_count: 0,
                 complete: true,
-            },
-        ),
+            }
+        }),
         animation_behavior,
+        animation_kinematics_conformance,
         animation_event_conformance,
+        animation_event_timing_policy,
         animation_event_authoring_canonical,
         skin_animation_conformance,
         m0_runtime_fixture_contract: None,
@@ -3562,14 +4502,6 @@ fn build_m6_model_package_with_ingest_v5(
         authored_animation_conformance: authored_animation_conformance.clone(),
     };
     let report_json = json_bytes(&report, "report")?;
-    let source_animation = ingest.ir.animations.first().ok_or_else(|| {
-        pipeline_error(
-            "animation",
-            "M6-ANIMATION-MISSING",
-            "animations",
-            "source GLB has no animation",
-        )
-    })?;
     let summary = M6MaterializationSummaryV1 {
         schema_version: 1,
         status: "M6_MODEL_PACKAGE_MATERIALIZED".to_owned(),
@@ -3584,14 +4516,9 @@ fn build_m6_model_package_with_ingest_v5(
             report: identity(&report_json),
         },
         appended_physical_row: report.appearance.appended_row_index,
-        model_resref: runtime_identity.model_resref.clone(),
-        texture_resref: runtime_identity.texture_resref.clone(),
-        animation: M6AnimationSummaryV1 {
-            source_name: source_animation.name.clone().unwrap_or_default(),
-            output_name: proof_clip.name.clone(),
-            duration_seconds: proof_clip.length_seconds,
-            has_motion,
-        },
+        model_resref: product_identity.model_resref.clone(),
+        texture_resref: product_identity.texture_resref.clone(),
+        animation: animation_summary,
         provenance: rig.provenance.clone(),
         zero_reference_model_payload_copied: rig
             .provenance
@@ -3605,11 +4532,11 @@ fn build_m6_model_package_with_ingest_v5(
     let generated_files = vec![
         ("generated/source.glb".to_owned(), source_glb),
         (
-            format!("generated/{}.mdl", runtime_identity.model_resref),
+            format!("generated/{}.mdl", product_identity.model_resref),
             model.as_slice(),
         ),
         (
-            format!("generated/{}.tga", runtime_identity.texture_resref),
+            format!("generated/{}.tga", product_identity.texture_resref),
             texture.as_slice(),
         ),
         (
@@ -3617,7 +4544,7 @@ fn build_m6_model_package_with_ingest_v5(
             appearance_two_da.as_slice(),
         ),
         (
-            format!("generated/{}.hak", runtime_identity.module.hak_resref),
+            format!("generated/{}.hak", product_identity.hak_resref),
             hak.as_slice(),
         ),
         (
@@ -3658,26 +4585,67 @@ fn build_m6_model_package_with_ingest_v5(
         authored_animation_conformance,
     };
     let manifest_json = json_bytes(&manifest, "manifest")?;
-    Ok(M6ModelPackageInternalV5 {
-        artifact: M6ModelPackageArtifactV1 {
-            source_glb: source_glb.to_vec(),
-            model,
-            texture,
-            appearance_two_da,
-            hak,
-            proof_module: proof_module.payload,
-            manifest,
-            package_manifest,
-            manifest_json,
-            report,
-            report_json,
-            summary,
-            summary_json,
+    Ok(M6BuildArtifactV2::LegacyBundle(Box::new(
+        M6ModelPackageInternalV5 {
+            artifact: M6ModelPackageArtifactV1 {
+                source_glb: source_glb.to_vec(),
+                model,
+                texture,
+                appearance_two_da,
+                hak,
+                proof_module: proof_module.payload,
+                manifest,
+                package_manifest,
+                manifest_json,
+                report,
+                report_json,
+                summary,
+                summary_json,
+            },
+            animation_studio_materialization,
+            animation_studio_rig,
+            writer_readback,
         },
-        animation_studio_materialization,
-        animation_studio_rig,
-        writer_readback,
-    })
+    )))
+}
+
+fn validate_procedural_creature_product_identity_v2(
+    identity: &ProceduralCreatureProductIdentityV2,
+) -> Result<(), M6PipelineErrorV1> {
+    for (path, value) in [
+        ("identity.modelResref", identity.model_resref.as_str()),
+        ("identity.textureResref", identity.texture_resref.as_str()),
+        ("identity.hakResref", identity.hak_resref.as_str()),
+    ] {
+        if value.is_empty()
+            || value.len() > 16
+            || !value
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+        {
+            return Err(pipeline_error(
+                "identity",
+                "M6-PRODUCT-RESREF-INVALID",
+                path,
+                "product resrefs must contain 1..=16 lower-case ASCII letters, digits or underscores",
+            ));
+        }
+    }
+    if identity.appearance_label.is_empty()
+        || identity.appearance_label.len() > 64
+        || !identity
+            .appearance_label
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    {
+        return Err(pipeline_error(
+            "identity",
+            "M6-PRODUCT-APPEARANCE-LABEL-INVALID",
+            "identity.appearanceLabel",
+            "appearance label must contain 1..=64 ASCII letters, digits or underscores",
+        ));
+    }
+    Ok(())
 }
 
 fn merge_required_events_with_integrated_authored_v1(
@@ -3865,8 +4833,7 @@ pub(crate) fn materialize_direct_creature_runtime_clips(
     )
 }
 
-const M6_REQUIRED_SKIN_DEFORMATION_CLIPS_V1: [&str; 5] =
-    ["cwalk", "crun", "ca1slashl", "cdamagel", "ckdbckdie"];
+const M6_REQUIRED_SKIN_DEFORMATION_CLIPS_V1: [&str; 4] = ["cwalk", "crun", "ca1slashl", "cdamagel"];
 
 fn evaluate_m6_skin_animation_conformance_v1(
     report: &crate::mdl::InspectionReport,
@@ -3876,8 +4843,13 @@ fn evaluate_m6_skin_animation_conformance_v1(
     if active_joint_count < 2 {
         violations.push(format!("ACTIVE_JOINT_COUNT_TOO_LOW:{active_joint_count}"));
     }
-    let mut clips = Vec::with_capacity(M6_REQUIRED_SKIN_DEFORMATION_CLIPS_V1.len());
-    for clip_name in M6_REQUIRED_SKIN_DEFORMATION_CLIPS_V1 {
+    let death_clip_name = "ckdbck";
+    let required_clip_names = M6_REQUIRED_SKIN_DEFORMATION_CLIPS_V1
+        .into_iter()
+        .chain(std::iter::once(death_clip_name))
+        .collect::<Vec<_>>();
+    let mut clips = Vec::with_capacity(required_clip_names.len());
+    for clip_name in &required_clip_names {
         let Some(animation) = report
             .animations
             .iter()
@@ -3885,7 +4857,7 @@ fn evaluate_m6_skin_animation_conformance_v1(
         else {
             violations.push(format!("DEFORMATION_CLIP_MISSING:{clip_name}"));
             clips.push(M6ClipSkinAnimationConformanceV1 {
-                clip_name: clip_name.to_owned(),
+                clip_name: (*clip_name).to_owned(),
                 sampled_time_count: 0,
                 max_moved_vertex_count: 0,
                 max_displacement: 0.0,
@@ -3919,7 +4891,7 @@ fn evaluate_m6_skin_animation_conformance_v1(
             violations.push(format!("NON_RIGID_DEFORMATION_MISSING:{clip_name}"));
         }
         clips.push(M6ClipSkinAnimationConformanceV1 {
-            clip_name: clip_name.to_owned(),
+            clip_name: (*clip_name).to_owned(),
             sampled_time_count,
             max_moved_vertex_count,
             max_displacement,
@@ -3930,7 +4902,7 @@ fn evaluate_m6_skin_animation_conformance_v1(
     M6SkinAnimationConformanceV1 {
         schema_version: 1,
         active_joint_count: active_joint_count as u32,
-        required_clip_count: M6_REQUIRED_SKIN_DEFORMATION_CLIPS_V1.len() as u32,
+        required_clip_count: required_clip_names.len() as u32,
         clips,
         complete,
         violations,
@@ -4105,6 +5077,7 @@ fn replay_m0_direct_creature_model_v2(
         &mut animations,
         &runtime_profile.model_resref,
     )?;
+    split_creature_segments_for_binary_mdl_v1(&mut creature)?;
     let texture_selection = resolve_base_color_image_index_v1(&ingest, &creature)?;
     let mdl = write_binary_mdl_with_animations(
         &creature,
@@ -4130,6 +5103,192 @@ fn replay_m0_direct_creature_model_v2(
         )
     })?;
     Ok(mdl.payload)
+}
+
+fn split_creature_segments_for_binary_mdl_v1(
+    creature: &mut AuroraCreatureIrV1,
+) -> Result<(), M6PipelineErrorV1> {
+    segment_model_for_binary_mdl_v1(creature)
+        .map(|_| ())
+        .map_err(|error| pipeline_error("model", error.code, error.path, error.message))
+}
+
+fn sanitize_runtime_creature_face_planes_v1(
+    creature: &mut AuroraCreatureIrV1,
+) -> Result<usize, M6PipelineErrorV1> {
+    sanitize_runtime_creature_face_planes_with_policy_v1(
+        creature,
+        TriangleDegeneracyPolicyV1::LegacyAbsoluteEpsilon,
+    )
+}
+
+fn sanitize_runtime_creature_face_planes_exact_v1(
+    creature: &mut AuroraCreatureIrV1,
+) -> Result<usize, M6PipelineErrorV1> {
+    sanitize_runtime_creature_face_planes_with_policy_v1(
+        creature,
+        TriangleDegeneracyPolicyV1::ExactFiniteNonCollinear,
+    )
+}
+
+fn sanitize_runtime_creature_face_planes_with_policy_v1(
+    creature: &mut AuroraCreatureIrV1,
+    degeneracy_policy: TriangleDegeneracyPolicyV1,
+) -> Result<usize, M6PipelineErrorV1> {
+    let source_segments = std::mem::take(&mut creature.segments);
+    let mut output_segments = Vec::with_capacity(source_segments.len());
+    let mut removed_triangle_count = 0usize;
+    for (segment_index, mut segment) in source_segments.into_iter().enumerate() {
+        let path = format!("creature.segments[{segment_index}]");
+        let triangle_count = segment.indices.len() / 3;
+        if segment.indices.is_empty()
+            || !segment.indices.len().is_multiple_of(3)
+            || segment.positions.len() != segment.normals.len()
+            || segment.positions.len() != segment.uv0.len()
+            || segment
+                .tangents
+                .as_ref()
+                .is_some_and(|values| values.len() != segment.positions.len())
+            || (segment.deformation == RigSegmentDeformationV1::Skin
+                && segment.weights.len() != segment.positions.len())
+            || (segment.deformation == RigSegmentDeformationV1::Rigid
+                && !segment.weights.is_empty())
+            || (!segment.face_surface_ids.is_empty()
+                && segment.face_surface_ids.len() != triangle_count)
+        {
+            return Err(pipeline_error(
+                "model",
+                "M6-RUNTIME-FACE-PLANE-SOURCE-INVALID",
+                path,
+                "runtime segment arrays do not form complete indexed triangles",
+            ));
+        }
+
+        let mut retained_triangles = Vec::with_capacity(triangle_count);
+        for (triangle_index, triangle) in segment.indices.chunks_exact(3).enumerate() {
+            let mut vertices = [0usize; 3];
+            for (corner, source_index) in triangle.iter().copied().enumerate() {
+                let vertex = usize::try_from(source_index).map_err(|_| {
+                    pipeline_error(
+                        "model",
+                        "M6-RUNTIME-FACE-PLANE-INDEX",
+                        &path,
+                        "runtime vertex index does not fit this platform",
+                    )
+                })?;
+                if vertex >= segment.positions.len() {
+                    return Err(pipeline_error(
+                        "model",
+                        "M6-RUNTIME-FACE-PLANE-INDEX",
+                        &path,
+                        "runtime vertex index escapes the segment arrays",
+                    ));
+                }
+                vertices[corner] = vertex;
+            }
+            let a = segment.positions[vertices[0]];
+            let b = segment.positions[vertices[1]];
+            let c = segment.positions[vertices[2]];
+            let ab = [
+                f64::from(b[0]) - f64::from(a[0]),
+                f64::from(b[1]) - f64::from(a[1]),
+                f64::from(b[2]) - f64::from(a[2]),
+            ];
+            let ac = [
+                f64::from(c[0]) - f64::from(a[0]),
+                f64::from(c[1]) - f64::from(a[1]),
+                f64::from(c[2]) - f64::from(a[2]),
+            ];
+            let cross = [
+                ab[1] * ac[2] - ab[2] * ac[1],
+                ab[2] * ac[0] - ab[0] * ac[2],
+                ab[0] * ac[1] - ab[1] * ac[0],
+            ];
+            let length = (cross[0].powi(2) + cross[1].powi(2) + cross[2].powi(2)).sqrt();
+            if degeneracy_policy.accepts_cross_length(length) {
+                retained_triangles.push(triangle_index);
+            }
+        }
+
+        let removed = triangle_count.saturating_sub(retained_triangles.len());
+        removed_triangle_count = removed_triangle_count.checked_add(removed).ok_or_else(|| {
+            pipeline_error(
+                "model",
+                "M6-RUNTIME-FACE-PLANE-OVERFLOW",
+                "creature.segments",
+                "removed triangle count overflow",
+            )
+        })?;
+        if removed == 0 {
+            output_segments.push(segment);
+            continue;
+        }
+        if retained_triangles.is_empty() {
+            continue;
+        }
+
+        let source_positions = std::mem::take(&mut segment.positions);
+        let source_normals = std::mem::take(&mut segment.normals);
+        let source_tangents = segment.tangents.take();
+        let source_uv0 = std::mem::take(&mut segment.uv0);
+        let source_indices = std::mem::take(&mut segment.indices);
+        let source_face_surface_ids = std::mem::take(&mut segment.face_surface_ids);
+        let source_weights = std::mem::take(&mut segment.weights);
+        let mut remap = vec![u32::MAX; source_positions.len()];
+        let mut compacted_tangents = source_tangents.as_ref().map(|_| Vec::new());
+        for triangle_index in retained_triangles {
+            for source_index in &source_indices[triangle_index * 3..(triangle_index + 1) * 3] {
+                let source_vertex = usize::try_from(*source_index).map_err(|_| {
+                    pipeline_error(
+                        "model",
+                        "M6-RUNTIME-FACE-PLANE-INDEX",
+                        &path,
+                        "runtime vertex index does not fit this platform",
+                    )
+                })?;
+                if remap[source_vertex] == u32::MAX {
+                    remap[source_vertex] =
+                        u32::try_from(segment.positions.len()).map_err(|_| {
+                            pipeline_error(
+                                "model",
+                                "M6-RUNTIME-FACE-PLANE-OVERFLOW",
+                                &path,
+                                "compacted runtime vertex index exceeds u32",
+                            )
+                        })?;
+                    segment.positions.push(source_positions[source_vertex]);
+                    segment.normals.push(source_normals[source_vertex]);
+                    segment.uv0.push(source_uv0[source_vertex]);
+                    if let (Some(source), Some(output)) =
+                        (source_tangents.as_ref(), compacted_tangents.as_mut())
+                    {
+                        output.push(source[source_vertex]);
+                    }
+                    if segment.deformation == RigSegmentDeformationV1::Skin {
+                        segment.weights.push(source_weights[source_vertex].clone());
+                    }
+                }
+                segment.indices.push(remap[source_vertex]);
+            }
+            if !source_face_surface_ids.is_empty() {
+                segment
+                    .face_surface_ids
+                    .push(source_face_surface_ids[triangle_index]);
+            }
+        }
+        segment.tangents = compacted_tangents;
+        output_segments.push(segment);
+    }
+    if output_segments.is_empty() {
+        return Err(pipeline_error(
+            "model",
+            "M6-RUNTIME-FACE-PLANE-EMPTY",
+            "creature.segments",
+            "runtime creature contains no binary-writer-safe triangles",
+        ));
+    }
+    creature.segments = output_segments;
+    Ok(removed_triangle_count)
 }
 
 fn insert_controllerless_aurora_skin_root_v1(
@@ -4311,6 +5470,25 @@ fn normalize_direct_creature_runtime_root(
 pub(crate) fn sanitize_meshy_h1_degenerate_triangles_v1(
     source: &mut GlbIngestResult,
 ) -> Result<(), M6PipelineErrorV1> {
+    sanitize_meshy_h1_degenerate_triangles_with_policy_v1(
+        source,
+        TriangleDegeneracyPolicyV1::LegacyAbsoluteEpsilon,
+    )
+}
+
+fn sanitize_meshy_h1_degenerate_triangles_exact_v1(
+    source: &mut GlbIngestResult,
+) -> Result<(), M6PipelineErrorV1> {
+    sanitize_meshy_h1_degenerate_triangles_with_policy_v1(
+        source,
+        TriangleDegeneracyPolicyV1::ExactFiniteNonCollinear,
+    )
+}
+
+fn sanitize_meshy_h1_degenerate_triangles_with_policy_v1(
+    source: &mut GlbIngestResult,
+    degeneracy_policy: TriangleDegeneracyPolicyV1,
+) -> Result<(), M6PipelineErrorV1> {
     if source.ir.primitives.len() != 1 {
         return Err(pipeline_error(
             "profile",
@@ -4326,15 +5504,23 @@ pub(crate) fn sanitize_meshy_h1_degenerate_triangles_v1(
         let a = primitive.positions[triangle[0] as usize];
         let b = primitive.positions[triangle[1] as usize];
         let c = primitive.positions[triangle[2] as usize];
-        let ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-        let ac = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        let ab = [
+            f64::from(b[0]) - f64::from(a[0]),
+            f64::from(b[1]) - f64::from(a[1]),
+            f64::from(b[2]) - f64::from(a[2]),
+        ];
+        let ac = [
+            f64::from(c[0]) - f64::from(a[0]),
+            f64::from(c[1]) - f64::from(a[1]),
+            f64::from(c[2]) - f64::from(a[2]),
+        ];
         let cross = [
             ab[1] * ac[2] - ab[2] * ac[1],
             ab[2] * ac[0] - ab[0] * ac[2],
             ab[0] * ac[1] - ab[1] * ac[0],
         ];
-        let length_squared = cross.iter().map(|value| value * value).sum::<f32>();
-        if length_squared.is_finite() && length_squared > 1.0e-10 {
+        let length = (cross[0].powi(2) + cross[1].powi(2) + cross[2].powi(2)).sqrt();
+        if degeneracy_policy.accepts_cross_length(length) {
             retained.extend_from_slice(triangle);
         }
     }
@@ -4346,9 +5532,88 @@ pub(crate) fn sanitize_meshy_h1_degenerate_triangles_v1(
             "Meshy H1 source contains no Aurora-safe non-degenerate triangles",
         ));
     }
-    primitive.indices = retained;
+    let source_vertex_count = primitive.positions.len();
+    let has_skin_lanes = !primitive.joints0.is_empty() || !primitive.weights0.is_empty();
+    if primitive.normals.len() != source_vertex_count
+        || primitive.uv0.len() != source_vertex_count
+        || (has_skin_lanes
+            && (primitive.joints0.len() != source_vertex_count
+                || primitive.weights0.len() != source_vertex_count))
+        || (!primitive.tangents.is_empty() && primitive.tangents.len() != source_vertex_count)
+    {
+        return Err(pipeline_error(
+            "profile",
+            "M4A-MESHY-H1-SOURCE-INVALID",
+            "source.ir.primitives[0]",
+            "Meshy H1 vertex attributes differ before sanitation",
+        ));
+    }
+    let source_positions = std::mem::take(&mut primitive.positions);
+    let source_normals = std::mem::take(&mut primitive.normals);
+    let source_tangents = std::mem::take(&mut primitive.tangents);
+    let source_uv0 = std::mem::take(&mut primitive.uv0);
+    let source_joints0 = std::mem::take(&mut primitive.joints0);
+    let source_weights0 = std::mem::take(&mut primitive.weights0);
+    let mut remap = vec![u32::MAX; source_vertex_count];
+    let mut compacted_indices = Vec::with_capacity(retained.len());
+    for source_index in retained {
+        let source_vertex = usize::try_from(source_index).map_err(|_| {
+            pipeline_error(
+                "profile",
+                "M4A-MESHY-H1-SOURCE-INVALID",
+                "source.ir.primitives[0].indices",
+                "Meshy H1 source index does not fit this platform",
+            )
+        })?;
+        if source_vertex >= source_vertex_count {
+            return Err(pipeline_error(
+                "profile",
+                "M4A-MESHY-H1-SOURCE-INVALID",
+                "source.ir.primitives[0].indices",
+                "Meshy H1 source index escapes the vertex attributes",
+            ));
+        }
+        if remap[source_vertex] == u32::MAX {
+            remap[source_vertex] = u32::try_from(primitive.positions.len()).map_err(|_| {
+                pipeline_error(
+                    "profile",
+                    "M4A-MESHY-H1-SOURCE-INVALID",
+                    "source.ir.primitives[0].positions",
+                    "compacted Meshy H1 vertex index exceeds u32",
+                )
+            })?;
+            primitive.positions.push(source_positions[source_vertex]);
+            primitive.normals.push(source_normals[source_vertex]);
+            if !source_tangents.is_empty() {
+                primitive.tangents.push(source_tangents[source_vertex]);
+            }
+            primitive.uv0.push(source_uv0[source_vertex]);
+            if has_skin_lanes {
+                primitive.joints0.push(source_joints0[source_vertex]);
+                primitive.weights0.push(source_weights0[source_vertex]);
+            }
+        }
+        compacted_indices.push(remap[source_vertex]);
+    }
+    primitive.indices = compacted_indices;
+    let removed_unreferenced_vertices =
+        source_vertex_count.saturating_sub(primitive.positions.len());
+    primitive.bounds_min = [f32::INFINITY; 3];
+    primitive.bounds_max = [f32::NEG_INFINITY; 3];
+    for position in &primitive.positions {
+        for (axis, value) in position.iter().copied().enumerate() {
+            primitive.bounds_min[axis] = primitive.bounds_min[axis].min(value);
+            primitive.bounds_max[axis] = primitive.bounds_max[axis].max(value);
+        }
+    }
     let after = primitive.indices.len() / 3;
     let removed = before.saturating_sub(after);
+    source.report.statistics.vertex_count = source
+        .ir
+        .primitives
+        .iter()
+        .map(|item| item.positions.len())
+        .sum();
     source.report.statistics.index_count = source
         .ir
         .primitives
@@ -4362,15 +5627,35 @@ pub(crate) fn sanitize_meshy_h1_degenerate_triangles_v1(
         .map(|item| item.indices.len() / 3)
         .sum();
     if removed > 0 {
+        let (code, description) = match degeneracy_policy {
+            TriangleDegeneracyPolicyV1::LegacyAbsoluteEpsilon => (
+                "M4A-MESHY-H1-DEGENERATE-TRIANGLES-REMOVED",
+                "degenerate source triangles",
+            ),
+            TriangleDegeneracyPolicyV1::ExactFiniteNonCollinear => (
+                "M4A-MESHY-H1-EXACT-DEGENERATE-TRIANGLES-REMOVED",
+                "non-finite, zero-area or exactly collinear source triangles",
+            ),
+        };
         source.report.diagnostics.push(crate::glb::GlbDiagnostic {
             schema_version: 1,
             severity: "WARNING".to_owned(),
-            code: "M4A-MESHY-H1-DEGENERATE-TRIANGLES-REMOVED".to_owned(),
-            message: format!(
-                "removed {removed} degenerate source triangles before Aurora materialization"
-            ),
+            code: code.to_owned(),
+            message: format!("removed {removed} {description} before Aurora materialization"),
             byte_offset: None,
             json_path: Some("meshes[0].primitives[0].indices".to_owned()),
+        });
+    }
+    if removed_unreferenced_vertices > 0 {
+        source.report.diagnostics.push(crate::glb::GlbDiagnostic {
+            schema_version: 1,
+            severity: "WARNING".to_owned(),
+            code: "M4A-MESHY-H1-UNREFERENCED-VERTICES-REMOVED".to_owned(),
+            message: format!(
+                "removed {removed_unreferenced_vertices} unreferenced source vertices after triangle sanitation"
+            ),
+            byte_offset: None,
+            json_path: Some("meshes[0].primitives[0].attributes".to_owned()),
         });
     }
     Ok(())
@@ -4471,6 +5756,125 @@ pub fn write_m6_proof_packet_v1(
         M6_TEXTURE_RESREF,
         M6_HAK_FILE_NAME,
         M6_PROOF_MODULE_FILE_NAME,
+    )
+}
+
+/// Writes a fresh full-42 procedural creature packet using only the resource
+/// identity that was bound into the verified artifact. Unlike the historical
+/// M6 writer, this route does not reuse fixed MOD, HAK, model or texture names.
+pub fn write_procedural_creature_proof_packet_with_identity_v1(
+    output_dir: &Path,
+    artifact: &M6ModelPackageArtifactV1,
+    identity: &ProceduralCreaturePackageIdentityV1,
+) -> Result<(), M6PipelineErrorV1> {
+    let archive = ErfArchive::parse(&artifact.hak).map_err(|error| {
+        pipeline_error(
+            "output",
+            error.code,
+            format!("artifact.hak@{}", error.offset),
+            error.context,
+        )
+    })?;
+    for (resref, resource_type, expected) in [
+        (
+            identity.model_resref.as_str(),
+            2002,
+            artifact.model.as_slice(),
+        ),
+        (
+            identity.texture_resref.as_str(),
+            3,
+            artifact.texture.as_slice(),
+        ),
+        ("appearance", 2017, artifact.appearance_two_da.as_slice()),
+    ] {
+        let actual = archive.find(resref, resource_type).map_err(|error| {
+            pipeline_error(
+                "output",
+                error.code,
+                format!("artifact.hak.{resref}"),
+                error.context,
+            )
+        })?;
+        if actual != expected {
+            return Err(pipeline_error(
+                "output",
+                "M6-PROCEDURAL-WRITER-HAK-RESOURCE-DIFF",
+                format!("artifact.hak.{resref}"),
+                "the HAK resource does not equal the independently held artifact payload",
+            ));
+        }
+    }
+
+    let model = inspect_binary_mdl(&artifact.model).map_err(|error| {
+        pipeline_error(
+            "output",
+            error.code,
+            format!("artifact.model@{}", error.offset),
+            error.context,
+        )
+    })?;
+    let model_root = model.node_tree.roots.first().ok_or_else(|| {
+        pipeline_error(
+            "output",
+            "M6-PROCEDURAL-WRITER-MODEL-ROOT-MISSING",
+            "artifact.model.nodeTree.roots",
+            "the procedural model must contain one dedicated Aurora root",
+        )
+    })?;
+    let animation_roots_match = model.animations.iter().all(|animation| {
+        animation.animation_type == 5
+            && animation.node_tree.roots.len() == 1
+            && animation.node_tree.roots[0].name == identity.model_resref
+            && animation.node_tree.roots[0].number == 0
+    });
+    if model_root.name != identity.model_resref
+        || model_root.number != 0
+        || model.animations.len() != FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1.len()
+        || !animation_roots_match
+    {
+        return Err(pipeline_error(
+            "output",
+            "M6-PROCEDURAL-WRITER-MODEL-IDENTITY-DIFF",
+            "artifact.model",
+            "model root and all 42 type-5 animation roots must match the caller-owned part-0 identity",
+        ));
+    }
+
+    let module = inspect_binary_creature_profile_matrix_module_v2(&artifact.proof_module).map_err(
+        |error| {
+            pipeline_error(
+                "output",
+                error.code,
+                format!("artifact.proofModule.{}", error.path),
+                error.message,
+            )
+        },
+    )?;
+    if module.scene.module_resref != identity.module.module_resref
+        || module.scene.area_resref != identity.module.area_resref
+        || module.scene.ordered_hak_resrefs != [identity.module.hak_resref.clone()]
+        || module.fixtures.len() != 1
+        || module.fixtures[0].runtime_profile
+            != BinaryCreatureRuntimeProfileV2::ActiveMonsterBaseline
+        || module.scene.fixtures.len() != 1
+        || module.scene.fixtures[0].template_resref != identity.creature_resref
+    {
+        return Err(pipeline_error(
+            "output",
+            "M6-PROCEDURAL-WRITER-MODULE-IDENTITY-DIFF",
+            "artifact.proofModule",
+            "MOD, Area, ordered HAK and creature identities must equal the caller-owned artifact identity",
+        ));
+    }
+
+    write_proof_packet_v1(
+        output_dir,
+        artifact,
+        &identity.model_resref,
+        &identity.texture_resref,
+        &format!("{}.hak", identity.module.hak_resref),
+        &format!("{}.mod", identity.module.module_resref),
     )
 }
 
@@ -4744,15 +6148,26 @@ fn logical_path(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::{fs, path::PathBuf};
+
     use super::{
-        M6_REQUIRED_DIRECT_CREATURE_CLIPS, apply_authored_h1_source_names_v1,
-        materialize_direct_creature_runtime_clips,
+        M6_REQUIRED_DIRECT_CREATURE_CLIPS, M6BuildOutputV2, M6GeometryPolicyV1,
+        TriangleDegeneracyPolicyV1, apply_authored_h1_source_names_v1,
+        materialize_direct_creature_runtime_clips, p100k_experiment_glb_limits_v1,
+        p100k_experiment_triangle_count_is_eligible_v1, p300k_experiment_glb_limits_v1,
+        sanitize_meshy_h1_degenerate_triangles_exact_v1, sanitize_meshy_h1_degenerate_triangles_v1,
+        sanitize_runtime_creature_face_planes_exact_v1, sanitize_runtime_creature_face_planes_v1,
+        split_creature_segments_for_binary_mdl_v1, triangle_degeneracy_policy_for_build_v1,
     };
     use crate::{
         glb::{GlbLimits, ingest_glb},
-        mdl::{MdlAnimationClipV1, MdlAnimationSetV1},
+        mdl::{MdlAnimationClipV1, MdlAnimationSetV1, NWN_EE_MAX_MESH_INDEX_COUNT_V1},
         owned_fixture::synthetic_owned_m6_glb_v1,
-        profile_a::derive_meshy_h1_profile_and_mapping_v1,
+        profile_a::{
+            AuroraCreatureIrV1, AuroraCreatureSegmentV1, AuroraVertexWeightsV1,
+            RigSegmentDeformationV1, derive_meshy_h1_profile_and_mapping_p300k_experiment_v1,
+            derive_meshy_h1_profile_and_mapping_v1,
+        },
     };
 
     fn clip(name: &str, length_seconds: f32) -> MdlAnimationClipV1 {
@@ -4823,6 +6238,518 @@ mod tests {
         assert_eq!(
             explicit_mapping.clip_mappings[0].output_clip_name,
             "owned-linear-pause"
+        );
+    }
+
+    #[test]
+    fn active_creature_routes_use_exact_finite_non_collinear_geometry_policy() {
+        assert_eq!(
+            triangle_degeneracy_policy_for_build_v1(
+                M6BuildOutputV2::ProceduralProduct,
+                M6GeometryPolicyV1::ProductBudget,
+            ),
+            TriangleDegeneracyPolicyV1::ExactFiniteNonCollinear
+        );
+        assert_eq!(
+            triangle_degeneracy_policy_for_build_v1(
+                M6BuildOutputV2::LegacyBundle,
+                M6GeometryPolicyV1::P100kSegmentedExperiment,
+            ),
+            TriangleDegeneracyPolicyV1::ExactFiniteNonCollinear
+        );
+        assert_eq!(
+            triangle_degeneracy_policy_for_build_v1(
+                M6BuildOutputV2::LegacyBundle,
+                M6GeometryPolicyV1::P300kSegmentedExperiment,
+            ),
+            TriangleDegeneracyPolicyV1::ExactFiniteNonCollinear
+        );
+    }
+
+    #[test]
+    fn frozen_legacy_product_bundle_keeps_legacy_geometry_policy() {
+        assert_eq!(
+            triangle_degeneracy_policy_for_build_v1(
+                M6BuildOutputV2::LegacyBundle,
+                M6GeometryPolicyV1::ProductBudget,
+            ),
+            TriangleDegeneracyPolicyV1::LegacyAbsoluteEpsilon
+        );
+    }
+
+    #[test]
+    fn p100k_target_class_accepts_only_its_bounded_meshy_overshoot_envelope() {
+        assert!(p100k_experiment_triangle_count_is_eligible_v1(20_001));
+        assert!(p100k_experiment_triangle_count_is_eligible_v1(100_000));
+        assert!(p100k_experiment_triangle_count_is_eligible_v1(103_290));
+        assert!(p100k_experiment_triangle_count_is_eligible_v1(110_000));
+        assert!(!p100k_experiment_triangle_count_is_eligible_v1(20_000));
+        assert!(!p100k_experiment_triangle_count_is_eligible_v1(110_001));
+    }
+
+    #[test]
+    #[ignore = "requires the local Git-ignored canonical Meshy Creature GLB corpus"]
+    fn canonical_humanoid_creature_corpus_preserves_every_exact_finite_non_collinear_face() {
+        struct CorpusCase {
+            asset_id: &'static str,
+            payload: &'static str,
+            expected_raw_triangles: usize,
+            limits: GlbLimits,
+        }
+
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let cases = [
+            CorpusCase {
+                asset_id: "h1-humanoid-1500",
+                payload: "source.glb",
+                expected_raw_triangles: 1_556,
+                limits: GlbLimits::default(),
+            },
+            CorpusCase {
+                asset_id: "h2-clockwork-sentinel-1500",
+                payload: "source.glb",
+                expected_raw_triangles: 1_543,
+                limits: GlbLimits::default(),
+            },
+            CorpusCase {
+                asset_id: "tlc-powrotnik-h1-p20k-v1",
+                payload: "source-budget20000.glb",
+                expected_raw_triangles: 19_892,
+                limits: GlbLimits::default(),
+            },
+            CorpusCase {
+                asset_id: "tlc-powrotnik-h1-p100k-limit-v1",
+                payload: "source.glb",
+                expected_raw_triangles: 103_290,
+                limits: p100k_experiment_glb_limits_v1(),
+            },
+            CorpusCase {
+                asset_id: "tlc-veiled-humanoid-h1-p100k-v1",
+                payload: "source.glb",
+                expected_raw_triangles: 102_335,
+                limits: p100k_experiment_glb_limits_v1(),
+            },
+            CorpusCase {
+                asset_id: "tlc-stoneback-brute-h1-p300k-v1",
+                payload: "source.glb",
+                expected_raw_triangles: 296_276,
+                limits: p300k_experiment_glb_limits_v1(),
+            },
+        ];
+
+        for case in cases {
+            let asset_root = repo.join("sample-3d").join(case.asset_id);
+            assert!(
+                asset_root.join("manifest.yaml").is_file(),
+                "{} is missing its canonical manifest",
+                case.asset_id
+            );
+            let source_path = asset_root.join(case.payload);
+            let bytes = fs::read(&source_path).unwrap_or_else(|error| {
+                panic!(
+                    "cannot read canonical Creature payload {}: {error}",
+                    source_path.display()
+                )
+            });
+            let raw = ingest_glb(&bytes, &case.limits).unwrap_or_else(|error| {
+                panic!(
+                    "cannot ingest canonical Creature payload {}: {}",
+                    source_path.display(),
+                    error.message
+                )
+            });
+            assert_eq!(
+                raw.report.statistics.triangle_count, case.expected_raw_triangles,
+                "{} raw triangle count drifted",
+                case.asset_id
+            );
+
+            let mut exact = raw.clone();
+            sanitize_meshy_h1_degenerate_triangles_exact_v1(&mut exact).unwrap_or_else(|error| {
+                panic!("{} exact sanitation failed: {error}", case.asset_id)
+            });
+            let mut legacy = raw;
+            sanitize_meshy_h1_degenerate_triangles_v1(&mut legacy).unwrap_or_else(|error| {
+                panic!(
+                    "{} legacy comparison sanitation failed: {error}",
+                    case.asset_id
+                )
+            });
+
+            let exact_triangles = exact.report.statistics.triangle_count;
+            let legacy_triangles = legacy.report.statistics.triangle_count;
+            assert_eq!(
+                exact_triangles, case.expected_raw_triangles,
+                "{} contains a non-finite, zero-area or exactly collinear source face",
+                case.asset_id
+            );
+            assert!(
+                exact_triangles >= legacy_triangles,
+                "{} exact sanitation cannot retain fewer faces than the legacy epsilon",
+                case.asset_id
+            );
+            eprintln!(
+                "CREATURE_EXACT_CORPUS asset={} raw={} exact={} legacy={} recovered_valid_microtriangles={}",
+                case.asset_id,
+                case.expected_raw_triangles,
+                exact_triangles,
+                legacy_triangles,
+                exact_triangles - legacy_triangles
+            );
+        }
+    }
+
+    #[test]
+    fn p100k_experiment_partitions_skin_geometry_without_losing_triangles() {
+        let triangle_count = NWN_EE_MAX_MESH_INDEX_COUNT_V1 / 3 + 1;
+        let mut positions = Vec::with_capacity(triangle_count * 3);
+        let mut indices = Vec::with_capacity(triangle_count * 3);
+        for triangle in 0..triangle_count {
+            let base = positions.len() as u32;
+            let x = triangle as f32 * 2.0;
+            positions.extend([[x, 0.0, 0.0], [x + 1.0, 0.0, 0.0], [x, 1.0, 0.0]]);
+            indices.extend([base, base + 1, base + 2]);
+        }
+        let vertex_count = positions.len();
+        let mut creature = AuroraCreatureIrV1 {
+            schema_version: 1,
+            profile_id: "p100k-segmentation-test".to_owned(),
+            source_sha256: "0".repeat(64),
+            basis_status: "TEST".to_owned(),
+            engine_facing_proof: "TEST".to_owned(),
+            uv_runtime_proof: "TEST".to_owned(),
+            nodes: Vec::new(),
+            material_source_bindings: Vec::new(),
+            segments: vec![AuroraCreatureSegmentV1 {
+                segment_id: 7,
+                material_slot: 0,
+                deformation: RigSegmentDeformationV1::Skin,
+                parent_node_id: 1,
+                cast_shadow: true,
+                positions,
+                normals: vec![[0.0, 0.0, 1.0]; vertex_count],
+                tangents: None,
+                uv0: vec![[0.0, 0.0]; vertex_count],
+                indices,
+                face_surface_ids: Vec::new(),
+                weights: vec![
+                    AuroraVertexWeightsV1 {
+                        bone_node_ids: [Some(1), None, None, None],
+                        values: [1.0, 0.0, 0.0, 0.0],
+                        influence_count: 1,
+                    };
+                    vertex_count
+                ],
+            }],
+        };
+
+        split_creature_segments_for_binary_mdl_v1(&mut creature).unwrap();
+
+        assert_eq!(creature.segments.len(), 2);
+        assert_eq!(
+            creature
+                .segments
+                .iter()
+                .map(|segment| segment.indices.len() / 3)
+                .sum::<usize>(),
+            triangle_count
+        );
+        assert!(creature.segments.iter().all(|segment| {
+            segment.indices.len() <= NWN_EE_MAX_MESH_INDEX_COUNT_V1
+                && segment.positions.len() <= usize::from(u16::MAX)
+                && segment.weights.len() == segment.positions.len()
+        }));
+        assert_eq!(creature.segments[0].positions.len(), usize::from(u16::MAX));
+        assert_eq!(creature.segments[1].positions.len(), 3);
+    }
+
+    #[test]
+    fn p300k_experiment_owns_an_explicit_raw_envelope_above_the_exact_gate() {
+        let limits = p300k_experiment_glb_limits_v1();
+
+        assert_eq!(limits.triangle_warning_above, 150_000);
+        assert_eq!(limits.triangle_blocking_above, 330_000);
+        assert!(limits.max_input_bytes >= 256 * 1024 * 1024);
+        assert!(limits.max_decoded_geometry_bytes >= 512 * 1024 * 1024);
+        assert!(limits.max_decoded_skin_animation_bytes >= 512 * 1024 * 1024);
+    }
+
+    #[test]
+    fn segmented_experiment_partitions_exactly_300k_triangles_without_loss() {
+        let triangle_count = 300_000usize;
+        let mut positions = Vec::with_capacity(triangle_count + 2);
+        positions.push([0.0, 0.0, 0.0]);
+        for vertex in 0..=triangle_count {
+            positions.push([vertex as f32, 1.0, 0.0]);
+        }
+        let mut indices = Vec::with_capacity(triangle_count * 3);
+        for triangle in 0..triangle_count {
+            indices.extend([0, triangle as u32 + 1, triangle as u32 + 2]);
+        }
+        let vertex_count = positions.len();
+        let mut creature = AuroraCreatureIrV1 {
+            schema_version: 1,
+            profile_id: "p300k-segmentation-test".to_owned(),
+            source_sha256: "0".repeat(64),
+            basis_status: "TEST".to_owned(),
+            engine_facing_proof: "TEST".to_owned(),
+            uv_runtime_proof: "TEST".to_owned(),
+            nodes: Vec::new(),
+            material_source_bindings: Vec::new(),
+            segments: vec![AuroraCreatureSegmentV1 {
+                segment_id: 1,
+                material_slot: 0,
+                deformation: RigSegmentDeformationV1::Skin,
+                parent_node_id: 1,
+                cast_shadow: true,
+                positions,
+                normals: vec![[0.0, 0.0, 1.0]; vertex_count],
+                tangents: None,
+                uv0: vec![[0.0, 0.0]; vertex_count],
+                indices,
+                face_surface_ids: Vec::new(),
+                weights: vec![
+                    AuroraVertexWeightsV1 {
+                        bone_node_ids: [Some(1), None, None, None],
+                        values: [1.0, 0.0, 0.0, 0.0],
+                        influence_count: 1,
+                    };
+                    vertex_count
+                ],
+            }],
+        };
+
+        split_creature_segments_for_binary_mdl_v1(&mut creature).unwrap();
+
+        assert_eq!(
+            creature
+                .segments
+                .iter()
+                .map(|segment| segment.indices.len() / 3)
+                .sum::<usize>(),
+            triangle_count
+        );
+        assert_eq!(creature.segments.len(), 14);
+        assert!(creature.segments.iter().all(|segment| {
+            segment.indices.len() <= NWN_EE_MAX_MESH_INDEX_COUNT_V1
+                && segment.positions.len() <= usize::from(u16::MAX)
+                && segment.weights.len() == segment.positions.len()
+        }));
+    }
+
+    #[test]
+    fn runtime_sanitation_uses_the_binary_writer_face_plane_threshold() {
+        let weights = AuroraVertexWeightsV1 {
+            bone_node_ids: [Some(1), None, None, None],
+            values: [1.0, 0.0, 0.0, 0.0],
+            influence_count: 1,
+        };
+        let mut creature = AuroraCreatureIrV1 {
+            schema_version: 1,
+            profile_id: "runtime-face-plane-test".to_owned(),
+            source_sha256: "0".repeat(64),
+            basis_status: "TEST".to_owned(),
+            engine_facing_proof: "TEST".to_owned(),
+            uv_runtime_proof: "TEST".to_owned(),
+            nodes: Vec::new(),
+            material_source_bindings: Vec::new(),
+            segments: vec![AuroraCreatureSegmentV1 {
+                segment_id: 1,
+                material_slot: 0,
+                deformation: RigSegmentDeformationV1::Skin,
+                parent_node_id: 1,
+                cast_shadow: true,
+                positions: vec![
+                    [0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [2.0, 0.0, 0.0],
+                    [2.01, 0.0, 0.0],
+                    [2.0, 0.001, 0.0],
+                ],
+                normals: vec![[0.0, 0.0, 1.0]; 6],
+                tangents: Some(vec![[1.0, 0.0, 0.0, 1.0]; 6]),
+                uv0: vec![[0.0, 0.0]; 6],
+                indices: vec![0, 1, 2, 3, 4, 5],
+                face_surface_ids: vec![11, 12],
+                weights: vec![weights; 6],
+            }],
+        };
+
+        let removed = sanitize_runtime_creature_face_planes_v1(&mut creature).unwrap();
+
+        assert_eq!(removed, 1);
+        assert_eq!(creature.segments.len(), 1);
+        assert_eq!(creature.segments[0].indices, vec![0, 1, 2]);
+        assert_eq!(creature.segments[0].positions.len(), 3);
+        assert_eq!(creature.segments[0].normals.len(), 3);
+        assert_eq!(creature.segments[0].tangents.as_ref().unwrap().len(), 3);
+        assert_eq!(creature.segments[0].uv0.len(), 3);
+        assert_eq!(creature.segments[0].weights.len(), 3);
+        assert_eq!(creature.segments[0].face_surface_ids, vec![11]);
+    }
+
+    #[test]
+    fn exact_runtime_sanitation_preserves_micro_triangles_and_removes_only_collinear_faces() {
+        let weights = AuroraVertexWeightsV1 {
+            bone_node_ids: [Some(1), None, None, None],
+            values: [1.0, 0.0, 0.0, 0.0],
+            influence_count: 1,
+        };
+        let mut creature = AuroraCreatureIrV1 {
+            schema_version: 1,
+            profile_id: "runtime-exact-face-plane-test".to_owned(),
+            source_sha256: "0".repeat(64),
+            basis_status: "TEST".to_owned(),
+            engine_facing_proof: "TEST".to_owned(),
+            uv_runtime_proof: "TEST".to_owned(),
+            nodes: Vec::new(),
+            material_source_bindings: Vec::new(),
+            segments: vec![AuroraCreatureSegmentV1 {
+                segment_id: 1,
+                material_slot: 0,
+                deformation: RigSegmentDeformationV1::Skin,
+                parent_node_id: 1,
+                cast_shadow: true,
+                positions: vec![
+                    [2.0, 0.0, 0.0],
+                    [2.01, 0.0, 0.0],
+                    [2.0, 0.001, 0.0],
+                    [3.0, 0.0, 0.0],
+                    [3.01, 0.0, 0.0],
+                    [3.02, 0.0, 0.0],
+                ],
+                normals: vec![[0.0, 0.0, 1.0]; 6],
+                tangents: Some(vec![[1.0, 0.0, 0.0, 1.0]; 6]),
+                uv0: vec![[0.0, 0.0]; 6],
+                indices: vec![0, 1, 2, 3, 4, 5],
+                face_surface_ids: vec![11, 12],
+                weights: vec![weights; 6],
+            }],
+        };
+
+        let removed = sanitize_runtime_creature_face_planes_exact_v1(&mut creature).unwrap();
+
+        assert_eq!(removed, 1);
+        assert_eq!(creature.segments.len(), 1);
+        assert_eq!(creature.segments[0].indices, vec![0, 1, 2]);
+        assert_eq!(creature.segments[0].positions.len(), 3);
+        assert_eq!(creature.segments[0].face_surface_ids, vec![11]);
+    }
+
+    #[test]
+    fn meshy_source_sanitation_uses_the_binary_writer_face_plane_threshold() {
+        let source_glb = synthetic_owned_m6_glb_v1().unwrap();
+        let mut source = ingest_glb(&source_glb, &GlbLimits::default()).unwrap();
+        let primitive = &mut source.ir.primitives[0];
+        let original_triangle_count = primitive.indices.len() / 3;
+        let base = primitive.positions.len() as u32;
+        primitive
+            .positions
+            .extend([[2.0, 0.0, 0.0], [2.01, 0.0, 0.0], [2.0, 0.001, 0.0]]);
+        primitive.normals.extend([[0.0, 0.0, 1.0]; 3]);
+        if !primitive.tangents.is_empty() {
+            primitive.tangents.extend([[1.0, 0.0, 0.0, 1.0]; 3]);
+        }
+        primitive.uv0.extend([[0.0, 0.0]; 3]);
+        primitive.joints0.extend([[0, 0, 0, 0]; 3]);
+        primitive.weights0.extend([[1.0, 0.0, 0.0, 0.0]; 3]);
+        primitive.indices.extend([base, base + 1, base + 2]);
+        source.report.statistics.vertex_count += 3;
+        source.report.statistics.index_count += 3;
+        source.report.statistics.triangle_count += 1;
+
+        sanitize_meshy_h1_degenerate_triangles_v1(&mut source).unwrap();
+
+        assert_eq!(
+            source.ir.primitives[0].indices.len() / 3,
+            original_triangle_count
+        );
+        assert_eq!(
+            source.report.statistics.triangle_count,
+            original_triangle_count
+        );
+    }
+
+    #[test]
+    fn exact_source_sanitation_preserves_micro_triangles_and_removes_only_collinear_faces() {
+        let source_glb = synthetic_owned_m6_glb_v1().unwrap();
+        let mut source = ingest_glb(&source_glb, &GlbLimits::default()).unwrap();
+        let primitive = &mut source.ir.primitives[0];
+        let original_triangle_count = primitive.indices.len() / 3;
+        let base = primitive.positions.len() as u32;
+        primitive.positions.extend([
+            [2.0, 0.0, 0.0],
+            [2.01, 0.0, 0.0],
+            [2.0, 0.001, 0.0],
+            [3.0, 0.0, 0.0],
+            [3.01, 0.0, 0.0],
+            [3.02, 0.0, 0.0],
+        ]);
+        primitive.normals.extend([[0.0, 0.0, 1.0]; 6]);
+        if !primitive.tangents.is_empty() {
+            primitive.tangents.extend([[1.0, 0.0, 0.0, 1.0]; 6]);
+        }
+        primitive.uv0.extend([[0.0, 0.0]; 6]);
+        primitive.joints0.extend([[0, 0, 0, 0]; 6]);
+        primitive.weights0.extend([[1.0, 0.0, 0.0, 0.0]; 6]);
+        primitive
+            .indices
+            .extend([base, base + 1, base + 2, base + 3, base + 4, base + 5]);
+        source.report.statistics.vertex_count += 6;
+        source.report.statistics.index_count += 6;
+        source.report.statistics.triangle_count += 2;
+
+        sanitize_meshy_h1_degenerate_triangles_exact_v1(&mut source).unwrap();
+
+        assert_eq!(
+            source.ir.primitives[0].indices.len() / 3,
+            original_triangle_count + 1
+        );
+        assert_eq!(
+            source.report.statistics.triangle_count,
+            original_triangle_count + 1
+        );
+        assert!(source.report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "M4A-MESHY-H1-EXACT-DEGENERATE-TRIANGLES-REMOVED"
+                && diagnostic.message.contains("removed 1")
+        }));
+        let (rig, _) = derive_meshy_h1_profile_and_mapping_p300k_experiment_v1(&source).unwrap();
+        assert_eq!(
+            rig.segments[0].surface_indices, source.ir.primitives[0].indices,
+            "the exact P300K rig surface must preserve every accepted source face"
+        );
+    }
+
+    #[test]
+    fn meshy_sanitation_compacts_every_vertex_attribute_after_triangle_filtering() {
+        let source_glb = synthetic_owned_m6_glb_v1().unwrap();
+        let mut source = ingest_glb(&source_glb, &GlbLimits::default()).unwrap();
+        let primitive = &mut source.ir.primitives[0];
+        let original_vertex_count = primitive.positions.len();
+        primitive.positions.push([100.0, 100.0, 100.0]);
+        primitive.normals.push([0.0, 0.0, 1.0]);
+        if !primitive.tangents.is_empty() {
+            primitive.tangents.push([1.0, 0.0, 0.0, 1.0]);
+        }
+        primitive.uv0.push([0.5, 0.5]);
+        primitive.joints0.push([0, 0, 0, 0]);
+        primitive.weights0.push([1.0, 0.0, 0.0, 0.0]);
+        source.report.statistics.vertex_count += 1;
+
+        sanitize_meshy_h1_degenerate_triangles_v1(&mut source).unwrap();
+
+        let primitive = &source.ir.primitives[0];
+        assert_eq!(primitive.positions.len(), original_vertex_count);
+        assert_eq!(primitive.normals.len(), original_vertex_count);
+        assert_eq!(primitive.uv0.len(), original_vertex_count);
+        assert_eq!(primitive.joints0.len(), original_vertex_count);
+        assert_eq!(primitive.weights0.len(), original_vertex_count);
+        assert_eq!(source.report.statistics.vertex_count, original_vertex_count);
+        assert!(
+            source.report.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == "M4A-MESHY-H1-UNREFERENCED-VERTICES-REMOVED"
+            })
         );
     }
 }

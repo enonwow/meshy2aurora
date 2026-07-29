@@ -1,8 +1,11 @@
 export type ModelPackageLaneV1 =
   | "H1_SKINNED_FULL_42"
+  | "H1_SKINNED_FULL_42_EVENTS"
   | "H1_SKINNED_FULL_42_AUTHORED"
   | "H1_SKINNED_FULL_42_EDITED"
   | "SKINNED_PROCEDURAL_HUMANOID_42"
+  | "SKINNED_PROCEDURAL_HUMANOID_P100K_EXPERIMENT"
+  | "SKINNED_PROCEDURAL_HUMANOID_P300K_EXPERIMENT"
   | "M0_STATIC_RIGID";
 
 export type StudioWorkerRequest =
@@ -12,6 +15,7 @@ export type StudioWorkerRequest =
       type: "INSPECT_SOURCE";
       sourceGlb: ArrayBuffer;
       target?: "CREATURE" | "PLACEABLE" | "TILE";
+      creatureProfile?: "PRODUCT_300K" | "EXPERIMENTAL_P100K" | "EXPERIMENTAL_P300K";
     }
   | { requestId: string; type: "INSPECT_APPEARANCE"; appearanceTwoDa: ArrayBuffer }
   | {
@@ -48,10 +52,34 @@ export type StudioWorkerRequest =
       type: "BUILD_MODEL_PACKAGE";
       sourceGlb: ArrayBuffer;
       appearanceTwoDa: ArrayBuffer;
-      packageLane: Exclude<
-        ModelPackageLaneV1,
-        "H1_SKINNED_FULL_42_AUTHORED" | "H1_SKINNED_FULL_42_EDITED"
-      >;
+      packageLane: "H1_SKINNED_FULL_42" | "M0_STATIC_RIGID";
+    }
+  | {
+      requestId: string;
+      type: "BUILD_MODEL_PACKAGE";
+      sourceGlb: ArrayBuffer;
+      appearanceTwoDa: ArrayBuffer;
+      packageLane: "SKINNED_PROCEDURAL_HUMANOID_42";
+      identityJson: string;
+      textureArtifactCleanup: boolean;
+    }
+  | {
+      requestId: string;
+      type: "BUILD_MODEL_PACKAGE";
+      sourceGlb: ArrayBuffer;
+      appearanceTwoDa: ArrayBuffer;
+      packageLane: "SKINNED_PROCEDURAL_HUMANOID_P100K_EXPERIMENT";
+      identityJson: string;
+      textureArtifactCleanup: boolean;
+    }
+  | {
+      requestId: string;
+      type: "BUILD_MODEL_PACKAGE";
+      sourceGlb: ArrayBuffer;
+      appearanceTwoDa: ArrayBuffer;
+      packageLane: "SKINNED_PROCEDURAL_HUMANOID_P300K_EXPERIMENT";
+      identityJson: string;
+      textureArtifactCleanup: boolean;
     }
   | {
       requestId: string;

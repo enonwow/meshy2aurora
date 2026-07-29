@@ -39,6 +39,13 @@ describe("real Meshy H2 procedural humanoid skin readback", () => {
       sourceGlb,
       appearanceTwoDa,
       packageLane: "SKINNED_PROCEDURAL_HUMANOID_42",
+      textureArtifactCleanup: false,
+      identityJson: JSON.stringify({
+        modelResref: "m2a_stcrmdl2",
+        textureResref: "m2a_stcrtex2",
+        hakResref: "m2a_stcrhak2",
+        appearanceLabel: "M2A_STUDIO_CREATURE_V2",
+      }),
     }, [sourceGlb, appearanceTwoDa]);
     expect(response).toMatchObject({ ok: true, type: "MODEL_PACKAGE_BUILT" });
     if (!response.ok || response.type !== "MODEL_PACKAGE_BUILT") {
@@ -46,15 +53,25 @@ describe("real Meshy H2 procedural humanoid skin readback", () => {
     }
     const report = JSON.parse(response.reportJson) as {
       animationCompleteness?: {
+        schemaVersion?: number;
         requiredClipCount?: number;
+        inputSourceClipCount?: number;
+        preservedSourceClipCount?: number;
+        sourceDerivedClipCount?: number;
         proceduralClipCount?: number;
+        discardedSourceClipCount?: number;
         fallbackAliasCount?: number;
       };
       skinAnimationConformance?: { complete?: boolean };
     };
     expect(report.animationCompleteness).toMatchObject({
+      schemaVersion: 2,
       requiredClipCount: 42,
+      inputSourceClipCount: 1,
+      preservedSourceClipCount: 1,
+      sourceDerivedClipCount: 0,
       proceduralClipCount: 41,
+      discardedSourceClipCount: 0,
       fallbackAliasCount: 0,
     });
     expect(report.skinAnimationConformance?.complete).toBe(true);

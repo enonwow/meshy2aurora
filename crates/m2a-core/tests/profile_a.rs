@@ -5,6 +5,7 @@ mod fixtures;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use m2a_core::{
+    AURORA_MODEL_TRIANGLE_BUDGET_V1, AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1,
     glb::{GlbLimits, IrNode, IrTransform, ingest_glb},
     mdl::{
         MdlAnimationTrackPathV1, MdlFormatProfileV1, MdlMaterialTextureBindingV1,
@@ -74,6 +75,19 @@ fn real_meshy_h1_distance_budget_is_not_regressed_to_the_historical_m3_cap() {
     assert_eq!(
         ProfileAOptionsV1::default().limits.max_distance_evaluations,
         10_000_000
+    );
+}
+
+#[test]
+fn creature_profile_uses_the_shared_three_hundred_thousand_triangle_budget() {
+    let limits = ProfileAOptionsV1::default().limits;
+    assert_eq!(
+        limits.triangle_warning_above,
+        AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 as u64
+    );
+    assert_eq!(
+        limits.triangle_blocking_above,
+        AURORA_MODEL_TRIANGLE_BUDGET_V1 as u64
     );
 }
 
@@ -743,6 +757,43 @@ fn mapped_animation_rejects_unsupported_interpolation_and_target_paths() {
 }
 
 #[test]
+fn mapped_animation_elides_constant_uniform_step_scale_but_rejects_animated_step_scale() {
+    let rig = animated_profile();
+    let mapping = animation_mapping();
+    let mut constant = linear_animated_source();
+    constant.ir.animations[0].channels[0].target_path = "SCALE".to_owned();
+    constant.ir.animations[0].samplers[0].interpolation = "STEP".to_owned();
+    constant.ir.animations[0].samplers[0].output_accessor_type = "VEC3".to_owned();
+    constant.ir.animations[0].samplers[0].output_values = vec![
+        0.01;
+        constant.ir.animations[0].samplers[0]
+            .input_times_seconds
+            .len()
+            * 3
+    ];
+    let converted = convert_profile_a_with_animations_v1(
+        &constant,
+        &rig,
+        &ProfileAOptionsV1::default(),
+        &mapping,
+    )
+    .expect("Meshy constant container-scale STEP tracks are safely removable");
+    assert!(
+        converted.animations.expect("mapped animation set").clips[0]
+            .tracks
+            .iter()
+            .all(|track| track.path != MdlAnimationTrackPathV1::Scale)
+    );
+
+    let mut animated = constant;
+    let last = animated.ir.animations[0].samplers[0].output_values.len();
+    animated.ir.animations[0].samplers[0].output_values[last - 3] = 0.02;
+    animated.ir.animations[0].samplers[0].output_values[last - 2] = 0.02;
+    animated.ir.animations[0].samplers[0].output_values[last - 1] = 0.02;
+    assert_animation_fatal(&animated, &rig, &mapping, "M4A-INTERPOLATION-UNSUPPORTED");
+}
+
+#[test]
 fn mapped_animation_rejects_invalid_times_values_and_arity_without_panicking() {
     let rig = animated_profile();
     let mapping = animation_mapping();
@@ -1113,8 +1164,11 @@ fn options_and_preallocation_limits_fail_before_output_allocation() {
     one_diagnostic.limits.max_diagnostics = 1;
     let exact_diagnostic = convert_profile_a(&path_source, &profile(1.0), &one_diagnostic).unwrap();
     assert_eq!(exact_diagnostic.report.diagnostics.len(), 1);
-    let mut warning_source =
-        ingest_glb(&fixtures::triangle_budget(10_001), &GlbLimits::default()).unwrap();
+    let mut warning_source = ingest_glb(
+        &fixtures::triangle_budget(AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 + 1),
+        &GlbLimits::default(),
+    )
+    .unwrap();
     warning_source.ir.materials[0].name = Some("data:image/png;base64,AAAA".to_owned());
     assert_eq!(
         convert_profile_a(&warning_source, &profile(1.0), &one_diagnostic)

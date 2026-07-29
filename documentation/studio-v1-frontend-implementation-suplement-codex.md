@@ -595,3 +595,95 @@ Nastepny batch: FE-V4 i FE-V5 - prawdziwy Build state oraz Review Model Details 
 - realny Worker/WASM build w aktualnym smoke przechodzi; jeden stary test produkcyjnego App oczekuje usunietego przed pieciokrokowym workflow panelu i zostal zapisany w deferred-test ledger do fali integracyjnej.
 
 Nastepny batch: FE-V6 i FE-V7 - prawdziwy diff `appearance.2da`, Package Contents, staly Reference Trace Bar oraz Download z dostepnych artefaktow.
+
+### Creature product V2 — 2026-07-28
+
+Lane `SKINNED_PROCEDURAL_HUMANOID_42` nie korzysta już z historycznej stałej
+tożsamości M6 i nie pobiera demonstracyjnego MOD jako elementu produktu.
+
+Studio wysyła jawny `ProceduralCreatureProductIdentityV2`, Worker wywołuje
+`buildMeshyProceduralHumanoidProductV2`, a kanoniczny wynik ma schema V2 i
+pięć artefaktów: HAK, MDL, report, manifest i summary. MOD/UTC jest osobną
+operacją fixture i nie ma `takeProofModuleBytes` na tej granicy WASM.
+Tożsamość ma prefiks wersji kontraktu `c2` i ośmioznakowy sufiks kanonicznego
+SHA-256 GLB, więc zmiana źródła nie wraca do jednej globalnej nazwy Studio.
+
+Projector uzgadnia świeże resrefy z `summary.identity`, dopuszcza brak
+`proofModule` wyłącznie dla statusu
+`PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED` i odrzuca dodatkowy MOD. Testy
+jednostkowe, typecheck oraz realny browser Worker/WASM integration są zielone.
+
+### Wspólny profil produktu 300K — 2026-07-29
+
+Decyzja właściciela zastąpiła odrębny produkt 20K jednym profilem
+`PRODUCT_300K` dla Creature, Placeable, Tile i pozostałych render-modeli.
+Warning zaczyna się powyżej 150 000, dokładnie 300 000 jest dozwolone, a
+300 001 jest blokowane. Studio domyślnie wybiera `PRODUCT_300K`.
+
+Historyczne opcje `EXPERIMENTAL_P100K` i `EXPERIMENTAL_P300K` pozostają w UI
+wyłącznie jako profile kompatybilności do odtwarzania wcześniejszych lineage.
+Każda aktywna trasa korzysta ze wspólnej, bezstratnej segmentacji przed writerem
+binary MDL; limit 21 845 trójkątów dotyczy jednego mesh streamu, nie całego
+modelu.
+
+### Jawny Creature P100K experiment — 2026-07-28
+
+Studio ma osobny profil `EXPERIMENTAL_P100K`. Nie jest on automatycznym
+podniesieniem limitu produktu:
+
+- w chwili tego historycznego replay domyślny profil nazywał się
+  `PRODUCT_20K`; od 2026-07-29 zastępuje go `PRODUCT_300K`;
+- wybór profilu zmienia także `INSPECT_SOURCE`, więc plik ponad 20k nie jest
+  fałszywie blokowany przez inspektor produktu;
+- `100K` jest celem generacji Meshy; aktywny kontrakt zachowuje wszystkie
+  skończone, niezerowe i niewspółliniowe twarze oraz jawnie dopuszcza
+  kontrolowany envelope `20 001..=110 000`, zamiast wymuszać 100 000 przez
+  usuwanie prawidłowych mikrotrójkątów;
+- Worker wywołuje `ingestMeshyP100kExperimentJson` i
+  `buildMeshyProceduralHumanoidP100kExperimentV1`;
+- granica WASM przyjmuje pełną tożsamość model/texture/HAK/MOD/Area/UTC;
+- wynik aplikacji zawiera HAK, MDL, demonstracyjny MOD oraz trzy kanoniczne
+  raporty; TGA i `appearance.2da` są zasobami exact HAK;
+- UI ani Worker nie implementują writerów formatów. Wszystkie bajty tworzą
+  własne writery projektu w `m2a-core`, wywołane przez WASM.
+
+Pierwszy P100K packet powstał przez CLI nad tym samym core, co nie spełniało
+wymagania „przez aplikację”. Po poprawce realny browser Worker/WASM odtworzył
+zamrożone hashe MOD/HAK/MDL, a test granicy Studio/WASM porównał dodatkowo TGA
+i wynikową 2DA bajt w bajt. Ten replay nie utworzył nowej iteracji ani nie
+zmienił zainstalowanego kandydata.
+
+Dowód:
+`documentation/evidence/tlc-veiled-humanoid-p100k-studio-pipeline-replay-2026-07-28.md`.
+
+### Jawny Creature P300K experiment — 2026-07-28
+
+Studio ma również historyczny profil kompatybilności `EXPERIMENTAL_P300K`.
+W chwili tego replay był izolowany od `PRODUCT_20K`; od 2026-07-29 nowe
+konwersje używają wspólnego `PRODUCT_300K`:
+
+- inspekcja używa `ingestMeshyP300kExperimentJson`;
+- build używa
+  `buildMeshyProceduralHumanoidP300kExperimentV1`;
+- Worker wybiera lane
+  `SKINNED_PROCEDURAL_HUMANOID_P300K_EXPERIMENT`;
+- dopuszczalny surowy envelope wynosi 330 000, a wynik po sanitacji musi mieć
+  100 001–300 000 trójkątów;
+- geometria jest deterministycznie dzielona zgodnie z niezależną granicą
+  65 535 indeksów jednego strumienia binary MDL;
+- source i written geometry są raportowane osobno, a aktywna polityka V5
+  wymaga identycznej liczby wszystkich skończonych, niezerowych i
+  niewspółliniowych twarzy;
+- `ExactFiniteNonCollinear` obowiązuje spójnie w źródle, walidacji powierzchni
+  riga, runtime IR oraz writerze; historyczny absolutny epsilon pozostaje
+  wyłącznie w zamrożonych adapterach zgodności;
+- tożsamości model/texture/HAK/MOD/Area/UTC są deterministycznie wyprowadzane
+  z SHA-256 źródła;
+- MOD, HAK, MDL oraz raporty widoczne w Studio są dokładnymi bajtami
+  zwróconymi przez Worker/WASM.
+
+Pierwszy historyczny przebieg Stonebacka miał 290 318 trójkątów, 14 SkinMesh
+i 42 animacje. V5 skorygował klasyfikację face-plane, zachował wszystkie
+296 276 prawidłowych trójkątów i został potwierdzony przez właściciela jako
+`visible/verified` w Aurora Toolset oraz NWN. Dowód:
+`documentation/evidence/tlc-stoneback-brute-p300k-geometry-ab-v5-ready-for-owner-proof-2026-07-29.md`.

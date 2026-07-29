@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { after, before, test } from "node:test";
 import { createLocalBridge } from "./index.mjs";
+import { parseModerationFlag } from "./real-image-multi-animation-options.mjs";
+import {
+  calculateRemeshRecoveryCreditGate,
+  parseRemeshRecoveryOptions,
+} from "./remesh-rig-animation-recovery-options.mjs";
 
 let bridge;
 let origin;
@@ -146,6 +151,57 @@ test("real E2E runner refuses before any paid operation unless explicitly armed"
   const result = spawnSync(process.execPath, ["real-e2e.mjs"], { cwd: new URL(".", import.meta.url), encoding: "utf8", env: {} });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /MESHY_REAL_E2E=1/);
+});
+
+test("multi-animation runner enables moderation by default and accepts only explicit boolean overrides", () => {
+  assert.equal(parseModerationFlag(undefined), true);
+  assert.equal(parseModerationFlag("1"), true);
+  assert.equal(parseModerationFlag("0"), false);
+  assert.throws(() => parseModerationFlag("false"), /MESHY_REAL_E2E_MODERATION/);
+  assert.throws(() => parseModerationFlag("2"), /MESHY_REAL_E2E_MODERATION/);
+});
+
+test("bounds exact-lineage remesh recovery below the owner cap and Meshy rig face limit", () => {
+  const options = parseRemeshRecoveryOptions({
+    targetPolycount: "299000",
+    rigHeightMeters: "2.4",
+    actionCount: 10,
+  });
+  assert.deepEqual(options, {
+    targetPolycount: 299_000,
+    rigHeightMeters: 2.4,
+    actionCount: 10,
+  });
+  assert.deepEqual(
+    calculateRemeshRecoveryCreditGate({
+      ownerCap: 250,
+      alreadySpentCredits: 30,
+      actionCount: options.actionCount,
+    }),
+    {
+      remeshCredits: 5,
+      rigCredits: 5,
+      animationCredits: 30,
+      maximumAdditionalCredits: 40,
+      maximumTotalCredits: 70,
+    },
+  );
+  assert.throws(
+    () => parseRemeshRecoveryOptions({
+      targetPolycount: "300001",
+      rigHeightMeters: "2.4",
+      actionCount: 10,
+    }),
+    /100..=300000/,
+  );
+  assert.throws(
+    () => calculateRemeshRecoveryCreditGate({
+      ownerCap: 50,
+      alreadySpentCredits: 30,
+      actionCount: 10,
+    }),
+    /owner credit cap/,
+  );
 });
 
 test("checks the live balance before it creates a paid run", async () => {
@@ -374,6 +430,67 @@ test("runs the constrained H1 pipeline and proxies only the verified GLB", async
     const artifact = await request(`/v1/runs/${run.id}/artifact`, { headers: { "X-Meshy-Session": pairing.sessionToken } });
     assert.deepEqual([...new Uint8Array(await artifact.arrayBuffer())], [0x67, 0x6c, 0x54, 0x46]);
     assert.equal(calls.every((call) => call.url === "https://assets.meshy.ai/proof.glb" || call.options.headers.Authorization === "Bearer h1-test-key"), true);
+  } finally {
+    await local.close();
+  }
+});
+
+test("runs up to ten distinct H1 animation actions and exposes each verified GLB by action id", async () => {
+  const calls = [];
+  const fakeMeshy = async (url, options = {}) => {
+    calls.push({ url, options });
+    const assetMatch = url.match(/^https:\/\/assets\.meshy\.ai\/action-([0-9]+)\.glb$/);
+    if (assetMatch) return new Response(new Uint8Array([0x67, 0x6c, 0x54, 0x46, Number(assetMatch[1])]));
+    if (url.endsWith("/openapi/v1/balance")) return new Response(JSON.stringify({ balance: 120 }));
+    if (options.method === "POST" && url.endsWith("/openapi/v1/image-to-3d")) return new Response(JSON.stringify({ result: "model-task" }));
+    if (url.endsWith("/openapi/v1/image-to-3d/model-task")) return new Response(JSON.stringify({ status: "SUCCEEDED", progress: 100, model_urls: { glb: "https://assets.meshy.ai/model.glb" } }));
+    if (options.method === "POST" && url.endsWith("/openapi/v1/rigging")) return new Response(JSON.stringify({ result: "rig-task" }));
+    if (url.endsWith("/openapi/v1/rigging/rig-task")) return new Response(JSON.stringify({ status: "SUCCEEDED", progress: 100 }));
+    if (options.method === "POST" && url.endsWith("/openapi/v1/animations")) {
+      const { action_id: actionId } = JSON.parse(options.body);
+      return new Response(JSON.stringify({ result: `animation-${actionId}` }));
+    }
+    const animationMatch = url.match(/\/openapi\/v1\/animations\/animation-([0-9]+)$/);
+    if (animationMatch) return new Response(JSON.stringify({ status: "SUCCEEDED", progress: 100, result: { animation_glb_url: `https://assets.meshy.ai/action-${animationMatch[1]}.glb` } }));
+    throw new Error(`Unexpected Meshy multi-animation URL ${url}`);
+  };
+  const local = createLocalBridge({ apiKey: "multi-animation-key", pairingCode: "multi-animation-pair", allowedOrigin: "http://localhost:5173", meshFetch: fakeMeshy });
+  const localOrigin = await local.listen(0);
+  const request = (path, options = {}) => fetch(`${localOrigin}${path}`, { ...options, headers: { Origin: "http://localhost:5173", ...(options.headers ?? {}) } });
+  const apiOptions = {
+    modelType: "standard", aiModel: "meshy-6", shouldRemesh: true, topology: "triangle", targetPolycount: 20_000,
+    poseMode: "t-pose", moderation: true, targetFormats: ["glb"], alphaThumbnail: false, autoSize: true, originAt: "bottom",
+    enablePbr: true, shouldTexture: true, hdTexture: false, texturePrompt: "", textureImageUrl: "", removeLighting: true,
+    imageEnhancement: true, multiViewThumbnails: false, rigHumanoid: true, rigHeightMeters: 1.85, animationActionIds: [0, 198],
+  };
+  try {
+    const pairing = await (await request("/v1/pair", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pairingCode: "multi-animation-pair" }) })).json();
+    const headers = { "X-Meshy-Session": pairing.sessionToken, "Content-Type": "application/json" };
+    const previewResponse = await request("/v1/runs/preview", {
+      method: "POST", headers,
+      body: JSON.stringify({
+        profileId: "H1-humanoid-animated/v1", prompt: "", source: "IMAGE",
+        imageDataUrls: ["data:image/png;base64,AAAA"], geometryTarget: "BALANCED",
+        h1Preflight: { standardHumanoid: true, clearLimbs: true, noWeapon: true }, apiOptions,
+      }),
+    });
+    assert.equal(previewResponse.status, 200);
+    const preview = await previewResponse.json();
+    assert.equal(preview.maximumCredits, 41);
+    const created = await (await request("/v1/runs", { method: "POST", headers, body: JSON.stringify({ previewId: preview.previewId, confirmationNonce: "multi-animation-confirmation" }) })).json();
+    let status;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      status = await (await request(`/v1/runs/${created.id}`, { headers: { "X-Meshy-Session": pairing.sessionToken } })).json();
+      if (status.status === "READY") break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    assert.equal(status.status, "READY");
+    assert.deepEqual(Object.keys(status.taskIds).sort(), ["ANIMATE_0", "ANIMATE_198", "PREVIEW", "RIG"]);
+    const provenance = await (await request(`/v1/runs/${created.id}/provenance`, { headers: { "X-Meshy-Session": pairing.sessionToken } })).json();
+    assert.deepEqual(provenance.animationArtifacts.map((artifact) => artifact.actionId), [0, 198]);
+    const attack = await request(`/v1/runs/${created.id}/artifact/198`, { headers: { "X-Meshy-Session": pairing.sessionToken } });
+    assert.deepEqual([...new Uint8Array(await attack.arrayBuffer())], [0x67, 0x6c, 0x54, 0x46, 198]);
+    assert.equal(calls.filter((call) => call.url.endsWith("/openapi/v1/animations") && call.options.method === "POST").length, 2);
   } finally {
     await local.close();
   }

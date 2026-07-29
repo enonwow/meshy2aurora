@@ -16,7 +16,7 @@ use m2a_core::mdl::{
 use m2a_core::{
     direct_creature_animation::{
         COMMON_NATIVE_DIRECT_CREATURE_EVENT_PAIRS_V1,
-        evaluate_direct_creature_animation_behavior_v1,
+        evaluate_direct_creature_animation_behavior_v2,
     },
     direct_creature_contract::SourceTopologyOriginV1,
     erf::ErfArchive,
@@ -553,7 +553,7 @@ fn expected_full_native_animation_name_set() -> BTreeSet<String> {
 }
 
 fn assert_native_full_animation_behavior(report: &m2a_core::mdl::InspectionReport, label: &str) {
-    let behavior = evaluate_direct_creature_animation_behavior_v1(report);
+    let behavior = evaluate_direct_creature_animation_behavior_v2(report);
     let essential_semantics = [
         "cpause1",
         "cwalk",

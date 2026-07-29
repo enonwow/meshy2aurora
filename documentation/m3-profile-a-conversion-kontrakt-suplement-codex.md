@@ -573,14 +573,14 @@ ProfileALimitsV1:
   maxWorkBytes: 268435456
   maxDiagnostics: 2048
   maxUniqueMaterials: 1
-  triangleWarningAbove: 5000
-  triangleBlockingAbove: 10000
+  triangleWarningAbove: 150000
+  triangleBlockingAbove: 300000
 ```
 
 Invariants opcji/limitow:
 
 - kazde pole count/bytes/evaluations/diagnostics jest `>0`;
-- `triangleWarningAbove == 5000`, `triangleBlockingAbove == 10000` i
+- `triangleWarningAbove == 150000`, `triangleBlockingAbove == 300000` i
   `triangleWarningAbove <= triangleBlockingAbove` dla schemaVersion 1;
 - `maxUniqueMaterials == 1` jest exact contract, nie wartoscia podnoszona przez
   custom options;
@@ -593,6 +593,12 @@ Invariants opcji/limitow:
 
 Naruszenie jest fatal `M3A-OPTIONS-INVALID` przed konwersja. To zapobiega
 podniesieniu budzetu output/work ponad compiled hard maxima przez JSON.
+
+Creature i Placeable nie maja odrebnych progow. Oba pobieraja wartosc blokady
+z `AURORA_MODEL_TRIANGLE_BUDGET_V1`; warning jest wyliczony z tej samej stalej.
+Limit `21845` triangles jednego streamu MDL jest kontrolowany pozniej przez
+writer i nie stanowi alternatywnego profilu dopuszczenia. Common IR jest przed
+writerem dzielony na bezpieczne strumienie bez usuwania trojkatow.
 
 Kazde `count * stride`, suma, duplikacja i rezerwacja jest checked przed
 alokacja. Limity sa kumulatywne dla calego assetu/profilu, nie per segment.
@@ -777,7 +783,7 @@ Minimalna macierz testowa:
 - UV: cztery opisane rogi i double-flip round-trip;
 - MATRIX/TRS conjugation, nested hierarchy i world bounds;
 - scale 1x, 2x, zero-height, non-finite target, bottom-center alignment;
-- granice 5000/5001/10000/10001 triangles;
+- granice 150000/150001/300000/300001 triangles;
 - material `null` PASS/binding slot 0, one id PASS, 2 unique keys BLOCKING;
 - segment exact tie i tie-break po id;
 - duplikacja vertexa na granicy segment/material;

@@ -44,6 +44,10 @@ function resultFixture(gates: CanonicalConversionGate[] = []): CanonicalResultSn
       diagnostics: [],
     },
     packageAssemblyEvidence: { strictReconciled: true, resourceCount: 3, artifactCount: 5 },
+    runtimeAcceptance: {
+      status: "OPEN_M6",
+      reason: "No exact owner-verified Aurora/NWN lineage matches these output hashes.",
+    },
     artifacts: [],
     reportJson: "{}",
     summaryJson: "{}",
@@ -89,6 +93,23 @@ describe("projectConversionReadiness", () => {
     expect(projection.items.find(({ id }) => id === "BINARY_READBACK")).toMatchObject({ status: "PASS", checkCount: 1 });
     expect(projection.items.find(({ id }) => id === "PACKAGE_ASSEMBLY")).toMatchObject({ status: "PASS", checkCount: 8 });
     expect(projection.items.find(({ id }) => id === "RUNTIME_PROOF")).toMatchObject({ status: "OPEN", statusLabel: "OPEN_M6" });
+  });
+
+  it("promotes the exact owner-verified lineage to a runtime PASS", () => {
+    const result = resultFixture();
+    result.runtimeAcceptance = {
+      status: "OWNER_VERIFIED",
+      evidenceId: "tlc-stoneback-brute-p300k-geometry-ab-v5-2026-07-29",
+      evidencePath: "documentation/evidence/stoneback-v5.md",
+      verifiedAt: "2026-07-29",
+      toolset: { modelVisibility: "visible", proofCompleteness: "verified" },
+      nwn: { modelVisibility: "visible", proofCompleteness: "verified" },
+      geometryArtifactResult: "fixed",
+    };
+
+    expect(projectConversionReadiness(result, readbackFixture()).items
+      .find(({ id }) => id === "RUNTIME_PROOF"))
+      .toMatchObject({ status: "PASS", statusLabel: "OWNER_VERIFIED", checkCount: 2 });
   });
 
   it("maps real gate evidence to WARNING/FAIL and preserves every item in Validation", () => {

@@ -124,6 +124,13 @@ describe("Animation Studio measured product limits on canonical real H1", () => 
       sourceGlb,
       appearanceTwoDa,
       packageLane: "SKINNED_PROCEDURAL_HUMANOID_42",
+      textureArtifactCleanup: false,
+      identityJson: JSON.stringify({
+        modelResref: "m2a_perfmdl1",
+        textureResref: "m2a_perftex1",
+        hakResref: "m2a_perfhak1",
+        appearanceLabel: "M2A_PERFORMANCE_CREATURE_V1",
+      }),
     }, [sourceGlb, appearanceTwoDa]);
     const buildMs = performance.now() - buildStartedAt;
     expect(built).toMatchObject({

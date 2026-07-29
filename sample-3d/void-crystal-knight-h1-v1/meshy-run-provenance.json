@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "profileId": "H1-humanoid-animated/v1",
+  "source": {
+    "kind": "IMAGE",
+    "path": "C:\\Projects\\meshy2aurora\\artifacts\\concept-art\\void-crystal-knight-meshy-input-2026-07-29\\void-crystal-knight-front-clean.png",
+    "sha256": "63f6e0b47746d8e7dc121fc3e6fcf931f3cfb17b688d63605c40e3b7ec868d19",
+    "byteLength": 456045
+  },
+  "options": {
+    "aiModel": "meshy-6",
+    "targetPolycount": 20000,
+    "topology": "triangle",
+    "poseMode": "t-pose",
+    "rigHeightMeters": 2.1,
+    "moderation": true
+  },
+  "credits": {
+    "ownerCap": 38,
+    "maximumForRun": 38,
+    "balanceBeforeRun": 702
+  },
+  "runId": "18d0254f-1190-4c3e-92a2-c37964da2d56",
+  "taskIds": {
+    "PREVIEW": "019fad5e-f4dc-772c-af98-22c52843fafb",
+    "RIG": "019fad62-5540-7b53-a3fe-83c2b2517a1a",
+    "ANIMATE": "019fad63-1f9f-7b83-974e-26042de8788b"
+  },
+  "animations": [
+    {
+      "actionId": 0,
+      "clipName": "cpause1",
+      "file": "meshy-idle-action-0.glb",
+      "sha256": "e3750d9f377b1feabf0c02e8b203ceccdc0012516cde08d9876864a20b3b3354",
+      "byteLength": 9838680
+    }
+  ]
+}

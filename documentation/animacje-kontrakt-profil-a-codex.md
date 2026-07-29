@@ -66,6 +66,51 @@ acceptance_levels:
 
 Nazwy klipow sa kierunkiem kompatybilnosci, nie licencja na kopiowanie danych animacji.
 
+### 4.1. Static-rigid visibility control nie jest animowanym creature
+
+Trzeba rozdzielac dwie niezalezne bramki:
+
+```yaml
+static_rigid_visibility_control:
+  proves:
+    - "resolver MOD/HAK/appearance.2da znajduje exact model"
+    - "base rigid mesh moze zostac narysowany jako creature"
+  does_not_prove:
+    - "ruch w stanie cwalk lub crun"
+    - "atak, damage, death albo transition"
+    - "deformacje SkinMesh lub ruch segmentow"
+animated_creature_candidate:
+  requires_one_of:
+    - "spojny SkinMesh: joint hierarchy + JOINTS/WEIGHTS + bind data + motion tracks"
+    - "spojna rigid-segment hierarchy + motion tracks"
+  also_requires:
+    - "jawne lub kompatybilnie odziedziczone stany gameplay"
+    - "widoczny ruch potwierdzony w runtime"
+```
+
+Sam brak SkinMesh nie dyskwalifikuje kazdego creature: legalny rigid creature
+moze poruszac segmentami parentowanymi do animowanych nodow. Model bez obu
+mechanizmow — bez skina/wag oraz bez przegubowej hierarchii z motion tracks —
+nie jest jednak kandydatem animowanego creature.
+
+Emisja nazwanych naglowkow animacji z identity transform nie tworzy ruchu.
+Takie stany sa dozwolone tylko w statycznym controlu kontenera. Moga pomoc
+sprawdzic, czy engine rozwiazuje i rysuje base mesh, ale nie zaliczaja nawet
+`loader_smoke`, ktory wymaga widocznego motion.
+
+Konkretna kwalifikacja N1 z `2026-07-27`:
+
+- source ma jeden node bez przegubowej hierarchii;
+- source ma `0` skinow;
+- source primitive ma `0` lanes `JOINTS` i `0` lanes `WEIGHTS`;
+- source ma `0` animacji;
+- output ma `7` stanow type `5`, ale sa to `static-identity`, a nie motion
+  odzyskany lub wygenerowany dla quadrupeda.
+
+Wniosek: N1 moze zaliczyc tylko proof widocznosci nieruchomego rigid modelu.
+Nie moze otrzymac statusu dzialajacego animowanego creature, nawet jezeli jego
+base mesh bedzie widoczny w Toolsecie i NWN.
+
 ## 5. Potwierdzony binary contract
 
 Animation header ma `0xc4` bajty i zawiera geometry header, `length`, `transition_time`, `animroot[64]` oraz array eventow. Event ma `0x24` bajty: czas i `name[32]`. Model header wskazuje array offsetow animation headers.
@@ -127,16 +172,55 @@ Poza samym namespace builder V2 uruchamia dwa fail-closed oracle:
 - behavior oracle wymaga kontrolerow we wszystkich 42 klipach, ruchu we
   wszystkich stanach aktywnych zgodnych pomiedzy trzema rodzinami native,
   roznych semantyk `cpause1`/`cwalk`/`crun`/atak/damage/death oraz terminalnej
-  pozy w `ckdbckdie`;
+  pozy ruchomego `ckdbck`; dodatkowo wymaga ciaglosci granic
+  `ckdbck -> ckdbckdie -> cdead`;
 - SkinMesh oracle probkuje `cwalk`, `crun`, `ca1slashl`, `cdamagel` i
-  `ckdbckdie` po own binary readbacku i wymaga rzeczywistej zmiany ksztaltu
+  `ckdbck` po own binary readbacku i wymaga rzeczywistej zmiany ksztaltu
   wazonej siatki. Sam rigid transform root nie przechodzi.
 
 Wazna korekta semantyczna: `cdead` nie jest uniwersalnym one-shotem smierci.
 Retail `c_Direwolf` trzyma tam statyczna poze, a CEP R3 ma zmienne kontrolery.
-Analogicznie `ccastoutlp` i `cgetmidlp` sa family-variable. Kontrakt wymaga dla
-nich jawnego payloadu kontrolerow, ale nie narzuca globalnie ruchu ani bezruchu.
-Przejscie do terminalnej pozy jest sprawdzane w `ckdbckdie`.
+Analogicznie `ccastoutlp`, `cgetmidlp`, `ckdbckps` i `ckdbckdie` sa
+family-variable. Kontrakt wymaga dla nich jawnego payloadu kontrolerow, ale nie
+narzuca globalnie ruchu ani bezruchu. Widoczny upadek jest sprawdzany w
+`ckdbck`, a dwa kolejne stany musza zaczynac sie od pozy koncowej poprzednika.
+
+### MESHY_DEAD_CONTINUOUS_DEATH_FAMILY_V2 — korekta 2026-07-28
+
+Pierwszy owner runtime test Powrotnika sugerowal, ze jawny ruch Meshy `Dead`
+przypisany do `cdead` zostal poprzedzony osobnym proceduralnym ruchem
+`ckdbckdie`. V2 zastapilo `ckdbckdie` nieruchomym bridge'em, lecz drugi owner
+runtime test wykazal dokladnie to samo zachowanie. V3 przenioslo Meshy `Dead`
+do `ckdbckdie`, ale trzeci owner test nadal wykazal odskok.
+
+Exact binary audit V3 potwierdzil pomijana wczesniej granice:
+
+- V1, V2 i V3 zachowaly ten sam ruchomy `ckdbck` z osobnego Meshy
+  `Knock_Down`;
+- koniec tego `ckdbck` i poczatek Meshy `Dead` w V3 roznily sie o
+  `2.837246 m` na `Hips`, `77.989°` na rotacji `Hips` i do `84.386°` na
+  kosciach;
+- exact retail `c_squirrel` ma na tej samej granicy `0 m` oraz maksymalnie
+  `0.051°`.
+
+Wlasciciel obejrzal offline preview wszystkich `90` klatek exact Meshy action
+`8 Dead` i potwierdzil, ze caly klip `3.0 s` jest oczekiwanym, pojedynczym
+ruchem zgonu. Klipu nie nalezy przycinac.
+
+Profil proceduralny stosuje teraz jednoznaczna regule:
+
+1. caly Meshy `Dead` bez zmian czasu, eventow i klatek zastępuje `ckdbck`;
+2. osobny Meshy `Knock_Down` nie jest doklejany przed nim w death-family;
+3. `ckdbckps`, `ckdbckdie` i `cdead` sa holdami `1/30 s` z ostatniej pozy
+   Meshy `Dead`;
+4. behavior oracle dopuszcza dla tych holdow ruch albo bezruch, ale zawsze
+   wymaga ciaglosci pozycji do `0.001 m` i rotacji do `1°`;
+5. nieciaglosc `ckdbck -> ckdbckdie` albo `ckdbckdie -> cdead` blokuje
+   materializacje;
+6. SkinMesh oracle probkuje `ckdbck` jako wlasciciela widocznego upadku.
+
+Kontrakt runtime brzmi: `ckdbck` odtwarza caly Meshy `Dead` dokladnie raz,
+po czym silnik przechodzi przez ciagle terminalne stany bez drugiego upadku.
 
 Granice:
 

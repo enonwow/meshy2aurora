@@ -50,6 +50,7 @@ const workerCases = [
 if (
   /switch\s*\(request\.packageLane\)/.test(workerSource)
   && /const unsupported:\s*never\s*=\s*request;/.test(workerSource)
+  && !workerCases.includes("BUILD_MODEL_PACKAGE")
 ) {
   workerCases.push("BUILD_MODEL_PACKAGE");
 }

@@ -1,0 +1,312 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: tlc-powrotnik-h1-p20k-v1
+provider: meshy
+local_only: true
+qualification: animated-source-materialized
+files:
+  - role: source
+    path: source.glb
+    size_bytes: 9411976
+    sha256: d44e276d06de5b0a4b9343a3c3e995aa22b6a61e07d943dd76f0b8f7471d7ec0
+  - role: source-aurora-budgeted
+    path: source-budget20000.glb
+    size_bytes: 10696908
+    sha256: 43bba1823c4cedb1f5a50da384bf4d65856fd19ccd160f3c6a5dd3c90c0849f1
+  - role: meshy-animation-idle
+    path: meshy-idle-action-0.glb
+    size_bytes: 8938412
+    sha256: a9072bcb6536da2520775d60b69464e33a233ae28b27eeadc16b0a92bac46b58
+  - role: meshy-animation-walk
+    path: meshy-walk-action-30.glb
+    size_bytes: 8938724
+    sha256: 5531e2fb46bf306334f6b246ffb0773b12c0c52ef62d30f85e7b4c550f2b0e76
+  - role: meshy-animation-sprint
+    path: meshy-sprint-action-16.glb
+    size_bytes: 8897588
+    sha256: 89b8c55ab28dae76294d5d8938931bc6f3c0222949cdcce1e1a41e92ade08189
+  - role: meshy-animation-attack-primary
+    path: meshy-punch-combo-action-198.glb
+    size_bytes: 8919532
+    sha256: c59c037fff757447fd53c3df64a74f7d14605ddd49f845596fd72099ac9ad86f
+  - role: meshy-animation-attack-secondary
+    path: meshy-left-hook-action-193.glb
+    size_bytes: 8903352
+    sha256: 7913043909e7f3e6d79e2109cda52dac5ee587ebf27a63737d110b236a5f6ff5
+  - role: meshy-animation-hit
+    path: meshy-hit-action-178.glb
+    size_bytes: 8910348
+    sha256: 286f7384aaa3ea7fb36160f194efccc7a0d1c86182ae694730a638480c3b1686
+  - role: meshy-animation-knockdown
+    path: meshy-knockdown-action-187.glb
+    size_bytes: 8937716
+    sha256: 1a4c7a3f6542aa365fc7cbd40b199c8f4b7146f709f2cc04e018d585080aeb13
+  - role: meshy-animation-dead
+    path: meshy-dead-action-8.glb
+    size_bytes: 8926464
+    sha256: e23fc62de47a1976f61eda7b37e35fd79495c29dbf84c5d05f66d218c4699ee9
+  - role: meshy-animation-arise
+    path: meshy-arise-action-3.glb
+    size_bytes: 8913412
+    sha256: 3d4918c466afd0c0d973803f9ada5327b7b2dc8453937e339d4f3413b15800b6
+  - role: meshy-animation-alert
+    path: meshy-alert-action-2.glb
+    size_bytes: 8940784
+    sha256: cc7964ce46ccf3fcba2be17d45591f49f99c566c29267a3225e967bf0658afcf
+  - role: api-provenance
+    path: meshy-run-provenance.json
+    size_bytes: 3879
+    sha256: 81bb216e02a304a6d48c8d0f378b55e29733e3e7d1987acbae9c22200f67908b
+provenance_note: owner-approved The Last City Powrotnik concept; Meshy payloads remain local and Git-ignored
+concept_references:
+  primary:
+    path: documentation/mockups/the-last-city/creatures/tlc-creature-powrotnik-tpose-front-v1.png
+    sha256: f915a3bafc2b7546edf01d2a27beee18a88d965e034ccdc12f6f45419fe6dca4
+  supporting:
+    - path: documentation/mockups/the-last-city/creatures/tlc-creature-powrotnik-tpose-left-v1.png
+      sha256: 7b9e9ee704c36df445825601622d1be9ceca9067076101c842f9ffaaaa16f864
+    - path: documentation/mockups/the-last-city/creatures/tlc-creature-powrotnik-tpose-back-v1.png
+      sha256: e515266b6a2e9c4388b0b8da6a79d9446921f9ba98a1a0833de360437903cbf7
+generation_plan:
+  date: 2026-07-27
+  source_mode: image-to-3d
+  primary_reference_only_reason: Meshy humanoid auto-rig is incompatible with multi-image generation in the local Bridge contract
+  ai_model: meshy-6
+  topology: triangle
+  target_polycount: 20000
+  pose_mode: t-pose
+  rig_height_meters: 1.85
+  owner_credit_cap: 250
+  planned_maximum_credits: 65
+  animation_actions:
+    - { action_id: 0, name: Idle, nwn_clip: cpause1 }
+    - { action_id: 30, name: Casual_Walk, nwn_clip: cwalk }
+    - { action_id: 16, name: RunFast, nwn_clip: crun }
+    - { action_id: 198, name: Punch_Combo, nwn_clip: ca1slashl }
+    - { action_id: 193, name: Left_Hook, nwn_clip: ca1slashr }
+    - { action_id: 178, name: Hit_Reaction, nwn_clip: cdamagel }
+    - { action_id: 187, name: Knock_Down, nwn_clip: ckdbck }
+    - { action_id: 8, name: Dead, nwn_clip: cdead }
+    - { action_id: 3, name: Arise, nwn_clip: cguptokdb }
+    - { action_id: 2, name: Alert, nwn_clip: ctaunt }
+generation_result:
+  status: materialized
+  model_task_id: 019fa586-f172-763e-81d3-0cd3ace147f0
+  rig_task_id: 019fa589-6a12-77ae-9441-edd01a3ef0dc
+  credits_spent: 65
+  balance_before: 964
+  balance_after: 899
+  explicit_meshy_clip_count: 10
+  combined_source_sha256: d44e276d06de5b0a4b9343a3c3e995aa22b6a61e07d943dd76f0b8f7471d7ec0
+aurora_budget_normalization:
+  route: meshoptimizer-skinned-triangle-budget
+  input_triangles: 20535
+  output_triangles: 19892
+  maximum_triangles: 20000
+  input_sha256: d44e276d06de5b0a4b9343a3c3e995aa22b6a61e07d943dd76f0b8f7471d7ec0
+  output_sha256: 43bba1823c4cedb1f5a50da384bf4d65856fd19ccd160f3c6a5dd3c90c0849f1
+  preserved_skin_count: 1
+  preserved_animation_count: 10
+previous_runtime_candidate_v2:
+  date: 2026-07-28
+  status: owner_runtime_behavior_failed
+  packet: proof-output/tlc-powrotnik-cdead-only-v2
+  based_on_owner_report:
+    test_module_filename: tlcpowdemo2.mod
+    module_sha256: d33be09aa6116c5e444c8da12b66b4e42740c776135a919fdd29b6640393b34d
+    nwn_modelVisibility: visible
+    nwn_proofCompleteness: verified
+    deathSequence: failed
+    result: death sequence remains the same as V1 after ckdbckdie was made static
+    disproved_diagnosis: moving procedural ckdbckdie was visibly concatenated with the explicit moving Meshy cdead
+    owner_source_clip_decision: the exact full 3-second Meshy Dead preview is the desired single death animation and must not be trimmed
+    confirmed_diagnosis: V2 mapped the accepted moving Meshy Dead action to cdead while ckdbckdie was static; NWN requires the one-shot motion in ckdbckdie followed by a terminal cdead hold
+  next_pipeline_fix:
+    policy: MESHY_DEAD_TO_CKDBCKDIE_V1
+    status: owner_authorized_for_v3_materialization
+    source_motion_target: ckdbckdie
+    terminal_hold_target: cdead
+    terminal_hold_duration_seconds: 0.033333335
+    terminal_hold_uses_last_source_pose: true
+    preserves_full_source_clip: true
+    adds_procedural_death_motion: false
+    behavior_oracle_requires_moving_ckdbckdie: true
+    skin_deformation_oracle_death_clip: ckdbckdie
+    owner_iteration_authorization:
+      date: 2026-07-28
+      scope: one V3 animation-behavior correction after exact V2 deathSequence=failed
+      preserves_model_visibility_result: visible
+      permits_new_meshy_generation: false
+    planned_v3_identity:
+      packet: proof-output/tlc-powrotnik-death-routing-v3
+      model_resref: tlcpow_m3
+      texture_resref: tlcpow_t3
+      hak_resref: tlcpowhak3
+      module_resref: tlcpowdemo3
+      area_resref: tlcpowarea3
+      creature_resref: tlcpowutc3
+  death_motion_policy: CDEAD_OWNS_DEATH_MOTION_V1
+  visible_death_motion_clip: cdead
+  death_routing_bridge_clip: ckdbckdie
+  death_routing_bridge_duration_seconds: 0.033333335
+  death_routing_bridge_changing_controller_count: 0
+  model_resref: tlcpow_m2
+  texture_resref: tlcpow_t2
+  hak_resref: tlcpowhak2
+  test_module_filename: tlcpowdemo2.mod
+  module_name: Meshy2Aurora procedural humanoid proof
+  area_resref: tlcpowarea2
+  area_name: Meshy2Aurora M0 binary vertical-slice area
+  creature_template_resref: tlcpowutc2
+  appearance_row: 15100
+  output_triangles: 19892
+  full_native_animation_count: 42
+  explicit_meshy_animation_count: 10
+  procedural_completion_count: 32
+  model_sha256: 866d820da0dc43cd8a3a9be65940325674614baab901f2da1037e49fb97a5aa4
+  texture_sha256: 1ea9816d4ba4c5ccc77856516c78af3cb76eeea0c2306708633bbe56f53debe5
+  hak_sha256: bfa5ad166cf919941d29a7be561b85de87e222c04e8d80bf4362b611c4401d23
+  module_sha256: d33be09aa6116c5e444c8da12b66b4e42740c776135a919fdd29b6640393b34d
+  native_install_verified: true
+  toolset:
+    modelVisibility: not_tested
+    proofCompleteness: missing
+  nwn:
+    modelVisibility: visible
+    proofCompleteness: verified
+    deathSequence: failed
+previous_runtime_candidate_v3:
+  date: 2026-07-28
+  status: owner_runtime_behavior_failed
+  packet: proof-output/tlc-powrotnik-death-routing-v3
+  owner_iteration_authorization:
+    scope: one V3 animation-behavior correction after exact V2 deathSequence=failed
+    preserves_v2_modelVisibility: visible
+    permits_new_meshy_generation: false
+  death_motion_policy: MESHY_DEAD_TO_CKDBCKDIE_V1
+  source_glb_sha256: 43bba1823c4cedb1f5a50da384bf4d65856fd19ccd160f3c6a5dd3c90c0849f1
+  appearance_input_sha256: 815c0b3bce0895e9f17d4b92cb02a6d34366267b5a4b9081dece0f4eee7d7a1a
+  death_transition_clip: ckdbckdie
+  death_transition_changing_controller_count: 48
+  death_transition_terminal_pose_controller_count: 48
+  death_transition_motion_sha256: ac16dfdf874e5e65bb3eebb796b4168714df42b510a10f1b80b35fbc6d8228c1
+  corpse_hold_clip: cdead
+  corpse_hold_duration_seconds: 0.033333335
+  corpse_hold_changing_controller_count: 0
+  corpse_hold_uses_last_source_pose: true
+  adds_procedural_death_motion: false
+  model_resref: tlcpow_m3
+  texture_resref: tlcpow_t3
+  hak_resref: tlcpowhak3
+  test_module_filename: tlcpowdemo3.mod
+  module_name: Meshy2Aurora procedural humanoid proof
+  area_resref: tlcpowarea3
+  area_name: Meshy2Aurora M0 binary vertical-slice area
+  creature_template_resref: tlcpowutc3
+  appearance_row: 15100
+  output_triangles: 19892
+  full_native_animation_count: 42
+  explicit_meshy_animation_count: 10
+  procedural_completion_count: 32
+  behavior_candidate_eligible: true
+  skin_animation_conformance: true
+  model_sha256: 2ab71546cd3af17866af090ee0af7c8b56eba16e7e307bcfaab9d84cb48f1ba2
+  texture_sha256: 1ea9816d4ba4c5ccc77856516c78af3cb76eeea0c2306708633bbe56f53debe5
+  appearance_sha256: b3d77572b7e67322079047f4e448d5f9ea8f0a4a9444c40340f23a734cd367d2
+  hak_sha256: ea49c8cc4b8f36facc9ae81b3193b6dd2e9589e97c58a52fbbe7a77d184f0580
+  module_sha256: d841312e000a137e147cbf6af567dd7082951457d497db272a60739c656444b4
+  native_install_verified: true
+  toolset:
+    modelVisibility: not_tested
+    proofCompleteness: missing
+  nwn:
+    modelVisibility: visible
+    proofCompleteness: verified
+    deathSequence: failed
+    deathEntryJump: failed
+    owner_result: death still has the same visible jump
+  diagnosed_cause:
+    status: confirmed
+    unchanged_precursor_clip: ckdbck
+    unchanged_precursor_motion_sha256: b1191ae2d30845d9d5716e57559d220779b105c25104a076f64e992131313364
+    precursor_source: meshy-knockdown-action-187.glb
+    following_source: meshy-dead-action-8.glb
+    boundary: ckdbck_terminal_to_ckdbckdie_first
+    hips_position_delta_meters: 2.837246
+    hips_rotation_delta_degrees: 77.989
+    maximum_bone_rotation_delta_degrees: 84.386
+    native_control: c_squirrel
+    native_control_position_delta_meters: 0
+    native_control_maximum_rotation_delta_degrees: 0.051
+    conclusion: independent Meshy Knock_Down and Dead origins were concatenated without death-family boundary continuity
+  minimum_next_delta:
+    status: implementation_required_before_v4
+    moving_death_fall_count: 1
+    accepted_moving_source: meshy-dead-action-8.glb
+    terminal_family_states_derive_from_predecessor: true
+    reject_discontinuous_ckdbck_to_ckdbckdie: true
+    reject_discontinuous_ckdbckdie_to_cdead: true
+    v4_materialization_allowed: false
+latest_offline_pipeline:
+  date: 2026-07-28
+  status: owner_runtime_proved
+  packet: proof-output/tlc-powrotnik-death-family-v4
+  based_on_owner_report:
+    test_module_filename: tlcpowdemo3.mod
+    module_sha256: d841312e000a137e147cbf6af567dd7082951457d497db272a60739c656444b4
+    nwn_modelVisibility: visible
+    nwn_proofCompleteness: verified
+    deathSequence: failed
+    deathEntryJump: failed
+  death_motion_policy: MESHY_DEAD_CONTINUOUS_DEATH_FAMILY_V2
+  source_glb_sha256: 43bba1823c4cedb1f5a50da384bf4d65856fd19ccd160f3c6a5dd3c90c0849f1
+  appearance_input_sha256: 815c0b3bce0895e9f17d4b92cb02a6d34366267b5a4b9081dece0f4eee7d7a1a
+  moving_death_clip: ckdbck
+  moving_death_source: meshy-dead-action-8.glb
+  moving_death_motion_sha256: ac16dfdf874e5e65bb3eebb796b4168714df42b510a10f1b80b35fbc6d8228c1
+  moving_death_changing_controller_count: 48
+  discarded_concatenated_death_precursor: meshy-knockdown-action-187.glb
+  terminal_hold_clips:
+    - ckdbckps
+    - ckdbckdie
+    - cdead
+  terminal_hold_duration_seconds: 0.033333335
+  terminal_hold_changing_controller_count: 0
+  terminal_hold_motion_sha256: f51707d3309a16ec0891c5723f43204fb6e1cba681887b94799db6745a82ca17
+  death_family_boundary_continuous: true
+  ckdbck_to_ckdbckdie:
+    maximum_position_delta_meters: 0
+    maximum_rotation_delta_degrees: 0.043635
+  ckdbckdie_to_cdead:
+    maximum_position_delta_meters: 0
+    maximum_rotation_delta_degrees: 0.043635
+  model_resref: tlcpow_m4
+  texture_resref: tlcpow_t4
+  hak_resref: tlcpowhak4
+  test_module_filename: tlcpowdemo4.mod
+  module_name: Meshy2Aurora procedural humanoid proof
+  area_resref: tlcpowarea4
+  area_name: Meshy2Aurora M0 binary vertical-slice area
+  creature_template_resref: tlcpowutc4
+  appearance_row: 15100
+  output_triangles: 19892
+  full_native_animation_count: 42
+  explicit_meshy_animation_count: 10
+  procedural_completion_count: 32
+  behavior_candidate_eligible: true
+  skin_animation_conformance: true
+  model_sha256: 500fcaea1621db5c30213db121a3be6bd28c35c097367fe660b17fde3bf3c18e
+  texture_sha256: 1ea9816d4ba4c5ccc77856516c78af3cb76eeea0c2306708633bbe56f53debe5
+  appearance_sha256: 4ed4aaa757c4d64654b0048e857e9fdcd21f1470fc544ee1009fbcab3152a2f0
+  hak_sha256: 926da4db4f64226f1e2163c05b58547f966bfa8b79c32718f1b2fd5cd6751598
+  module_sha256: 5b0fd9713a0644e0d95d45e20d4bc3c971b1adea5b64428f2752dc347461624a
+  native_install_verified: true
+  toolset:
+    modelVisibility: not_tested
+    proofCompleteness: missing
+  nwn:
+    modelVisibility: visible
+    proofCompleteness: verified
+    deathSequence: passed
+    deathEntryJump: passed
+    owner_result: V4 działa
+    owner_result_date: 2026-07-28

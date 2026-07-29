@@ -641,3 +641,23 @@ M4A jest zakonczone strukturalnie. Animroot consumer, event callbacks, state
 routing/loop behavior, opaque runtime fields oraz rig-only animation-tree
 acceptance pozostaja jawnie `OPEN_M6`; ten checkpoint nie twierdzi runtime
 acceptance w Toolsecie ani grze.
+
+## 17. Uzupełnienie proceduralnego creature V2 — 2026-07-28
+
+Po pozytywnym owner proofie V4 kontrakt produktu został rozszerzony bez zmiany
+binary layoutu M4A:
+
+- `DirectCreatureAnimationCompletenessV2` zapisuje pochodzenie każdego klipu
+  jako source, source-derived albo procedural i osobno zapisuje odrzucone
+  źródła;
+- `DirectCreatureAnimationBehaviorV2` ma jawne `schemaVersion=2`;
+- wszystkie tracki zaczynają się od `t=0`;
+- sześć granic knockdown/recovery/death jest sprawdzanych przez
+  `ProceduralHumanoidKinematicsConformanceV2`;
+- stany locomotion są blokowane, gdy przestają być in-place w tolerancji
+  0,05 m;
+- automatyczne eventy używają `KINEMATIC_PEAK_V2`, nie stałych procentów
+  długości klipu.
+
+Pełny kontrakt, test ledger i granice:
+[spłata długu pipeline creature](creature-pipeline-debt-paydown-2026-07-28.md).

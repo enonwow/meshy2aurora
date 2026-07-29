@@ -24,10 +24,12 @@ use crate::{
         MdlWriterOptionsV1, write_binary_mdl,
     },
     model_ir::{AuroraModelIrV1, AuroraSegmentDeformationV1},
+    model_limits::validate_model_triangle_budget_v1,
     model_pipeline::{
         ProjectBuildIdentityV1, resolve_base_color_image_index_v1,
         sanitize_meshy_h1_degenerate_triangles_v1,
     },
+    model_segmentation::segment_model_for_binary_mdl_v1,
     placeable_authoring::{
         PlaceableAuthoringApplyReportV1, PlaceableAuthoringDocumentV1,
         PlaceableAuthoringProjectionV1, PlaceableElementInspectionV1,
@@ -74,8 +76,8 @@ pub type AuroraPlaceableIrV1 = AuroraModelIrV1;
 
 /// Profile A admission for a static placeable.
 ///
-/// Triangle admission remains the shared product budget; this helper only
-/// widens the placeable material policy.
+/// Geometry thresholds remain the shared render-model policy; only the
+/// material policy differs by target.
 pub fn static_placeable_profile_a_options_v1() -> ProfileAOptionsV1 {
     ProfileAOptionsV1 {
         material_policy: ProfileAMaterialPolicyV1::BoundedSourceSlots,
@@ -88,8 +90,8 @@ pub fn static_placeable_profile_a_options_v1() -> ProfileAOptionsV1 {
 }
 
 /// GLB admission for the static-placeable route. Resource and allocation
-/// ceilings, including triangle diagnostics, stay shared with every render
-/// model route.
+/// ceilings, including the exact shared geometry budget, stay common with
+/// Creature and every other render-model target.
 pub fn static_placeable_glb_limits_v1() -> GlbLimits {
     GlbLimits::default()
 }
@@ -1254,6 +1256,9 @@ pub fn build_static_placeable_package_v1(
     request: &StaticPlaceableBuildRequestV1,
 ) -> Result<StaticPlaceablePackageArtifactV1, PlaceableErrorV1> {
     validate_request(request)?;
+    let mut render_model = request.model.clone();
+    segment_model_for_binary_mdl_v1(&mut render_model)
+        .map_err(|source| map_error("PLACEABLE-MODEL-SEGMENTATION-FAILED", "model", source))?;
     let identity_texture = request
         .textures
         .iter()
@@ -1287,7 +1292,7 @@ pub fn build_static_placeable_package_v1(
     let git = build_static_placeable_git(&blueprint, request.placement)?;
     let gic = build_static_placeable_gic(&blueprint, request.placement)?;
     let mdl = write_binary_mdl(
-        &request.model,
+        &render_model,
         &MdlWriterOptionsV1 {
             schema_version: 1,
             format_profile: MdlFormatProfileV1::PlaceableStaticRigidNativeV1,
@@ -1477,6 +1482,13 @@ fn validate_request(request: &StaticPlaceableBuildRequestV1) -> Result<(), Place
         &request.identity.model_resref,
         "request.model",
     )?;
+    validate_model_triangle_budget_v1(&request.model).map_err(|source| {
+        error(
+            &format!("PLACEABLE-{}", source.code),
+            source.path,
+            source.message,
+        )
+    })?;
     if let Some(collision_model) = &request.collision_model {
         validate_static_placeable_model(
             collision_model,

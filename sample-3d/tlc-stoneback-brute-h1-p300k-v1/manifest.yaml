@@ -1,0 +1,179 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: tlc-stoneback-brute-h1-p300k-v1
+provider: meshy
+local_only: true
+qualification: owner-runtime-verified
+files:
+  - role: source-meshy-animation-idle
+    path: meshy-idle-action-0.glb
+    size_bytes: 19756344
+    sha256: 05c8cbbda380dd60cb0114a0095e30f0c849d3189f8f3373709f9ba2f9d4ce32
+  - role: source-meshy-animation-walk
+    path: meshy-walk-action-30.glb
+    size_bytes: 19756396
+    sha256: b77b8f833a511e73aaa5c4c3852ee49fb60244f7e6112c6f2c250095eeab5ff5
+  - role: source-meshy-animation-sprint
+    path: meshy-sprint-action-16.glb
+    size_bytes: 19710580
+    sha256: a772540e7d18454785ebf4ed533e51d9e265fa8a1f0392390834c94a5db3e2e9
+  - role: source-meshy-animation-attack-primary
+    path: meshy-punch-combo-action-198.glb
+    size_bytes: 19736780
+    sha256: bc05d5a6eab3a1da7a09e277f92c9a808d60ca3e9b24d3df1acfd09e92ffd139
+  - role: source-meshy-animation-attack-secondary
+    path: meshy-left-hook-action-193.glb
+    size_bytes: 19717444
+    sha256: 9ecd0c033ef95100fb4c2d84f05c79a33a288e26f32f5be53d4dc721a9efbf6a
+  - role: source-meshy-animation-hit
+    path: meshy-hit-action-178.glb
+    size_bytes: 19727344
+    sha256: 1d01b4642f6d9ac68469a8993e393296604b02e063fb5912bb027399e1debdf1
+  - role: source-meshy-animation-knockdown
+    path: meshy-knockdown-action-187.glb
+    size_bytes: 19752648
+    sha256: e55517125adadb5e60e8db9fd5f666a66dcb3cb127009660e99ff0726a10b56f
+  - role: source-meshy-animation-dead
+    path: meshy-dead-action-8.glb
+    size_bytes: 19742084
+    sha256: 46af1255f09321ba25ef2641c1c1f51062ffc41175651bffc68d232473adb20a
+  - role: source-meshy-animation-arise
+    path: meshy-arise-action-3.glb
+    size_bytes: 19727436
+    sha256: 8f4ebc97f4d971ab163b6e61f84063511b38ced6bb809389df5f19a75b307ab1
+  - role: source-meshy-animation-alert
+    path: meshy-alert-action-2.glb
+    size_bytes: 19756328
+    sha256: ab6d65c83bdc710b0aa9ed0cc630d5b122ef0059059042dc4016a03c975b5f87
+  - role: api-provenance
+    path: meshy-run-provenance.json
+    size_bytes: 4550
+    sha256: 24b000cee61596f432943543fe4fa040fb79cc4a5af3dda0c877aeb7219d91fa
+  - role: source-combined
+    path: source.glb
+    size_bytes: 20256180
+    sha256: 0eeb135c1077f2207b1f362222829a2493c003c64276db98633cf2af5c8385b3
+provenance_note: owner-authorized Meshy image-to-3D humanoid generation with a 300000 target and ten animation actions
+concept_reference:
+  path: documentation/mockups/the-last-city/creatures/tlc-creature-stoneback-brute-concept-v1.png
+  sha256: 40d58e5e67f4560ba31048fc17a0166862e7d61fb33a28ef7b4bef86e8dd5df1
+generation_plan:
+  date: 2026-07-28
+  source_mode: image-to-3d
+  ai_model: meshy-6
+  topology: triangle
+  target_polycount: 300000
+  pose_mode: t-pose
+  rig_height_meters: 2.4
+  moderation: false
+  owner_credit_cap: 250
+  animation_actions:
+    - { action_id: 0, name: Idle, nwn_clip: cpause1 }
+    - { action_id: 30, name: Casual_Walk, nwn_clip: cwalk }
+    - { action_id: 16, name: RunFast, nwn_clip: crun }
+    - { action_id: 198, name: Punch_Combo, nwn_clip: ca1slashl }
+    - { action_id: 193, name: Left_Hook, nwn_clip: ca1slashr }
+    - { action_id: 178, name: Hit_Reaction, nwn_clip: cdamagel }
+    - { action_id: 187, name: Knock_Down, nwn_clip: ckdbck }
+    - { action_id: 8, name: Dead, nwn_clip: cdead }
+    - { action_id: 3, name: Arise, nwn_clip: cguptokdb }
+    - { action_id: 2, name: Alert, nwn_clip: ctaunt }
+generation_result:
+  status: materialized
+  image_to_3d_task_id: 019fa98b-2acc-72e3-96a6-0404d7985807
+  initial_requested_polycount: 300000
+  initial_face_count: 300844
+  first_remesh_task_id: 019fa996-3e7c-7260-a461-a6f2019a7d71
+  first_remesh_target_polycount: 299000
+  first_remesh_face_count: 300171
+  final_remesh_task_id: 019fa999-54f5-7d42-bc0d-69cdd8b0cd5a
+  final_remesh_target_polycount: 295000
+  rig_task_id: 019fa99b-d13d-74e1-82ba-fbdc3be48201
+  credits_spent: 75
+  balance_before: 777
+  balance_after: 702
+  explicit_meshy_clip_count: 10
+  source_skin_count: 1
+  source_joint_count: 24
+  raw_triangle_count: 296276
+  raw_vertex_count: 199844
+  combined_source_sha256: 0eeb135c1077f2207b1f362222829a2493c003c64276db98633cf2af5c8385b3
+runtime_candidate_v1:
+  date: 2026-07-28
+  status: ready_for_owner_proof
+  application_route: Studio_UI_to_Worker_to_WASM_to_core_owned_writers
+  packet: proof-output/tlc-stoneback-brute-p300k-v1/studio-export
+  model_resref: m2p3m0eeb135c
+  texture_resref: m2p3t0eeb135c
+  hak_resref: m2p3h0eeb135c
+  test_module_filename: m2p3d0eeb135c.mod
+  module_name: Meshy2Aurora procedural humanoid proof
+  area_resref: m2p3a0eeb135c
+  area_name: Meshy2Aurora M0 binary vertical-slice area
+  creature_template_resref: m2p3c0eeb135c
+  appearance_row: 15100
+  placement: { x: 10.0, y: 14.5, z: 0.0 }
+  source_triangle_count_after_sanitation: 290319
+  written_triangle_count: 290318
+  written_vertex_count: 213331
+  binary_mdl_skin_mesh_count: 14
+  full_native_animation_count: 42
+  input_meshy_animation_count: 10
+  active_joint_count: 22
+  behavior_candidate_eligible: true
+  kinematics_complete: true
+  animation_events_complete: true
+  skin_animation_conformance: true
+  model_sha256: 499a0e4dc4d98317ed0b4bbe79686354c7bd7e445876d6ca758ca000039ef91e
+  texture_sha256: f2942325b52e9340d2c006fce85a0292182350a4433c3f0e8317b78b9d8180a2
+  appearance_sha256: 572ee5364b52e2d49a52bd86789ebf8d08a0184cd449895a858d0c5b870bcd26
+  hak_sha256: 937a20ff748f1ea817d6d7b48f094292d7a3dd259c8fcab31795d0d358946ceb
+  module_sha256: f35e0c796dc569af87dbdf253aa627ab4c0a73853a131bbf95b42766fb8d0907
+  native_install_verified: true
+  native_module_path: C:\Users\enonw\Documents\Neverwinter Nights\modules\m2p3d0eeb135c.mod
+  native_hak_path: C:\Users\enonw\Documents\Neverwinter Nights\hak\m2p3h0eeb135c.hak
+  toolset:
+    modelVisibility: not_tested
+    proofCompleteness: missing
+  nwn:
+    modelVisibility: not_tested
+    proofCompleteness: missing
+runtime_candidate_v5:
+  date: 2026-07-29
+  status: owner_runtime_verified
+  application_route: Studio_UI_to_Worker_to_WASM_to_core_owned_writers
+  geometry_policy: ExactFiniteNonCollinear
+  packet: proof-output/tlc-stoneback-brute-p300k-geometry-ab-v5/studio-export
+  evidence: documentation/evidence/tlc-stoneback-brute-p300k-geometry-ab-v5-ready-for-owner-proof-2026-07-29.md
+  model_resref: m2p3jm0eeb135c
+  texture_resref: m2p3jt0eeb135c
+  hak_resref: m2p3jh0eeb135c
+  test_module_filename: m2p3jd0eeb135c.mod
+  module_name: Meshy2Aurora procedural humanoid proof
+  area_resref: m2p3ja0eeb135c
+  area_name: Meshy2Aurora M0 binary vertical-slice area
+  creature_template_resref: m2p3jc0eeb135c
+  appearance_row: 15100
+  source_triangle_count_before_sanitation: 296276
+  source_triangle_count_after_sanitation: 296276
+  written_triangle_count: 296276
+  binary_mdl_skin_mesh_count: 14
+  rig_node_count: 25
+  full_native_animation_count: 42
+  texture_artifact_cleanup: EDGE_AWARE_HAMPEL_MEDIAN_V3
+  model_sha256: c8b173a59a576911ff938b7287f823694474be838a81cb55c370c8c3258eb6e9
+  texture_sha256: ac6aceb3f2809c5ffe1170d2525df672fb077855cf8bc1d78f24241596f05fbc
+  appearance_sha256: 2d3218a0e8bbcf015fbbad05407f485012af89e6ed255816457fa270803fa7ae
+  hak_sha256: 90d79114f0bc725e91f54657dc39f7491862ab4c0f54e032703ac4fddd6c9853
+  module_sha256: da60bc35b45f7ce53753ed91d6c2c13ce09192b6d63143acf2fffca2c94cf1df
+  native_install_verified: true
+  native_module_path: C:\Users\enonw\Documents\Neverwinter Nights\modules\m2p3jd0eeb135c.mod
+  native_hak_path: C:\Users\enonw\Documents\Neverwinter Nights\hak\m2p3jh0eeb135c.hak
+  owner_result_date: 2026-07-29
+  geometryArtifactResult: fixed
+  toolset:
+    modelVisibility: visible
+    proofCompleteness: verified
+  nwn:
+    modelVisibility: visible
+    proofCompleteness: verified
+  owner_result: V5 appears correctly and looks very good in both Aurora Toolset and Neverwinter Nights

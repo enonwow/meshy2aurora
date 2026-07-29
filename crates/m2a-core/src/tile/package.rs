@@ -16,9 +16,11 @@ use crate::{
         MdlWriterOptionsV1, inspect_binary_mdl, write_binary_tile_mdl_v1,
     },
     model_ir::{AuroraModelIrV1, AuroraSegmentDeformationV1},
+    model_limits::validate_model_triangle_budget_v1,
     model_pipeline::{
         resolve_base_color_image_index_v1, sanitize_meshy_h1_degenerate_triangles_v1,
     },
+    model_segmentation::segment_model_for_binary_mdl_v1,
     placeable::{static_placeable_glb_limits_v1, static_placeable_profile_a_options_v1},
     profile_a::{convert_profile_a, derive_meshy_m0_static_rigid_profile_v1},
     proof_module::{
@@ -311,6 +313,9 @@ pub fn build_static_tile_package_v1(
     request: &StaticTileBuildRequestV1,
 ) -> Result<StaticTilePackageArtifactV1, TilePackageErrorV1> {
     validate_request(request)?;
+    let mut render_model = request.model.clone();
+    segment_model_for_binary_mdl_v1(&mut render_model)
+        .map_err(|source| map_error("TILE-MODEL-SEGMENTATION-FAILED", "model", source))?;
     let identity = &request.identity;
     let diffuse = request
         .textures
@@ -325,7 +330,7 @@ pub fn build_static_tile_package_v1(
         .unwrap_or_else(|| diffuse.payload.clone());
 
     let mdl = write_binary_tile_mdl_v1(
-        &request.model,
+        &render_model,
         &request.navigation,
         &MdlWriterOptionsV1 {
             schema_version: 1,
@@ -529,6 +534,13 @@ fn validate_request(request: &StaticTileBuildRequestV1) -> Result<(), TilePackag
             "TileStaticV1 requires non-empty schema-v1 rigid common model IR",
         ));
     }
+    validate_model_triangle_budget_v1(&request.model).map_err(|source| {
+        error(
+            &format!("TILE-{}", source.code),
+            source.path,
+            source.message,
+        )
+    })?;
     let roots = request
         .model
         .nodes

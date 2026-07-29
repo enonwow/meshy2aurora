@@ -62,22 +62,39 @@ hidden by default when the feature is not explicitly enabled.
 
 | Profile | Pipeline |
 | --- | --- |
-| H1 humanoid animated | Text-to-3D preview -> refine -> rigging -> Animation API action `0` (Idle) -> GLB |
+| H1 humanoid animated | Text/Image-to-3D -> rigging -> od 1 do 10 akcji Animation API -> osobne GLB |
 | N1 quadruped | Text-to-3D preview -> refine -> GLB |
 | S1 static prop | Text-to-3D preview -> refine -> GLB |
 
-Only H1 can use rigging/animation. The Bridge uses Meshy Text-to-3D v2 with
-`target_formats: ["glb"]`; it obtains the final binary itself, checks size,
-calculates SHA-256, and exposes it only after status `READY`.
+Only H1 can use rigging/animation. Pole `animationActionIds` accepts from one
+to ten unique Meshy action IDs. The Bridge creates every action on the same
+exact rig, downloads and validates every GLB, calculates its SHA-256 and
+exposes it only after the whole run reaches `READY`. The maximum credit estimate
+is calculated from the actual number of requested actions, not from a fixed
+single-animation assumption.
+
+`merge-animation-glbs.mjs` combines same-rig action GLBs into one canonical
+source GLB and gives each clip its requested NWN name. It fails closed when
+node or skin topology differs. A signed download failure is a transport-lane
+failure, not permission to create another model or rig:
+`resume-animation-lineage.mjs` first binds to the exact recorded model and rig
+task IDs, reuses already completed animation tasks, and creates only missing
+actions within the remaining owner-approved credit cap.
 
 ### Geometry targets
 
-`AURORA_PROOF` is the default Meshy Lab choice. It sends
-`should_remesh: true` with `target_polycount: 1500`. It is a target, not an
-exact Meshy guarantee, so Studio intake must still measure the downloaded GLB
-before an asset is approved for an Aurora proof. The other explicit choices
-remain `LOWER_DETAIL` (10,000), `BALANCED` (30,000), and `HIGHER_DETAIL`
-(60,000); they are not appropriate defaults for the first Aurora proof assets.
+`AURORA_PROOF` is the default Meshy Lab choice. The shared whole render-model
+limit for creature, placeable, tile and other render routes is `300,000`
+triangles. Meshy `target_polycount` is a
+target, not an exact guarantee, so intake always measures the downloaded GLB.
+When a result is above the product limit,
+`tools/meshy-skinned-triangle-budget.mjs` may reduce the same source lineage
+below the global limit while preserving skin, joint weights and animation
+clips. An over-limit payload must not be silently admitted.
+
+Binary MDL still allows at most `65,535` index entries (`21,845` triangles) in
+one mesh stream. The application partitions larger render meshes
+deterministically; this is not decimation and does not remove geometry.
 
 ## Operational limits
 
@@ -118,16 +135,32 @@ $env:MESHY_MAX_CREDITS = "40"
 $env:MESHY_REAL_E2E_PROFILE = "S1-static-prop/v1"
 $env:MESHY_REAL_E2E_PROMPT = "A weathered stone lantern, isolated game asset"
 $env:MESHY_REAL_E2E_GEOMETRY_TARGET = "AURORA_PROOF"
-$env:MESHY_REAL_E2E_OUTPUT_PATH = ".\\test-assets\\meshy\\incoming\\s1-static-prop-1500.glb"
+$env:MESHY_REAL_E2E_OUTPUT_PATH = ".\\sample-3d\\<asset-id>\\source.glb"
 node tools/meshy-local-bridge/real-e2e.mjs
 ```
 
 Run it separately once for approved H1, N1 and S1 prompts. Its output is a
 redacted JSON proof summary with the measured triangle count; it never persists
-the API key or signed URL. The GLB is not persisted by default. Supplying the
-explicit output path above saves it only to the ignored `incoming` test-asset
-folder; move it to `active` only after owner review, and never force-add it to
-Git. For H1, the runner sets the documented explicit humanoid preflight.
+the API key or signed URL. The GLB is not persisted by default. Any persisted
+source belongs only under `sample-3d/<asset-id>/` and requires a complete
+`manifest.yaml`; `test-assets/meshy` is forbidden. For H1, the runner sets the
+documented explicit humanoid preflight.
+
+For an owner-approved image-to-3D H1 run with several animations, use
+`real-image-multi-animation-e2e.mjs`. It requires an existing canonical asset
+directory, refuses to overwrite any payload or provenance file, enforces the
+owner credit ceiling before the paid request, and accepts one to ten
+`{actionId,fileStem,clipName}` entries through
+`MESHY_REAL_E2E_ANIMATIONS`. After download, merge those exact same-rig files
+with `merge-animation-glbs.mjs`; do not create a second source library.
+
+The runner enables Meshy moderation by default. If Meshy rejects an
+owner-approved fictional horror concept before creating a model with
+`TASK_REJECTED`, the same exact source may be retried with
+`MESHY_REAL_E2E_MODERATION=0`. The override accepts only `0` or `1` and is
+recorded in durable provenance. It is not a geometry/model iteration and must
+not be used to bypass a rejection involving real-person abuse or otherwise
+disallowed source material.
 
 ## References
 

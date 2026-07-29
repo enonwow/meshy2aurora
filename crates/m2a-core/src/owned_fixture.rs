@@ -217,10 +217,11 @@ pub fn synthetic_owned_m6_glb_v1() -> Result<Vec<u8>, OwnedFixtureErrorV1> {
 
 /// Expands the owned M6 source into 42 independently stored translation clips
 /// with the exact direct-creature namespace. Active states use deliberately
-/// simple, behavior-distinct motion while the three family-variable states
-/// retain a stable pose in this fixture. This proves mapping, binary readback, walk/run
-/// differentiation and the transition-to-dead-hold split without copying
-/// external animation payloads.
+/// simple, behavior-distinct motion while family-variable states may retain a
+/// stable pose. The death-family holds begin at the exact terminal `ckdbck`
+/// pose. This proves mapping, binary readback, walk/run differentiation and
+/// chained death-boundary continuity without copying external animation
+/// payloads.
 pub fn synthetic_owned_m6_full_native_42_glb_v1() -> Result<Vec<u8>, OwnedFixtureErrorV1> {
     let glb = synthetic_owned_m6_glb_v1()?;
     let json_length = u32::from_le_bytes(
@@ -271,17 +272,30 @@ pub fn synthetic_owned_m6_full_native_42_glb_v1() -> Result<Vec<u8>, OwnedFixtur
         .cloned()
         .ok_or_else(|| owned_fixture_layout_error("owned GLB accessors are missing"))?;
     let mut animations = Vec::with_capacity(FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1.len());
+    let death_fall_distance = (FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1
+        .iter()
+        .position(|name| *name == "ckdbck")
+        .expect("the full native namespace contains ckdbck") as f32
+        + 1.0)
+        * 0.025;
     for (index, name) in FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1.iter().enumerate() {
-        let distance = if matches!(*name, "ccastoutlp" | "cgetmidlp" | "cdead") {
+        let distance = if matches!(
+            *name,
+            "ccastoutlp" | "cgetmidlp" | "ckdbckps" | "ckdbckdie" | "cdead"
+        ) {
             0.0
         } else {
             (index as f32 + 1.0) * 0.025
         };
-        let translations = [
-            [0.0, 0.0, 0.0],
-            [distance * 0.5, distance * 0.1, 0.0],
-            [distance, 0.0, 0.0],
-        ];
+        let translations = if matches!(*name, "ckdbckps" | "ckdbckdie" | "cdead") {
+            [[death_fall_distance, 0.0, 0.0]; 3]
+        } else {
+            [
+                [0.0, 0.0, 0.0],
+                [distance * 0.5, distance * 0.1, 0.0],
+                [distance, 0.0, 0.0],
+            ]
+        };
         let output_accessor =
             push_f32x3_accessor(&mut bin, &mut views, &mut accessors, &translations, None);
         let mut animation = template.clone();

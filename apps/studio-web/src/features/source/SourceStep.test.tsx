@@ -149,6 +149,44 @@ describe("SourceStep", () => {
     });
     expect(callbacks.onSelectAnimationEvents).toHaveBeenCalledWith(events);
   });
+
+  it("exposes opt-in texture artifact repair without enabling it by default", async () => {
+    const onTextureArtifactCleanupChange = vi.fn();
+    const container = await render(
+      <SourceStep
+        {...handlers()}
+        onCreatureProfileChange={vi.fn()}
+        onTextureArtifactCleanupChange={onTextureArtifactCleanupChange}
+        onContinue={vi.fn()}
+      />,
+    );
+    const checkbox = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Repair texture artifacts"]',
+    );
+
+    expect(checkbox).not.toBeNull();
+    expect(checkbox?.checked).toBe(false);
+    expect(container.textContent).toContain("one-pixel alpha holes");
+    await act(async () => checkbox?.click());
+    expect(onTextureArtifactCleanupChange).toHaveBeenCalledWith(true);
+  });
+
+  it("uses the shared 300K product profile by default", async () => {
+    const container = await render(
+      <SourceStep
+        {...handlers()}
+        onCreatureProfileChange={vi.fn()}
+        onContinue={vi.fn()}
+      />,
+    );
+    const profile = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Creature conversion profile"]',
+    );
+
+    expect(profile?.value).toBe("PRODUCT_300K");
+    expect(profile?.selectedOptions[0]?.textContent).toContain("300,000 triangle limit");
+    expect(container.textContent).not.toContain("shared product budget remains 20,000");
+  });
 });
 
 describe("InputsPanel", () => {

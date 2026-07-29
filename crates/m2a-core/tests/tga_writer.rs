@@ -1,8 +1,9 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
+use m2a_core::glb::{EmbeddedImageDecodeLimitsV1, GlbLimits, decode_embedded_image_to_tga_v1};
 use m2a_core::tga::{
-    TGA_MAX_OUTPUT_BYTES, TgaImageV1, TgaPixelFormatV1, TgaWriterLimitsV1, TgaWriterOptionsV1,
-    write_tga_v1,
+    TGA_MAX_OUTPUT_BYTES, TextureArtifactCleanupOptionsV1, TgaImageV1, TgaPixelFormatV1,
+    TgaWriterLimitsV1, TgaWriterOptionsV1, cleanup_texture_artifacts_v1, write_tga_v1,
 };
 
 const FOOTER: &[u8] = b"\0\0\0\0\0\0\0\0TRUEVISION-XFILE.\0";
@@ -31,6 +32,30 @@ fn rgba_image() -> TgaImageV1 {
             0, 0, 255, 3, 255, 255, 255, 4, // bottom
         ],
     }
+}
+
+fn solid_rgba_image(width: u32, height: u32, pixel: [u8; 4]) -> TgaImageV1 {
+    TgaImageV1 {
+        schema_version: 1,
+        width,
+        height,
+        pixel_format: TgaPixelFormatV1::Rgba8,
+        pixels: pixel
+            .into_iter()
+            .cycle()
+            .take(width as usize * height as usize * 4)
+            .collect(),
+    }
+}
+
+fn set_rgba(image: &mut TgaImageV1, x: usize, y: usize, pixel: [u8; 4]) {
+    let offset = (y * image.width as usize + x) * 4;
+    image.pixels[offset..offset + 4].copy_from_slice(&pixel);
+}
+
+fn rgba_at(image: &TgaImageV1, x: usize, y: usize) -> [u8; 4] {
+    let offset = (y * image.width as usize + x) * 4;
+    image.pixels[offset..offset + 4].try_into().unwrap()
 }
 
 fn options(max_output_bytes: u64) -> TgaWriterOptionsV1 {
@@ -242,4 +267,178 @@ fn maximum_height_and_exact_output_limit_are_inclusive() {
     assert_eq!(artifact.report.pixel_data_length, 65_535 * 3);
     assert_eq!(artifact.report.byte_length, exact_length);
     assert_eq!(artifact.payload.len() as u64, exact_length);
+}
+
+#[test]
+fn texture_artifact_cleanup_repairs_bright_impulse_and_alpha_hole_without_dark_blur() {
+    let mut image = solid_rgba_image(9, 5, [80, 90, 100, 255]);
+    set_rgba(&mut image, 2, 2, [230, 230, 230, 255]);
+    set_rgba(&mut image, 4, 2, [0, 0, 0, 255]);
+    set_rgba(&mut image, 6, 2, [0, 0, 0, 0]);
+    let before = image.clone();
+
+    let artifact = cleanup_texture_artifacts_v1(
+        &image,
+        &TextureArtifactCleanupOptionsV1 {
+            schema_version: 1,
+            enabled: true,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(image, before, "cleanup must not mutate caller-owned input");
+    assert_eq!(rgba_at(&artifact.image, 2, 2), [80, 90, 100, 255]);
+    assert_eq!(rgba_at(&artifact.image, 4, 2), [0, 0, 0, 255]);
+    assert_eq!(rgba_at(&artifact.image, 6, 2), [80, 90, 100, 255]);
+    assert_eq!(artifact.report.algorithm, "EDGE_AWARE_HAMPEL_MEDIAN_V3");
+    assert_eq!(artifact.report.pass_count, 2);
+    assert_eq!(artifact.report.repaired_color_outlier_count, 1);
+    assert_eq!(artifact.report.repaired_transparent_hole_count, 1);
+    assert_ne!(
+        artifact.report.input_pixel_sha256,
+        artifact.report.output_pixel_sha256
+    );
+}
+
+#[test]
+fn texture_artifact_cleanup_repairs_short_runs_from_local_neighbors() {
+    let mut image = solid_rgba_image(9, 7, [80, 90, 100, 255]);
+    for x in 2..=4 {
+        set_rgba(&mut image, x, 2, [230, 230, 230, 255]);
+    }
+
+    let artifact = cleanup_texture_artifacts_v1(
+        &image,
+        &TextureArtifactCleanupOptionsV1 {
+            schema_version: 1,
+            enabled: true,
+        },
+    )
+    .unwrap();
+
+    for x in 2..=4 {
+        assert_eq!(rgba_at(&artifact.image, x, 2), [80, 90, 100, 255]);
+    }
+    assert_eq!(artifact.report.repaired_color_outlier_count, 3);
+}
+
+#[test]
+fn texture_artifact_cleanup_preserves_material_edges_and_transparent_regions() {
+    let mut image = solid_rgba_image(13, 7, [80, 90, 100, 255]);
+    for y in 0..7 {
+        for x in 8..13 {
+            set_rgba(&mut image, x, y, [190, 190, 190, 255]);
+        }
+    }
+    for (x, y) in [(4, 2), (5, 2), (4, 3), (5, 3)] {
+        set_rgba(&mut image, x, y, [0, 0, 0, 0]);
+    }
+
+    let artifact = cleanup_texture_artifacts_v1(
+        &image,
+        &TextureArtifactCleanupOptionsV1 {
+            schema_version: 1,
+            enabled: true,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(rgba_at(&artifact.image, 7, 3), [80, 90, 100, 255]);
+    assert_eq!(rgba_at(&artifact.image, 8, 3), [190, 190, 190, 255]);
+    for (x, y) in [(4, 2), (5, 2), (4, 3), (5, 3)] {
+        assert_eq!(rgba_at(&artifact.image, x, y), [0, 0, 0, 0]);
+    }
+    assert_eq!(artifact.report.repaired_color_outlier_count, 0);
+    assert_eq!(artifact.report.repaired_transparent_hole_count, 0);
+}
+
+#[test]
+fn texture_artifact_cleanup_preserves_coherent_highlight_patch() {
+    let mut image = solid_rgba_image(11, 11, [80, 90, 100, 255]);
+    for y in 4..=6 {
+        for x in 4..=6 {
+            set_rgba(&mut image, x, y, [190, 190, 190, 255]);
+        }
+    }
+
+    let artifact = cleanup_texture_artifacts_v1(
+        &image,
+        &TextureArtifactCleanupOptionsV1 {
+            schema_version: 1,
+            enabled: true,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(artifact.image, image);
+    assert_eq!(artifact.report.repaired_color_outlier_count, 0);
+    assert_eq!(artifact.report.repaired_transparent_hole_count, 0);
+}
+
+#[test]
+fn disabled_texture_artifact_cleanup_is_byte_exact_and_reported() {
+    let mut image = solid_rgba_image(3, 3, [80, 90, 100, 255]);
+    set_rgba(&mut image, 1, 1, [255, 255, 255, 255]);
+
+    let first =
+        cleanup_texture_artifacts_v1(&image, &TextureArtifactCleanupOptionsV1::default()).unwrap();
+    let second =
+        cleanup_texture_artifacts_v1(&image, &TextureArtifactCleanupOptionsV1::default()).unwrap();
+
+    assert_eq!(first, second);
+    assert_eq!(first.image, image);
+    assert!(!first.report.enabled);
+    assert_eq!(first.report.repaired_color_outlier_count, 0);
+    assert_eq!(first.report.repaired_transparent_hole_count, 0);
+    assert_eq!(
+        first.report.input_pixel_sha256,
+        first.report.output_pixel_sha256
+    );
+}
+
+#[test]
+fn exact_stoneback_meshy_base_color_has_repairable_isolated_artifacts() {
+    if std::env::var_os("M2A_REQUIRE_TLC_STONEBACK_TEXTURE_CLEANUP").is_none() {
+        return;
+    }
+    let source = std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../sample-3d/tlc-stoneback-brute-h1-p300k-v1/source.glb"),
+    )
+    .expect("canonical local Stoneback Meshy GLB");
+    let image = decode_embedded_image_to_tga_v1(
+        &source,
+        0,
+        &GlbLimits {
+            max_input_bytes: 256 * 1024 * 1024,
+            ..GlbLimits::default()
+        },
+        &EmbeddedImageDecodeLimitsV1::default(),
+    )
+    .expect("decode exact base-color image");
+    let artifact = cleanup_texture_artifacts_v1(
+        &image,
+        &TextureArtifactCleanupOptionsV1 {
+            schema_version: 1,
+            enabled: true,
+        },
+    )
+    .expect("clean exact Meshy base-color image");
+
+    assert_eq!(artifact.report.repaired_color_outlier_count, 4_588);
+    assert_eq!(artifact.report.repaired_transparent_hole_count, 0);
+    assert_eq!(
+        artifact.report.input_pixel_sha256,
+        "fd05864b65c21dc98cc52131d0c6bc012ad546646a04940ef4135aaf9566f163"
+    );
+    assert_eq!(
+        artifact.report.output_pixel_sha256,
+        "62ebd7a04eddcdb13ae43133c2aa78513cb426ce2ed056c59db11aa74be50937"
+    );
+    let tga = write_tga_v1(&artifact.image, &TgaWriterOptionsV1::default())
+        .expect("write cleaned exact Meshy base color");
+    assert_eq!(
+        tga.report.output_sha256,
+        "ac6aceb3f2809c5ffe1170d2525df672fb077855cf8bc1d78f24241596f05fbc"
+    );
 }

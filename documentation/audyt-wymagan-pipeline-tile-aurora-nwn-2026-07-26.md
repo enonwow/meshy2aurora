@@ -34,9 +34,9 @@ Najważniejsza korekta względem wcześniejszej dokumentacji:
 > `tms01_c01_01.mdl` oraz `tms01_c01_01.wok`. `msb01.wok` nie istnieje.
 
 Pierwszy pionowy przekrój powinien dostarczyć jeden płaski, statyczny,
-przechodni tile `10 x 10`, powtarzany w Area `2 x 2`. Wizualny mesh z Meshy
-może mieć `20 000` trójkątów, ale WOK i AABB muszą używać osobnej, uproszczonej
-geometrii nawigacyjnej.
+przechodni tile `10 x 10`, powtarzany w Area `2 x 2`. Wizualny model z Meshy
+może mieć do `300 000` trójkątów, dzielonych na bezpieczne mesh streamy, ale
+WOK i AABB muszą używać osobnej, uproszczonej geometrii nawigacyjnej.
 
 ## 2. Klasy twierdzeń
 
@@ -378,8 +378,9 @@ Profil musi co najmniej:
 - pozwalać na wiele render mesh nodes, jeśli model przekracza limit jednego
   streamu.
 
-Model wizualny `20 000` trójkątów mieści się w jednym mesh node. Limit nie
-dotyczy całego modelu, lecz pojedynczego strumienia indeksów.
+Model wizualny `20 000` trójkątów mieści się w jednym mesh node. Granica
+`21 845` nie dotyczy całego modelu, lecz pojedynczego strumienia indeksów;
+wspólny limit całego render-modelu wynosi `300 000`.
 
 ### 7.3. Binary AABB
 
@@ -649,7 +650,8 @@ Pierwszy kandydat:
 
 - jeden zewnętrzny, płaski tile;
 - footprint `10 x 10`;
-- render model z Meshy, maksymalnie `20 000` trójkątów w jednym mesh node;
+- render model z Meshy, maksymalnie `300 000` trójkątów łącznie i najwyżej
+  `21 845` trójkątów w jednym mesh node;
 - jedna diffuse TGA;
 - własny binary MDL `classification=2`;
 - osobny AABB node;

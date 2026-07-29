@@ -212,6 +212,26 @@ pub fn ingest_static_rigid_glb_json(bytes: &[u8]) -> String {
     }
 }
 
+/// Inspects the historical P100K Creature compatibility profile with its exact
+/// bounded envelope owned by `m2a-core`.
+#[wasm_bindgen(js_name = ingestMeshyP100kExperimentJson)]
+pub fn ingest_meshy_p100k_experiment_json(bytes: &[u8]) -> String {
+    match m2a_core::model_pipeline::inspect_meshy_procedural_humanoid_p100k_experiment_v1(bytes) {
+        Ok(result) => serialize_json(&result),
+        Err(error) => serialize_json(&error),
+    }
+}
+
+/// Inspects the historical P300K Creature compatibility profile. Default
+/// product inspection now uses the shared 300K budget.
+#[wasm_bindgen(js_name = ingestMeshyP300kExperimentJson)]
+pub fn ingest_meshy_p300k_experiment_json(bytes: &[u8]) -> String {
+    match m2a_core::model_pipeline::inspect_meshy_procedural_humanoid_p300k_experiment_v1(bytes) {
+        Ok(result) => serialize_json(&result),
+        Err(error) => serialize_json(&error),
+    }
+}
+
 /// Backward-compatible alias for the original M2 WASM export.
 #[wasm_bindgen(js_name = ingestGlb)]
 pub fn ingest_glb(bytes: &[u8]) -> String {
@@ -950,6 +970,122 @@ impl StudioModelPackageArtifactV1 {
     }
 }
 
+/// Browser result for production creature resources only. A proof MOD is a
+/// separate operation and therefore has no byte getter on this boundary.
+#[wasm_bindgen]
+pub struct StudioCreatureProductArtifactV2 {
+    hak_bytes: Vec<u8>,
+    model_bytes: Vec<u8>,
+    texture_bytes: Vec<u8>,
+    report_json: String,
+    manifest_json: String,
+    summary_json: String,
+    readback_json: String,
+}
+
+/// Browser-transferable complete output of the isolated P100K Creature
+/// experiment. Unlike the production-only V2 artifact, this boundary includes
+/// the caller-identified demo MOD and exposes every generated resource for
+/// deterministic boundary verification.
+#[wasm_bindgen]
+pub struct StudioP100kCreaturePackageArtifactV1 {
+    hak_bytes: Vec<u8>,
+    model_bytes: Vec<u8>,
+    texture_bytes: Vec<u8>,
+    appearance_two_da_bytes: Vec<u8>,
+    proof_module_bytes: Vec<u8>,
+    report_json: String,
+    manifest_json: String,
+    summary_json: String,
+    readback_json: String,
+}
+
+#[wasm_bindgen]
+impl StudioP100kCreaturePackageArtifactV1 {
+    #[wasm_bindgen(js_name = takeHakBytes)]
+    pub fn take_hak_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.hak_bytes)
+    }
+
+    #[wasm_bindgen(js_name = takeModelBytes)]
+    pub fn take_model_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.model_bytes)
+    }
+
+    #[wasm_bindgen(js_name = takeTextureBytes)]
+    pub fn take_texture_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.texture_bytes)
+    }
+
+    #[wasm_bindgen(js_name = takeAppearanceTwoDaBytes)]
+    pub fn take_appearance_two_da_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.appearance_two_da_bytes)
+    }
+
+    #[wasm_bindgen(js_name = takeProofModuleBytes)]
+    pub fn take_proof_module_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.proof_module_bytes)
+    }
+
+    #[wasm_bindgen(getter, js_name = reportJson)]
+    pub fn report_json(&self) -> String {
+        self.report_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = manifestJson)]
+    pub fn manifest_json(&self) -> String {
+        self.manifest_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = summaryJson)]
+    pub fn summary_json(&self) -> String {
+        self.summary_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = readbackJson)]
+    pub fn readback_json(&self) -> String {
+        self.readback_json.clone()
+    }
+}
+
+#[wasm_bindgen]
+impl StudioCreatureProductArtifactV2 {
+    #[wasm_bindgen(js_name = takeHakBytes)]
+    pub fn take_hak_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.hak_bytes)
+    }
+
+    #[wasm_bindgen(js_name = takeModelBytes)]
+    pub fn take_model_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.model_bytes)
+    }
+
+    #[wasm_bindgen(js_name = takeTextureBytes)]
+    pub fn take_texture_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.texture_bytes)
+    }
+
+    #[wasm_bindgen(getter, js_name = reportJson)]
+    pub fn report_json(&self) -> String {
+        self.report_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = manifestJson)]
+    pub fn manifest_json(&self) -> String {
+        self.manifest_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = summaryJson)]
+    pub fn summary_json(&self) -> String {
+        self.summary_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = readbackJson)]
+    pub fn readback_json(&self) -> String {
+        self.readback_json.clone()
+    }
+}
+
 /// Executes the canonical Rust model-only GLB -> MDL/TGA/2DA/HAK pipeline for
 /// browser-selected bytes. No filesystem, DOM or alternate conversion path is
 /// involved at this boundary.
@@ -1071,6 +1207,330 @@ fn build_meshy_procedural_humanoid_model_package_v1_inner(
     Ok(StudioModelPackageArtifactV1 {
         hak_bytes: artifact.hak,
         model_bytes: artifact.model,
+        proof_module_bytes: artifact.proof_module,
+        report_json: String::from_utf8(artifact.report_json).map_err(|error| error.to_string())?,
+        manifest_json: String::from_utf8(artifact.manifest_json)
+            .map_err(|error| error.to_string())?,
+        summary_json: String::from_utf8(artifact.summary_json)
+            .map_err(|error| error.to_string())?,
+        readback_json: serialize_json(&readback),
+    })
+}
+
+/// Builds the production-only procedural creature under an exact caller-owned
+/// identity. This V2 boundary cannot emit a MOD or UTC.
+#[wasm_bindgen(js_name = buildMeshyProceduralHumanoidProductV2)]
+pub fn build_meshy_procedural_humanoid_product_v2(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    identity_json: &str,
+) -> Result<StudioCreatureProductArtifactV2, JsValue> {
+    build_meshy_procedural_humanoid_product_v2_inner(source_glb, appearance_two_da, identity_json)
+        .map_err(|error| JsValue::from_str(&error))
+}
+
+fn build_meshy_procedural_humanoid_product_v2_inner(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    identity_json: &str,
+) -> Result<StudioCreatureProductArtifactV2, String> {
+    let identity = serde_json::from_str::<
+        m2a_core::model_pipeline::ProceduralCreatureProductIdentityV2,
+    >(identity_json)
+    .map_err(|_| {
+        serialize_json(&m2a_core::model_pipeline::M6PipelineErrorV1 {
+            schema_version: 1,
+            stage: "IDENTITY".to_owned(),
+            code: "M6-PRODUCT-IDENTITY-JSON".to_owned(),
+            path: "identityJson".to_owned(),
+            message: "product identity JSON does not match the strict V2 schema".to_owned(),
+        })
+    })?;
+    let artifact = m2a_core::model_pipeline::build_meshy_procedural_humanoid_product_v2(
+        source_glb,
+        appearance_two_da,
+        &identity,
+    )
+    .map_err(|error| serialize_json(&error))?;
+    finish_procedural_creature_product_v2(artifact)
+}
+
+#[wasm_bindgen(js_name = buildMeshyProceduralHumanoidProductWithOptionsV3)]
+pub fn build_meshy_procedural_humanoid_product_with_options_v3(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    identity_json: &str,
+    build_options_json: &str,
+) -> Result<StudioCreatureProductArtifactV2, JsValue> {
+    build_meshy_procedural_humanoid_product_with_options_v3_inner(
+        source_glb,
+        appearance_two_da,
+        identity_json,
+        build_options_json,
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+fn build_meshy_procedural_humanoid_product_with_options_v3_inner(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    identity_json: &str,
+    build_options_json: &str,
+) -> Result<StudioCreatureProductArtifactV2, String> {
+    let identity = serde_json::from_str::<
+        m2a_core::model_pipeline::ProceduralCreatureProductIdentityV2,
+    >(identity_json)
+    .map_err(|_| {
+        serialize_json(&m2a_core::model_pipeline::M6PipelineErrorV1 {
+            schema_version: 1,
+            stage: "IDENTITY".to_owned(),
+            code: "M6-PRODUCT-IDENTITY-JSON".to_owned(),
+            path: "identityJson".to_owned(),
+            message: "product identity JSON does not match the strict V2 schema".to_owned(),
+        })
+    })?;
+    let build_options = parse_procedural_creature_build_options_v1(build_options_json)?;
+    let artifact =
+        m2a_core::model_pipeline::build_meshy_procedural_humanoid_product_with_options_v3(
+            source_glb,
+            appearance_two_da,
+            &identity,
+            &build_options,
+        )
+        .map_err(|error| serialize_json(&error))?;
+    finish_procedural_creature_product_v2(artifact)
+}
+
+fn finish_procedural_creature_product_v2(
+    artifact: m2a_core::model_pipeline::ProceduralCreatureProductArtifactV2,
+) -> Result<StudioCreatureProductArtifactV2, String> {
+    let readback =
+        m2a_core::inspect_binary_mdl(&artifact.model).map_err(|error| serialize_json(&error))?;
+
+    Ok(StudioCreatureProductArtifactV2 {
+        hak_bytes: artifact.hak,
+        model_bytes: artifact.model,
+        texture_bytes: artifact.texture,
+        report_json: String::from_utf8(artifact.report_json).map_err(|error| error.to_string())?,
+        manifest_json: String::from_utf8(artifact.manifest_json)
+            .map_err(|error| error.to_string())?,
+        summary_json: String::from_utf8(artifact.summary_json)
+            .map_err(|error| error.to_string())?,
+        readback_json: serialize_json(&readback),
+    })
+}
+
+fn parse_procedural_creature_build_options_v1(
+    build_options_json: &str,
+) -> Result<m2a_core::model_pipeline::ProceduralCreatureBuildOptionsV1, String> {
+    serde_json::from_str(build_options_json).map_err(|_| {
+        procedural_creature_json_error(
+            "M6-PROCEDURAL-BUILD-OPTIONS-JSON",
+            "buildOptionsJson",
+            "procedural creature build options JSON does not match the strict V1 schema",
+        )
+    })
+}
+
+fn procedural_creature_json_error(code: &str, path: &str, message: &str) -> String {
+    serialize_json(&m2a_core::model_pipeline::M6PipelineErrorV1 {
+        schema_version: 1,
+        stage: "TEXTURE".to_owned(),
+        code: code.to_owned(),
+        path: path.to_owned(),
+        message: message.to_owned(),
+    })
+}
+
+/// Builds the caller-identified historical P100K Creature compatibility
+/// profile through the browser boundary.
+#[wasm_bindgen(js_name = buildMeshyProceduralHumanoidP100kExperimentV1)]
+pub fn build_meshy_procedural_humanoid_p100k_experiment_v1(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    identity_json: &str,
+) -> Result<StudioP100kCreaturePackageArtifactV1, JsValue> {
+    build_meshy_procedural_humanoid_p100k_experiment_v1_inner(
+        source_glb,
+        appearance_two_da,
+        identity_json,
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+fn build_meshy_procedural_humanoid_p100k_experiment_v1_inner(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    identity_json: &str,
+) -> Result<StudioP100kCreaturePackageArtifactV1, String> {
+    let identity = serde_json::from_str::<
+        m2a_core::model_pipeline::ProceduralCreaturePackageIdentityV1,
+    >(identity_json)
+    .map_err(|_| {
+        serialize_json(&m2a_core::model_pipeline::M6PipelineErrorV1 {
+            schema_version: 1,
+            stage: "IDENTITY".to_owned(),
+            code: "M6-P100K-PACKAGE-IDENTITY-JSON".to_owned(),
+            path: "identityJson".to_owned(),
+            message: "package identity JSON does not match the strict V1 schema".to_owned(),
+        })
+    })?;
+    let artifact =
+        m2a_core::model_pipeline::build_meshy_procedural_humanoid_p100k_experiment_with_identity_v1(
+            source_glb,
+            appearance_two_da,
+            &identity,
+        )
+        .map_err(|error| serialize_json(&error))?;
+    finish_procedural_creature_package_v1(artifact)
+}
+
+#[wasm_bindgen(js_name = buildMeshyProceduralHumanoidP100kExperimentWithOptionsV2)]
+pub fn build_meshy_procedural_humanoid_p100k_experiment_with_options_v2(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    identity_json: &str,
+    build_options_json: &str,
+) -> Result<StudioP100kCreaturePackageArtifactV1, JsValue> {
+    build_meshy_procedural_humanoid_p100k_experiment_with_options_v2_inner(
+        source_glb,
+        appearance_two_da,
+        identity_json,
+        build_options_json,
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+fn build_meshy_procedural_humanoid_p100k_experiment_with_options_v2_inner(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    identity_json: &str,
+    build_options_json: &str,
+) -> Result<StudioP100kCreaturePackageArtifactV1, String> {
+    let identity = serde_json::from_str::<
+        m2a_core::model_pipeline::ProceduralCreaturePackageIdentityV1,
+    >(identity_json)
+    .map_err(|_| {
+        serialize_json(&m2a_core::model_pipeline::M6PipelineErrorV1 {
+            schema_version: 1,
+            stage: "IDENTITY".to_owned(),
+            code: "M6-P100K-PACKAGE-IDENTITY-JSON".to_owned(),
+            path: "identityJson".to_owned(),
+            message: "package identity JSON does not match the strict V1 schema".to_owned(),
+        })
+    })?;
+    let build_options = parse_procedural_creature_build_options_v1(build_options_json)?;
+    let artifact =
+        m2a_core::model_pipeline::build_meshy_procedural_humanoid_p100k_experiment_with_options_v2(
+            source_glb,
+            appearance_two_da,
+            &identity,
+            &build_options,
+        )
+        .map_err(|error| serialize_json(&error))?;
+    finish_procedural_creature_package_v1(artifact)
+}
+
+/// Builds the caller-identified historical P300K Creature compatibility
+/// profile through the same browser boundary as P100K.
+#[wasm_bindgen(js_name = buildMeshyProceduralHumanoidP300kExperimentV1)]
+pub fn build_meshy_procedural_humanoid_p300k_experiment_v1(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    identity_json: &str,
+) -> Result<StudioP100kCreaturePackageArtifactV1, JsValue> {
+    build_meshy_procedural_humanoid_p300k_experiment_v1_inner(
+        source_glb,
+        appearance_two_da,
+        identity_json,
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+fn build_meshy_procedural_humanoid_p300k_experiment_v1_inner(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    identity_json: &str,
+) -> Result<StudioP100kCreaturePackageArtifactV1, String> {
+    let identity = serde_json::from_str::<
+        m2a_core::model_pipeline::ProceduralCreaturePackageIdentityV1,
+    >(identity_json)
+    .map_err(|_| {
+        serialize_json(&m2a_core::model_pipeline::M6PipelineErrorV1 {
+            schema_version: 1,
+            stage: "IDENTITY".to_owned(),
+            code: "M6-P300K-PACKAGE-IDENTITY-JSON".to_owned(),
+            path: "identityJson".to_owned(),
+            message: "package identity JSON does not match the strict V1 schema".to_owned(),
+        })
+    })?;
+    let artifact =
+        m2a_core::model_pipeline::build_meshy_procedural_humanoid_p300k_experiment_with_identity_v1(
+            source_glb,
+            appearance_two_da,
+            &identity,
+        )
+        .map_err(|error| serialize_json(&error))?;
+    finish_procedural_creature_package_v1(artifact)
+}
+
+#[wasm_bindgen(js_name = buildMeshyProceduralHumanoidP300kExperimentWithOptionsV2)]
+pub fn build_meshy_procedural_humanoid_p300k_experiment_with_options_v2(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    identity_json: &str,
+    build_options_json: &str,
+) -> Result<StudioP100kCreaturePackageArtifactV1, JsValue> {
+    build_meshy_procedural_humanoid_p300k_experiment_with_options_v2_inner(
+        source_glb,
+        appearance_two_da,
+        identity_json,
+        build_options_json,
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+fn build_meshy_procedural_humanoid_p300k_experiment_with_options_v2_inner(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    identity_json: &str,
+    build_options_json: &str,
+) -> Result<StudioP100kCreaturePackageArtifactV1, String> {
+    let identity = serde_json::from_str::<
+        m2a_core::model_pipeline::ProceduralCreaturePackageIdentityV1,
+    >(identity_json)
+    .map_err(|_| {
+        serialize_json(&m2a_core::model_pipeline::M6PipelineErrorV1 {
+            schema_version: 1,
+            stage: "IDENTITY".to_owned(),
+            code: "M6-P300K-PACKAGE-IDENTITY-JSON".to_owned(),
+            path: "identityJson".to_owned(),
+            message: "package identity JSON does not match the strict V1 schema".to_owned(),
+        })
+    })?;
+    let build_options = parse_procedural_creature_build_options_v1(build_options_json)?;
+    let artifact =
+        m2a_core::model_pipeline::build_meshy_procedural_humanoid_p300k_experiment_with_options_v2(
+            source_glb,
+            appearance_two_da,
+            &identity,
+            &build_options,
+        )
+        .map_err(|error| serialize_json(&error))?;
+    finish_procedural_creature_package_v1(artifact)
+}
+
+fn finish_procedural_creature_package_v1(
+    artifact: m2a_core::model_pipeline::M6ModelPackageArtifactV1,
+) -> Result<StudioP100kCreaturePackageArtifactV1, String> {
+    let readback =
+        m2a_core::inspect_binary_mdl(&artifact.model).map_err(|error| serialize_json(&error))?;
+
+    Ok(StudioP100kCreaturePackageArtifactV1 {
+        hak_bytes: artifact.hak,
+        model_bytes: artifact.model,
+        texture_bytes: artifact.texture,
+        appearance_two_da_bytes: artifact.appearance_two_da,
         proof_module_bytes: artifact.proof_module,
         report_json: String::from_utf8(artifact.report_json).map_err(|error| error.to_string())?,
         manifest_json: String::from_utf8(artifact.manifest_json)
@@ -2252,7 +2712,7 @@ mod m7_native_tests {
     }"#;
     const EMPTY_DESCRIPTORS: &str = r#"{"schemaVersion":1,"payloads":[]}"#;
     const READY_BATCH_JSON_SHA256: &str =
-        "e5c2535ad0221f09e97fa4de468b21f8c82fefd8c563ce2bb15d7f5109536cc2";
+        "7a89b13e9bc29812e0e90da8c8ff169250e43ba826d47e530d9cb7a6e5c0f442";
     const APPEARANCE: &[u8] =
         include_bytes!("../../../apps/studio-web/tests/fixtures/appearance.2da");
 
@@ -2721,10 +3181,14 @@ mod m5_native_tests {
         build_meshy_h1_model_package_v2_inner, build_meshy_h1_model_package_v3_inner,
         build_meshy_h1_model_package_v5_inner,
         build_meshy_procedural_humanoid_model_package_v1_inner,
+        build_meshy_procedural_humanoid_p100k_experiment_v1_inner,
+        build_meshy_procedural_humanoid_product_v2_inner,
+        build_meshy_procedural_humanoid_product_with_options_v3_inner,
         build_meshy_static_placeable_package_v1_inner,
         build_meshy_static_placeable_package_v2_inner,
         build_meshy_static_placeable_package_v3_project_v1_inner,
         build_meshy_static_tile_package_v1_inner, direct_creature_animation_catalog_v1_json,
+        ingest_glb_json, ingest_meshy_p100k_experiment_json,
         inspect_editable_animation_source_v1_inner, inspect_two_da_v2_json,
         inspect_two_da_v2_json_inner, materialize_animation_studio_document_v1_inner,
         materialize_hak_resources, preview_authored_animation_clip_v1_inner,
@@ -3500,16 +3964,208 @@ mod m5_native_tests {
             report["animationCompleteness"]["profile"],
             "FULL_NATIVE42_PROCEDURAL_HUMANOID_V1"
         );
+        assert_eq!(report["animationCompleteness"]["schemaVersion"], 2);
         assert_eq!(report["animationCompleteness"]["requiredClipCount"], 42);
-        assert_eq!(report["animationCompleteness"]["explicitClipCount"], 1);
+        assert_eq!(report["animationCompleteness"]["inputSourceClipCount"], 1);
+        assert_eq!(
+            report["animationCompleteness"]["preservedSourceClipCount"],
+            1
+        );
+        assert_eq!(report["animationCompleteness"]["sourceDerivedClipCount"], 0);
         assert_eq!(report["animationCompleteness"]["proceduralClipCount"], 41);
+        assert_eq!(
+            report["animationCompleteness"]["discardedSourceClipCount"],
+            0
+        );
         assert_eq!(report["animationCompleteness"]["fallbackAliasCount"], 0);
+        assert_eq!(report["animationBehavior"]["schemaVersion"], 2);
         assert_eq!(
             report["animationBehavior"]["behaviorCandidateEligible"],
             true
         );
+        assert_eq!(report["animationKinematicsConformance"]["schemaVersion"], 2);
+        assert_eq!(
+            report["animationKinematicsConformance"]["allTracksStartAtZero"],
+            true
+        );
+        assert_eq!(
+            report["animationKinematicsConformance"]["requiredTransitionBoundariesContinuous"],
+            true
+        );
+        assert_eq!(
+            report["animationKinematicsConformance"]["locomotionRootMotionInPlace"],
+            true
+        );
+        assert_eq!(report["animationKinematicsConformance"]["complete"], true);
         assert_eq!(report["animationEventConformance"]["complete"], true);
+        assert_eq!(report["animationEventTimingPolicy"], "KINEMATIC_PEAK_V2");
         assert_eq!(report["skinAnimationConformance"]["complete"], true);
+    }
+
+    #[test]
+    fn studio_procedural_v2_uses_fresh_product_identity_and_has_no_module_surface() {
+        let source = std::fs::read(
+            canonical_repository_root().join("sample-3d/h2-clockwork-sentinel-1500/source.glb"),
+        )
+        .expect("owned H2 GLB");
+        let identity_json = r#"{
+            "modelResref":"m2a_stmdl2",
+            "textureResref":"m2a_sttex2",
+            "hakResref":"m2a_sthak2",
+            "appearanceLabel":"M2A_STUDIO_CREATURE_V2"
+        }"#;
+        let identity = serde_json::from_str::<
+            m2a_core::model_pipeline::ProceduralCreatureProductIdentityV2,
+        >(identity_json)
+        .unwrap();
+        let core = m2a_core::model_pipeline::build_meshy_procedural_humanoid_product_v2(
+            &source,
+            DIRECT_CREATURE_APPEARANCE,
+            &identity,
+        )
+        .expect("core product");
+        let mut studio = build_meshy_procedural_humanoid_product_v2_inner(
+            &source,
+            DIRECT_CREATURE_APPEARANCE,
+            identity_json,
+        )
+        .expect("Studio product");
+
+        assert_eq!(studio.take_hak_bytes(), core.hak);
+        assert_eq!(studio.take_model_bytes(), core.model);
+        assert_eq!(studio.take_texture_bytes(), core.texture);
+        assert!(studio.take_texture_bytes().is_empty());
+        let summary: serde_json::Value =
+            serde_json::from_str(&studio.summary_json()).expect("summary JSON");
+        assert_eq!(summary["schemaVersion"], 2);
+        assert_eq!(
+            summary["status"],
+            "PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED"
+        );
+        assert_eq!(summary["identity"]["modelResref"], "m2a_stmdl2");
+        assert!(summary["outputs"].get("proofModule").is_none());
+        let manifest: serde_json::Value =
+            serde_json::from_str(&studio.manifest_json()).expect("manifest JSON");
+        assert!(
+            manifest["generatedFiles"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|file| !file["relativePath"].as_str().unwrap().ends_with(".mod"))
+        );
+
+        let cleaned = build_meshy_procedural_humanoid_product_with_options_v3_inner(
+            &source,
+            DIRECT_CREATURE_APPEARANCE,
+            identity_json,
+            r#"{"schemaVersion":1,"textureArtifactCleanup":true}"#,
+        )
+        .expect("Studio product with texture cleanup");
+        let cleaned_report: serde_json::Value =
+            serde_json::from_str(&cleaned.report_json()).expect("cleaned report JSON");
+        assert_eq!(cleaned_report["textureArtifactCleanup"]["enabled"], true);
+        assert!(
+            cleaned_report["textureArtifactCleanup"]["inspectedPixelCount"]
+                .as_u64()
+                .unwrap()
+                > 0
+        );
+
+        let options_error = match build_meshy_procedural_humanoid_product_with_options_v3_inner(
+            &source,
+            DIRECT_CREATURE_APPEARANCE,
+            identity_json,
+            r#"{"schemaVersion":1,"textureArtifactCleanup":true,"unknown":1}"#,
+        ) {
+            Ok(_) => panic!("unknown texture options must fail closed"),
+            Err(error) => error,
+        };
+        let options_value: serde_json::Value = serde_json::from_str(&options_error).unwrap();
+        assert_eq!(options_value["code"], "M6-PROCEDURAL-BUILD-OPTIONS-JSON");
+
+        let error = match build_meshy_procedural_humanoid_product_v2_inner(
+            &source,
+            DIRECT_CREATURE_APPEARANCE,
+            r#"{"modelResref":"m2a_stmdl2"}"#,
+        ) {
+            Ok(_) => panic!("partial identity must fail closed"),
+            Err(error) => error,
+        };
+        let value: serde_json::Value = serde_json::from_str(&error).unwrap();
+        assert_eq!(value["code"], "M6-PRODUCT-IDENTITY-JSON");
+    }
+
+    #[test]
+    fn studio_p100k_boundary_replays_the_frozen_candidate_byte_for_byte_when_requested() {
+        if std::env::var_os("M2A_REQUIRE_P100K_STUDIO_REPLAY").is_none() {
+            return;
+        }
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let source =
+            std::fs::read(root.join("sample-3d/tlc-veiled-humanoid-h1-p100k-v1/source.glb"))
+                .expect("canonical P100K Meshy source");
+        let appearance = std::fs::read(root.join("local-reference-assets/appearance.2da"))
+            .expect("canonical full appearance table");
+        let identity_json = r#"{
+            "modelResref":"tlcveil100_m1",
+            "textureResref":"tlcveil100_t1",
+            "module":{
+                "moduleResref":"tlcv100demo1",
+                "areaResref":"tlcv100area1",
+                "hakResref":"tlcv100hak1"
+            },
+            "creatureResref":"tlcv100utc1"
+        }"#;
+
+        let mut studio = build_meshy_procedural_humanoid_p100k_experiment_v1_inner(
+            &source,
+            &appearance,
+            identity_json,
+        )
+        .expect("Studio P100K replay");
+        let frozen = root.join("proof-output/tlc-veiled-humanoid-p100k-v1/generated");
+
+        assert_eq!(
+            studio.take_proof_module_bytes(),
+            std::fs::read(frozen.join("tlcv100demo1.mod")).unwrap()
+        );
+        assert_eq!(
+            studio.take_hak_bytes(),
+            std::fs::read(frozen.join("tlcv100hak1.hak")).unwrap()
+        );
+        assert_eq!(
+            studio.take_model_bytes(),
+            std::fs::read(frozen.join("tlcveil100_m1.mdl")).unwrap()
+        );
+        assert_eq!(
+            studio.take_texture_bytes(),
+            std::fs::read(frozen.join("tlcveil100_t1.tga")).unwrap()
+        );
+        assert_eq!(
+            studio.take_appearance_two_da_bytes(),
+            std::fs::read(frozen.join("appearance.2da")).unwrap()
+        );
+    }
+
+    #[test]
+    fn studio_p100k_inspection_is_explicit_and_default_inspection_stays_at_20k() {
+        if std::env::var_os("M2A_REQUIRE_P100K_STUDIO_REPLAY").is_none() {
+            return;
+        }
+        let source = std::fs::read(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../sample-3d/tlc-veiled-humanoid-h1-p100k-v1/source.glb"),
+        )
+        .expect("canonical P100K Meshy source");
+        let default: serde_json::Value =
+            serde_json::from_str(&ingest_glb_json(&source)).expect("default inspection JSON");
+        let experiment: serde_json::Value =
+            serde_json::from_str(&ingest_meshy_p100k_experiment_json(&source))
+                .expect("P100K inspection JSON");
+
+        assert_eq!(default["report"]["conversionEligible"], false);
+        assert_eq!(experiment["report"]["conversionEligible"], true);
+        assert_eq!(experiment["report"]["statistics"]["triangleCount"], 102_335);
     }
 
     #[test]

@@ -4,6 +4,15 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 pub const TGA_SCHEMA_VERSION: u32 = 1;
+pub const TEXTURE_ARTIFACT_CLEANUP_ALGORITHM_V3: &str = "EDGE_AWARE_HAMPEL_MEDIAN_V3";
+const TEXTURE_ARTIFACT_CLEANUP_PASS_COUNT_V3: u32 = 2;
+const TEXTURE_ARTIFACT_CLEANUP_RADIUS_V3: usize = 2;
+const TEXTURE_ARTIFACT_CLEANUP_MIN_OPAQUE_NEIGHBORS_V3: usize = 20;
+const TEXTURE_ARTIFACT_CLEANUP_MIN_LUMA_DIFFERENCE_V3: u8 = 24;
+const TEXTURE_ARTIFACT_CLEANUP_MAD_MULTIPLIER_V3: u8 = 4;
+const TEXTURE_ARTIFACT_CLEANUP_CENTER_SUPPORT_DISTANCE_V3: u8 = 10;
+const TEXTURE_ARTIFACT_CLEANUP_MAX_CENTER_SUPPORT_V3: usize = 2;
+const TEXTURE_ARTIFACT_CLEANUP_MEDIAN_COHERENCE_DISTANCE_V3: u8 = 12;
 pub const TGA_MAX_OUTPUT_BYTES: u64 = 64 * 1024 * 1024;
 
 const HEADER_LENGTH: u64 = 18;
@@ -49,6 +58,42 @@ pub struct TgaImageV1 {
     pub height: u32,
     pub pixel_format: TgaPixelFormatV1,
     pub pixels: Vec<u8>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TextureArtifactCleanupOptionsV1 {
+    pub schema_version: u32,
+    pub enabled: bool,
+}
+
+impl Default for TextureArtifactCleanupOptionsV1 {
+    fn default() -> Self {
+        Self {
+            schema_version: TGA_SCHEMA_VERSION,
+            enabled: false,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextureArtifactCleanupReportV1 {
+    pub schema_version: u32,
+    pub algorithm: String,
+    pub enabled: bool,
+    pub pass_count: u32,
+    pub inspected_pixel_count: u64,
+    pub repaired_color_outlier_count: u64,
+    pub repaired_transparent_hole_count: u64,
+    pub input_pixel_sha256: String,
+    pub output_pixel_sha256: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TextureArtifactCleanupArtifactV1 {
+    pub image: TgaImageV1,
+    pub report: TextureArtifactCleanupReportV1,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -137,6 +182,216 @@ impl fmt::Display for TgaWriteError {
 }
 
 impl std::error::Error for TgaWriteError {}
+
+/// Applies the fixed edge-aware local-neighbor base-color cleanup used by Studio.
+///
+/// Replacement channels are always the median of opaque pixels in a local 5x5
+/// neighborhood; no random color is generated. A Hampel-style median absolute
+/// deviation gate rejects ordinary texture variation. A same-color support
+/// gate preserves coherent highlights and material borders, while still
+/// admitting isolated points and runs up to three samples. Two fixed passes
+/// repair remaining bright impulse artifacts without applying a global blur.
+/// One-pixel alpha holes retain their separate conservative 3x3 repair. The
+/// caller-owned image is never mutated.
+pub fn cleanup_texture_artifacts_v1(
+    image: &TgaImageV1,
+    options: &TextureArtifactCleanupOptionsV1,
+) -> Result<TextureArtifactCleanupArtifactV1, TgaWriteError> {
+    if options.schema_version != TGA_SCHEMA_VERSION {
+        return Err(TgaWriteError::fatal(
+            "M5-TEXTURE-CLEANUP-SCHEMA-INVALID",
+            "options.schemaVersion",
+            format!(
+                "expected texture cleanup schema {}, got {}",
+                TGA_SCHEMA_VERSION, options.schema_version
+            ),
+        ));
+    }
+    validate_schema_and_options(image, &TgaWriterOptionsV1::default())?;
+    validate_dimensions(image)?;
+
+    let input_pixel_sha256 = sha256_hex(&image.pixels);
+    let mut output = image.clone();
+    let width = usize::try_from(image.width).map_err(|_| {
+        TgaWriteError::fatal(
+            "M5-TGA-DIMENSIONS-INVALID",
+            "image.width",
+            "width does not fit this platform",
+        )
+    })?;
+    let height = usize::try_from(image.height).map_err(|_| {
+        TgaWriteError::fatal(
+            "M5-TGA-DIMENSIONS-INVALID",
+            "image.height",
+            "height does not fit this platform",
+        )
+    })?;
+    let channels = usize::try_from(image.pixel_format.channels())
+        .expect("the fixed RGB channel count fits usize");
+    let minimum_dimension = TEXTURE_ARTIFACT_CLEANUP_RADIUS_V3 * 2 + 1;
+    let inspected_pixel_count =
+        if options.enabled && width >= minimum_dimension && height >= minimum_dimension {
+            u64::try_from(
+                (width - TEXTURE_ARTIFACT_CLEANUP_RADIUS_V3 * 2)
+                    * (height - TEXTURE_ARTIFACT_CLEANUP_RADIUS_V3 * 2),
+            )
+            .unwrap_or(u64::MAX)
+        } else {
+            0
+        };
+    let mut repaired_color_outlier_count = 0u64;
+    let mut repaired_transparent_hole_count = 0u64;
+
+    let pass_count = if options.enabled && width >= minimum_dimension && height >= minimum_dimension
+    {
+        TEXTURE_ARTIFACT_CLEANUP_PASS_COUNT_V3
+    } else {
+        0
+    };
+
+    if pass_count > 0 {
+        for _pass in 0..pass_count {
+            let input = output.pixels.clone();
+            for y in TEXTURE_ARTIFACT_CLEANUP_RADIUS_V3..height - TEXTURE_ARTIFACT_CLEANUP_RADIUS_V3
+            {
+                for x in
+                    TEXTURE_ARTIFACT_CLEANUP_RADIUS_V3..width - TEXTURE_ARTIFACT_CLEANUP_RADIUS_V3
+                {
+                    let center_offset = (y * width + x) * channels;
+                    let center_alpha = if channels == 4 {
+                        input[center_offset + 3]
+                    } else {
+                        u8::MAX
+                    };
+                    let mut immediate_opaque_offsets = [0usize; 8];
+                    let mut immediate_opaque_count = 0usize;
+                    let mut opaque_offsets = [0usize; 24];
+                    let mut opaque_count = 0usize;
+                    for neighbor_y in y - TEXTURE_ARTIFACT_CLEANUP_RADIUS_V3
+                        ..=y + TEXTURE_ARTIFACT_CLEANUP_RADIUS_V3
+                    {
+                        for neighbor_x in x - TEXTURE_ARTIFACT_CLEANUP_RADIUS_V3
+                            ..=x + TEXTURE_ARTIFACT_CLEANUP_RADIUS_V3
+                        {
+                            if neighbor_x == x && neighbor_y == y {
+                                continue;
+                            }
+                            let offset = (neighbor_y * width + neighbor_x) * channels;
+                            let alpha = if channels == 4 {
+                                input[offset + 3]
+                            } else {
+                                u8::MAX
+                            };
+                            if alpha < 224 {
+                                continue;
+                            }
+                            opaque_offsets[opaque_count] = offset;
+                            opaque_count += 1;
+                            if neighbor_x.abs_diff(x) <= 1 && neighbor_y.abs_diff(y) <= 1 {
+                                immediate_opaque_offsets[immediate_opaque_count] = offset;
+                                immediate_opaque_count += 1;
+                            }
+                        }
+                    }
+
+                    if channels == 4 && center_alpha <= 32 && immediate_opaque_count >= 7 {
+                        let mut changed = false;
+                        for channel in 0..4 {
+                            let replacement = median_channel(
+                                &input,
+                                &immediate_opaque_offsets,
+                                immediate_opaque_count,
+                                channel,
+                            );
+                            changed |= output.pixels[center_offset + channel] != replacement;
+                            output.pixels[center_offset + channel] = replacement;
+                        }
+                        if changed {
+                            repaired_transparent_hole_count += 1;
+                        }
+                        continue;
+                    }
+                    if center_alpha < 224
+                        || opaque_count < TEXTURE_ARTIFACT_CLEANUP_MIN_OPAQUE_NEIGHBORS_V3
+                    {
+                        continue;
+                    }
+
+                    let mut neighbor_luma = [0u8; 24];
+                    for index in 0..opaque_count {
+                        neighbor_luma[index] = pixel_luma(&input, opaque_offsets[index]);
+                    }
+                    neighbor_luma[..opaque_count].sort_unstable();
+                    let median_luma = median_sorted(&neighbor_luma, opaque_count);
+                    let center_luma = pixel_luma(&input, center_offset);
+                    let center_difference = center_luma.saturating_sub(median_luma);
+                    if center_difference < TEXTURE_ARTIFACT_CLEANUP_MIN_LUMA_DIFFERENCE_V3 {
+                        continue;
+                    }
+
+                    let mut median_deviations = [0u8; 24];
+                    let mut center_support = 0usize;
+                    let mut median_coherence = 0usize;
+                    for index in 0..opaque_count {
+                        let luma = pixel_luma(&input, opaque_offsets[index]);
+                        median_deviations[index] = luma.abs_diff(median_luma);
+                        if luma.abs_diff(center_luma)
+                            <= TEXTURE_ARTIFACT_CLEANUP_CENTER_SUPPORT_DISTANCE_V3
+                        {
+                            center_support += 1;
+                        }
+                        if luma.abs_diff(median_luma)
+                            <= TEXTURE_ARTIFACT_CLEANUP_MEDIAN_COHERENCE_DISTANCE_V3
+                        {
+                            median_coherence += 1;
+                        }
+                    }
+                    median_deviations[..opaque_count].sort_unstable();
+                    let median_absolute_deviation = median_sorted(&median_deviations, opaque_count);
+                    let adaptive_difference = median_absolute_deviation
+                        .max(1)
+                        .saturating_mul(TEXTURE_ARTIFACT_CLEANUP_MAD_MULTIPLIER_V3)
+                        .max(TEXTURE_ARTIFACT_CLEANUP_MIN_LUMA_DIFFERENCE_V3);
+                    if center_difference < adaptive_difference
+                        || center_support > TEXTURE_ARTIFACT_CLEANUP_MAX_CENTER_SUPPORT_V3
+                        || median_coherence < opaque_count.div_ceil(2)
+                    {
+                        continue;
+                    }
+
+                    let mut changed = false;
+                    for channel in 0..3 {
+                        let replacement =
+                            median_channel(&input, &opaque_offsets, opaque_count, channel);
+                        changed |= output.pixels[center_offset + channel] != replacement;
+                        output.pixels[center_offset + channel] = replacement;
+                    }
+                    if changed {
+                        repaired_color_outlier_count += 1;
+                    }
+                }
+            }
+        }
+    } else {
+        debug_assert_eq!(inspected_pixel_count, 0);
+    }
+
+    let output_pixel_sha256 = sha256_hex(&output.pixels);
+    Ok(TextureArtifactCleanupArtifactV1 {
+        image: output,
+        report: TextureArtifactCleanupReportV1 {
+            schema_version: TGA_SCHEMA_VERSION,
+            algorithm: TEXTURE_ARTIFACT_CLEANUP_ALGORITHM_V3.to_owned(),
+            enabled: options.enabled,
+            pass_count,
+            inspected_pixel_count,
+            repaired_color_outlier_count,
+            repaired_transparent_hole_count,
+            input_pixel_sha256,
+            output_pixel_sha256,
+        },
+    })
+}
 
 pub fn write_tga_v1(
     image: &TgaImageV1,
@@ -418,6 +673,37 @@ fn readback_tga_v1(payload: &[u8]) -> Result<TgaReadback, String> {
 fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn median_channel<const N: usize>(
+    pixels: &[u8],
+    offsets: &[usize; N],
+    count: usize,
+    channel: usize,
+) -> u8 {
+    let mut values = [0u8; N];
+    for index in 0..count {
+        values[index] = pixels[offsets[index] + channel];
+    }
+    values[..count].sort_unstable();
+    median_sorted(&values, count)
+}
+
+fn median_sorted(values: &[u8], count: usize) -> u8 {
+    if count.is_multiple_of(2) {
+        let left = u16::from(values[count / 2 - 1]);
+        let right = u16::from(values[count / 2]);
+        u8::try_from((left + right) / 2).expect("the average of two u8 values fits u8")
+    } else {
+        values[count / 2]
+    }
+}
+
+fn pixel_luma(pixels: &[u8], offset: usize) -> u8 {
+    let red = u16::from(pixels[offset]);
+    let green = u16::from(pixels[offset + 1]);
+    let blue = u16::from(pixels[offset + 2]);
+    u8::try_from((54 * red + 183 * green + 19 * blue) >> 8).expect("fixed-point RGB luma fits u8")
 }
 
 #[cfg(test)]

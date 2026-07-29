@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { userEvent } from "vitest/browser";
+import { commands, userEvent } from "vitest/browser";
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import sourceUrl from "../.generated/owned-package/generated/source.glb?url";
 import fullNative42SourceUrl from "../.generated/owned-full42-package/generated/source.glb?url";
 import proceduralHumanoidSourceUrl from "@m2a-canonical-repository/sample-3d/h2-clockwork-sentinel-1500/source.glb?url";
 import ownerPlaceableSourceUrl from "@m2a-canonical-repository/sample-3d/s1-placeable-ritual-pedestal-1500/source.glb?url";
+import p100kSourceUrl from "../.generated/p100k-studio-replay/source.glb?url";
+import p100kAppearanceUrl from "../.generated/p100k-studio-replay/appearance.2da?url";
+import p300kSourceUrl from "../.generated/p300k-studio-replay/source.glb?url";
+import p300kAppearanceUrl from "../.generated/p300k-studio-replay/appearance.2da?url";
 import appearanceUrl from "../fixtures/appearance.2da?url";
 import placeablesUrl from "../fixtures/placeables.2da?url";
 import { buildM7PayloadEnvelope } from "../../src/features/m7/envelope";
@@ -22,6 +26,41 @@ import {
   reviseMeshy2AuroraProjectV1,
   serializeMeshy2AuroraProjectV1,
 } from "../../src/features/project";
+
+declare module "vitest/browser" {
+  interface BrowserCommands {
+    captureP300kArtifact: (
+      fileName: string,
+      chunkBase64: string,
+      offset: number,
+      totalBytes: number,
+      expectedSha256: string,
+    ) => Promise<{ complete: boolean; receivedBytes: number; sha256?: string }>;
+  }
+}
+
+async function base64Chunk(bytes: Uint8Array) {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("artifact chunk read failed"));
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== "string") {
+        reject(new Error("artifact chunk did not produce a data URL"));
+        return;
+      }
+      const separator = result.indexOf(",");
+      if (separator < 0) {
+        reject(new Error("artifact chunk data URL has no payload"));
+        return;
+      }
+      resolve(result.slice(separator + 1));
+    };
+    reader.readAsDataURL(new Blob([copy.buffer]));
+  });
+}
 
 const clients: StudioWorkerClient[] = [];
 const roots: Root[] = [];
@@ -219,6 +258,13 @@ describe("local file to canonical web-WASM Worker integration", () => {
         sourceGlb,
         appearanceTwoDa,
         packageLane: "SKINNED_PROCEDURAL_HUMANOID_42",
+        textureArtifactCleanup: false,
+        identityJson: JSON.stringify({
+          modelResref: "m2a_stcrmdl2",
+          textureResref: "m2a_stcrtex2",
+          hakResref: "m2a_stcrhak2",
+          appearanceLabel: "M2A_STUDIO_CREATURE_V2",
+        }),
       },
       [sourceGlb, appearanceTwoDa],
     );
@@ -235,11 +281,9 @@ describe("local file to canonical web-WASM Worker integration", () => {
     const moduleArtifact = response.artifacts.find((artifact) => artifact.kind === "MODULE");
     const reportArtifact = response.artifacts.find((artifact) => artifact.artifactId === "report-json");
     expect(hak).toBeDefined();
-    expect(moduleArtifact).toBeDefined();
+    expect(moduleArtifact).toBeUndefined();
     expect(reportArtifact).toBeDefined();
-    expect(reportArtifact?.fileName).toBe(
-      `${moduleArtifact!.fileName.slice(0, -4)}-inspection.json`,
-    );
+    expect(reportArtifact?.fileName).toBe("inspection.json");
     expect(hak?.provenance).toBe("M2A_WASM_WORKER");
     expect(new TextDecoder().decode(hak!.bytes.slice(0, 8))).toBe("HAK V1.0");
     expect(hak?.byteLength).toBe(hak?.bytes.byteLength);
@@ -253,15 +297,27 @@ describe("local file to canonical web-WASM Worker integration", () => {
       };
       texture?: { width?: number; height?: number };
       animationCompleteness?: {
+        schemaVersion?: number;
         profile?: string;
         requiredClipCount?: number;
-        explicitClipCount?: number;
+        inputSourceClipCount?: number;
+        preservedSourceClipCount?: number;
+        sourceDerivedClipCount?: number;
         proceduralClipCount?: number;
+        discardedSourceClipCount?: number;
         fallbackAliasCount?: number;
         complete?: boolean;
       };
       animationBehavior?: { behaviorCandidateEligible?: boolean };
+      animationKinematicsConformance?: {
+        schemaVersion?: number;
+        allTracksStartAtZero?: boolean;
+        requiredTransitionBoundariesContinuous?: boolean;
+        locomotionRootMotionInPlace?: boolean;
+        complete?: boolean;
+      };
       animationEventConformance?: { requiredPairCount?: number; complete?: boolean };
+      animationEventTimingPolicy?: string;
       skinAnimationConformance?: { requiredClipCount?: number; complete?: boolean };
     };
     const summary = JSON.parse(response.summaryJson) as {
@@ -283,28 +339,40 @@ describe("local file to canonical web-WASM Worker integration", () => {
     expect(report.geometry?.activeJointCount).toBeGreaterThan(1);
     expect(report.geometry?.outputSegmentDeformation).toBe("SKIN");
     expect(report.animationCompleteness).toMatchObject({
+      schemaVersion: 2,
       profile: "FULL_NATIVE42_PROCEDURAL_HUMANOID_V1",
       requiredClipCount: 42,
-      explicitClipCount: 1,
+      inputSourceClipCount: 1,
+      preservedSourceClipCount: 1,
+      sourceDerivedClipCount: 0,
       proceduralClipCount: 41,
+      discardedSourceClipCount: 0,
       fallbackAliasCount: 0,
       complete: true,
     });
     expect(report.animationBehavior?.behaviorCandidateEligible).toBe(true);
+    expect(report.animationKinematicsConformance).toMatchObject({
+      schemaVersion: 2,
+      allTracksStartAtZero: true,
+      requiredTransitionBoundariesContinuous: true,
+      locomotionRootMotionInPlace: true,
+      complete: true,
+    });
     expect(report.animationEventConformance).toMatchObject({
       requiredPairCount: 23,
       complete: true,
     });
+    expect(report.animationEventTimingPolicy).toBe("KINEMATIC_PEAK_V2");
     expect(report.skinAnimationConformance).toMatchObject({
       requiredClipCount: 5,
       complete: true,
     });
-    expect(summary.status).toBe("M6_MODEL_PACKAGE_MATERIALIZED");
+    expect(summary.status).toBe("PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED");
     expect(summary.inputGlb?.byteLength).toBe(source.size);
     expect(manifest.packageManifest?.resources).toHaveLength(3);
     expect(readback.nodeTree?.roots).toHaveLength(1);
     expect(readback.nodeTree?.roots?.[0]).toMatchObject({
-      name: "m2a_m6p01",
+      name: "m2a_stcrmdl2",
       controllers: [],
     });
     expect(readback.animations).toHaveLength(42);
@@ -319,9 +387,9 @@ describe("local file to canonical web-WASM Worker integration", () => {
       response.manifestJson,
       response.artifacts,
     );
-    expect(snapshot.status).toBe("M6_MODEL_PACKAGE_MATERIALIZED");
+    expect(snapshot.status).toBe("PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED");
     expect(snapshot.geometry).toMatchObject({ joints: report.geometry?.activeJointCount, deformation: "SKIN" });
-    expect(snapshot.resrefs).toMatchObject({ model: "m2a_m6p01", texture: "m2a_m6t01" });
+    expect(snapshot.resrefs).toMatchObject({ model: "m2a_stcrmdl2", texture: "m2a_stcrtex2" });
     expect(snapshot.hak.entryCount).toBe(3);
     expect(projectCanonicalReadback(response.readbackJson).nodeTree.roots.length).toBeGreaterThan(0);
     const repeatedSourceGlb = await fetchBytes(proceduralHumanoidSourceUrl);
@@ -333,6 +401,13 @@ describe("local file to canonical web-WASM Worker integration", () => {
         sourceGlb: repeatedSourceGlb,
         appearanceTwoDa: repeatedAppearanceTwoDa,
         packageLane: "SKINNED_PROCEDURAL_HUMANOID_42",
+        textureArtifactCleanup: false,
+        identityJson: JSON.stringify({
+          modelResref: "m2a_stcrmdl2",
+          textureResref: "m2a_stcrtex2",
+          hakResref: "m2a_stcrhak2",
+          appearanceLabel: "M2A_STUDIO_CREATURE_V2",
+        }),
       },
       [repeatedSourceGlb, repeatedAppearanceTwoDa],
     );
@@ -390,6 +465,256 @@ describe("local file to canonical web-WASM Worker integration", () => {
       [sourceGlb, appearanceTwoDa],
     )).rejects.toThrow("Unsupported model package lane: H1_SKINNED");
   });
+
+  const p100kReplay = import.meta.env.VITE_M2A_RUN_P100K_STUDIO_REPLAY === "1" ? it : it.skip;
+  p100kReplay(
+    "replays the exact frozen 100K Meshy candidate through Studio Worker and WASM",
+    { timeout: 600_000 },
+    async () => {
+      const client = new StudioWorkerClient();
+      clients.push(client);
+
+      const defaultInspection = await client.request(
+        {
+          requestId: "integration-p100k-default-inspection",
+          type: "INSPECT_SOURCE",
+          sourceGlb: await fetchBytes(p100kSourceUrl),
+          target: "CREATURE",
+          creatureProfile: "PRODUCT_300K",
+        },
+      );
+      const experimentInspection = await client.request(
+        {
+          requestId: "integration-p100k-experiment-inspection",
+          type: "INSPECT_SOURCE",
+          sourceGlb: await fetchBytes(p100kSourceUrl),
+          target: "CREATURE",
+          creatureProfile: "EXPERIMENTAL_P100K",
+        },
+      );
+      expect(defaultInspection.ok).toBe(true);
+      expect(experimentInspection.ok).toBe(true);
+      if (
+        !defaultInspection.ok
+        || defaultInspection.type !== "SOURCE_INSPECTED"
+        || !experimentInspection.ok
+        || experimentInspection.type !== "SOURCE_INSPECTED"
+      ) {
+        throw new Error("P100K source inspection did not complete");
+      }
+      expect(JSON.parse(defaultInspection.ingestJson).report.conversionEligible).toBe(false);
+      expect(JSON.parse(experimentInspection.ingestJson).report).toMatchObject({
+        conversionEligible: true,
+        statistics: { triangleCount: 102_335 },
+      });
+
+      const sourceGlb = await fetchBytes(p100kSourceUrl);
+      const appearanceTwoDa = await fetchBytes(p100kAppearanceUrl);
+      const response = await client.request(
+        {
+          requestId: "integration-p100k-exact-replay",
+          type: "BUILD_MODEL_PACKAGE",
+          sourceGlb,
+          appearanceTwoDa,
+          packageLane: "SKINNED_PROCEDURAL_HUMANOID_P100K_EXPERIMENT",
+          textureArtifactCleanup: false,
+          identityJson: JSON.stringify({
+            modelResref: "tlcveil100_m1",
+            textureResref: "tlcveil100_t1",
+            module: {
+              moduleResref: "tlcv100demo1",
+              areaResref: "tlcv100area1",
+              hakResref: "tlcv100hak1",
+            },
+            creatureResref: "tlcv100utc1",
+          }),
+        },
+        [sourceGlb, appearanceTwoDa],
+      );
+
+      expect(response.ok).toBe(true);
+      expect(response.type).toBe("MODEL_PACKAGE_BUILT");
+      if (!response.ok || response.type !== "MODEL_PACKAGE_BUILT") {
+        throw new Error("P100K Worker replay did not return a model package");
+      }
+      const expected = new Map([
+        ["tlcv100demo1.mod", "91af75ead718d742045767c31617d560dad1bc3f05ae00644417149dea21215c"],
+        ["tlcv100hak1.hak", "6b8b74537fb6837cb6bb1981f1f417d931cebfb46b0d367965671cea0e39f8c3"],
+        ["tlcveil100_m1.mdl", "876f6e92ec189b58ed9797333cde837edf3ca9dc57eba10fbf735d9c1f28bb70"],
+      ]);
+      for (const [fileName, expectedSha256] of expected) {
+        const output = response.artifacts.find((candidate) => candidate.fileName === fileName);
+        expect(output, `missing ${fileName}`).toBeDefined();
+        expect(output?.sha256).toBe(expectedSha256);
+        expect(output?.sha256).toBe(await sha256(output!.bytes));
+      }
+      const snapshot = projectCanonicalResult(
+        response.reportJson,
+        response.summaryJson,
+        response.manifestJson,
+        response.artifacts,
+      );
+      expect(snapshot.status).toBe("M6_MODEL_PACKAGE_MATERIALIZED");
+      expect(snapshot.sourceMetrics.triangles).toBe(99_812);
+      expect(snapshot.convertedMetrics.triangles).toBe(99_812);
+      expect(snapshot.resrefs).toEqual({
+        model: "tlcveil100_m1",
+        texture: "tlcveil100_t1",
+      });
+    },
+  );
+
+  const p300kReplay = import.meta.env.VITE_M2A_RUN_P300K_STUDIO_REPLAY === "1" ? it : it.skip;
+  p300kReplay(
+    "builds the exact Meshy P300K source through Studio Worker, WASM, core, and owned writers",
+    { timeout: 900_000 },
+    async () => {
+      const client = new StudioWorkerClient();
+      clients.push(client);
+
+      const defaultInspection = await client.request(
+        {
+          requestId: "integration-p300k-default-inspection",
+          type: "INSPECT_SOURCE",
+          sourceGlb: await fetchBytes(p300kSourceUrl),
+          target: "CREATURE",
+          creatureProfile: "PRODUCT_300K",
+        },
+      );
+      const experimentInspection = await client.request(
+        {
+          requestId: "integration-p300k-experiment-inspection",
+          type: "INSPECT_SOURCE",
+          sourceGlb: await fetchBytes(p300kSourceUrl),
+          target: "CREATURE",
+          creatureProfile: "EXPERIMENTAL_P300K",
+        },
+      );
+      expect(defaultInspection.ok).toBe(true);
+      expect(experimentInspection.ok).toBe(true);
+      if (
+        !defaultInspection.ok
+        || defaultInspection.type !== "SOURCE_INSPECTED"
+        || !experimentInspection.ok
+        || experimentInspection.type !== "SOURCE_INSPECTED"
+      ) {
+        throw new Error("P300K source inspection did not complete");
+      }
+      expect(JSON.parse(defaultInspection.ingestJson).report.conversionEligible).toBe(false);
+      const experimentReport = JSON.parse(experimentInspection.ingestJson).report;
+      expect(experimentReport.conversionEligible).toBe(true);
+      expect(experimentReport.statistics.triangleCount).toBeGreaterThan(100_000);
+      expect(experimentReport.statistics.triangleCount).toBeLessThanOrEqual(330_000);
+
+      const sourceGlb = await fetchBytes(p300kSourceUrl);
+      const appearanceTwoDa = await fetchBytes(p300kAppearanceUrl);
+      const response = await client.request(
+        {
+          requestId: "integration-p300k-exact-face-plane-ab-build",
+          type: "BUILD_MODEL_PACKAGE",
+          sourceGlb,
+          appearanceTwoDa,
+          packageLane: "SKINNED_PROCEDURAL_HUMANOID_P300K_EXPERIMENT",
+          textureArtifactCleanup: true,
+          identityJson: JSON.stringify({
+            modelResref: "m2p3jm0eeb135c",
+            textureResref: "m2p3jt0eeb135c",
+            module: {
+              moduleResref: "m2p3jd0eeb135c",
+              areaResref: "m2p3ja0eeb135c",
+              hakResref: "m2p3jh0eeb135c",
+            },
+            creatureResref: "m2p3jc0eeb135c",
+          }),
+        },
+        [sourceGlb, appearanceTwoDa],
+      );
+
+      expect(response.ok).toBe(true);
+      expect(response.type).toBe("MODEL_PACKAGE_BUILT");
+      if (!response.ok || response.type !== "MODEL_PACKAGE_BUILT") {
+        throw new Error("P300K Worker build did not return a model package");
+      }
+      for (const fileName of [
+        "m2p3jd0eeb135c.mod",
+        "m2p3jh0eeb135c.hak",
+        "m2p3jm0eeb135c.mdl",
+        "m2p3jt0eeb135c.tga",
+      ]) {
+        const output = response.artifacts.find((candidate) => candidate.fileName === fileName);
+        expect(output, `missing ${fileName}`).toBeDefined();
+        expect(output?.sha256).toBe(await sha256(output!.bytes));
+      }
+      const report = JSON.parse(response.reportJson);
+      expect(report.textureArtifactCleanup).toMatchObject({
+        schemaVersion: 1,
+        algorithm: "EDGE_AWARE_HAMPEL_MEDIAN_V3",
+        enabled: true,
+        passCount: 2,
+        inspectedPixelCount: 4_177_936,
+        repairedColorOutlierCount: 4_588,
+        repairedTransparentHoleCount: 0,
+        inputPixelSha256: "fd05864b65c21dc98cc52131d0c6bc012ad546646a04940ef4135aaf9566f163",
+        outputPixelSha256: "62ebd7a04eddcdb13ae43133c2aa78513cb426ce2ed056c59db11aa74be50937",
+      });
+      const textureArtifact = response.artifacts.find(
+        (candidate) => candidate.fileName === "m2p3jt0eeb135c.tga",
+      );
+      expect(textureArtifact?.sha256).toBe(
+        "ac6aceb3f2809c5ffe1170d2525df672fb077855cf8bc1d78f24241596f05fbc",
+      );
+      const manifest = JSON.parse(response.manifestJson);
+      expect(
+        manifest.packageManifest.resources.find(
+          (resource: { role?: string }) => resource.role === "TEXTURE",
+        )?.sha256,
+      ).toBe(textureArtifact?.sha256);
+      const snapshot = projectCanonicalResult(
+        response.reportJson,
+        response.summaryJson,
+        response.manifestJson,
+        response.artifacts,
+      );
+      expect(snapshot.status).toBe("M6_MODEL_PACKAGE_MATERIALIZED");
+      expect(snapshot.sourceMetrics.triangles).toBeGreaterThan(100_000);
+      expect(snapshot.sourceMetrics.triangles).toBeLessThanOrEqual(300_000);
+      expect(snapshot.sourceMetrics.triangles).toBe(296_276);
+      expect(snapshot.convertedMetrics.triangles).toBe(296_276);
+      expect(snapshot.resrefs).toEqual({
+        model: "m2p3jm0eeb135c",
+        texture: "m2p3jt0eeb135c",
+      });
+      if (import.meta.env.VITE_M2A_CAPTURE_P300K_ARTIFACTS === "1") {
+        for (const artifact of response.artifacts) {
+          const artifactBytes = new Uint8Array(artifact.bytes);
+          const chunkSize = 2 * 1024 * 1024;
+          let captured: {
+            complete: boolean;
+            receivedBytes: number;
+            sha256?: string;
+          } | undefined;
+          for (let offset = 0; offset < artifactBytes.byteLength; offset += chunkSize) {
+            const chunk = artifactBytes.subarray(
+              offset,
+              Math.min(offset + chunkSize, artifactBytes.byteLength),
+            );
+            captured = await commands.captureP300kArtifact(
+              artifact.fileName,
+              await base64Chunk(chunk),
+              offset,
+              artifact.byteLength,
+              artifact.sha256,
+            );
+          }
+          expect(captured).toEqual({
+            complete: true,
+            receivedBytes: artifact.byteLength,
+            sha256: artifact.sha256,
+          });
+        }
+      }
+    },
+  );
 
   it("carries caller-owned gameplay events through the real Full-42 WASM Worker lane", async () => {
     const sourceGlb = await fetchBytes(fullNative42SourceUrl);

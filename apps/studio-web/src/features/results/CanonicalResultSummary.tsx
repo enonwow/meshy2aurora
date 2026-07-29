@@ -1,12 +1,18 @@
 import type { CanonicalResultSnapshot } from "./projectCanonicalResult";
 
 export function CanonicalResultSummary({ result }: { result: CanonicalResultSnapshot }) {
+  const runtimeAcceptance = result.runtimeAcceptance;
   return (
     <section className="panel result-workspace" aria-label="Canonical model result">
       <div>
         <p className="eyebrow">Canonical structural output</p>
         <h2>{result.status}</h2>
-        <p><strong>Runtime acceptance:</strong> OPEN_M6 — Aurora/NWN runtime proof is a later gate.</p>
+        <p>
+          <strong>Runtime acceptance:</strong>{" "}
+          {runtimeAcceptance.status === "OWNER_VERIFIED"
+            ? "OWNER_VERIFIED — Aurora Toolset visible/verified; NWN visible/verified."
+            : `${runtimeAcceptance.status} — Aurora/NWN runtime proof is not verified for these exact output hashes.`}
+        </p>
       </div>
       <div className="result-grid">
         <article><h3>Geometry</h3><dl>

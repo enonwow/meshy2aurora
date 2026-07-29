@@ -9,3 +9,27 @@ files:
     size_bytes: 7944380
     sha256: 3071664994aec7d71f8a6fb8808587161dab9e09816f1a78b8562380e967485f
 provenance_note: owner-selected local Meshy input; payload is not tracked by Git
+latest_offline_pipeline:
+  date: 2026-07-27
+  route: full-native42-procedural-humanoid
+  result: materialized
+  profile: FULL_NATIVE42_PROCEDURAL_HUMANOID_V1
+  model_root_part: 0
+  animation_count: 42
+  animation_type: 5
+  animation_root_parts: [0]
+  appearance_cell_count: 35
+  packet: proof-output/h1-full42-20260727
+  test_module_filename: m2a_h1full42.mod
+  module_resref: m2a_h1full42
+  area_resref: m2a_h1area
+  hak_resref: m2a_h1full42
+  model_resref: m2a_h1mdl
+  texture_resref: m2a_h1tex
+  creature_resref: m2a_h1utc
+  appearance_row: 15100
+  model_sha256: f6842fd353d98542f0055625ec496cee3d83aac0ac4310dadb348e1303d56ab0
+  hak_sha256: ad70ee816414cef00a014c7a51ab6c8675a972150df33afcd5f364b94c7c1a3b
+  module_sha256: 60dd43ac8d0e2d121e841b53742824e42858b496b37861804b04cbc145392ac2
+  native_install_verified: true
+  runtime_visual_status: not_tested

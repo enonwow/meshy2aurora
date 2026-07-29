@@ -169,6 +169,103 @@ declare module "@m2a-wasm" {
     takeProofModuleBytes(): Uint8Array;
     free(): void;
   };
+  export function buildMeshyProceduralHumanoidProductV2(
+    sourceGlb: Uint8Array,
+    appearanceTwoDa: Uint8Array,
+    identityJson: string,
+  ): {
+    readonly reportJson: string;
+    readonly manifestJson: string;
+    readonly summaryJson: string;
+    readonly readbackJson: string;
+    takeHakBytes(): Uint8Array;
+    takeModelBytes(): Uint8Array;
+    takeTextureBytes(): Uint8Array;
+    free(): void;
+  };
+  export function buildMeshyProceduralHumanoidProductWithOptionsV3(
+    sourceGlb: Uint8Array,
+    appearanceTwoDa: Uint8Array,
+    identityJson: string,
+    buildOptionsJson: string,
+  ): {
+    readonly reportJson: string;
+    readonly manifestJson: string;
+    readonly summaryJson: string;
+    readonly readbackJson: string;
+    takeHakBytes(): Uint8Array;
+    takeModelBytes(): Uint8Array;
+    takeTextureBytes(): Uint8Array;
+    free(): void;
+  };
+  export function ingestMeshyP100kExperimentJson(sourceGlb: Uint8Array): string;
+  export function ingestMeshyP300kExperimentJson(sourceGlb: Uint8Array): string;
+  export function buildMeshyProceduralHumanoidP100kExperimentV1(
+    sourceGlb: Uint8Array,
+    appearanceTwoDa: Uint8Array,
+    identityJson: string,
+  ): {
+    readonly reportJson: string;
+    readonly manifestJson: string;
+    readonly summaryJson: string;
+    readonly readbackJson: string;
+    takeHakBytes(): Uint8Array;
+    takeModelBytes(): Uint8Array;
+    takeTextureBytes(): Uint8Array;
+    takeAppearanceTwoDaBytes(): Uint8Array;
+    takeProofModuleBytes(): Uint8Array;
+    free(): void;
+  };
+  export function buildMeshyProceduralHumanoidP100kExperimentWithOptionsV2(
+    sourceGlb: Uint8Array,
+    appearanceTwoDa: Uint8Array,
+    identityJson: string,
+    buildOptionsJson: string,
+  ): {
+    readonly reportJson: string;
+    readonly manifestJson: string;
+    readonly summaryJson: string;
+    readonly readbackJson: string;
+    takeHakBytes(): Uint8Array;
+    takeModelBytes(): Uint8Array;
+    takeTextureBytes(): Uint8Array;
+    takeAppearanceTwoDaBytes(): Uint8Array;
+    takeProofModuleBytes(): Uint8Array;
+    free(): void;
+  };
+  export function buildMeshyProceduralHumanoidP300kExperimentV1(
+    sourceGlb: Uint8Array,
+    appearanceTwoDa: Uint8Array,
+    identityJson: string,
+  ): {
+    readonly reportJson: string;
+    readonly manifestJson: string;
+    readonly summaryJson: string;
+    readonly readbackJson: string;
+    takeHakBytes(): Uint8Array;
+    takeModelBytes(): Uint8Array;
+    takeTextureBytes(): Uint8Array;
+    takeAppearanceTwoDaBytes(): Uint8Array;
+    takeProofModuleBytes(): Uint8Array;
+    free(): void;
+  };
+  export function buildMeshyProceduralHumanoidP300kExperimentWithOptionsV2(
+    sourceGlb: Uint8Array,
+    appearanceTwoDa: Uint8Array,
+    identityJson: string,
+    buildOptionsJson: string,
+  ): {
+    readonly reportJson: string;
+    readonly manifestJson: string;
+    readonly summaryJson: string;
+    readonly readbackJson: string;
+    takeHakBytes(): Uint8Array;
+    takeModelBytes(): Uint8Array;
+    takeTextureBytes(): Uint8Array;
+    takeAppearanceTwoDaBytes(): Uint8Array;
+    takeProofModuleBytes(): Uint8Array;
+    free(): void;
+  };
   export function buildMeshyM0StaticRigidPackageV1(
     sourceGlb: Uint8Array,
     appearanceTwoDa: Uint8Array,

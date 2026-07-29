@@ -74,7 +74,13 @@ Status: POTWIERDZONE (pomiary v13; twardy limit engine/derived v13 opisany jako 
 
 Zmierzylem realne `*.glb` wygenerowane przez v13 w mirrorze aurora-web. Zakres dla sprawdzonych creature: `424-1343` trojkaty w modelach referencyjnych bez animacji supermodelu i ok. `740-2201` vertexow. `c_kocrachn` ma `1130` trojkatow i `1311` vertexow. Wiekszy potwor w probce: `c_driderchf` ma `1343` trojkaty i `2201` vertexow; `c_bathorror` ma `1014` trojkatow i `2002` vertexow.
 
-Nie znalazlem potwierdzonego twardego limitu v13/engine. Rekomendacja dla `m2a_*`: target decymacji `1000-1500` trojkatow dla pierwszego potwora, ostrzezenie powyzej `5000`, blokada TDD powyzej `10000` dopoki nie mamy runtime/oracle proof.
+Nie znalazlem potwierdzonego globalnego twardego limitu v13/engine. Pierwotna
+rekomendacja `5000/10000` byla ostroznym guardrailem produktu, nie limitem NWN.
+Decyzja wlasciciela z `2026-07-29` zastapila ja jednym wspolnym budzetem dla
+Creature, Placeable, Tile i pozostalych render-modeli: warning powyzej
+`150000`, blokada dopiero powyzej `300000`. Dokladnie `300000` jest dozwolone.
+Niezalezna granica formatu jednego mesh streamu pozostaje `21845` triangles;
+pipeline automatycznie segmentuje wiekszy model bez usuwania geometrii.
 
 ```yaml
 measured_v13_creature_glbs:
@@ -122,9 +128,14 @@ measured_v13_creature_glbs:
 recommended_m2a_geometry_budget:
   first_target_triangles: [1000, 1500]
   first_target_vertices_max: 2500
-  warn_above_triangles: 5000
-  reject_without_runtime_proof_above_triangles: 10000
-  meshy_raw_30k_plus: "reject/remesh before MDL emission"
+  shared_render_model_budget: 300000
+  warn_above_triangles: 150000
+  reject_above_triangles: 300000
+  exact_300000: "accepted"
+  exact_300001: "blocked"
+  applies_to: ["CREATURE", "PLACEABLE", "TILE", "OTHER_RENDER_MODEL"]
+  per_mesh_writer_format_limit: 21845
+  per_mesh_segmentation: "automatic and lossless"
 ```
 
 ## Q4: Smoothing groups i normalne

@@ -3,8 +3,10 @@ mod fixtures;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use m2a_core::glb::{GlbLimits, ingest_glb, inspect_glb};
-use m2a_core::{AURORA_MODEL_TRIANGLE_BUDGET_V1, AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1};
+use m2a_core::{
+    AURORA_MODEL_TRIANGLE_BUDGET_V1, AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1,
+    glb::{GlbLimits, ingest_glb, inspect_glb},
+};
 
 #[test]
 fn minimal_indexed_triangle_produces_stable_report_and_ir() {
@@ -458,7 +460,6 @@ fn triangle_warning_and_blocking_thresholds_are_exact() {
         limits.triangle_blocking_above,
         AURORA_MODEL_TRIANGLE_BUDGET_V1
     );
-
     let preferred_boundary = inspect_glb(
         &fixtures::triangle_budget(AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1),
         &limits,
@@ -476,30 +477,35 @@ fn triangle_warning_and_blocking_thresholds_are_exact() {
         &limits,
     )
     .unwrap();
-    assert_eq!(warning.statistics.triangle_count, 10_001);
+    assert_eq!(
+        warning.statistics.triangle_count,
+        AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 + 1
+    );
     assert_gate(&warning, "M2A-GLB-GEOMETRY-WARNING", "WARNING");
     assert!(warning.conversion_eligible);
 
-    let product_boundary = inspect_glb(
+    let exact_budget = inspect_glb(
         &fixtures::triangle_budget(AURORA_MODEL_TRIANGLE_BUDGET_V1),
         &limits,
     )
     .unwrap();
-    assert_eq!(product_boundary.statistics.triangle_count, 20_000);
-    assert!(product_boundary.conversion_eligible);
     assert!(
-        !product_boundary
+        exact_budget
             .gates
             .iter()
-            .any(|gate| gate.code == "M2A-GLB-GEOMETRY-OVER-BUDGET")
+            .all(|gate| gate.code != "M2A-GLB-GEOMETRY-OVER-BUDGET")
     );
+    assert!(exact_budget.conversion_eligible);
 
     let blocking = inspect_glb(
         &fixtures::triangle_budget(AURORA_MODEL_TRIANGLE_BUDGET_V1 + 1),
         &limits,
     )
     .unwrap();
-    assert_eq!(blocking.statistics.triangle_count, 20_001);
+    assert_eq!(
+        blocking.statistics.triangle_count,
+        AURORA_MODEL_TRIANGLE_BUDGET_V1 + 1
+    );
     assert_gate(&blocking, "M2A-GLB-GEOMETRY-OVER-BUDGET", "BLOCKING");
     assert!(!blocking.conversion_eligible);
 }
@@ -532,21 +538,44 @@ fn cumulative_asset_geometry_limits_and_triangle_gates_are_preflighted() {
         "M2A-GLB-LIMIT-EXCEEDED"
     );
 
-    let warning = inspect_glb(
-        &fixtures::two_primitive_triangle_budget(5_001),
+    let exact_warning_boundary = inspect_glb(
+        &fixtures::two_primitive_triangle_budget(AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 / 2),
         &GlbLimits::default(),
     )
     .unwrap();
-    assert_eq!(warning.statistics.triangle_count, 10_002);
+    assert_eq!(
+        exact_warning_boundary.statistics.triangle_count,
+        AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1
+    );
+    assert!(
+        exact_warning_boundary
+            .gates
+            .iter()
+            .all(|gate| gate.code != "M2A-GLB-GEOMETRY-WARNING")
+    );
+    assert!(exact_warning_boundary.conversion_eligible);
+
+    let warning = inspect_glb(
+        &fixtures::two_primitive_triangle_budget(AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 / 2 + 1),
+        &GlbLimits::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        warning.statistics.triangle_count,
+        AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 + 2
+    );
     assert_gate(&warning, "M2A-GLB-GEOMETRY-WARNING", "WARNING");
     assert!(warning.conversion_eligible);
 
     let blocking = inspect_glb(
-        &fixtures::two_primitive_triangle_budget(10_001),
+        &fixtures::two_primitive_triangle_budget(AURORA_MODEL_TRIANGLE_BUDGET_V1 / 2 + 1),
         &GlbLimits::default(),
     )
     .unwrap();
-    assert_eq!(blocking.statistics.triangle_count, 20_002);
+    assert_eq!(
+        blocking.statistics.triangle_count,
+        AURORA_MODEL_TRIANGLE_BUDGET_V1 + 2
+    );
     assert_gate(&blocking, "M2A-GLB-GEOMETRY-OVER-BUDGET", "BLOCKING");
     assert!(!blocking.conversion_eligible);
 }

@@ -2,6 +2,10 @@ import { useId, type ChangeEvent } from "react";
 import type { StudioTarget } from "../../app/studioSession";
 
 export type TileSurface = "DIRT" | "GRASS" | "STONE" | "WOOD";
+export type CreatureConversionProfileV1 =
+  | "PRODUCT_300K"
+  | "EXPERIMENTAL_P100K"
+  | "EXPERIMENTAL_P300K";
 
 export interface TileAuthoringOptions {
   readonly terrainName: string;
@@ -22,6 +26,8 @@ export interface SourceInputProps {
   source?: File;
   appearance?: File;
   animationEvents?: File;
+  creatureProfile?: CreatureConversionProfileV1;
+  textureArtifactCleanup?: boolean;
   sourceIdentity?: FileIdentityValue;
   appearanceIdentity?: FileIdentityValue;
   sourceError?: string;
@@ -30,6 +36,8 @@ export interface SourceInputProps {
   onSelectSource: (file: File) => void;
   onSelectAppearance: (file: File) => void;
   onSelectAnimationEvents: (file: File) => void;
+  onCreatureProfileChange?: (profile: CreatureConversionProfileV1) => void;
+  onTextureArtifactCleanupChange?: (enabled: boolean) => void;
   onRemoveSource: () => void;
   onRemoveAppearance: () => void;
   onRemoveAnimationEvents: () => void;
@@ -133,6 +141,8 @@ export function InputsPanel({
   source,
   appearance,
   animationEvents,
+  creatureProfile = "PRODUCT_300K",
+  textureArtifactCleanup = false,
   sourceIdentity,
   appearanceIdentity,
   sourceError,
@@ -141,6 +151,8 @@ export function InputsPanel({
   onSelectSource,
   onSelectAppearance,
   onSelectAnimationEvents,
+  onCreatureProfileChange,
+  onTextureArtifactCleanupChange,
   onRemoveSource,
   onRemoveAppearance,
   onRemoveAnimationEvents,
@@ -175,6 +187,36 @@ export function InputsPanel({
             {tileTargetEnabled ? <option value="TILE">Tile</option> : null}
           </select>
         </label>
+      ) : null}
+
+      {target === "CREATURE" && onCreatureProfileChange ? (
+        <>
+          <label>
+            Creature conversion profile
+            <select
+              aria-label="Creature conversion profile"
+              value={creatureProfile}
+              onChange={(event) => onCreatureProfileChange(
+                event.currentTarget.value as CreatureConversionProfileV1,
+              )}
+            >
+              <option value="PRODUCT_300K">Product (300,000 triangle limit)</option>
+              <option value="EXPERIMENTAL_P100K">Legacy P100K compatibility</option>
+              <option value="EXPERIMENTAL_P300K">Legacy P300K compatibility</option>
+            </select>
+          </label>
+          {onTextureArtifactCleanupChange ? (
+            <label>
+              <input
+                type="checkbox"
+                aria-label="Repair texture artifacts"
+                checked={textureArtifactCleanup}
+                onChange={(event) => onTextureArtifactCleanupChange(event.currentTarget.checked)}
+              />
+              Repair texture artifacts
+            </label>
+          ) : null}
+        </>
       ) : null}
 
       <ul className="inputs-panel__list">

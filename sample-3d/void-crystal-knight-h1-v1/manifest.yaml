@@ -1,0 +1,144 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: void-crystal-knight-h1-v1
+provider: meshy
+local_only: true
+qualification: pipeline-ready
+files:
+  - role: source-combined
+    path: source.glb
+    size_bytes: 9951624
+    sha256: d3d1e18adb652524a5b3459620fab278892859ffb86a7fbb38ac4c542e44d4f7
+  - role: source-rigged-base
+    path: meshy-rigged.glb
+    size_bytes: 9789740
+    sha256: 1ed1a1e29ba3f77e56608a798a3361e19431064cfd6d09420b39700e7a20948e
+  - role: source-meshy-animation-idle
+    path: meshy-idle-action-0.glb
+    size_bytes: 9838680
+    sha256: e3750d9f377b1feabf0c02e8b203ceccdc0012516cde08d9876864a20b3b3354
+  - role: source-meshy-basic-animation-walk
+    path: meshy-walk-basic.glb
+    size_bytes: 9802504
+    sha256: 5239cc481cf11a72660390bd8423278a4a5bda218acd6d6d87b7c9765f51dd99
+  - role: source-meshy-basic-animation-run
+    path: meshy-run-basic.glb
+    size_bytes: 9797896
+    sha256: 76c7c801add5d2f3997ab0094940ff379e7c43cd1dc7ac2c8b1e6246cd53daa6
+  - role: api-provenance
+    path: meshy-run-provenance.json
+    size_bytes: 1104
+    sha256: 78263332777060cc6a49c5f728fdc9602ccc6b339c6c0f260ecae7dba479f158
+provenance_note: owner-authorized Meshy image-to-3D generation from the Void Crystal Knight concept art
+concept_reference:
+  path: artifacts/concept-art/void-crystal-knight-meshy-input-2026-07-29/void-crystal-knight-front-clean.png
+  sha256: 63f6e0b47746d8e7dc121fc3e6fcf931f3cfb17b688d63605c40e3b7ec868d19
+meshy_preview:
+  path: artifacts/meshy-runs/void-crystal-knight-h1-v1/preview.png
+  sha256: 4f35d36e650461375a88e752dd129b5157f37b940c83f274a0183bfbc8814afc
+generation_plan:
+  date: 2026-07-29
+  source_mode: image-to-3d
+  ai_model: meshy-6
+  topology: triangle
+  target_polycount: 20000
+  pose_mode: t-pose
+  rig_height_meters: 2.1
+  owner_credit_cap: 38
+  animation_actions:
+    - { action_id: 0, name: Idle, nwn_clip: cpause1 }
+  rig_basic_animations:
+    - { name: Walking, nwn_clip: cwalk }
+    - { name: Running, nwn_clip: crun }
+generation_result:
+  status: materialized
+  run_id: 18d0254f-1190-4c3e-92a2-c37964da2d56
+  model_task_id: 019fad5e-f4dc-772c-af98-22c52843fafb
+  rig_task_id: 019fad62-5540-7b53-a3fe-83c2b2517a1a
+  idle_animation_task_id: 019fad63-1f9f-7b83-974e-26042de8788b
+  canonical_credits_spent: 38
+  balance_before: 702
+  raw_triangle_count: 19704
+  vertex_count: 24834
+  mesh_count: 1
+  skin_count: 1
+  joint_count: 24
+  animation_count: 3
+  clips:
+    - { name: cpause1, duration_seconds: 4.033333333333333 }
+    - { name: cwalk, duration_seconds: 1.0666666666666667 }
+    - { name: crun, duration_seconds: 0.6666666666666666 }
+  combined_source_sha256: d3d1e18adb652524a5b3459620fab278892859ffb86a7fbb38ac4c542e44d4f7
+duplicate_run_incident:
+  status: preserved-in-meshy-history-not-selected
+  cause: background launcher continued after returning no process state; a manual retry created a second paid lineage
+  model_task_id: 019fad60-09fb-777a-915b-7ebc4529290f
+  rig_task_id: 019fad63-d9f4-7a44-9cda-3218479ea0ed
+  idle_animation_task_id: 019fad64-aec0-752c-a494-0f90f3a34b5a
+  duplicate_credits_spent: 38
+  total_credits_spent: 76
+  balance_after_both_runs: 626
+  selected_for_local_asset: false
+latest_offline_pipeline:
+  date: 2026-07-29
+  status: ready_for_owner_proof
+  candidate_id: void-crystal-knight-h1-v1-demo1
+  packet_path: proof-output/void-crystal-knight-h1-v1-demo1
+  source_preview:
+    path: artifacts/demo-runs/void-crystal-knight-h1-v1-demo1/studio-demo.png
+    sha256: 239c567d7268a64d76aea9b311782ff719c99b4688be49b969bc0c1a941f3a13
+  identities:
+    module_filename: vckdemo1.mod
+    module_name: Meshy2Aurora procedural humanoid proof
+    module_resref: vckdemo1
+    area_name: Meshy2Aurora M0 binary vertical-slice area
+    area_resref: vckarea1
+    creature_resref: vckutc1
+    hak_filename: vckhak1.hak
+    hak_resref: vckhak1
+    appearance_row: 15100
+    model_resref: vcknight_m1
+    texture_resref: vcknight_t1
+  animations:
+    profile: FULL_NATIVE42_PROCEDURAL_HUMANOID_V1
+    required_count: 42
+    preserved_source_count: 3
+    procedural_count: 39
+    source_clips: [cpause1, cwalk, crun]
+    behavior_candidate_eligible: true
+    walk_run_distinct: true
+    gameplay_event_pairs: 23
+    gameplay_event_pairs_complete: true
+    skin_animation_conformance_complete: true
+  outputs:
+    module:
+      path: proof-output/void-crystal-knight-h1-v1-demo1/generated/vckdemo1.mod
+      size_bytes: 15142
+      sha256: 7a77f51ed2bd711e8cef7397f01c6fea339dcdf35d6d52759e7254a41696cef1
+    hak:
+      path: proof-output/void-crystal-knight-h1-v1-demo1/generated/vckhak1.hak
+      size_bytes: 22037667
+      sha256: b5224c9f9038f329833e5cbd0cae88ce890dbfdcf50ace34071f98374604d7a9
+    model:
+      path: proof-output/void-crystal-knight-h1-v1-demo1/generated/vcknight_m1.mdl
+      size_bytes: 2553136
+      sha256: 213283447da0a5d09a1b4030878e0f81509173b835bbca0c84b9d71d4a01cfde
+    texture:
+      path: proof-output/void-crystal-knight-h1-v1-demo1/generated/vcknight_t1.tga
+      size_bytes: 12582956
+      sha256: 5101483b93b6eb4e0aa39cc705dcbed9de1a70c1661f85eacffcb58793025e8a
+    appearance_2da:
+      path: proof-output/void-crystal-knight-h1-v1-demo1/generated/appearance.2da
+      size_bytes: 6901319
+      sha256: c209b6d81480f39a3b2c6389c4c58d74e933e072e03e9c0ecaee6219bca92e6c
+  native_installation:
+    module_path: C:/Users/enonw/Documents/Neverwinter Nights/modules/vckdemo1.mod
+    module_hash_verified: true
+    hak_path: C:/Users/enonw/Documents/Neverwinter Nights/hak/vckhak1.hak
+    hak_hash_verified: true
+  visual_proof:
+    toolset:
+      model_visibility: not_tested
+      proof_completeness: missing
+    nwn:
+      model_visibility: not_tested
+      proof_completeness: missing
