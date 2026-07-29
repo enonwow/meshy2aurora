@@ -77,6 +77,7 @@ import { projectCanonicalReadback } from "./features/results/projectReadback";
 import {
   InputsPanel,
   type CreatureConversionProfileV1,
+  type SkinAccessoryStabilizationModeV1,
   type TileAuthoringOptions,
 } from "./features/source/InputsPanel";
 import { SourceStep } from "./features/source/SourceStep";
@@ -754,6 +755,10 @@ export function App({
   const [creatureProfile, setCreatureProfile] =
     useState<CreatureConversionProfileV1>("PRODUCT_300K");
   const [textureArtifactCleanup, setTextureArtifactCleanup] = useState(false);
+  const [skinAccessoryStabilizationMode, setSkinAccessoryStabilizationMode] =
+    useState<SkinAccessoryStabilizationModeV1>("AUTO");
+  const [skinAccessorySelectedBoneName, setSkinAccessorySelectedBoneName] =
+    useState("");
   const [placeableAuthoring, setPlaceableAuthoring] = useState<PlaceableAuthoringBootstrap>();
   const placeableAuthoringRef = useRef<PlaceableAuthoringBootstrap | undefined>(undefined);
   const [reviewViewport, setReviewViewport] = useState<ReviewViewport>("CONVERTED");
@@ -1231,6 +1236,20 @@ export function App({
     dispatch({ type: "AUTHORING_OPTIONS_CHANGED" });
   };
 
+  const updateSkinAccessoryStabilizationMode = (
+    mode: SkinAccessoryStabilizationModeV1,
+  ) => {
+    invalidateRunningBuild();
+    setSkinAccessoryStabilizationMode(mode);
+    dispatch({ type: "AUTHORING_OPTIONS_CHANGED" });
+  };
+
+  const updateSkinAccessorySelectedBoneName = (boneName: string) => {
+    invalidateRunningBuild();
+    setSkinAccessorySelectedBoneName(boneName);
+    dispatch({ type: "AUTHORING_OPTIONS_CHANGED" });
+  };
+
   const updateTileOptions = (options: TileAuthoringOptions) => {
     invalidateRunningBuild();
     setTileOptions(options);
@@ -1293,6 +1312,8 @@ export function App({
     setTileOptions(DEFAULT_TILE_OPTIONS);
     setCreatureProfile("PRODUCT_300K");
     setTextureArtifactCleanup(false);
+    setSkinAccessoryStabilizationMode("AUTO");
+    setSkinAccessorySelectedBoneName("");
     setPlaceableAuthoring(undefined);
     setPendingProjectRebind({
       sourceGlb: false,
@@ -1525,6 +1546,12 @@ export function App({
                       packageLane,
                       identityJson: creatureIdentityJson,
                       textureArtifactCleanup,
+                      skinAccessoryStabilization: {
+                        mode: skinAccessoryStabilizationMode,
+                        ...(skinAccessoryStabilizationMode === "SELECT_BONE"
+                          ? { selectedBoneName: skinAccessorySelectedBoneName.trim() }
+                          : {}),
+                      },
                     },
                     transfer: [sourceGlb, appearanceTwoDa!],
                   }
@@ -2568,6 +2595,8 @@ export function App({
       tileOptions={tileOptions}
       creatureProfile={creatureProfile}
       textureArtifactCleanup={textureArtifactCleanup}
+      skinAccessoryStabilizationMode={skinAccessoryStabilizationMode}
+      skinAccessorySelectedBoneName={skinAccessorySelectedBoneName}
       source={session.source?.file}
       appearance={session.appearance?.file}
       animationEvents={session.animationEvents?.file}
@@ -2581,6 +2610,8 @@ export function App({
       onSelectAnimationEvents={selectAnimationEvents}
       onCreatureProfileChange={updateCreatureProfile}
       onTextureArtifactCleanupChange={updateTextureArtifactCleanup}
+      onSkinAccessoryStabilizationModeChange={updateSkinAccessoryStabilizationMode}
+      onSkinAccessorySelectedBoneNameChange={updateSkinAccessorySelectedBoneName}
       onRemoveSource={removeSource}
       onRemoveAppearance={removeAppearance}
       onRemoveAnimationEvents={removeAnimationEvents}
@@ -2684,6 +2715,8 @@ export function App({
           tileOptions={tileOptions}
           creatureProfile={creatureProfile}
           textureArtifactCleanup={textureArtifactCleanup}
+          skinAccessoryStabilizationMode={skinAccessoryStabilizationMode}
+          skinAccessorySelectedBoneName={skinAccessorySelectedBoneName}
           source={session.source?.file}
           appearance={session.appearance?.file}
           animationEvents={session.animationEvents?.file}
@@ -2697,6 +2730,8 @@ export function App({
           onSelectAnimationEvents={selectAnimationEvents}
           onCreatureProfileChange={updateCreatureProfile}
           onTextureArtifactCleanupChange={updateTextureArtifactCleanup}
+          onSkinAccessoryStabilizationModeChange={updateSkinAccessoryStabilizationMode}
+          onSkinAccessorySelectedBoneNameChange={updateSkinAccessorySelectedBoneName}
           onRemoveSource={removeSource}
           onRemoveAppearance={removeAppearance}
           onRemoveAnimationEvents={removeAnimationEvents}

@@ -84,6 +84,10 @@ use crate::{
         inspect_binary_creature_profile_matrix_module_v2,
         inspect_binary_m0_vertical_slice_module_v1,
     },
+    skin_accessory::{
+        SkinAccessoryStabilizationOptionsV1, SkinAccessoryStabilizationReportV1,
+        audit_and_stabilize_skin_accessories_v1,
+    },
     tga::{
         TextureArtifactCleanupOptionsV1, TextureArtifactCleanupReportV1, TgaWriterOptionsV1,
         TgaWriterReportV1, cleanup_texture_artifacts_v1, write_tga_v1,
@@ -278,11 +282,13 @@ pub struct ProceduralCreatureProductIdentityV2 {
     pub appearance_label: String,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProceduralCreatureBuildOptionsV1 {
     pub schema_version: u32,
     pub texture_artifact_cleanup: bool,
+    #[serde(default)]
+    pub skin_accessory_stabilization: SkinAccessoryStabilizationOptionsV1,
 }
 
 impl Default for ProceduralCreatureBuildOptionsV1 {
@@ -290,6 +296,7 @@ impl Default for ProceduralCreatureBuildOptionsV1 {
         Self {
             schema_version: 1,
             texture_artifact_cleanup: false,
+            skin_accessory_stabilization: SkinAccessoryStabilizationOptionsV1::default(),
         }
     }
 }
@@ -795,6 +802,8 @@ pub struct M6MaterializationReportV1 {
     pub texture: TgaWriterReportV1,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub texture_artifact_cleanup: Option<TextureArtifactCleanupReportV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skin_accessory_stabilization: Option<SkinAccessoryStabilizationReportV1>,
     pub appearance: TwoDaAppendReportV1,
     pub hak: HakWriterReportV1,
     pub proof_module: ProofModuleReportV1,
@@ -946,6 +955,7 @@ pub struct ProceduralCreatureProductReportV2 {
     pub texture: TgaWriterReportV1,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub texture_artifact_cleanup: Option<TextureArtifactCleanupReportV1>,
+    pub skin_accessory_stabilization: SkinAccessoryStabilizationReportV1,
     pub appearance: TwoDaAppendReportV1,
     pub hak: HakWriterReportV1,
     pub animation_completeness: DirectCreatureAnimationCompletenessV2,
@@ -1039,6 +1049,25 @@ pub struct ProceduralCreatureProductArtifactV2 {
     pub report_json: Vec<u8>,
     pub summary: ProceduralCreatureProductSummaryV2,
     pub summary_json: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProceduralCreatureProductDemoPacketManifestV2 {
+    pub schema_version: u32,
+    pub status: String,
+    pub input_glb: M6ByteIdentityV1,
+    pub input_appearance_two_da: M6ByteIdentityV1,
+    pub product_identity: ProceduralCreatureProductIdentityV2,
+    pub module_identity: BinaryCreatureModuleIdentityV1,
+    pub creature_resref: String,
+    pub appearance_row: u16,
+    pub geometry: M6GeometryReportV1,
+    pub skin_accessory_stabilization: SkinAccessoryStabilizationReportV1,
+    pub generated_files: Vec<M6GeneratedFileV1>,
+    pub package_manifest: PackageManifestV1,
+    pub demo: ProofModuleReportV1,
+    pub manifest_self_hash_policy: String,
 }
 
 enum M6BuildArtifactV2 {
@@ -1308,8 +1337,7 @@ pub fn build_meshy_procedural_humanoid_product_v2(
 }
 
 /// Builds the production procedural creature with caller-selected texture
-/// processing. The default V2 entry point remains byte-compatible with cleanup
-/// disabled.
+/// processing and detached-accessory skinning stabilization.
 pub fn build_meshy_procedural_humanoid_product_with_options_v3(
     source_glb: &[u8],
     appearance_two_da: &[u8],
@@ -2714,6 +2742,7 @@ fn build_meshy_m0_static_rigid_package_internal(
         model: mdl.report,
         texture: tga.report,
         texture_artifact_cleanup: None,
+        skin_accessory_stabilization: None,
         appearance: appearance.report,
         hak: package.hak.report,
         proof_module: proof_module.report.clone(),
@@ -3711,8 +3740,8 @@ fn build_m6_model_package_with_ingest_v5(
     validate_procedural_creature_product_identity_v2(product_identity)?;
     if build_options.schema_version != 1 {
         return Err(pipeline_error(
-            "texture",
-            "M6-TEXTURE-CLEANUP-OPTIONS-SCHEMA",
+            "profile",
+            "M6-PROCEDURAL-BUILD-OPTIONS-SCHEMA",
             "buildOptions.schemaVersion",
             format!(
                 "expected procedural creature build-options schema 1, got {}",
@@ -3818,6 +3847,12 @@ fn build_m6_model_package_with_ingest_v5(
     } else {
         None
     };
+    let skin_accessory_stabilization = audit_and_stabilize_skin_accessories_v1(
+        &mut creature,
+        source_animations,
+        &build_options.skin_accessory_stabilization,
+    )
+    .map_err(|error| pipeline_error("profile", error.code, error.path, error.message))?;
     let procedural_rig = (animation_profile
         == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1)
         .then(|| procedural_humanoid_rig_from_creature_v1(&creature))
@@ -4331,6 +4366,7 @@ fn build_m6_model_package_with_ingest_v5(
             model: mdl.report,
             texture: tga.report,
             texture_artifact_cleanup: texture_artifact_cleanup.clone(),
+            skin_accessory_stabilization: skin_accessory_stabilization.clone(),
             appearance: appearance.report,
             hak: package.hak.report,
             animation_completeness: DirectCreatureAnimationCompletenessV2 {
@@ -4472,6 +4508,7 @@ fn build_m6_model_package_with_ingest_v5(
         model: mdl.report,
         texture: tga.report,
         texture_artifact_cleanup,
+        skin_accessory_stabilization: Some(skin_accessory_stabilization),
         appearance: appearance.report,
         hak: package.hak.report,
         proof_module: proof_module.report.clone(),
@@ -5876,6 +5913,251 @@ pub fn write_procedural_creature_proof_packet_with_identity_v1(
         &format!("{}.hak", identity.module.hak_resref),
         &format!("{}.mod", identity.module.module_resref),
     )
+}
+
+/// Writes an immutable owner-proof packet around the active product V2
+/// artifact and its independently built demo V2 module. The product bytes are
+/// never rebuilt, and the independently supplied source must match the
+/// product's recorded input identity.
+pub fn write_procedural_creature_product_demo_packet_v2(
+    output_dir: &Path,
+    product: &ProceduralCreatureProductArtifactV2,
+    demo: &ProofModuleArtifactV1,
+    source_glb: &[u8],
+    module_identity: &BinaryCreatureModuleIdentityV1,
+    creature_resref: &str,
+) -> Result<(), M6PipelineErrorV1> {
+    if output_dir.exists() {
+        return Err(pipeline_error(
+            "output",
+            "M6-OUTPUT-EXISTS",
+            "outputDir",
+            "output directory must not already exist",
+        ));
+    }
+    let source_identity = identity(source_glb);
+    if source_identity != product.summary.input_glb || source_identity != product.manifest.input_glb
+    {
+        return Err(pipeline_error(
+            "output",
+            "M6-DEMO-PACKET-SOURCE-DIFF",
+            "sourceGlb",
+            "the independently supplied source bytes do not match the immutable product input identity",
+        ));
+    }
+    if product.report.identity != product.summary.identity
+        || product.report.identity != product.manifest.identity
+        || identity(&product.model) != product.summary.outputs.model
+        || identity(&product.texture) != product.summary.outputs.texture
+        || identity(&product.appearance_two_da) != product.summary.outputs.appearance_two_da
+        || identity(&product.hak) != product.summary.outputs.hak
+        || identity(&product.report_json) != product.summary.outputs.report
+    {
+        return Err(pipeline_error(
+            "output",
+            "M6-DEMO-PACKET-PRODUCT-DIFF",
+            "product",
+            "product payloads, reports and identities must match the immutable product summary",
+        ));
+    }
+    if module_identity.hak_resref != product.report.identity.hak_resref
+        || demo.report.module_resref != module_identity.module_resref
+        || demo.report.area_resref != module_identity.area_resref
+        || demo.report.hak_resref != module_identity.hak_resref
+        || demo.report.creature_resref != creature_resref
+        || demo.report.appearance_row != product.report.appearance.appended_row_index
+        || identity(&demo.payload).sha256 != demo.report.sha256
+        || identity(&demo.payload).byte_length != demo.report.byte_length
+    {
+        return Err(pipeline_error(
+            "output",
+            "M6-DEMO-PACKET-MODULE-DIFF",
+            "demo",
+            "demo payload, module identity, HAK, creature and appearance row must match the immutable product",
+        ));
+    }
+
+    let archive = ErfArchive::parse(&product.hak).map_err(|error| {
+        pipeline_error(
+            "output",
+            error.code,
+            format!("product.hak@{}", error.offset),
+            error.context,
+        )
+    })?;
+    for (resref, resource_type, expected) in [
+        (
+            product.report.identity.model_resref.as_str(),
+            2002,
+            product.model.as_slice(),
+        ),
+        (
+            product.report.identity.texture_resref.as_str(),
+            3,
+            product.texture.as_slice(),
+        ),
+        ("appearance", 2017, product.appearance_two_da.as_slice()),
+    ] {
+        let actual = archive.find(resref, resource_type).map_err(|error| {
+            pipeline_error(
+                "output",
+                error.code,
+                format!("product.hak.{resref}"),
+                error.context,
+            )
+        })?;
+        if actual != expected {
+            return Err(pipeline_error(
+                "output",
+                "M6-DEMO-PACKET-HAK-RESOURCE-DIFF",
+                format!("product.hak.{resref}"),
+                "the HAK resource differs from the independently held product payload",
+            ));
+        }
+    }
+
+    let module =
+        inspect_binary_creature_profile_matrix_module_v2(&demo.payload).map_err(|error| {
+            pipeline_error(
+                "output",
+                error.code,
+                format!("demo.{}", error.path),
+                error.message,
+            )
+        })?;
+    if module.scene.module_resref != module_identity.module_resref
+        || module.scene.area_resref != module_identity.area_resref
+        || module.scene.ordered_hak_resrefs != [module_identity.hak_resref.clone()]
+        || module.fixtures.len() != 1
+        || module.fixtures[0].runtime_profile
+            != BinaryCreatureRuntimeProfileV2::ActiveMonsterBaseline
+        || module.scene.fixtures.len() != 1
+        || module.scene.fixtures[0].template_resref != creature_resref
+        || module.scene.fixtures[0].appearance_row != product.report.appearance.appended_row_index
+    {
+        return Err(pipeline_error(
+            "output",
+            "M6-DEMO-PACKET-MODULE-READBACK-DIFF",
+            "demo",
+            "demo semantic readback differs from the exact module, Area, HAK, creature or appearance identity",
+        ));
+    }
+
+    let demo_report_json = json_bytes(&demo.report, "demoReport")?;
+    let generated_payloads = [
+        ("generated/source.glb".to_owned(), source_glb),
+        (
+            format!("generated/{}.mdl", product.report.identity.model_resref),
+            product.model.as_slice(),
+        ),
+        (
+            format!("generated/{}.tga", product.report.identity.texture_resref),
+            product.texture.as_slice(),
+        ),
+        (
+            "generated/appearance.2da".to_owned(),
+            product.appearance_two_da.as_slice(),
+        ),
+        (
+            format!("generated/{}.hak", product.report.identity.hak_resref),
+            product.hak.as_slice(),
+        ),
+        (
+            format!("generated/{}.mod", module_identity.module_resref),
+            demo.payload.as_slice(),
+        ),
+        (
+            "reports/materialization-report.json".to_owned(),
+            product.report_json.as_slice(),
+        ),
+        (
+            "reports/product-manifest.json".to_owned(),
+            product.manifest_json.as_slice(),
+        ),
+        (
+            "reports/summary.json".to_owned(),
+            product.summary_json.as_slice(),
+        ),
+        (
+            "reports/demo-report.json".to_owned(),
+            demo_report_json.as_slice(),
+        ),
+    ];
+    let generated_files = generated_payloads
+        .iter()
+        .map(|(relative_path, bytes)| M6GeneratedFileV1 {
+            relative_path: relative_path.clone(),
+            byte_length: bytes.len() as u64,
+            sha256: hex_sha256(bytes),
+        })
+        .collect::<Vec<_>>();
+    let packet_manifest = ProceduralCreatureProductDemoPacketManifestV2 {
+        schema_version: 2,
+        status: "PROCEDURAL_CREATURE_PRODUCT_DEMO_PACKET_MATERIALIZED".to_owned(),
+        input_glb: source_identity,
+        input_appearance_two_da: product.summary.input_appearance_two_da.clone(),
+        product_identity: product.report.identity.clone(),
+        module_identity: module_identity.clone(),
+        creature_resref: creature_resref.to_owned(),
+        appearance_row: product.report.appearance.appended_row_index,
+        geometry: product.report.geometry.clone(),
+        skin_accessory_stabilization: product.report.skin_accessory_stabilization.clone(),
+        generated_files,
+        package_manifest: product.package_manifest.clone(),
+        demo: demo.report.clone(),
+        manifest_self_hash_policy: "EXCLUDED_TO_AVOID_SELF_REFERENCE".to_owned(),
+    };
+    let packet_manifest_json = json_bytes(&packet_manifest, "packetManifest")?;
+
+    let parent = output_dir.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)
+        .map_err(|error| io_error("output", "M6-OUTPUT-CREATE-FAILED", parent, error))?;
+    let name = output_dir
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("procedural-product-demo");
+    let staging = parent.join(format!(".{name}.m2a-stage-{}", std::process::id()));
+    if staging.exists() {
+        return Err(pipeline_error(
+            "output",
+            "M6-STAGING-EXISTS",
+            logical_path(&staging),
+            "pre-existing staging directory is never deleted",
+        ));
+    }
+    let write_result = (|| {
+        for directory in [staging.join("generated"), staging.join("reports")] {
+            fs::create_dir_all(&directory).map_err(|error| {
+                io_error("output", "M6-OUTPUT-CREATE-FAILED", &directory, error)
+            })?;
+        }
+        fs::create_dir_all(staging.join("live")).map_err(|error| {
+            io_error(
+                "output",
+                "M6-OUTPUT-CREATE-FAILED",
+                &staging.join("live"),
+                error,
+            )
+        })?;
+        for (relative_path, bytes) in &generated_payloads {
+            let path = staging.join(relative_path);
+            fs::write(&path, bytes)
+                .map_err(|error| io_error("output", "M6-OUTPUT-WRITE-FAILED", &path, error))?;
+        }
+        let manifest_path = staging.join("reports").join(M6_MANIFEST_FILE_NAME);
+        fs::write(&manifest_path, &packet_manifest_json)
+            .map_err(|error| io_error("output", "M6-OUTPUT-WRITE-FAILED", &manifest_path, error))?;
+        Ok::<(), M6PipelineErrorV1>(())
+    })();
+    if let Err(error) = write_result {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(error);
+    }
+    fs::rename(&staging, output_dir).map_err(|error| {
+        let _ = fs::remove_dir_all(&staging);
+        io_error("output", "M6-OUTPUT-RENAME-FAILED", output_dir, error)
+    })?;
+    Ok(())
 }
 
 /// Writes the independent static Meshy M0 proof packet without reusing any

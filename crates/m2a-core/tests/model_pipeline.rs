@@ -58,7 +58,8 @@ use m2a_core::{
         verify_m0_binary_runtime_fixture_contract_v2,
         verify_m0_full_runtime_appearance_table_binding_v1, write_m0_canonical_proof_packet_v1,
         write_m0_canonical_runtime_proof_packet_with_profile_v2, write_m0_proof_packet_v1,
-        write_m6_proof_packet_v1, write_procedural_creature_proof_packet_with_identity_v1,
+        write_m6_proof_packet_v1, write_procedural_creature_product_demo_packet_v2,
+        write_procedural_creature_proof_packet_with_identity_v1,
     },
     owned_fixture::{
         synthetic_owned_m6_animation_mapping_v1, synthetic_owned_m6_full_native_42_glb_v1,
@@ -617,6 +618,66 @@ fn procedural_product_and_fixture_module_are_two_separate_build_steps() {
         demo.report.appearance_row,
         product.report.appearance.appended_row_index
     );
+
+    let packet_path = temp_path("procedural-product-demo-v2");
+    let _ = fs::remove_dir_all(&packet_path);
+    write_procedural_creature_product_demo_packet_v2(
+        &packet_path,
+        &product,
+        &demo,
+        &source,
+        &demo_identity,
+        "m2a_prdutc",
+    )
+    .expect("product V2 and demo V2 packet");
+    assert_eq!(
+        fs::read(packet_path.join("generated/m2a_prdmdl.mdl")).unwrap(),
+        product.model
+    );
+    assert_eq!(
+        fs::read(packet_path.join("generated/m2a_prdtex.tga")).unwrap(),
+        product.texture
+    );
+    assert_eq!(
+        fs::read(packet_path.join("generated/m2a_prdhak.hak")).unwrap(),
+        product.hak
+    );
+    assert_eq!(
+        fs::read(packet_path.join("generated/m2a_prdmod.mod")).unwrap(),
+        demo.payload
+    );
+    assert_eq!(
+        fs::read(packet_path.join("generated/source.glb")).unwrap(),
+        source
+    );
+    let packet_manifest: Value = serde_json::from_slice(
+        &fs::read(packet_path.join("reports/materialization-manifest.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        packet_manifest["status"],
+        "PROCEDURAL_CREATURE_PRODUCT_DEMO_PACKET_MATERIALIZED"
+    );
+    assert_eq!(packet_manifest["geometry"]["triangleCount"], 1_543);
+    assert_eq!(
+        packet_manifest["skinAccessoryStabilization"]["mode"],
+        "AUTO"
+    );
+    fs::remove_dir_all(&packet_path).unwrap();
+
+    let source_mismatch_path = temp_path("procedural-product-demo-v2-source-mismatch");
+    let _ = fs::remove_dir_all(&source_mismatch_path);
+    let error = write_procedural_creature_product_demo_packet_v2(
+        &source_mismatch_path,
+        &product,
+        &demo,
+        b"not-the-product-source",
+        &demo_identity,
+        "m2a_prdutc",
+    )
+    .expect_err("packet writer must bind the exact source bytes");
+    assert_eq!(error.code, "M6-DEMO-PACKET-SOURCE-DIFF");
+    assert!(!source_mismatch_path.exists());
 
     let mut mismatched_identity = demo_identity;
     mismatched_identity.hak_resref = "m2a_otherhak".to_owned();

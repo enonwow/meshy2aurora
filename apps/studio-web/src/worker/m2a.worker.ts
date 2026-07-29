@@ -36,6 +36,27 @@ import type {
   WorkerArtifact,
 } from "./types";
 
+function proceduralBuildOptionsJson(
+  textureArtifactCleanup: boolean,
+  skinAccessoryStabilization?: {
+    mode: "AUTO" | "KEEP_SOURCE_WEIGHTS" | "SELECT_BONE";
+    selectedBoneName?: string;
+  },
+): string {
+  const stabilization = skinAccessoryStabilization ?? { mode: "AUTO" as const };
+  return JSON.stringify({
+    schemaVersion: 1,
+    textureArtifactCleanup,
+    skinAccessoryStabilization: {
+      schemaVersion: 1,
+      mode: stabilization.mode,
+      ...(stabilization.mode === "SELECT_BONE"
+        ? { selectedBoneName: stabilization.selectedBoneName?.trim() }
+        : {}),
+    },
+  });
+}
+
 let initialized: Promise<unknown> | undefined;
 const ensureInitialized = () => (initialized ??= init());
 const encoder = new TextEncoder();
@@ -438,10 +459,10 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
       new Uint8Array(request.sourceGlb),
       new Uint8Array(request.appearanceTwoDa),
       request.identityJson,
-      JSON.stringify({
-        schemaVersion: 1,
-        textureArtifactCleanup: request.textureArtifactCleanup,
-      }),
+      proceduralBuildOptionsJson(
+        request.textureArtifactCleanup,
+        request.skinAccessoryStabilization,
+      ),
     );
     try {
       const summary = JSON.parse(result.summaryJson) as {
@@ -523,19 +544,19 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
           new Uint8Array(request.sourceGlb),
           new Uint8Array(request.appearanceTwoDa),
           request.identityJson,
-          JSON.stringify({
-            schemaVersion: 1,
-            textureArtifactCleanup: request.textureArtifactCleanup,
-          }),
+          proceduralBuildOptionsJson(
+            request.textureArtifactCleanup,
+            request.skinAccessoryStabilization,
+          ),
         )
       : buildMeshyProceduralHumanoidP100kExperimentWithOptionsV2(
           new Uint8Array(request.sourceGlb),
           new Uint8Array(request.appearanceTwoDa),
           request.identityJson,
-          JSON.stringify({
-            schemaVersion: 1,
-            textureArtifactCleanup: request.textureArtifactCleanup,
-          }),
+          proceduralBuildOptionsJson(
+            request.textureArtifactCleanup,
+            request.skinAccessoryStabilization,
+          ),
         );
     try {
       const artifacts = await Promise.all([

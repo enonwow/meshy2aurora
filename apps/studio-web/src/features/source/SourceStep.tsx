@@ -4,6 +4,7 @@ import {
   shortSha256,
   type FileIdentityValue,
   type CreatureConversionProfileV1,
+  type SkinAccessoryStabilizationModeV1,
   type SourceInputProps,
   type TileSurface,
 } from "./InputsPanel";
@@ -125,6 +126,8 @@ export function SourceStep({
   animationEvents,
   creatureProfile = "PRODUCT_300K",
   textureArtifactCleanup = false,
+  skinAccessoryStabilizationMode = "AUTO",
+  skinAccessorySelectedBoneName = "",
   sourceIdentity,
   appearanceIdentity,
   sourceError,
@@ -135,6 +138,8 @@ export function SourceStep({
   onSelectAnimationEvents,
   onCreatureProfileChange,
   onTextureArtifactCleanupChange,
+  onSkinAccessoryStabilizationModeChange,
+  onSkinAccessorySelectedBoneNameChange,
   onRemoveSource,
   onRemoveAppearance,
   onRemoveAnimationEvents,
@@ -155,6 +160,11 @@ export function SourceStep({
   const ready = Boolean(
     source
     && (target === "TILE" ? tileOptionsValid : appearance)
+    && (
+      target !== "CREATURE"
+      || skinAccessoryStabilizationMode !== "SELECT_BONE"
+      || skinAccessorySelectedBoneName.trim().length > 0
+    )
     && !sourceError
     && !appearanceError
     && !animationEventsError
@@ -296,6 +306,43 @@ export function SourceStep({
               <p role="note">
                 Removes isolated bright or dark speckles and repairs one-pixel alpha holes in the
                 base-color texture. Larger details, edges, and transparent regions are preserved.
+              </p>
+            </>
+          ) : null}
+          {onSkinAccessoryStabilizationModeChange ? (
+            <>
+              <label>
+                Detached accessory skinning
+                <select
+                  aria-label="Detached accessory skinning"
+                  value={skinAccessoryStabilizationMode}
+                  onChange={(event) => onSkinAccessoryStabilizationModeChange(
+                    event.currentTarget.value as SkinAccessoryStabilizationModeV1,
+                  )}
+                >
+                  <option value="AUTO">Auto</option>
+                  <option value="KEEP_SOURCE_WEIGHTS">Keep source weights</option>
+                  <option value="SELECT_BONE">Select bone</option>
+                </select>
+              </label>
+              {skinAccessoryStabilizationMode === "SELECT_BONE" ? (
+                <label>
+                  Accessory bone name
+                  <input
+                    aria-label="Accessory bone name"
+                    value={skinAccessorySelectedBoneName}
+                    onChange={(event) => onSkinAccessorySelectedBoneNameChange?.(
+                      event.currentTarget.value,
+                    )}
+                    placeholder="Spine02"
+                  />
+                </label>
+              ) : null}
+              <p role="note">
+                Auto audits spatially welded detached parts across animation clips and stabilizes
+                only risky accessories on a nearby torso bone. Keep source weights records the
+                risk without changing it. Select bone applies the named bone to every approved
+                risky accessory. Geometry, UVs, materials, and animation clips are preserved.
               </p>
             </>
           ) : null}

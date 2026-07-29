@@ -2712,7 +2712,7 @@ mod m7_native_tests {
     }"#;
     const EMPTY_DESCRIPTORS: &str = r#"{"schemaVersion":1,"payloads":[]}"#;
     const READY_BATCH_JSON_SHA256: &str =
-        "7a89b13e9bc29812e0e90da8c8ff169250e43ba826d47e530d9cb7a6e5c0f442";
+        "b7905695b1873d9b858bb1430c77a5cb10fb6f1e82672ffc7067b9dc9ffcefc2";
     const APPEARANCE: &[u8] =
         include_bytes!("../../../apps/studio-web/tests/fixtures/appearance.2da");
 
@@ -4058,7 +4058,7 @@ mod m5_native_tests {
             &source,
             DIRECT_CREATURE_APPEARANCE,
             identity_json,
-            r#"{"schemaVersion":1,"textureArtifactCleanup":true}"#,
+            r#"{"schemaVersion":1,"textureArtifactCleanup":true,"skinAccessoryStabilization":{"schemaVersion":1,"mode":"KEEP_SOURCE_WEIGHTS"}}"#,
         )
         .expect("Studio product with texture cleanup");
         let cleaned_report: serde_json::Value =
@@ -4069,6 +4069,10 @@ mod m5_native_tests {
                 .as_u64()
                 .unwrap()
                 > 0
+        );
+        assert_eq!(
+            cleaned_report["skinAccessoryStabilization"]["mode"],
+            "KEEP_SOURCE_WEIGHTS"
         );
 
         let options_error = match build_meshy_procedural_humanoid_product_with_options_v3_inner(

@@ -30,6 +30,7 @@ pub mod proof_module;
 pub mod reference_proof;
 pub mod reference_supermodel;
 pub mod runtime_evidence;
+pub mod skin_accessory;
 pub mod tga;
 pub mod tile;
 pub mod tri_control_diagnostic;

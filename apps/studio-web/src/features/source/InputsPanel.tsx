@@ -6,6 +6,10 @@ export type CreatureConversionProfileV1 =
   | "PRODUCT_300K"
   | "EXPERIMENTAL_P100K"
   | "EXPERIMENTAL_P300K";
+export type SkinAccessoryStabilizationModeV1 =
+  | "AUTO"
+  | "KEEP_SOURCE_WEIGHTS"
+  | "SELECT_BONE";
 
 export interface TileAuthoringOptions {
   readonly terrainName: string;
@@ -28,6 +32,8 @@ export interface SourceInputProps {
   animationEvents?: File;
   creatureProfile?: CreatureConversionProfileV1;
   textureArtifactCleanup?: boolean;
+  skinAccessoryStabilizationMode?: SkinAccessoryStabilizationModeV1;
+  skinAccessorySelectedBoneName?: string;
   sourceIdentity?: FileIdentityValue;
   appearanceIdentity?: FileIdentityValue;
   sourceError?: string;
@@ -38,6 +44,10 @@ export interface SourceInputProps {
   onSelectAnimationEvents: (file: File) => void;
   onCreatureProfileChange?: (profile: CreatureConversionProfileV1) => void;
   onTextureArtifactCleanupChange?: (enabled: boolean) => void;
+  onSkinAccessoryStabilizationModeChange?: (
+    mode: SkinAccessoryStabilizationModeV1,
+  ) => void;
+  onSkinAccessorySelectedBoneNameChange?: (boneName: string) => void;
   onRemoveSource: () => void;
   onRemoveAppearance: () => void;
   onRemoveAnimationEvents: () => void;
@@ -143,6 +153,8 @@ export function InputsPanel({
   animationEvents,
   creatureProfile = "PRODUCT_300K",
   textureArtifactCleanup = false,
+  skinAccessoryStabilizationMode = "AUTO",
+  skinAccessorySelectedBoneName = "",
   sourceIdentity,
   appearanceIdentity,
   sourceError,
@@ -153,6 +165,8 @@ export function InputsPanel({
   onSelectAnimationEvents,
   onCreatureProfileChange,
   onTextureArtifactCleanupChange,
+  onSkinAccessoryStabilizationModeChange,
+  onSkinAccessorySelectedBoneNameChange,
   onRemoveSource,
   onRemoveAppearance,
   onRemoveAnimationEvents,
@@ -215,6 +229,37 @@ export function InputsPanel({
               />
               Repair texture artifacts
             </label>
+          ) : null}
+          {onSkinAccessoryStabilizationModeChange ? (
+            <>
+              <label>
+                Detached accessory skinning
+                <select
+                  aria-label="Detached accessory skinning"
+                  value={skinAccessoryStabilizationMode}
+                  onChange={(event) => onSkinAccessoryStabilizationModeChange(
+                    event.currentTarget.value as SkinAccessoryStabilizationModeV1,
+                  )}
+                >
+                  <option value="AUTO">Auto</option>
+                  <option value="KEEP_SOURCE_WEIGHTS">Keep source weights</option>
+                  <option value="SELECT_BONE">Select bone</option>
+                </select>
+              </label>
+              {skinAccessoryStabilizationMode === "SELECT_BONE" ? (
+                <label>
+                  Accessory bone name
+                  <input
+                    aria-label="Accessory bone name"
+                    value={skinAccessorySelectedBoneName}
+                    onChange={(event) => onSkinAccessorySelectedBoneNameChange?.(
+                      event.currentTarget.value,
+                    )}
+                    placeholder="Spine02"
+                  />
+                </label>
+              ) : null}
+            </>
           ) : null}
         </>
       ) : null}

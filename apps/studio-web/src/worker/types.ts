@@ -8,6 +8,11 @@ export type ModelPackageLaneV1 =
   | "SKINNED_PROCEDURAL_HUMANOID_P300K_EXPERIMENT"
   | "M0_STATIC_RIGID";
 
+export type SkinAccessoryStabilizationOptionsV1 = {
+  mode: "AUTO" | "KEEP_SOURCE_WEIGHTS" | "SELECT_BONE";
+  selectedBoneName?: string;
+};
+
 export type StudioWorkerRequest =
   | { requestId: string; type: "INITIALIZE" }
   | {
@@ -62,6 +67,7 @@ export type StudioWorkerRequest =
       packageLane: "SKINNED_PROCEDURAL_HUMANOID_42";
       identityJson: string;
       textureArtifactCleanup: boolean;
+      skinAccessoryStabilization?: SkinAccessoryStabilizationOptionsV1;
     }
   | {
       requestId: string;
@@ -71,6 +77,7 @@ export type StudioWorkerRequest =
       packageLane: "SKINNED_PROCEDURAL_HUMANOID_P100K_EXPERIMENT";
       identityJson: string;
       textureArtifactCleanup: boolean;
+      skinAccessoryStabilization?: SkinAccessoryStabilizationOptionsV1;
     }
   | {
       requestId: string;
@@ -80,6 +87,7 @@ export type StudioWorkerRequest =
       packageLane: "SKINNED_PROCEDURAL_HUMANOID_P300K_EXPERIMENT";
       identityJson: string;
       textureArtifactCleanup: boolean;
+      skinAccessoryStabilization?: SkinAccessoryStabilizationOptionsV1;
     }
   | {
       requestId: string;
