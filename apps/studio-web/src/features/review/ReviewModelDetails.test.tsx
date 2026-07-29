@@ -31,6 +31,10 @@ function resultFixture(): CanonicalResultSnapshot {
       diagnostics: [],
     },
     packageAssemblyEvidence: { strictReconciled: true, resourceCount: 3, artifactCount: 5 },
+    runtimeAcceptance: {
+      status: "OPEN_M6",
+      reason: "No exact owner-verified Aurora/NWN lineage matches these output hashes.",
+    },
     artifacts: [],
     reportJson: "{}",
     summaryJson: "{}",

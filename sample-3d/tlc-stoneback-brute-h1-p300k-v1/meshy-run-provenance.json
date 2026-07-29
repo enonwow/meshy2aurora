@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "profileId": "H1-humanoid-animated/v1",
+  "recovery": {
+    "reason": "image_to_3d_exceeded_meshy_rig_300000_face_limit",
+    "exactModelTaskId": "019fa98b-2acc-72e3-96a6-0404d7985807",
+    "exactModelCreatedAt": 1785255899094,
+    "exactRemeshTaskId": "019fa999-54f5-7d42-bc0d-69cdd8b0cd5a",
+    "exactRigTaskId": "019fa99b-d13d-74e1-82ba-fbdc3be48201",
+    "reusedExactGeneratedModel": true,
+    "generatedSecondModel": false
+  },
+  "options": {
+    "originalRequestedPolycount": 300000,
+    "observedOriginalFaceCount": 300844,
+    "remeshTargetPolycount": 295000,
+    "topology": "triangle",
+    "rigHeightMeters": 2.4
+  },
+  "credits": {
+    "ownerCap": 250,
+    "spentBeforeRecovery": 35,
+    "remeshCredits": 5,
+    "rigCredits": 5,
+    "animationCredits": 30,
+    "maximumAdditionalCredits": 40,
+    "maximumTotalCredits": 75,
+    "balanceBeforeRecovery": 742,
+    "remeshConsumedCredits": 5,
+    "rigConsumedCredits": 5,
+    "animationConsumedCredits": 30
+  },
+  "taskIds": {
+    "IMAGE_TO_3D": "019fa98b-2acc-72e3-96a6-0404d7985807",
+    "REMESH": "019fa999-54f5-7d42-bc0d-69cdd8b0cd5a",
+    "RIG": "019fa99b-d13d-74e1-82ba-fbdc3be48201",
+    "ANIMATE_0": "019fa99d-a747-7e88-b0ac-46a5c8e7f80e",
+    "ANIMATE_30": "019fa99e-8d81-7551-926c-df40929d0e67",
+    "ANIMATE_16": "019fa99f-7f2e-7eeb-8fed-be9f25b68978",
+    "ANIMATE_198": "019fa9a0-0439-7a75-a650-57f2a1805cea",
+    "ANIMATE_193": "019fa9a0-b894-7ac5-b824-fd712e990fec",
+    "ANIMATE_178": "019fa9a1-3afc-753d-afd9-9b490155e598",
+    "ANIMATE_187": "019fa9a1-d614-7f98-8a7e-50f29406990a",
+    "ANIMATE_8": "019fa9a2-8a56-7562-83b7-ccf506d831a6",
+    "ANIMATE_3": "019fa9a3-7c30-7bb7-9e75-d367ae53e896",
+    "ANIMATE_2": "019fa9a4-1778-7693-b857-39a9f41e0906"
+  },
+  "animations": [
+    {
+      "actionId": 0,
+      "clipName": "cpause1",
+      "file": "meshy-idle-action-0.glb",
+      "taskId": "019fa99d-a747-7e88-b0ac-46a5c8e7f80e",
+      "sha256": "05c8cbbda380dd60cb0114a0095e30f0c849d3189f8f3373709f9ba2f9d4ce32",
+      "byteLength": 19756344
+    },
+    {
+      "actionId": 30,
+      "clipName": "cwalk",
+      "file": "meshy-walk-action-30.glb",
+      "taskId": "019fa99e-8d81-7551-926c-df40929d0e67",
+      "sha256": "b77b8f833a511e73aaa5c4c3852ee49fb60244f7e6112c6f2c250095eeab5ff5",
+      "byteLength": 19756396
+    },
+    {
+      "actionId": 16,
+      "clipName": "crun",
+      "file": "meshy-sprint-action-16.glb",
+      "taskId": "019fa99f-7f2e-7eeb-8fed-be9f25b68978",
+      "sha256": "a772540e7d18454785ebf4ed533e51d9e265fa8a1f0392390834c94a5db3e2e9",
+      "byteLength": 19710580
+    },
+    {
+      "actionId": 198,
+      "clipName": "ca1slashl",
+      "file": "meshy-punch-combo-action-198.glb",
+      "taskId": "019fa9a0-0439-7a75-a650-57f2a1805cea",
+      "sha256": "bc05d5a6eab3a1da7a09e277f92c9a808d60ca3e9b24d3df1acfd09e92ffd139",
+      "byteLength": 19736780
+    },
+    {
+      "actionId": 193,
+      "clipName": "ca1slashr",
+      "file": "meshy-left-hook-action-193.glb",
+      "taskId": "019fa9a0-b894-7ac5-b824-fd712e990fec",
+      "sha256": "9ecd0c033ef95100fb4c2d84f05c79a33a288e26f32f5be53d4dc721a9efbf6a",
+      "byteLength": 19717444
+    },
+    {
+      "actionId": 178,
+      "clipName": "cdamagel",
+      "file": "meshy-hit-action-178.glb",
+      "taskId": "019fa9a1-3afc-753d-afd9-9b490155e598",
+      "sha256": "1d01b4642f6d9ac68469a8993e393296604b02e063fb5912bb027399e1debdf1",
+      "byteLength": 19727344
+    },
+    {
+      "actionId": 187,
+      "clipName": "ckdbck",
+      "file": "meshy-knockdown-action-187.glb",
+      "taskId": "019fa9a1-d614-7f98-8a7e-50f29406990a",
+      "sha256": "e55517125adadb5e60e8db9fd5f666a66dcb3cb127009660e99ff0726a10b56f",
+      "byteLength": 19752648
+    },
+    {
+      "actionId": 8,
+      "clipName": "cdead",
+      "file": "meshy-dead-action-8.glb",
+      "taskId": "019fa9a2-8a56-7562-83b7-ccf506d831a6",
+      "sha256": "46af1255f09321ba25ef2641c1c1f51062ffc41175651bffc68d232473adb20a",
+      "byteLength": 19742084
+    },
+    {
+      "actionId": 3,
+      "clipName": "cguptokdb",
+      "file": "meshy-arise-action-3.glb",
+      "taskId": "019fa9a3-7c30-7bb7-9e75-d367ae53e896",
+      "sha256": "8f4ebc97f4d971ab163b6e61f84063511b38ced6bb809389df5f19a75b307ab1",
+      "byteLength": 19727436
+    },
+    {
+      "actionId": 2,
+      "clipName": "ctaunt",
+      "file": "meshy-alert-action-2.glb",
+      "taskId": "019fa9a4-1778-7693-b857-39a9f41e0906",
+      "sha256": "ab6d65c83bdc710b0aa9ed0cc630d5b122ef0059059042dc4016a03c975b5f87",
+      "byteLength": 19756328
+    }
+  ]
+}

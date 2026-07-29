@@ -6,6 +6,9 @@ use super::InspectionReport;
 
 pub const M4_WRITER_SCHEMA_VERSION: u32 = 1;
 pub const M4A_ANIMATION_SCHEMA_VERSION: u32 = 1;
+/// Shared finite face-plane threshold used by the binary MDL writer and by
+/// the final runtime-geometry sanitation pass.
+pub const NWN_EE_BINARY_MDL_EPSILON_V1: f32 = 1.0e-5;
 /// Current NWN:EE product boundary for one triangle-list mesh stream.
 ///
 /// Raw vertex references are emitted as `u16`; constraining the stream to the

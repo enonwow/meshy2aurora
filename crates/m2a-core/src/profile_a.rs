@@ -44,6 +44,10 @@ use crate::{
         MdlAnimationClipV1, MdlAnimationInterpolationV1, MdlAnimationSetV1,
         MdlAnimationTrackPathV1, MdlAnimationTrackV1,
     },
+    model_limits::{
+        AURORA_MODEL_TRIANGLE_BUDGET_V1, AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1,
+        MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_CEILING_V1,
+    },
 };
 
 // Backward-compatible creature names now alias the shared model-kind-neutral
@@ -57,8 +61,6 @@ pub use crate::model_ir::{
 };
 
 pub const PROFILE_A_SCHEMA_VERSION: u32 = 1;
-pub const PROFILE_A_PLACEABLE_TRIANGLE_WARNING_ABOVE_V1: u64 = 10_000;
-pub const PROFILE_A_PLACEABLE_TRIANGLE_BLOCKING_ABOVE_V1: u64 = 21_845;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -197,8 +199,8 @@ impl Default for ProfileALimitsV1 {
             max_work_bytes: 256 * 1024 * 1024,
             max_diagnostics: 2_048,
             max_unique_materials: 1,
-            triangle_warning_above: 5_000,
-            triangle_blocking_above: 10_000,
+            triangle_warning_above: AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 as u64,
+            triangle_blocking_above: AURORA_MODEL_TRIANGLE_BUDGET_V1 as u64,
         }
     }
 }
@@ -611,6 +613,96 @@ pub fn canonical_profile_sha256(
 pub fn derive_meshy_h1_profile_and_mapping_v1(
     source: &GlbIngestResult,
 ) -> Result<(CreatureRigProfileV1, ProfileAAnimationMappingV1), ProfileAConversionFatalError> {
+    derive_meshy_h1_profile_and_mapping_with_limits_v1(
+        source,
+        &ProfileALimitsV1::default(),
+        MeshySurfaceDegeneracyPolicyV1::LegacyAbsoluteEpsilon,
+    )
+}
+
+pub(crate) fn derive_meshy_h1_profile_and_mapping_exact_v1(
+    source: &GlbIngestResult,
+) -> Result<(CreatureRigProfileV1, ProfileAAnimationMappingV1), ProfileAConversionFatalError> {
+    derive_meshy_h1_profile_and_mapping_with_limits_v1(
+        source,
+        &ProfileALimitsV1::default(),
+        MeshySurfaceDegeneracyPolicyV1::ExactFiniteNonCollinear,
+    )
+}
+
+#[derive(Clone, Copy)]
+enum MeshySurfaceDegeneracyPolicyV1 {
+    LegacyAbsoluteEpsilon,
+    ExactFiniteNonCollinear,
+}
+
+fn meshy_surface_triangle_is_valid_v1(
+    a: [f32; 3],
+    b: [f32; 3],
+    c: [f32; 3],
+    policy: MeshySurfaceDegeneracyPolicyV1,
+) -> bool {
+    match policy {
+        MeshySurfaceDegeneracyPolicyV1::LegacyAbsoluteEpsilon => {
+            length_sq(cross(sub3(b, a), sub3(c, a))) > 1.0e-10
+        }
+        MeshySurfaceDegeneracyPolicyV1::ExactFiniteNonCollinear => {
+            let ab = [
+                f64::from(b[0]) - f64::from(a[0]),
+                f64::from(b[1]) - f64::from(a[1]),
+                f64::from(b[2]) - f64::from(a[2]),
+            ];
+            let ac = [
+                f64::from(c[0]) - f64::from(a[0]),
+                f64::from(c[1]) - f64::from(a[1]),
+                f64::from(c[2]) - f64::from(a[2]),
+            ];
+            let cross = [
+                ab[1] * ac[2] - ab[2] * ac[1],
+                ab[2] * ac[0] - ab[0] * ac[2],
+                ab[0] * ac[1] - ab[1] * ac[0],
+            ];
+            let squared = cross[0].powi(2) + cross[1].powi(2) + cross[2].powi(2);
+            squared.is_finite() && squared > 0.0
+        }
+    }
+}
+
+pub(crate) fn derive_meshy_h1_profile_and_mapping_p100k_experiment_v1(
+    source: &GlbIngestResult,
+) -> Result<(CreatureRigProfileV1, ProfileAAnimationMappingV1), ProfileAConversionFatalError> {
+    let limits = ProfileALimitsV1 {
+        triangle_warning_above: 50_000,
+        triangle_blocking_above: MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_CEILING_V1 as u64,
+        ..ProfileALimitsV1::default()
+    };
+    derive_meshy_h1_profile_and_mapping_with_limits_v1(
+        source,
+        &limits,
+        MeshySurfaceDegeneracyPolicyV1::ExactFiniteNonCollinear,
+    )
+}
+
+pub(crate) fn derive_meshy_h1_profile_and_mapping_p300k_experiment_v1(
+    source: &GlbIngestResult,
+) -> Result<(CreatureRigProfileV1, ProfileAAnimationMappingV1), ProfileAConversionFatalError> {
+    let limits = ProfileALimitsV1 {
+        triangle_warning_above: 150_000,
+        triangle_blocking_above: 300_000,
+        ..ProfileALimitsV1::default()
+    };
+    derive_meshy_h1_profile_and_mapping_with_limits_v1(
+        source,
+        &limits,
+        MeshySurfaceDegeneracyPolicyV1::ExactFiniteNonCollinear,
+    )
+}
+
+fn derive_meshy_h1_profile_and_mapping_with_limits_v1(
+    source: &GlbIngestResult,
+    limits: &ProfileALimitsV1,
+    surface_degeneracy_policy: MeshySurfaceDegeneracyPolicyV1,
+) -> Result<(CreatureRigProfileV1, ProfileAAnimationMappingV1), ProfileAConversionFatalError> {
     if source.ir.skins.len() != 1 {
         return Err(fatal(
             "M4A-MESHY-H1-SOURCE-INVALID",
@@ -709,8 +801,7 @@ pub fn derive_meshy_h1_profile_and_mapping_v1(
         ));
     }
 
-    let options = ProfileAOptionsV1::default();
-    let selection = match select_default_scene(source, &options.limits, 0) {
+    let selection = match select_default_scene(source, limits, 0) {
         Ok(value) => value,
         Err(error) => match *error {
             SourceSelectionError::Gate(gate) => {
@@ -873,7 +964,7 @@ pub fn derive_meshy_h1_profile_and_mapping_v1(
             let a = surface_positions[triangle[0] as usize];
             let b = surface_positions[triangle[1] as usize];
             let c = surface_positions[triangle[2] as usize];
-            length_sq(cross(sub3(b, a), sub3(c, a))) > 1.0e-10
+            meshy_surface_triangle_is_valid_v1(a, b, c, surface_degeneracy_policy)
         })
         .flatten()
         .copied()
@@ -1414,7 +1505,13 @@ pub fn convert_profile_a(
     rig: &CreatureRigProfileV1,
     options: &ProfileAOptionsV1,
 ) -> Result<ProfileAConversionOutcomeV1, ProfileAConversionFatalError> {
-    convert_profile_a_impl(source, rig, options, SourceInventoryPolicy::RejectPresent)
+    convert_profile_a_impl(
+        source,
+        rig,
+        options,
+        SourceInventoryPolicy::RejectPresent,
+        ProfileATriangleThresholdContractV1::Product,
+    )
 }
 
 pub fn convert_profile_a_with_animations_v1(
@@ -1423,12 +1520,88 @@ pub fn convert_profile_a_with_animations_v1(
     profile_options: &ProfileAOptionsV1,
     mapping: &ProfileAAnimationMappingV1,
 ) -> Result<ProfileAAnimatedOutcomeV1, ProfileAAnimationFatalError> {
+    convert_profile_a_with_animations_internal_v1(
+        source,
+        rig,
+        profile_options,
+        mapping,
+        ProfileATriangleThresholdContractV1::Product,
+    )
+}
+
+pub(crate) fn convert_profile_a_with_animations_exact_v1(
+    source: &GlbIngestResult,
+    rig: &CreatureRigProfileV1,
+    profile_options: &ProfileAOptionsV1,
+    mapping: &ProfileAAnimationMappingV1,
+) -> Result<ProfileAAnimatedOutcomeV1, ProfileAAnimationFatalError> {
+    convert_profile_a_with_animations_internal_v1(
+        source,
+        rig,
+        profile_options,
+        mapping,
+        ProfileATriangleThresholdContractV1::ProductExact,
+    )
+}
+
+pub(crate) fn convert_profile_a_with_animations_p100k_experiment_v1(
+    source: &GlbIngestResult,
+    rig: &CreatureRigProfileV1,
+    mapping: &ProfileAAnimationMappingV1,
+) -> Result<ProfileAAnimatedOutcomeV1, ProfileAAnimationFatalError> {
+    let options = ProfileAOptionsV1 {
+        limits: ProfileALimitsV1 {
+            triangle_warning_above: 50_000,
+            triangle_blocking_above: MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_CEILING_V1 as u64,
+            ..ProfileALimitsV1::default()
+        },
+        ..ProfileAOptionsV1::default()
+    };
+    convert_profile_a_with_animations_internal_v1(
+        source,
+        rig,
+        &options,
+        mapping,
+        ProfileATriangleThresholdContractV1::P100kExperiment,
+    )
+}
+
+pub(crate) fn convert_profile_a_with_animations_p300k_experiment_v1(
+    source: &GlbIngestResult,
+    rig: &CreatureRigProfileV1,
+    mapping: &ProfileAAnimationMappingV1,
+) -> Result<ProfileAAnimatedOutcomeV1, ProfileAAnimationFatalError> {
+    let options = ProfileAOptionsV1 {
+        limits: ProfileALimitsV1 {
+            triangle_warning_above: 150_000,
+            triangle_blocking_above: 300_000,
+            ..ProfileALimitsV1::default()
+        },
+        ..ProfileAOptionsV1::default()
+    };
+    convert_profile_a_with_animations_internal_v1(
+        source,
+        rig,
+        &options,
+        mapping,
+        ProfileATriangleThresholdContractV1::P300kExperiment,
+    )
+}
+
+fn convert_profile_a_with_animations_internal_v1(
+    source: &GlbIngestResult,
+    rig: &CreatureRigProfileV1,
+    profile_options: &ProfileAOptionsV1,
+    mapping: &ProfileAAnimationMappingV1,
+    triangle_threshold_contract: ProfileATriangleThresholdContractV1,
+) -> Result<ProfileAAnimatedOutcomeV1, ProfileAAnimationFatalError> {
     let validated = validate_animation_mapping_v1(source, rig, mapping)?;
     let base = convert_profile_a_impl(
         source,
         rig,
         profile_options,
         SourceInventoryPolicy::AllowMappedForM4A2,
+        triangle_threshold_contract,
     )
     .map_err(ProfileAAnimationFatalError::from)?;
     if base.creature.is_none() {
@@ -1456,8 +1629,9 @@ fn convert_profile_a_impl(
     rig: &CreatureRigProfileV1,
     options: &ProfileAOptionsV1,
     source_inventory_policy: SourceInventoryPolicy,
+    triangle_threshold_contract: ProfileATriangleThresholdContractV1,
 ) -> Result<ProfileAConversionOutcomeV1, ProfileAConversionFatalError> {
-    let base_work_bytes = validate_api(source, rig, options)?;
+    let base_work_bytes = validate_api(source, rig, options, triangle_threshold_contract)?;
     let mut gates = collect_preflight_gates(source, rig, options, source_inventory_policy)?;
     let mut transform_report = empty_transform_report(rig.alignment_anchor);
     let mut counters = Counters {
@@ -2288,7 +2462,7 @@ fn validate_source_animation_v1(
             return Err(animation_fatal(
                 "M4A-INTERPOLATION-UNSUPPORTED",
                 &format!("{channel_path}.interpolation"),
-                "M4A2 v1 supports LINEAR interpolation, plus identity STEP scale channels",
+                "M4A2 v1 supports LINEAR interpolation, plus constant positive uniform STEP scale channels",
             ));
         }
         if sampler.input_times_seconds.is_empty()
@@ -2357,17 +2531,19 @@ fn validate_source_animation_v1(
                     "Aurora scale controllers require positive uniform source scale",
                 ));
             }
-            if sampler.interpolation == "STEP"
-                && sampler
+            if sampler.interpolation == "STEP" {
+                let first = sampler.output_values[0];
+                if sampler
                     .output_values
                     .chunks_exact(3)
-                    .any(|row| row.iter().any(|value| (*value - 1.0).abs() > 1.0e-4))
-            {
-                return Err(animation_fatal(
-                    "M4A-INTERPOLATION-UNSUPPORTED",
-                    &format!("{channel_path}.interpolation"),
-                    "only identity STEP scale channels may be elided for Aurora",
-                ));
+                    .any(|row| row.iter().any(|value| (*value - first).abs() > 1.0e-4))
+                {
+                    return Err(animation_fatal(
+                        "M4A-INTERPOLATION-UNSUPPORTED",
+                        &format!("{channel_path}.interpolation"),
+                        "only time-invariant positive uniform STEP scale channels may be elided for Aurora",
+                    ));
+                }
             }
         }
     }
@@ -2732,6 +2908,7 @@ fn validate_api(
     source: &GlbIngestResult,
     rig: &CreatureRigProfileV1,
     options: &ProfileAOptionsV1,
+    triangle_threshold_contract: ProfileATriangleThresholdContractV1,
 ) -> Result<u64, ProfileAConversionFatalError> {
     validate_source_contract(source)?;
     if rig.schema_version != PROFILE_A_SCHEMA_VERSION {
@@ -2755,7 +2932,7 @@ fn validate_api(
             "profile id must be a non-path logical name",
         ));
     }
-    validate_options(options)?;
+    validate_options(options, triangle_threshold_contract)?;
     let base_work_bytes = estimate_auxiliary_work_bytes(source, rig)?;
     if base_work_bytes > options.limits.max_work_bytes {
         return Err(fatal(
@@ -2785,7 +2962,12 @@ fn validate_api(
             "alignment anchor must lie inside target bounds",
         ));
     }
-    validate_rig(rig, &options.limits, options.bounds_tolerance_factor)?;
+    validate_rig(
+        rig,
+        &options.limits,
+        options.bounds_tolerance_factor,
+        triangle_threshold_contract,
+    )?;
     Ok(base_work_bytes)
 }
 
@@ -3299,7 +3481,18 @@ fn has_degenerate_positions(positions: &[[f32; 3]], indices: &[u32]) -> bool {
     })
 }
 
-fn validate_options(options: &ProfileAOptionsV1) -> Result<(), ProfileAConversionFatalError> {
+#[derive(Clone, Copy)]
+enum ProfileATriangleThresholdContractV1 {
+    Product,
+    ProductExact,
+    P100kExperiment,
+    P300kExperiment,
+}
+
+fn validate_options(
+    options: &ProfileAOptionsV1,
+    triangle_threshold_contract: ProfileATriangleThresholdContractV1,
+) -> Result<(), ProfileAConversionFatalError> {
     if options.weight_merge_epsilon != 0.0
         || options.weight_sum_tolerance != 0.00001
         || options.bounds_tolerance_factor != 0.00001
@@ -3312,17 +3505,22 @@ fn validate_options(options: &ProfileAOptionsV1) -> Result<(), ProfileAConversio
     }
     let limits = &options.limits;
     let hard = ProfileALimitsV1::default();
-    let triangle_thresholds_are_compiled_profile = matches!(
-        (
-            limits.triangle_warning_above,
-            limits.triangle_blocking_above
+    let required_triangle_thresholds = match triangle_threshold_contract {
+        ProfileATriangleThresholdContractV1::Product
+        | ProfileATriangleThresholdContractV1::ProductExact => (
+            AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 as u64,
+            AURORA_MODEL_TRIANGLE_BUDGET_V1 as u64,
         ),
-        (5_000, 10_000)
-            | (
-                PROFILE_A_PLACEABLE_TRIANGLE_WARNING_ABOVE_V1,
-                PROFILE_A_PLACEABLE_TRIANGLE_BLOCKING_ABOVE_V1
-            )
-    );
+        ProfileATriangleThresholdContractV1::P100kExperiment => (
+            50_000,
+            MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_CEILING_V1 as u64,
+        ),
+        ProfileATriangleThresholdContractV1::P300kExperiment => (150_000, 300_000),
+    };
+    let triangle_thresholds_are_compiled_profile = (
+        limits.triangle_warning_above,
+        limits.triangle_blocking_above,
+    ) == required_triangle_thresholds;
     let pairs = [
         (limits.max_rig_nodes, hard.max_rig_nodes),
         (limits.max_segments, hard.max_segments),
@@ -3538,7 +3736,18 @@ fn validate_rig(
     rig: &CreatureRigProfileV1,
     limits: &ProfileALimitsV1,
     tolerance_factor: f32,
+    triangle_threshold_contract: ProfileATriangleThresholdContractV1,
 ) -> Result<(), ProfileAConversionFatalError> {
+    let surface_degeneracy_policy = match triangle_threshold_contract {
+        ProfileATriangleThresholdContractV1::ProductExact
+        | ProfileATriangleThresholdContractV1::P100kExperiment
+        | ProfileATriangleThresholdContractV1::P300kExperiment => {
+            MeshySurfaceDegeneracyPolicyV1::ExactFiniteNonCollinear
+        }
+        ProfileATriangleThresholdContractV1::Product => {
+            MeshySurfaceDegeneracyPolicyV1::LegacyAbsoluteEpsilon
+        }
+    };
     if rig.segments.is_empty() {
         return Err(fatal(
             "M3A-PROFILE-SEGMENT-INVALID",
@@ -3674,7 +3883,7 @@ fn validate_rig(
             let a = segment.surface_positions[triangle[0] as usize];
             let b = segment.surface_positions[triangle[1] as usize];
             let c = segment.surface_positions[triangle[2] as usize];
-            if length_sq(cross(sub3(b, a), sub3(c, a))) <= 1.0e-10 {
+            if !meshy_surface_triangle_is_valid_v1(a, b, c, surface_degeneracy_policy) {
                 return Err(fatal(
                     "M3A-PROFILE-SEGMENT-INVALID",
                     "rig.segments.surfaceIndices",
@@ -4686,8 +4895,57 @@ struct AssignmentPlan {
     segment_order: Vec<usize>,
     mixed_tangent_buckets: Vec<(u32, u32)>,
     has_unreferenced_vertices: bool,
+    direct_skin_weights_by_source_vertex: bool,
     expected_distance_evaluations: u64,
     work_bytes_peak: u64,
+}
+
+fn supports_direct_skin_weights_by_source_vertex(
+    instances: &[GeometryInstance<'_>],
+    conversion: Mat4,
+    rig: &CreatureRigProfileV1,
+    rig_worlds: &BTreeMap<u32, Mat4>,
+) -> Result<bool, ProfileAConversionFatalError> {
+    if instances.len() != 1 || rig.segments.len() != 1 {
+        return Ok(false);
+    }
+    let instance = &instances[0];
+    let primitive = instance.primitive;
+    let segment = &rig.segments[0];
+    if segment.deformation != RigSegmentDeformationV1::Skin
+        || segment.surface_indices != primitive.indices
+        || segment.surface_positions.len() != primitive.positions.len()
+        || segment.reference_weights.len() != primitive.positions.len()
+    {
+        return Ok(false);
+    }
+    let parent_world = *rig_worlds.get(&segment.parent_node_id).ok_or_else(|| {
+        fatal(
+            "M3A-INTERNAL-CONTRACT",
+            "rig.segments.parentNodeId",
+            "validated rig parent is missing",
+        )
+    })?;
+    let source_world = conversion.mul(instance.source_world);
+    for (source_position, surface_position) in
+        primitive.positions.iter().zip(&segment.surface_positions)
+    {
+        let source_target = source_world.transform_point(*source_position)?;
+        let surface_target = parent_world.transform_point(*surface_position)?;
+        let tolerance = 1.0e-5_f32
+            * source_target
+                .iter()
+                .chain(&surface_target)
+                .fold(1.0_f32, |largest, value| largest.max(value.abs()));
+        if source_target
+            .iter()
+            .zip(surface_target)
+            .any(|(left, right)| (*left - right).abs() > tolerance)
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4768,6 +5026,8 @@ fn plan_triangle_assignments(
                 "surface triangle count overflow",
             )
         })?;
+    let direct_skin_weights_by_source_vertex =
+        supports_direct_skin_weights_by_source_vertex(instances, conversion, rig, rig_worlds)?;
     // A single-segment rig has only one valid assignment. Scanning its entire
     // reference surface for every source-triangle corner cannot change the
     // result and can consume the bounded distance budget before the actual
@@ -5115,7 +5375,9 @@ fn plan_triangle_assignments(
                 "output geometry byte sum overflow",
             )
         })?;
-        if segment.deformation == RigSegmentDeformationV1::Skin {
+        if segment.deformation == RigSegmentDeformationV1::Skin
+            && !direct_skin_weights_by_source_vertex
+        {
             weight_evaluations = weight_evaluations
                 .checked_add(
                     usize_u64(plan.vertex_count)
@@ -5229,6 +5491,7 @@ fn plan_triangle_assignments(
         segment_order,
         mixed_tangent_buckets,
         has_unreferenced_vertices,
+        direct_skin_weights_by_source_vertex,
         expected_distance_evaluations,
         work_bytes_peak,
     })
@@ -5480,16 +5743,26 @@ fn emit_assigned_geometry(
                                     checked_add(counters.rigid_vertices, 1, "rigid vertices")?
                             }
                             RigSegmentDeformationV1::Skin => {
-                                let target_position = target_matrix
-                                    .transform_point(primitive.positions[source_index_usize])?;
-                                bucket.weights.push(transfer_skin_weights(
-                                    target_position,
-                                    segment,
-                                    parent_world,
-                                    gates,
-                                    counters,
-                                    limits,
-                                )?);
+                                if plan.direct_skin_weights_by_source_vertex {
+                                    bucket.weights.push(direct_source_skin_weights(
+                                        source_index_usize,
+                                        segment,
+                                        gates,
+                                        counters,
+                                        limits,
+                                    )?);
+                                } else {
+                                    let target_position = target_matrix
+                                        .transform_point(primitive.positions[source_index_usize])?;
+                                    bucket.weights.push(transfer_skin_weights(
+                                        target_position,
+                                        segment,
+                                        parent_world,
+                                        gates,
+                                        counters,
+                                        limits,
+                                    )?);
+                                }
                                 counters.skinned_vertices =
                                     checked_add(counters.skinned_vertices, 1, "skinned vertices")?;
                             }
@@ -5585,6 +5858,40 @@ fn transfer_skin_weights(
             ));
         }
     }
+    finalize_skin_influences(influences, segment, gates, counters, limits)
+}
+
+fn direct_source_skin_weights(
+    source_vertex_index: usize,
+    segment: &CreatureRigSegmentV1,
+    gates: &mut Vec<ProfileAGateV1>,
+    counters: &mut Counters,
+    limits: &ProfileALimitsV1,
+) -> Result<AuroraVertexWeightsV1, ProfileAConversionFatalError> {
+    let source = segment
+        .reference_weights
+        .get(source_vertex_index)
+        .ok_or_else(|| {
+            fatal(
+                "M3A-INTERNAL-CONTRACT",
+                "rig.segments.referenceWeights",
+                "direct topology source vertex has no aligned reference weights",
+            )
+        })?;
+    let influences = source
+        .iter()
+        .map(|influence| (influence.bone_node_id, f64::from(influence.value)))
+        .collect();
+    finalize_skin_influences(influences, segment, gates, counters, limits)
+}
+
+fn finalize_skin_influences(
+    mut influences: Vec<(u32, f64)>,
+    segment: &CreatureRigSegmentV1,
+    gates: &mut Vec<ProfileAGateV1>,
+    counters: &mut Counters,
+    limits: &ProfileALimitsV1,
+) -> Result<AuroraVertexWeightsV1, ProfileAConversionFatalError> {
     influences.sort_by_key(|item| item.0);
     let mut merged = Vec::<(u32, f64)>::new();
     merged.try_reserve(influences.len()).map_err(|_| {

@@ -56,6 +56,7 @@ import {
 import { projectCanonicalReadback } from "./features/results/projectReadback";
 import {
   InputsPanel,
+  type CreatureConversionProfileV1,
   type TileAuthoringOptions,
 } from "./features/source/InputsPanel";
 import { SourceStep } from "./features/source/SourceStep";
@@ -137,6 +138,62 @@ const STUDIO_PLACEABLE_IDENTITY = {
   objectTag: "m2a_s1_ritual_pedestal",
   displayName: "Meshy Ritual Pedestal",
 } as const;
+function studioCreatureProductIdentity(
+  sourceSha256: string,
+  textureArtifactCleanup: boolean,
+) {
+  if (!/^[0-9a-f]{64}$/.test(sourceSha256)) {
+    throw new Error("Inspected source has no canonical SHA-256 identity");
+  }
+  const suffix = sourceSha256.slice(0, 8);
+  const variant = textureArtifactCleanup ? "h" : "";
+  return {
+    modelResref: `m2c2${variant}m${suffix}`,
+    textureResref: `m2c2${variant}t${suffix}`,
+    hakResref: `m2c2${variant}h${suffix}`,
+    appearanceLabel: `M2A_CREATURE_V2_${textureArtifactCleanup ? "H_" : ""}${suffix.toUpperCase()}`,
+  };
+}
+function studioCreatureP100kPackageIdentity(
+  sourceSha256: string,
+  textureArtifactCleanup: boolean,
+) {
+  if (!/^[0-9a-f]{64}$/.test(sourceSha256)) {
+    throw new Error("Inspected source has no canonical SHA-256 identity");
+  }
+  const suffix = sourceSha256.slice(0, 8);
+  const variant = textureArtifactCleanup ? "h" : "";
+  return {
+    modelResref: `m2p1${variant}m${suffix}`,
+    textureResref: `m2p1${variant}t${suffix}`,
+    module: {
+      moduleResref: `m2p1${variant}d${suffix}`,
+      areaResref: `m2p1${variant}a${suffix}`,
+      hakResref: `m2p1${variant}h${suffix}`,
+    },
+    creatureResref: `m2p1${variant}c${suffix}`,
+  };
+}
+function studioCreatureP300kPackageIdentity(
+  sourceSha256: string,
+  textureArtifactCleanup: boolean,
+) {
+  if (!/^[0-9a-f]{64}$/.test(sourceSha256)) {
+    throw new Error("Inspected source has no canonical SHA-256 identity");
+  }
+  const suffix = sourceSha256.slice(0, 8);
+  const variant = textureArtifactCleanup ? "h" : "";
+  return {
+    modelResref: `m2p3${variant}m${suffix}`,
+    textureResref: `m2p3${variant}t${suffix}`,
+    module: {
+      moduleResref: `m2p3${variant}d${suffix}`,
+      areaResref: `m2p3${variant}a${suffix}`,
+      hakResref: `m2p3${variant}h${suffix}`,
+    },
+    creatureResref: `m2p3${variant}c${suffix}`,
+  };
+}
 const STUDIO_PLACEABLE_PLACEMENT = { x: 10, y: 14.5, z: 0, bearing: 0 } as const;
 const STUDIO_TILE_IDENTITY = {
   moduleResref: "m2atilestv1",
@@ -264,6 +321,9 @@ export function App({
   const [appearanceError, setAppearanceError] = useState<string>();
   const [animationEventsError, setAnimationEventsError] = useState<string>();
   const [tileOptions, setTileOptions] = useState<TileAuthoringOptions>(DEFAULT_TILE_OPTIONS);
+  const [creatureProfile, setCreatureProfile] =
+    useState<CreatureConversionProfileV1>("PRODUCT_300K");
+  const [textureArtifactCleanup, setTextureArtifactCleanup] = useState(false);
   const [placeableAuthoring, setPlaceableAuthoring] = useState<PlaceableAuthoringBootstrap>();
   const placeableAuthoringRef = useRef<PlaceableAuthoringBootstrap | undefined>(undefined);
   const [reviewViewport, setReviewViewport] = useState<ReviewViewport>("CONVERTED");
@@ -321,6 +381,7 @@ export function App({
           type: "INSPECT_SOURCE",
           sourceGlb,
           target: session.target,
+          creatureProfile: session.target === "CREATURE" ? creatureProfile : undefined,
         },
         [sourceGlb],
       ))
@@ -368,7 +429,7 @@ export function App({
       });
 
     return () => { cancelled = true; };
-  }, [session.revision, session.target, sourceFile]);
+  }, [creatureProfile, session.revision, session.target, sourceFile]);
 
   const appearanceFile = session.appearance?.file;
   useEffect(() => {
@@ -446,7 +507,21 @@ export function App({
     setAppearanceError(undefined);
     setAnimationEventsError(undefined);
     setPlaceableAuthoring(undefined);
+    if (target !== "CREATURE") setCreatureProfile("PRODUCT_300K");
     dispatch({ type: "TARGET_SELECTED", target });
+  };
+
+  const updateCreatureProfile = (profile: CreatureConversionProfileV1) => {
+    invalidateRunningBuild();
+    setCreatureProfile(profile);
+    setAnimationEventsError(undefined);
+    dispatch({ type: "AUTHORING_OPTIONS_CHANGED" });
+  };
+
+  const updateTextureArtifactCleanup = (enabled: boolean) => {
+    invalidateRunningBuild();
+    setTextureArtifactCleanup(enabled);
+    dispatch({ type: "AUTHORING_OPTIONS_CHANGED" });
   };
 
   const updateTileOptions = (options: TileAuthoringOptions) => {
@@ -506,6 +581,8 @@ export function App({
     setSelectedReadbackPart(undefined);
     setDebugDrawerMessage(undefined);
     setTileOptions(DEFAULT_TILE_OPTIONS);
+    setCreatureProfile("PRODUCT_300K");
+    setTextureArtifactCleanup(false);
     setPlaceableAuthoring(undefined);
     dispatch({ type: "START_NEW_CONVERSION" });
   };
@@ -542,17 +619,31 @@ export function App({
     const fullNativeProfile = hasFullNativeDirectCreatureProfileV1(
       current.sourceInspection.value.clips,
     );
-    if (animationEvents && (tileLane || placeableLane || !fullNativeProfile)) {
+    const p100kLane = current.target === "CREATURE"
+      && creatureProfile === "EXPERIMENTAL_P100K";
+    const p300kLane = current.target === "CREATURE"
+      && creatureProfile === "EXPERIMENTAL_P300K";
+    const segmentedExperimentLane = p100kLane || p300kLane;
+    if (
+      animationEvents
+      && (tileLane || placeableLane || segmentedExperimentLane || !fullNativeProfile)
+    ) {
       setAnimationEventsError(
         tileLane
           ? "Creature animation events cannot be used with tiles."
           : placeableLane
           ? "Creature animation events cannot be used with placeables.2da."
+          : segmentedExperimentLane
+          ? `The isolated ${p300kLane ? "300K" : "100K"} experiment authors its 42-state event profile inside the canonical pipeline.`
           : "Creature animation events require an exact source clip for every state in the 42-state profile.",
       );
       return;
     }
-    const packageLane = current.sourceInspection.value.inventory.skinCount === 0
+    const packageLane = p300kLane
+      ? "SKINNED_PROCEDURAL_HUMANOID_P300K_EXPERIMENT" as const
+      : p100kLane
+        ? "SKINNED_PROCEDURAL_HUMANOID_P100K_EXPERIMENT" as const
+      : current.sourceInspection.value.inventory.skinCount === 0
       && current.sourceInspection.value.clips.length === 0
       ? "M0_STATIC_RIGID" as const
       : fullNativeProfile
@@ -560,6 +651,22 @@ export function App({
           ? "H1_SKINNED_FULL_42_EVENTS" as const
           : "H1_SKINNED_FULL_42" as const
         : "SKINNED_PROCEDURAL_HUMANOID_42" as const;
+    const creatureIdentityJson = JSON.stringify(
+      p300kLane
+        ? studioCreatureP300kPackageIdentity(
+            current.sourceInspection.value.source.sha256,
+            textureArtifactCleanup,
+          )
+        : p100kLane
+          ? studioCreatureP100kPackageIdentity(
+              current.sourceInspection.value.source.sha256,
+              textureArtifactCleanup,
+            )
+        : studioCreatureProductIdentity(
+            current.sourceInspection.value.source.sha256,
+            textureArtifactCleanup,
+          ),
+    );
     setDebugDrawerMessage(undefined);
     dispatch({ type: "BUILD_STARTED", requestId: buildRequestId, revision: buildRevision });
 
@@ -614,6 +721,21 @@ export function App({
                 },
                 [sourceGlb, appearanceTwoDa],
               )
+            : packageLane === "SKINNED_PROCEDURAL_HUMANOID_42"
+              || packageLane === "SKINNED_PROCEDURAL_HUMANOID_P100K_EXPERIMENT"
+              || packageLane === "SKINNED_PROCEDURAL_HUMANOID_P300K_EXPERIMENT"
+              ? worker.request(
+                  {
+                    requestId: buildRequestId,
+                    type: "BUILD_MODEL_PACKAGE",
+                    sourceGlb,
+                    appearanceTwoDa,
+                    packageLane,
+                    identityJson: creatureIdentityJson,
+                    textureArtifactCleanup,
+                  },
+                  [sourceGlb, appearanceTwoDa],
+                )
             : worker.request(
                 {
                   requestId: buildRequestId,
@@ -791,6 +913,8 @@ export function App({
       target={session.target}
       tileTargetEnabled={tileTargetEnabled}
       tileOptions={tileOptions}
+      creatureProfile={creatureProfile}
+      textureArtifactCleanup={textureArtifactCleanup}
       source={session.source?.file}
       appearance={session.appearance?.file}
       animationEvents={session.animationEvents?.file}
@@ -802,6 +926,8 @@ export function App({
       onSelectSource={selectSource}
       onSelectAppearance={selectAppearance}
       onSelectAnimationEvents={selectAnimationEvents}
+      onCreatureProfileChange={updateCreatureProfile}
+      onTextureArtifactCleanupChange={updateTextureArtifactCleanup}
       onRemoveSource={removeSource}
       onRemoveAppearance={removeAppearance}
       onRemoveAnimationEvents={removeAnimationEvents}
@@ -874,6 +1000,8 @@ export function App({
           target={session.target}
           tileTargetEnabled={tileTargetEnabled}
           tileOptions={tileOptions}
+          creatureProfile={creatureProfile}
+          textureArtifactCleanup={textureArtifactCleanup}
           source={session.source?.file}
           appearance={session.appearance?.file}
           animationEvents={session.animationEvents?.file}
@@ -885,6 +1013,8 @@ export function App({
           onSelectSource={selectSource}
           onSelectAppearance={selectAppearance}
           onSelectAnimationEvents={selectAnimationEvents}
+          onCreatureProfileChange={updateCreatureProfile}
+          onTextureArtifactCleanupChange={updateTextureArtifactCleanup}
           onRemoveSource={removeSource}
           onRemoveAppearance={removeAppearance}
           onRemoveAnimationEvents={removeAnimationEvents}

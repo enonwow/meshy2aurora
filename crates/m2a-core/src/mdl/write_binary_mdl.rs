@@ -25,7 +25,7 @@ use super::writer_types::{
     MdlAnimationTrackPathV1, MdlAnimationTrackV1, MdlAnimationWriterReportV1, MdlFormatProfileV1,
     MdlLayoutReportV1, MdlMeshNodeLayoutV1, MdlRigNodeLayoutV1, MdlStateProjectionProfileV1,
     MdlStateProjectionProvenanceV1, MdlWriteError, MdlWriterDeviationV1, MdlWriterOptionsV1,
-    MdlWriterReportV1, NWN_EE_MAX_MESH_INDEX_COUNT_V1,
+    MdlWriterReportV1, NWN_EE_BINARY_MDL_EPSILON_V1, NWN_EE_MAX_MESH_INDEX_COUNT_V1,
     is_well_formed_state_projection_provenance_v1,
 };
 
@@ -43,7 +43,7 @@ const CONTROLLER_KEY_COUNT: usize = 2;
 const CONTROLLER_DATA_COUNT: usize = 9;
 const ANIMATION_HEADER_SIZE: usize = 0xc4;
 const ANIMATION_EVENT_SIZE: usize = 0x24;
-const EPSILON: f32 = 1.0e-5;
+const EPSILON: f32 = NWN_EE_BINARY_MDL_EPSILON_V1;
 
 // Versioned product policy for the historical direct-creature culling
 // envelope. Mesh-level bounds remain derived from caller-owned source geometry
@@ -123,6 +123,12 @@ struct AabbMeshPlan {
     average: [f32; 3],
 }
 
+#[derive(Clone, Copy)]
+enum FacePlaneDegeneracyPolicyV1 {
+    LegacyAbsoluteEpsilon,
+    ExactFiniteNonCollinear,
+}
+
 struct Plan {
     core_length: usize,
     raw_length: usize,
@@ -141,6 +147,7 @@ struct Plan {
     deviations: Vec<MdlWriterDeviationV1>,
     animation_pointer_array: Option<usize>,
     animations: Vec<AnimationPlan>,
+    face_plane_degeneracy_policy: FacePlaneDegeneracyPolicyV1,
 }
 
 struct AnimationPlan {
@@ -231,6 +238,7 @@ pub fn write_binary_mdl_with_supermodel(
         supermodel_resref,
         options,
         None,
+        FacePlaneDegeneracyPolicyV1::LegacyAbsoluteEpsilon,
     )
 }
 
@@ -239,7 +247,29 @@ pub fn write_binary_mdl_with_animations(
     animations: &MdlAnimationSetV1,
     options: &MdlWriterOptionsV1,
 ) -> Result<BinaryMdlArtifactV1, MdlWriteError> {
-    write_binary_mdl_internal(creature, animations, "NULL", options, None)
+    write_binary_mdl_internal(
+        creature,
+        animations,
+        "NULL",
+        options,
+        None,
+        FacePlaneDegeneracyPolicyV1::LegacyAbsoluteEpsilon,
+    )
+}
+
+pub(crate) fn write_binary_mdl_with_animations_exact_face_planes_v1(
+    creature: &AuroraModelIrV1,
+    animations: &MdlAnimationSetV1,
+    options: &MdlWriterOptionsV1,
+) -> Result<BinaryMdlArtifactV1, MdlWriteError> {
+    write_binary_mdl_internal(
+        creature,
+        animations,
+        "NULL",
+        options,
+        None,
+        FacePlaneDegeneracyPolicyV1::ExactFiniteNonCollinear,
+    )
 }
 
 pub fn write_binary_mdl_with_animations_and_supermodel(
@@ -248,7 +278,14 @@ pub fn write_binary_mdl_with_animations_and_supermodel(
     supermodel_resref: &str,
     options: &MdlWriterOptionsV1,
 ) -> Result<BinaryMdlArtifactV1, MdlWriteError> {
-    write_binary_mdl_internal(creature, animations, supermodel_resref, options, None)
+    write_binary_mdl_internal(
+        creature,
+        animations,
+        supermodel_resref,
+        options,
+        None,
+        FacePlaneDegeneracyPolicyV1::LegacyAbsoluteEpsilon,
+    )
 }
 
 /// Emits the tile profile through the same binary MDL writer used by creature
@@ -272,6 +309,7 @@ pub fn write_binary_tile_mdl_v1(
         "NULL",
         options,
         Some(navigation),
+        FacePlaneDegeneracyPolicyV1::LegacyAbsoluteEpsilon,
     )
 }
 
@@ -281,11 +319,18 @@ fn write_binary_mdl_internal(
     supermodel_resref: &str,
     options: &MdlWriterOptionsV1,
     navigation: Option<&TileNavigationIrV1>,
+    face_plane_degeneracy_policy: FacePlaneDegeneracyPolicyV1,
 ) -> Result<BinaryMdlArtifactV1, MdlWriteError> {
     if supermodel_resref != "NULL" {
         validate_resref(supermodel_resref, "options.supermodelResref")?;
     }
-    let plan = plan(creature, animations, options, navigation)?;
+    let plan = plan_with_face_plane_policy(
+        creature,
+        animations,
+        options,
+        navigation,
+        face_plane_degeneracy_policy,
+    )?;
     let mut core = zeroed(plan.core_length, "layout.coreLength")?;
     let mut raw = zeroed(plan.raw_length, "layout.rawLength")?;
     emit_model(&mut core, creature, options, supermodel_resref, &plan)?;
@@ -452,11 +497,28 @@ fn write_binary_mdl_internal(
     })
 }
 
+#[cfg(test)]
 fn plan(
     creature: &AuroraCreatureIrV1,
     animations: &MdlAnimationSetV1,
     options: &MdlWriterOptionsV1,
     navigation: Option<&TileNavigationIrV1>,
+) -> Result<Plan, MdlWriteError> {
+    plan_with_face_plane_policy(
+        creature,
+        animations,
+        options,
+        navigation,
+        FacePlaneDegeneracyPolicyV1::LegacyAbsoluteEpsilon,
+    )
+}
+
+fn plan_with_face_plane_policy(
+    creature: &AuroraCreatureIrV1,
+    animations: &MdlAnimationSetV1,
+    options: &MdlWriterOptionsV1,
+    navigation: Option<&TileNavigationIrV1>,
+    face_plane_degeneracy_policy: FacePlaneDegeneracyPolicyV1,
 ) -> Result<Plan, MdlWriteError> {
     validate_public_contract(creature, options)?;
     match (options.format_profile, navigation) {
@@ -684,7 +746,7 @@ fn plan(
         -1
     };
     for (index, segment) in creature.segments.iter().enumerate() {
-        validate_segment(segment, index, &id_to_index)?;
+        validate_segment(segment, index, &id_to_index, face_plane_degeneracy_policy)?;
         if !segment_ids.insert(segment.segment_id) {
             return Err(error(
                 "M4-MESH-INVALID",
@@ -1212,6 +1274,7 @@ fn plan(
         deviations,
         animation_pointer_array,
         animations: animation_plans,
+        face_plane_degeneracy_policy,
     })
 }
 
@@ -1951,6 +2014,7 @@ fn validate_segment(
     segment: &AuroraCreatureSegmentV1,
     index: usize,
     id_to_index: &HashMap<u32, usize>,
+    face_plane_degeneracy_policy: FacePlaneDegeneracyPolicyV1,
 ) -> Result<(), MdlWriteError> {
     let path = format!("creature.segments[{index}]");
     if !id_to_index.contains_key(&segment.parent_node_id) {
@@ -2014,6 +2078,7 @@ fn validate_segment(
             segment.positions[triangle[1] as usize],
             segment.positions[triangle[2] as usize],
             &format!("{path}.indices"),
+            face_plane_degeneracy_policy,
         )?;
     }
     match segment.deformation {
@@ -2523,6 +2588,7 @@ fn emit_meshes(
                 segment.positions[triangle[1] as usize],
                 segment.positions[triangle[2] as usize],
                 &format!("creature.segments[{}].indices", item.segment_index),
+                plan.face_plane_degeneracy_policy,
             )?;
             let face = item.faces + face_index * FACE_SIZE;
             write_vec3(core, face, normal)?;
@@ -2659,8 +2725,13 @@ fn emit_aabb_mesh(
         let a = navigation.vertices[face.vertex_indices[0] as usize];
         let b = navigation.vertices[face.vertex_indices[1] as usize];
         let c = navigation.vertices[face.vertex_indices[2] as usize];
-        let (normal, distance) =
-            checked_face_plane(a, b, c, &format!("navigation.faces[{face_index}]"))?;
+        let (normal, distance) = checked_face_plane(
+            a,
+            b,
+            c,
+            &format!("navigation.faces[{face_index}]"),
+            FacePlaneDegeneracyPolicyV1::LegacyAbsoluteEpsilon,
+        )?;
         let offset = item.faces + face_index * FACE_SIZE;
         write_vec3(core, offset, normal)?;
         write_f32(core, offset + 0x0c, distance)?;
@@ -2887,6 +2958,7 @@ fn expected_readback(
                             segment.positions[triangle[1] as usize],
                             segment.positions[triangle[2] as usize],
                             "semantic.faces",
+                            plan.face_plane_degeneracy_policy,
                         )?;
                         Ok(ExpectedFace {
                             normal,
@@ -2927,6 +2999,7 @@ fn expected_readback(
                     navigation.vertices[face.vertex_indices[1] as usize],
                     navigation.vertices[face.vertex_indices[2] as usize],
                     &format!("semantic.aabb.faces[{face_index}]"),
+                    FacePlaneDegeneracyPolicyV1::LegacyAbsoluteEpsilon,
                 )?;
                 Ok(ExpectedFace {
                     normal,
@@ -4099,6 +4172,7 @@ fn checked_face_plane(
     b: [f32; 3],
     c: [f32; 3],
     path: &str,
+    degeneracy_policy: FacePlaneDegeneracyPolicyV1,
 ) -> Result<([f32; 3], f32), MdlWriteError> {
     let edge_ab = [
         f64::from(b[0]) - f64::from(a[0]),
@@ -4116,7 +4190,13 @@ fn checked_face_plane(
         edge_ab[0] * edge_ac[1] - edge_ab[1] * edge_ac[0],
     ];
     let length = (cross[0].powi(2) + cross[1].powi(2) + cross[2].powi(2)).sqrt();
-    if !length.is_finite() || length <= f64::from(EPSILON) {
+    let accepted = match degeneracy_policy {
+        FacePlaneDegeneracyPolicyV1::LegacyAbsoluteEpsilon => {
+            length.is_finite() && length > f64::from(EPSILON)
+        }
+        FacePlaneDegeneracyPolicyV1::ExactFiniteNonCollinear => length.is_finite() && length > 0.0,
+    };
+    if !accepted {
         return Err(error(
             "M4-MESH-INVALID",
             path,
@@ -4321,6 +4401,7 @@ mod tests {
         ANIMATION_EVENT_SIZE, CONTROLLER_KEY_SIZE, add, as_i32, expected_readback,
         inspect_binary_mdl, mul, plan, semantic_diff, validate_skin_layout,
         validate_skin_signed_fields, write_binary_mdl, write_binary_mdl_with_animations,
+        write_binary_mdl_with_animations_exact_face_planes_v1,
     };
 
     #[test]
@@ -4713,6 +4794,35 @@ mod tests {
                 .unwrap_err();
         assert_eq!(error.code, "M4-LAYOUT-OVERFLOW");
         assert_eq!(error.path, "layout.skin.forwardMap");
+    }
+
+    #[test]
+    fn exact_face_plane_writer_accepts_a_finite_micro_triangle_rejected_by_legacy_epsilon() {
+        let mut input = skin_input();
+        input.segments[0].positions = vec![[2.0, 0.0, 0.0], [2.01, 0.0, 0.0], [2.0, 0.001, 0.0]];
+        let options = skin_options();
+
+        let legacy = write_binary_mdl(&input, &options).unwrap_err();
+        assert_eq!(legacy.code, "M4-MESH-INVALID");
+
+        let artifact = write_binary_mdl_with_animations_exact_face_planes_v1(
+            &input,
+            &MdlAnimationSetV1::empty(),
+            &options,
+        )
+        .unwrap();
+
+        assert_eq!(artifact.report.projection.triangle_count, 1);
+        assert!(artifact.report.semantic_diff.is_empty());
+        assert_eq!(
+            artifact.inspection.node_tree.roots[0].children[2]
+                .mesh
+                .as_ref()
+                .unwrap()
+                .faces
+                .len(),
+            1
+        );
     }
 
     fn skin_input() -> AuroraCreatureIrV1 {

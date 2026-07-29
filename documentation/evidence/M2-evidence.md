@@ -245,3 +245,53 @@ bugs: []
 stage_status: DONE
 handoff: "M3-20260712-01"
 ```
+
+## M2-20260727-TRIANGLE-BUDGET-01 - shared 20k owner decision
+
+Status: DONE
+Owner: project owner
+
+Pierwotne `warning >5000 / blocking >10000` powyzej pozostaje historycznym
+capture-time kontraktem M2. Decyzja wlasciciela z `2026-07-27` zastapila go dla
+nowych konwersji jednym wspolnym budzetem render-model:
+
+```yaml
+shared_policy:
+  source_of_truth: AURORA_MODEL_TRIANGLE_BUDGET_V1
+  warning_above: 10000
+  blocking_above: 20000
+  exact_20000: accepted
+  exact_20001: blocked
+  applies_to: [CREATURE, PLACEABLE]
+writer_format_boundary:
+  per_mesh_index_entries: 65535
+  per_mesh_triangles: 21845
+  role: independent_binary_format_gate
+```
+
+Szczegoly implementacji i testow:
+`documentation/evidence/shared-render-model-triangle-budget-20000-2026-07-27.md`.
+
+## M2-20260729-TRIANGLE-BUDGET-02 - shared 300k owner decision
+
+Status: DONE
+Owner: project owner
+
+Decyzja z `2026-07-29` zastepuje produktowy limit 20K:
+
+```yaml
+shared_policy:
+  source_of_truth: AURORA_MODEL_TRIANGLE_BUDGET_V1
+  warning_above: 150000
+  blocking_above: 300000
+  exact_300000: accepted
+  exact_300001: blocked
+  applies_to: [CREATURE, PLACEABLE, TILE, OTHER_RENDER_MODEL]
+writer_format_boundary:
+  per_mesh_index_entries: 65535
+  per_mesh_triangles: 21845
+  handling: deterministic_lossless_segmentation
+```
+
+Szczegoly implementacji i testow:
+`documentation/evidence/shared-render-model-triangle-budget-300000-2026-07-29.md`.

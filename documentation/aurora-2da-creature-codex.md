@@ -289,6 +289,19 @@ appearance_type:
 
 Konwerter musi odczytac jawnie wybrana base table, zachowac wszystkie kolumny i wiersze, a nowy wiersz dopisac na koncu. Oficjalna specyfikacja 2DA zabrania wstawiania wierszy pomiedzy istniejace oraz fizycznego usuwania wierszy. Nie wybieramy "wolnej dziury" po `****`. Nowy fizyczny index musi byc `<= 65535`, a UTC `Appearance_Type` musi byc mu rowny. `9000` pozostaje tylko historycznym przykladem fixture.
 
+### Profil produkcyjnego humanoida — decyzja 2026-07-28
+
+Wiersz `c_horror` może być użyty wyłącznie jako pełny strukturalny dawca
+`MODELTYPE=S`. Produkcyjny proceduralny humanoid musi następnie zastosować
+`DirectCreatureAppearanceSemanticProfileV2::HumanoidMediumV1`, który jawnie
+nadpisuje wszystkie pola runtime wartościami średniego stockowego Human oraz
+własnym resrefem modelu.
+
+Nie wolno dziedziczyć z Hook Horrora portretu, krwi, rozmiaru, footsteps,
+soundsetu ani `NAME`. Produkcyjny artifact nie zawiera UTC; generowany UTC
+pozostaje wyłącznie częścią opcjonalnego fixture MOD. Szczegóły i testy:
+[spłata długu pipeline creature](creature-pipeline-debt-paydown-2026-07-28.md).
+
 ## Integracja z HAK
 
 Status: POTWIERDZONE.

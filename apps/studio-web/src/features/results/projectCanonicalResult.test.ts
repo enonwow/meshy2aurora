@@ -122,6 +122,67 @@ describe("canonical result projector", () => {
     ]);
   });
 
+  it("projects a schema V2 production creature without inventing a proof module", () => {
+    const value = fixture();
+    value.report.schemaVersion = 2;
+    delete (value.report as Partial<typeof value.report>).proofModule;
+    value.summary.schemaVersion = 2;
+    value.summary.status = "PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED";
+    delete (value.summary.outputs as Partial<typeof value.summary.outputs>).proofModule;
+    delete (value.summary as Partial<typeof value.summary>).modelResref;
+    delete (value.summary as Partial<typeof value.summary>).textureResref;
+    Object.assign(value.summary, {
+      identity: {
+        modelResref: "m2a_model",
+        textureResref: "m2a_texture",
+        hakResref: "m2a_hak",
+        appearanceLabel: "M2A_PRODUCT",
+      },
+    });
+    value.manifest.schemaVersion = 2;
+    value.manifest.status = "PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED";
+    value.reportJson = JSON.stringify(value.report);
+    value.summary.outputs.report = id(bytes(value.reportJson).byteLength, "c");
+    value.summaryJson = JSON.stringify(value.summary);
+    value.manifestJson = JSON.stringify(value.manifest);
+    value.artifacts.push({
+      artifactId: "texture-tga",
+      kind: "TEXTURE",
+      fileName: "m2a_texture.tga",
+      mediaType: "image/x-tga",
+      byteLength: 60,
+      sha256: "d".repeat(64),
+      bytes: new Uint8Array(60).buffer,
+      provenance: "M2A_WASM_WORKER",
+    });
+    value.artifacts = value.artifacts
+      .filter(({ artifactId }) => artifactId !== "proof-module")
+      .map((artifact) => {
+        if (artifact.artifactId === "report-json") {
+          return { ...artifact, bytes: bytes(value.reportJson), byteLength: bytes(value.reportJson).byteLength };
+        }
+        if (artifact.artifactId === "summary-json") {
+          return { ...artifact, bytes: bytes(value.summaryJson), byteLength: bytes(value.summaryJson).byteLength };
+        }
+        if (artifact.artifactId === "manifest-json") {
+          return { ...artifact, bytes: bytes(value.manifestJson), byteLength: bytes(value.manifestJson).byteLength };
+        }
+        return artifact;
+      });
+
+    const result = projectCanonicalResult(
+      value.reportJson,
+      value.summaryJson,
+      value.manifestJson,
+      value.artifacts,
+    );
+    expect(result.status).toBe("PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED");
+    expect(result.resrefs).toEqual({ model: "m2a_model", texture: "m2a_texture" });
+    expect(result.outputs).not.toHaveProperty("proofModule");
+    expect(result.artifacts.map(({ artifactId }) => artifactId)).not.toContain("proof-module");
+    expect(result.packageAssemblyEvidence.artifactCount).toBe(6);
+  });
+
   it("accepts the separately identified static M0 runtime package", () => {
     const value = fixture();
     const contract = {
@@ -322,7 +383,10 @@ describe("canonical result projector", () => {
     ["appearance resref", (value: ReturnType<typeof fixture>) => { value.manifest.packageManifest.resources[0].resref = "other"; }],
     ["duplicate resource", (value: ReturnType<typeof fixture>) => { value.manifest.packageManifest.resources[2].role = "MODEL"; }],
     ["artifact provenance", (value: ReturnType<typeof fixture>) => { value.artifacts[0].provenance = "OTHER" as "M2A_WASM_WORKER"; }],
-    ["duplicate artifact", (value: ReturnType<typeof fixture>) => { value.artifacts[4].artifactId = "report-json"; }],
+    ["duplicate artifact", (value: ReturnType<typeof fixture>) => {
+      const manifestArtifact = value.artifacts.find(({ artifactId }) => artifactId === "manifest-json");
+      if (manifestArtifact) manifestArtifact.artifactId = "report-json";
+    }],
   ] as const)("rejects %s mismatch", (_label, mutate) => {
     const value = fixture();
     mutate(value);

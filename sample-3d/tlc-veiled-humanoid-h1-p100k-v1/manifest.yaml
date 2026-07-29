@@ -1,0 +1,140 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: tlc-veiled-humanoid-h1-p100k-v1
+provider: meshy
+local_only: true
+qualification: ready-for-owner-proof
+files:
+  - role: source-meshy-animation-idle
+    path: meshy-idle-action-0.glb
+    size_bytes: 14115384
+    sha256: 232dc9e3aa32f3a26420febd81aec47b1b9d86d19ed5324de00ce097e8073c78
+  - role: source-meshy-animation-walk
+    path: meshy-walk-action-30.glb
+    size_bytes: 14115688
+    sha256: ee69b22bb350590ebf483915aa6f669a1441a04037d4e657bbf6e56caea096fd
+  - role: source-meshy-animation-sprint
+    path: meshy-sprint-action-16.glb
+    size_bytes: 14074388
+    sha256: 7408bc8e9cc46e7dff0e6f32f62171049e8e9f14c6debcd6a07bb877b3915e92
+  - role: source-meshy-animation-attack-primary
+    path: meshy-punch-combo-action-198.glb
+    size_bytes: 14098856
+    sha256: 00374fca87e3eb2c163e1d27cfaf16c8082cd35b09ccfd2fb94709ea03fa5498
+  - role: source-meshy-animation-attack-secondary
+    path: meshy-left-hook-action-193.glb
+    size_bytes: 14080328
+    sha256: bfbee216a3c252d3313a9281855e21be14485007f07227cb3290f65fc9f0afad
+  - role: source-meshy-animation-hit
+    path: meshy-hit-action-178.glb
+    size_bytes: 14087312
+    sha256: 0ab6d63cb33e19bd56761dd0ada6ba204585fbd5851546d5d5a3b783ecd3349b
+  - role: source-meshy-animation-knockdown
+    path: meshy-knockdown-action-187.glb
+    size_bytes: 14114692
+    sha256: 274b307a88bd6032935e624ee2e6805e458c1061dc74208f29bc434f93cb9862
+  - role: source-meshy-animation-dead
+    path: meshy-dead-action-8.glb
+    size_bytes: 14104848
+    sha256: 0ca6c9a85a8097bb106dde5111a282899937519338352e1eb517bacd134a1e38
+  - role: source-meshy-animation-arise
+    path: meshy-arise-action-3.glb
+    size_bytes: 14091240
+    sha256: 9b2ef00e0f3cf917c2b39d912d793e445bf30c2b88f3592b0896c0e1d61854d4
+  - role: source-meshy-animation-alert
+    path: meshy-alert-action-2.glb
+    size_bytes: 14116316
+    sha256: 825b62c93c2965ad3f8568d68a2fb00f9f948d506a421f73134562efbd547431
+  - role: api-provenance
+    path: meshy-run-provenance.json
+    size_bytes: 3620
+    sha256: add83bb9d514534408940e7d4b33199301ea75fd0402460a617d916cfdd34bb5
+  - role: source-combined
+    path: source.glb
+    size_bytes: 14592736
+    sha256: 941affd66d2afe803b2a63ba72c41c30592813d3f1deeae4600f24e0fc566b7d
+provenance_note: owner-authorized Meshy image-to-3D humanoid generation with a 100000 target and ten animation actions
+concept_reference:
+  path: documentation/mockups/the-last-city/creatures/tlc-creature-veiled-humanoid-tpose-front-v1.png
+  sha256: 2af1ca06237587fc81ef6f9c87d680fd2d479daded31187f5658925df29fb15b
+generation_plan:
+  date: 2026-07-28
+  source_mode: image-to-3d
+  ai_model: meshy-6
+  topology: triangle
+  target_polycount: 100000
+  pose_mode: t-pose
+  rig_height_meters: 1.85
+  owner_credit_cap: 250
+  animation_actions:
+    - { action_id: 0, name: Idle, nwn_clip: cpause1 }
+    - { action_id: 30, name: Casual_Walk, nwn_clip: cwalk }
+    - { action_id: 16, name: RunFast, nwn_clip: crun }
+    - { action_id: 198, name: Punch_Combo, nwn_clip: ca1slashl }
+    - { action_id: 193, name: Left_Hook, nwn_clip: ca1slashr }
+    - { action_id: 178, name: Hit_Reaction, nwn_clip: cdamagel }
+    - { action_id: 187, name: Knock_Down, nwn_clip: ckdbck }
+    - { action_id: 8, name: Dead, nwn_clip: cdead }
+    - { action_id: 3, name: Arise, nwn_clip: cguptokdb }
+    - { action_id: 2, name: Alert, nwn_clip: ctaunt }
+generation_attempts:
+  - result: rejected-before-model
+    moderation: true
+    error_code: TASK_REJECTED
+    charged_credits: 0
+    note: Meshy flagged the fictional horror concept; no model payload was created
+  - result: ready
+    moderation: false
+    run_id: 1955bf8a-0362-4196-a713-68c15d59e518
+generation_result:
+  status: materialized
+  run_id: 1955bf8a-0362-4196-a713-68c15d59e518
+  model_task_id: 019fa902-2ae9-7b8b-826a-806c46fdecb5
+  rig_task_id: 019fa906-a7d4-7cfb-ba17-aaae79eb955d
+  credits_spent: 65
+  balance_before: 842
+  balance_after: 777
+  explicit_meshy_clip_count: 10
+  source_skin_count: 1
+  source_joint_count: 24
+  raw_triangle_count: 102335
+  degenerate_triangle_count: 2523
+  aurora_safe_triangle_count: 99812
+  raw_vertex_count: 101503
+  combined_source_sha256: 941affd66d2afe803b2a63ba72c41c30592813d3f1deeae4600f24e0fc566b7d
+runtime_candidate_v1:
+  date: 2026-07-28
+  status: ready_for_owner_proof
+  packet: proof-output/tlc-veiled-humanoid-p100k-v1
+  model_resref: tlcveil100_m1
+  texture_resref: tlcveil100_t1
+  hak_resref: tlcv100hak1
+  test_module_filename: tlcv100demo1.mod
+  module_name: Meshy2Aurora procedural humanoid proof
+  area_resref: tlcv100area1
+  area_name: Meshy2Aurora M0 binary vertical-slice area
+  creature_template_resref: tlcv100utc1
+  appearance_row: 15100
+  placement: { x: 10.0, y: 14.5, z: 0.0 }
+  usable_triangle_count: 99812
+  written_triangle_count: 99812
+  binary_mdl_skin_mesh_count: 5
+  full_native_animation_count: 42
+  input_meshy_animation_count: 10
+  behavior_candidate_eligible: true
+  kinematics_complete: true
+  animation_events_complete: true
+  skin_animation_conformance: true
+  model_sha256: 876f6e92ec189b58ed9797333cde837edf3ca9dc57eba10fbf735d9c1f28bb70
+  texture_sha256: b581476d85906505845f113f3058eb42f5fb05a6dd6c35791bfbbe156b779f71
+  appearance_sha256: 0a2aab57ebf621eff032a9d7eb119df1fbb037be435ada67d359cdb72eaebf74
+  hak_sha256: 6b8b74537fb6837cb6bb1981f1f417d931cebfb46b0d367965671cea0e39f8c3
+  module_sha256: 91af75ead718d742045767c31617d560dad1bc3f05ae00644417149dea21215c
+  native_install_verified: true
+  native_module_path: C:\Users\enonw\Documents\Neverwinter Nights\modules\tlcv100demo1.mod
+  native_hak_path: C:\Users\enonw\Documents\Neverwinter Nights\hak\tlcv100hak1.hak
+  toolset:
+    modelVisibility: not_tested
+    proofCompleteness: missing
+  nwn:
+    modelVisibility: not_tested
+    proofCompleteness: missing

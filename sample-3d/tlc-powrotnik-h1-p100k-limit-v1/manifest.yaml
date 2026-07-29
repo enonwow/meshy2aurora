@@ -1,0 +1,138 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: tlc-powrotnik-h1-p100k-limit-v1
+provider: meshy
+local_only: true
+qualification: ready-for-owner-proof
+files:
+  - role: source-meshy-animation-idle
+    path: meshy-idle-action-0.glb
+    size_bytes: 13285272
+    sha256: ac64b4a8b7a77df2489aee502a7966c203c314b8bb9dae698c10e41ccf4fe3e3
+  - role: source-meshy-animation-walk
+    path: meshy-walk-action-30.glb
+    size_bytes: 13283728
+    sha256: b059476820543ed4f2ce955d58e9014603911ec18c755f38bd05f75bd19e4b22
+  - role: source-meshy-animation-sprint
+    path: meshy-sprint-action-16.glb
+    size_bytes: 13240932
+    sha256: 8c67e2e6df912c4628d98b8e0be2e7f9e3969bd2516139aaf006b3c04e48e681
+  - role: source-meshy-animation-attack-primary
+    path: meshy-punch-combo-action-198.glb
+    size_bytes: 13264216
+    sha256: 18277892c52744f20d8bb8101ab3d3753c3d37b977751a714d0766e0c33db76f
+  - role: source-meshy-animation-attack-secondary
+    path: meshy-left-hook-action-193.glb
+    size_bytes: 13246884
+    sha256: b39dd103b0d731b5c7907e64d443cb5489cbbe113bfac5c7533d89ca0aae8cb1
+  - role: source-meshy-animation-hit
+    path: meshy-hit-action-178.glb
+    size_bytes: 13253872
+    sha256: b35a82823408b7e9c6ba9ca44ff18115b1e18df7856bd822400fb7da0f0b82f9
+  - role: source-meshy-animation-knockdown
+    path: meshy-knockdown-action-187.glb
+    size_bytes: 13280348
+    sha256: 501986ebffaf4e03398300479c4a50b86d9379fe7a17bdb8fad71378ba763e55
+  - role: source-meshy-animation-dead
+    path: meshy-dead-action-8.glb
+    size_bytes: 13269984
+    sha256: fa50e8f31dff9a7d4269e4aab77ec6f1e8076b17ea1dc8d2ba621dbba72a4ba4
+  - role: source-meshy-animation-arise
+    path: meshy-arise-action-3.glb
+    size_bytes: 13256920
+    sha256: be111c9eb6263ab73f284a839938b775ececcda2599941d9a9100e55d1c3e586
+  - role: source-meshy-animation-alert
+    path: meshy-alert-action-2.glb
+    size_bytes: 13280000
+    sha256: c3997001fa40cea1f6e1e0bbea6bea6c2c929f5b40bb7eac6540b82c132ec4e6
+  - role: api-provenance
+    path: meshy-run-provenance.json
+    size_bytes: 3589
+    sha256: bd4225c99496769d65ba5c363e2f244a13b5ae26cc34ac76f01e516c0ddebabf
+  - role: source-combined
+    path: source.glb
+    size_bytes: 13760268
+    sha256: ad840cb78566967ecfbc9767625867e502edef8c1e5bc0c65caac1688c258c70
+provenance_note: owner-authorized 100000-triangle NWN Creature boundary experiment; Meshy payloads remain local and Git-ignored
+concept_reference:
+  path: documentation/mockups/the-last-city/creatures/tlc-creature-powrotnik-tpose-front-v1.png
+  sha256: f915a3bafc2b7546edf01d2a27beee18a88d965e034ccdc12f6f45419fe6dca4
+generation_plan:
+  date: 2026-07-28
+  purpose: isolate total Creature triangle count from the already owner-proved P20K Powrotnik lineage
+  source_mode: image-to-3d
+  ai_model: meshy-6
+  topology: triangle
+  target_polycount: 100000
+  pose_mode: t-pose
+  rig_height_meters: 1.85
+  owner_credit_cap: 250
+  animation_actions:
+    - { action_id: 0, name: Idle, nwn_clip: cpause1 }
+    - { action_id: 30, name: Casual_Walk, nwn_clip: cwalk }
+    - { action_id: 16, name: RunFast, nwn_clip: crun }
+    - { action_id: 198, name: Punch_Combo, nwn_clip: ca1slashl }
+    - { action_id: 193, name: Left_Hook, nwn_clip: ca1slashr }
+    - { action_id: 178, name: Hit_Reaction, nwn_clip: cdamagel }
+    - { action_id: 187, name: Knock_Down, nwn_clip: ckdbck }
+    - { action_id: 8, name: Dead, nwn_clip: cdead }
+    - { action_id: 3, name: Arise, nwn_clip: cguptokdb }
+    - { action_id: 2, name: Alert, nwn_clip: ctaunt }
+experiment_policy:
+  production_triangle_budget_unchanged: 20000
+  requested_total_triangles: 100000
+  per_binary_mdl_mesh_index_limit: 65535
+  required_strategy: deterministic multi-SkinMesh segmentation
+  visual_proof_owner: true
+generation_result:
+  status: materialized
+  run_id: b4b66a10-b167-47db-854c-c9e8f7b6f277
+  model_task_id: 019fa8bb-ac30-7c2e-94e4-045514808ebf
+  rig_task_id: 019fa8bf-01bb-7091-870e-ec023bda7976
+  credits_spent: 65
+  balance_before: 907
+  explicit_meshy_clip_count: 10
+  raw_triangle_count: 103290
+  raw_vertex_count: 87070
+aurora_sanitation:
+  route: remove-degenerate-and-compact-skinned-attributes
+  removed_degenerate_triangles: 5657
+  removed_unreferenced_vertices: 4255
+  usable_triangle_count: 97633
+  usable_vertex_count: 82815
+  preserves_skin_and_animation_count: true
+runtime_candidate_v1:
+  date: 2026-07-28
+  status: ready_for_owner_proof
+  packet: proof-output/tlc-powrotnik-p100k-limit-v1
+  model_resref: tlcpow100_m1
+  texture_resref: tlcpow100_t1
+  hak_resref: tlcp100hak1
+  test_module_filename: tlcp100demo1.mod
+  module_name: Meshy2Aurora procedural humanoid proof
+  area_resref: tlcp100area1
+  area_name: Meshy2Aurora M0 binary vertical-slice area
+  creature_template_resref: tlcp100utc1
+  appearance_row: 15100
+  placement: { x: 10.0, y: 14.5, z: 0.0 }
+  usable_triangle_count: 97633
+  written_triangle_count: 97633
+  binary_mdl_skin_mesh_count: 5
+  full_native_animation_count: 42
+  behavior_candidate_eligible: true
+  kinematics_complete: true
+  animation_events_complete: true
+  skin_animation_conformance: true
+  model_sha256: 3ff329e6357630c6dc97c9fc2e83535b644726aca439be78250563eda3d9177f
+  texture_sha256: 4ba85e147b341a924ead5680b6deb94514861ad001ad0248fcf7ee6b23ae9566
+  appearance_sha256: 255a6a99751ccb4b7ee37a4e3797e7ef4942a512fb03ba251fe339df7b9abe81
+  hak_sha256: 69327838a7242528470e693e5f6525ef5d04642734e1f9c32d9dfd87ce48d8e6
+  module_sha256: 570b35eac41d7a0323ad65cbd8c7511c5216bc9a78d79f629515cfe11bc0164b
+  native_install_verified: true
+  native_module_path: C:\Users\enonw\Documents\Neverwinter Nights\modules\tlcp100demo1.mod
+  native_hak_path: C:\Users\enonw\Documents\Neverwinter Nights\hak\tlcp100hak1.hak
+  toolset:
+    modelVisibility: not_tested
+    proofCompleteness: missing
+  nwn:
+    modelVisibility: not_tested
+    proofCompleteness: missing

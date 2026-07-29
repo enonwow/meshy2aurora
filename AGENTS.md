@@ -64,6 +64,24 @@ Aurora, NWN, Toolset, game installations, user configuration and
 installation of exact proof MOD/HAK artifacts authorized below, or unless the
 owner gives another separate, explicit instruction that changes that boundary.
 
+## Shared render-model triangle budget - OWNER DECISION 2026-07-29
+
+Creature, Placeable and every other render-model route share one product
+triangle budget:
+
+`AURORA_MODEL_TRIANGLE_BUDGET_V1 = 300_000`
+
+Exactly 300,000 triangles are accepted; totals above 300,000 are blocked. The
+warning threshold is derived from that one value as 150,000. Product code must
+not restore target-specific Creature or Placeable blocking thresholds.
+
+The independent binary MDL boundary of 65,535 index entries, or 21,845
+triangles for one triangle-list mesh stream, remains a format/writer gate. It
+is not the product budget and must not be substituted for the shared 300,000
+limit. Every product route must deterministically partition render geometry
+that exceeds the per-stream boundary without deleting triangles or changing
+material, hierarchy, deformation, UV, tangent, weight or surface metadata.
+
 ## Persistent Aurora/NWN live-control authorization — OWNER DECISION 2026-07-21
 
 For the Meshy2Aurora proof goal, the owner grants the coordinating agents

@@ -8,7 +8,8 @@ use m2a_core::{
     direct_creature_animation::{
         COMMON_NATIVE_DIRECT_CREATURE_EVENT_PAIRS_V1, DirectCreatureAnimationEventProfileV1,
         DirectCreatureClipEventAuthoringV1, DirectCreatureEventAuthoringV1,
-        apply_direct_creature_event_authoring_v1, evaluate_direct_creature_event_conformance_v1,
+        DirectCreatureEventTimingPolicyV2, apply_direct_creature_event_authoring_v1,
+        evaluate_direct_creature_event_conformance_v1,
     },
     direct_creature_contract::{
         DirectCreatureRuntimeProfileV2, SourceTopologyOriginV1,
@@ -32,10 +33,10 @@ use m2a_core::{
         M0_APPEARANCE_LABEL, M0_CONTROL_APPEARANCE_LABEL, M0_MODEL_RESREF, M0_TEXTURE_RESREF,
         M0RuntimeResourceBindingV1, M6_APPEARANCE_LABEL, M6_HAK_FILE_NAME, M6_MODEL_RESREF,
         M6_PROOF_MODULE_FILE_NAME, M6_TEXTURE_RESREF, ProceduralCreaturePackageIdentityV1,
-        build_m6_model_package_v1, build_m6_model_package_with_profile_v1,
-        build_m6_model_package_with_profile_v2, build_m6_model_package_with_profile_v3,
-        build_meshy_h1_model_package_v2, build_meshy_h1_model_package_v3,
-        build_meshy_h1_rigid_runtime_diagnostic_package_v1,
+        ProceduralCreatureProductIdentityV2, build_m6_model_package_v1,
+        build_m6_model_package_with_profile_v1, build_m6_model_package_with_profile_v2,
+        build_m6_model_package_with_profile_v3, build_meshy_h1_model_package_v2,
+        build_meshy_h1_model_package_v3, build_meshy_h1_rigid_runtime_diagnostic_package_v1,
         build_meshy_m0_canonical_runtime_package_v1,
         build_meshy_m0_canonical_runtime_package_with_identity_and_profile_v2,
         build_meshy_m0_canonical_runtime_package_with_identity_v1,
@@ -43,11 +44,12 @@ use m2a_core::{
         build_meshy_m0_static_rigid_package_v1,
         build_meshy_m0_static_rigid_package_with_profile_v2,
         build_meshy_procedural_humanoid_model_package_with_identity_v1,
+        build_meshy_procedural_humanoid_product_v2, build_procedural_creature_demo_v2,
         inspect_m0_runtime_mesh_eligibility_v1, materialize_direct_creature_runtime_clips_v1,
         verify_m0_binary_runtime_fixture_contract_v2,
         verify_m0_full_runtime_appearance_table_binding_v1, write_m0_canonical_proof_packet_v1,
         write_m0_canonical_runtime_proof_packet_with_profile_v2, write_m0_proof_packet_v1,
-        write_m6_proof_packet_v1,
+        write_m6_proof_packet_v1, write_procedural_creature_proof_packet_with_identity_v1,
     },
     owned_fixture::{
         synthetic_owned_m6_animation_mapping_v1, synthetic_owned_m6_full_native_42_glb_v1,
@@ -61,7 +63,7 @@ use m2a_core::{
         M0_RUNTIME_FIXTURE_X, M0_RUNTIME_FIXTURE_Y, PROOF_AREA_RESREF, PROOF_HAK_RESREF,
         PROOF_MODULE_RESREF, inspect_binary_creature_profile_matrix_module_v2,
     },
-    two_da::{TwoDaLimitsV1, inspect_two_da_v2, read_two_da_row_v2},
+    two_da::{TwoDaCellValueV1, TwoDaLimitsV1, inspect_two_da_v2, read_two_da_row_v2},
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -259,9 +261,15 @@ fn procedural_humanoid_profile_authors_a_distinct_owned_42_state_set_from_h2_idl
         .animation_completeness
         .as_ref()
         .expect("procedural profile completeness");
+    assert_eq!(completeness.schema_version, 2);
     assert_eq!(completeness.required_clip_count, 42);
-    assert_eq!(completeness.explicit_clip_count, 1);
+    assert_eq!(completeness.input_source_clip_count, 1);
+    assert_eq!(completeness.preserved_source_clip_count, 1);
+    assert_eq!(completeness.source_derived_clip_count, 0);
     assert_eq!(completeness.procedural_clip_count, 41);
+    assert_eq!(completeness.discarded_source_clip_count, 0);
+    assert!(completeness.discarded_source_clips.is_empty());
+    assert_eq!(completeness.clips.len(), 42);
     assert_eq!(completeness.fallback_alias_count, 0);
     assert!(completeness.complete);
 
@@ -315,6 +323,54 @@ fn procedural_humanoid_profile_authors_a_distinct_owned_42_state_set_from_h2_idl
         output.report.appearance.changed_cells.len(),
         36,
         "the procedural product path must append a full-width donor clone, including the fixture phenotype column"
+    );
+    let appearance_inspection =
+        inspect_two_da_v2(&output.appearance_two_da, &TwoDaLimitsV1::default())
+            .expect("generated appearance inspection");
+    let appearance_row = read_two_da_row_v2(
+        &output.appearance_two_da,
+        output.report.appearance.appended_row_index as u32,
+        &TwoDaLimitsV1::default(),
+    )
+    .expect("generated appearance row");
+    let appearance_cell = |column: &str| {
+        let index = appearance_inspection
+            .columns
+            .iter()
+            .position(|candidate| candidate.eq_ignore_ascii_case(column))
+            .expect("appearance column");
+        &appearance_row.cells[index]
+    };
+    assert_eq!(
+        appearance_cell("BLOODCOLR"),
+        &TwoDaCellValueV1::Text {
+            value: "R".to_owned()
+        }
+    );
+    assert_eq!(appearance_cell("PORTRAIT"), &TwoDaCellValueV1::Null);
+    assert_eq!(
+        appearance_cell("SIZECATEGORY"),
+        &TwoDaCellValueV1::Text {
+            value: "3".to_owned()
+        }
+    );
+    assert_eq!(
+        appearance_cell("FOOTSTEPTYPE"),
+        &TwoDaCellValueV1::Text {
+            value: "0".to_owned()
+        }
+    );
+    assert_eq!(
+        appearance_cell("SOUNDAPPTYPE"),
+        &TwoDaCellValueV1::Text {
+            value: "0".to_owned()
+        }
+    );
+    assert_ne!(
+        appearance_cell("NAME"),
+        &TwoDaCellValueV1::Text {
+            value: "Hook_Horror".to_owned()
+        }
     );
     let bind_sample =
         evaluate_skin_deformation_v1(&readback, "cpause1", 0.0).expect("bind-pose sample");
@@ -389,12 +445,26 @@ fn procedural_humanoid_profile_authors_a_distinct_owned_42_state_set_from_h2_idl
         .animation_behavior
         .as_ref()
         .expect("procedural behavior report");
+    assert_eq!(behavior.schema_version, 2);
     assert!(behavior.behavior_candidate_eligible);
     assert!(behavior.active_motion_complete);
     assert!(behavior.walk_run_distinct);
     assert!(behavior.essential_states_distinct);
     assert!(behavior.death_transition_terminal_pose);
     assert!(behavior.violations.is_empty());
+    let kinematics = output
+        .report
+        .animation_kinematics_conformance
+        .as_ref()
+        .expect("procedural kinematics conformance");
+    assert_eq!(kinematics.schema_version, 2);
+    assert!(kinematics.all_tracks_start_at_zero);
+    assert!(kinematics.required_transition_boundaries_continuous);
+    assert_eq!(kinematics.transition_boundaries.len(), 6);
+    assert!(kinematics.locomotion_root_motion_assessed);
+    assert!(kinematics.locomotion_root_motion_in_place);
+    assert!(kinematics.complete);
+    assert!(kinematics.violations.is_empty());
     let events = output
         .report
         .animation_event_conformance
@@ -404,6 +474,10 @@ fn procedural_humanoid_profile_authors_a_distinct_owned_42_state_set_from_h2_idl
     assert_eq!(events.required_pair_count, 23);
     assert_eq!(events.satisfied_pair_count, 23);
     assert_eq!(events.total_event_count, 23);
+    assert_eq!(
+        output.report.animation_event_timing_policy,
+        Some(DirectCreatureEventTimingPolicyV2::KinematicPeakV2)
+    );
 
     let skin = output
         .report
@@ -446,6 +520,105 @@ fn procedural_humanoid_profile_authors_a_distinct_owned_42_state_set_from_h2_idl
     );
     assert_eq!(module.scene.fixtures[0].position.x, M0_RUNTIME_FIXTURE_X);
     assert_eq!(module.scene.fixtures[0].position.y, M0_RUNTIME_FIXTURE_Y);
+
+    let wrong_path = temp_path("procedural-identity-diff");
+    let _ = fs::remove_dir_all(&wrong_path);
+    let mut wrong_identity = identity.clone();
+    wrong_identity.module.module_resref = "m2a_wrongmod".to_owned();
+    let error = write_procedural_creature_proof_packet_with_identity_v1(
+        &wrong_path,
+        &output,
+        &wrong_identity,
+    )
+    .expect_err("writer must reject an identity that is not bound into the MOD");
+    assert_eq!(error.code, "M6-PROCEDURAL-WRITER-MODULE-IDENTITY-DIFF");
+    assert!(!wrong_path.exists());
+
+    let path = temp_path("procedural-identity-write");
+    let _ = fs::remove_dir_all(&path);
+    write_procedural_creature_proof_packet_with_identity_v1(&path, &output, &identity)
+        .expect("fresh procedural packet");
+    assert_eq!(
+        fs::read(path.join("generated/m2a_idmdl.mdl")).unwrap(),
+        output.model
+    );
+    assert_eq!(
+        fs::read(path.join("generated/m2a_idtex.tga")).unwrap(),
+        output.texture
+    );
+    assert_eq!(
+        fs::read(path.join("generated/m2a_idhak.hak")).unwrap(),
+        output.hak
+    );
+    assert_eq!(
+        fs::read(path.join("generated/m2a_idmod.mod")).unwrap(),
+        output.proof_module
+    );
+    fs::remove_dir_all(path).unwrap();
+}
+
+#[test]
+fn procedural_product_and_fixture_module_are_two_separate_build_steps() {
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("canonical repository root")
+        .to_path_buf();
+    let source = fs::read(repo.join("sample-3d/h2-clockwork-sentinel-1500/source.glb"))
+        .expect("owned H2 humanoid source");
+    let product_identity = ProceduralCreatureProductIdentityV2 {
+        model_resref: "m2a_prdmdl".to_owned(),
+        texture_resref: "m2a_prdtex".to_owned(),
+        hak_resref: "m2a_prdhak".to_owned(),
+        appearance_label: "M2A_PRODUCT_HUMANOID".to_owned(),
+    };
+    let product = build_meshy_procedural_humanoid_product_v2(
+        &source,
+        &appearance_fixture(),
+        &product_identity,
+    )
+    .expect("production creature resources");
+
+    assert_eq!(product.report.schema_version, 2);
+    assert_eq!(product.report.identity, product_identity);
+    assert_eq!(
+        product.summary.status,
+        "PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED"
+    );
+    assert!(
+        product
+            .manifest
+            .generated_files
+            .iter()
+            .all(|file| !file.relative_path.ends_with(".mod"))
+    );
+    assert!(
+        product
+            .manifest
+            .generated_files
+            .iter()
+            .all(|file| file.relative_path != "generated/source.glb")
+    );
+
+    let demo_identity = BinaryCreatureModuleIdentityV1 {
+        module_resref: "m2a_prdmod".to_owned(),
+        area_resref: "m2a_prdarea".to_owned(),
+        hak_resref: product_identity.hak_resref.clone(),
+    };
+    let demo = build_procedural_creature_demo_v2(&product, &demo_identity, "m2a_prdutc")
+        .expect("optional demo wrapper");
+    assert_eq!(demo.report.module_resref, demo_identity.module_resref);
+    assert_eq!(demo.report.hak_resref, product_identity.hak_resref);
+    assert_eq!(
+        demo.report.appearance_row,
+        product.report.appearance.appended_row_index
+    );
+
+    let mut mismatched_identity = demo_identity;
+    mismatched_identity.hak_resref = "m2a_otherhak".to_owned();
+    let error = build_procedural_creature_demo_v2(&product, &mismatched_identity, "m2a_prdutc")
+        .expect_err("demo cannot silently bind another HAK");
+    assert_eq!(error.code, "M6-DEMO-HAK-IDENTITY-MISMATCH");
 }
 
 #[test]
@@ -567,8 +740,14 @@ fn full_native_42_profile_materializes_end_to_end_without_changing_legacy_v1() {
         completeness.profile,
         DirectCreatureAnimationProfileV1::FullNative42ExplicitV1
     );
+    assert_eq!(completeness.schema_version, 2);
     assert_eq!(completeness.required_clip_count, 42);
-    assert_eq!(completeness.explicit_clip_count, 42);
+    assert_eq!(completeness.input_source_clip_count, 42);
+    assert_eq!(completeness.preserved_source_clip_count, 42);
+    assert_eq!(completeness.source_derived_clip_count, 0);
+    assert_eq!(completeness.procedural_clip_count, 0);
+    assert_eq!(completeness.discarded_source_clip_count, 0);
+    assert!(completeness.discarded_source_clips.is_empty());
     assert_eq!(completeness.fallback_alias_count, 0);
     assert!(completeness.complete);
     let behavior = full
@@ -576,6 +755,7 @@ fn full_native_42_profile_materializes_end_to_end_without_changing_legacy_v1() {
         .animation_behavior
         .as_ref()
         .expect("V2 full output must expose behavior evidence separately");
+    assert_eq!(behavior.schema_version, 2);
     assert!(behavior.full_namespace_complete);
     assert!(behavior.all_required_content_present);
     assert!(behavior.active_motion_complete);

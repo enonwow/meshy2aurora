@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "profileId": "H1-humanoid-animated/v1",
+  "recovery": {
+    "reason": "signed_animation_glb_download_failed",
+    "exactModelTaskId": "019fa586-f172-763e-81d3-0cd3ace147f0",
+    "exactRigTaskId": "019fa589-6a12-77ae-9441-edd01a3ef0dc",
+    "reusedExactLineage": true,
+    "generatedSecondModel": false
+  },
+  "credits": {
+    "ownerCap": 250,
+    "spentBeforeRecovery": 44,
+    "maximumAdditionalCredits": 21,
+    "expectedTotal": 65,
+    "balanceBeforeRecovery": 920
+  },
+  "animations": [
+    {
+      "actionId": 0,
+      "clipName": "cpause1",
+      "file": "meshy-idle-action-0.glb",
+      "taskId": "019fa589-ea49-7723-b758-125694a59167",
+      "sourceFileName": "Animation_Idle_withSkin.glb",
+      "sha256": "a9072bcb6536da2520775d60b69464e33a233ae28b27eeadc16b0a92bac46b58",
+      "byteLength": 8938412
+    },
+    {
+      "actionId": 30,
+      "clipName": "cwalk",
+      "file": "meshy-walk-action-30.glb",
+      "taskId": "019fa58a-2091-729b-abe4-ac3905e6e29d",
+      "sourceFileName": "Animation_Casual_Walk_withSkin.glb",
+      "sha256": "5531e2fb46bf306334f6b246ffb0773b12c0c52ef62d30f85e7b4c550f2b0e76",
+      "byteLength": 8938724
+    },
+    {
+      "actionId": 16,
+      "clipName": "crun",
+      "file": "meshy-sprint-action-16.glb",
+      "taskId": "019fa58a-57f0-7650-bb81-461171779f97",
+      "sourceFileName": "Animation_RunFast_withSkin.glb",
+      "sha256": "89b8c55ab28dae76294d5d8938931bc6f3c0222949cdcce1e1a41e92ade08189",
+      "byteLength": 8897588
+    },
+    {
+      "actionId": 198,
+      "clipName": "ca1slashl",
+      "file": "meshy-punch-combo-action-198.glb",
+      "taskId": "019fa58d-779f-7397-bee2-fa1396bdbb52",
+      "sourceFileName": "Animation_Punch_Combo_withSkin.glb",
+      "sha256": "c59c037fff757447fd53c3df64a74f7d14605ddd49f845596fd72099ac9ad86f",
+      "byteLength": 8919532
+    },
+    {
+      "actionId": 193,
+      "clipName": "ca1slashr",
+      "file": "meshy-left-hook-action-193.glb",
+      "taskId": "019fa58d-ae4e-78f2-9004-192cdd6b241a",
+      "sourceFileName": "Animation_Left_Hook_from_Guard_withSkin.glb",
+      "sha256": "7913043909e7f3e6d79e2109cda52dac5ee587ebf27a63737d110b236a5f6ff5",
+      "byteLength": 8903352
+    },
+    {
+      "actionId": 178,
+      "clipName": "cdamagel",
+      "file": "meshy-hit-action-178.glb",
+      "taskId": "019fa58d-d977-78fe-a2a4-a40d1d65f78f",
+      "sourceFileName": "Animation_Hit_Reaction_withSkin.glb",
+      "sha256": "286f7384aaa3ea7fb36160f194efccc7a0d1c86182ae694730a638480c3b1686",
+      "byteLength": 8910348
+    },
+    {
+      "actionId": 187,
+      "clipName": "ckdbck",
+      "file": "meshy-knockdown-action-187.glb",
+      "taskId": "019fa58e-04a0-7906-8f94-cd0f26c90729",
+      "sourceFileName": "Animation_Knock_Down_withSkin.glb",
+      "sha256": "1a4c7a3f6542aa365fc7cbd40b199c8f4b7146f709f2cc04e018d585080aeb13",
+      "byteLength": 8937716
+    },
+    {
+      "actionId": 8,
+      "clipName": "cdead",
+      "file": "meshy-dead-action-8.glb",
+      "taskId": "019fa58e-3d1e-73c1-b3e2-d67c20dc4204",
+      "sourceFileName": "Animation_Dead_withSkin.glb",
+      "sha256": "e23fc62de47a1976f61eda7b37e35fd79495c29dbf84c5d05f66d218c4699ee9",
+      "byteLength": 8926464
+    },
+    {
+      "actionId": 3,
+      "clipName": "cguptokdb",
+      "file": "meshy-arise-action-3.glb",
+      "taskId": "019fa58e-81d7-7810-8f23-2ae11b433b44",
+      "sourceFileName": "Animation_Arise_withSkin.glb",
+      "sha256": "3d4918c466afd0c0d973803f9ada5327b7b2dc8453937e339d4f3413b15800b6",
+      "byteLength": 8913412
+    },
+    {
+      "actionId": 2,
+      "clipName": "ctaunt",
+      "file": "meshy-alert-action-2.glb",
+      "taskId": "019fa58e-aca3-792d-b918-fcc3801e571b",
+      "sourceFileName": "Animation_Alert_withSkin.glb",
+      "sha256": "cc7964ce46ccf3fcba2be17d45591f49f99c566c29267a3225e967bf0658afcf",
+      "byteLength": 8940784
+    }
+  ]
+}

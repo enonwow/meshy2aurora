@@ -3,6 +3,7 @@ import {
   formatFileSize,
   shortSha256,
   type FileIdentityValue,
+  type CreatureConversionProfileV1,
   type SourceInputProps,
   type TileSurface,
 } from "./InputsPanel";
@@ -121,6 +122,8 @@ export function SourceStep({
   source,
   appearance,
   animationEvents,
+  creatureProfile = "PRODUCT_300K",
+  textureArtifactCleanup = false,
   sourceIdentity,
   appearanceIdentity,
   sourceError,
@@ -129,6 +132,8 @@ export function SourceStep({
   onSelectSource,
   onSelectAppearance,
   onSelectAnimationEvents,
+  onCreatureProfileChange,
+  onTextureArtifactCleanupChange,
   onRemoveSource,
   onRemoveAppearance,
   onRemoveAnimationEvents,
@@ -242,6 +247,53 @@ export function SourceStep({
             Interior tileset
           </label>
           <output>Footprint: 10 m × 10 m · seam: ±5 m · Tile_ID 0</output>
+        </fieldset>
+      ) : null}
+
+      {target === "CREATURE" && onCreatureProfileChange ? (
+        <fieldset className="source-step__creature-profile">
+          <legend>Creature conversion profile</legend>
+          <label>
+            Pipeline profile
+            <select
+              aria-label="Creature conversion profile"
+              value={creatureProfile}
+              onChange={(event) => onCreatureProfileChange(
+                event.currentTarget.value as CreatureConversionProfileV1,
+              )}
+            >
+              <option value="PRODUCT_300K">Product (300,000 triangle limit)</option>
+              <option value="EXPERIMENTAL_P100K">Legacy P100K compatibility</option>
+              <option value="EXPERIMENTAL_P300K">Legacy P300K compatibility</option>
+            </select>
+          </label>
+          {creatureProfile === "EXPERIMENTAL_P100K" ? (
+            <p role="note">
+              Historical P100K replay profile. New conversions should use the shared 300,000-triangle product profile.
+            </p>
+          ) : null}
+          {creatureProfile === "EXPERIMENTAL_P300K" ? (
+            <p role="note">
+              Historical P300K replay profile. New conversions should use the shared 300,000-triangle product profile.
+            </p>
+          ) : null}
+          {onTextureArtifactCleanupChange ? (
+            <>
+              <label>
+                <input
+                  type="checkbox"
+                  aria-label="Repair texture artifacts"
+                  checked={textureArtifactCleanup}
+                  onChange={(event) => onTextureArtifactCleanupChange(event.currentTarget.checked)}
+                />
+                Repair texture artifacts
+              </label>
+              <p role="note">
+                Removes isolated bright or dark speckles and repairs one-pixel alpha holes in the
+                base-color texture. Larger details, edges, and transparent regions are preserved.
+              </p>
+            </>
+          ) : null}
         </fieldset>
       ) : null}
 

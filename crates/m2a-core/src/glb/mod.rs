@@ -9,7 +9,10 @@ use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::tga::{TGA_MAX_OUTPUT_BYTES, TGA_SCHEMA_VERSION, TgaImageV1, TgaPixelFormatV1};
+use crate::{
+    model_limits::{AURORA_MODEL_TRIANGLE_BUDGET_V1, AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1},
+    tga::{TGA_MAX_OUTPUT_BYTES, TGA_SCHEMA_VERSION, TgaImageV1, TgaPixelFormatV1},
+};
 
 pub const GLB_SCHEMA_VERSION: u32 = 1;
 pub const MAX_DECODED_IMAGE_DIMENSION_V1: u32 = 16_384;
@@ -96,8 +99,8 @@ impl Default for GlbLimits {
             max_keyframes: 1_000_000,
             max_decoded_skin_animation_bytes: 64 * 1024 * 1024,
             max_diagnostics: 2_048,
-            triangle_warning_above: 5_000,
-            triangle_blocking_above: 10_000,
+            triangle_warning_above: AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1,
+            triangle_blocking_above: AURORA_MODEL_TRIANGLE_BUDGET_V1,
         }
     }
 }

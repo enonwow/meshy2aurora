@@ -4,12 +4,16 @@ import init, {
   buildM7CorpusBatchV1,
   buildMeshyH1ModelPackageV2,
   buildMeshyH1ModelPackageV3,
-  buildMeshyProceduralHumanoidModelPackageV1,
+  buildMeshyProceduralHumanoidProductWithOptionsV3,
+  buildMeshyProceduralHumanoidP100kExperimentWithOptionsV2,
+  buildMeshyProceduralHumanoidP300kExperimentWithOptionsV2,
   buildMeshyM0StaticRigidPackageV1,
   buildMeshyStaticPlaceablePackageV1,
   buildMeshyStaticPlaceablePackageV2,
   buildMeshyStaticTilePackageV1,
   ingestGlbJson,
+  ingestMeshyP100kExperimentJson,
+  ingestMeshyP300kExperimentJson,
   ingestStaticRigidGlbJson,
   inspectTwoDaV2Json,
   inspectM7CorpusIntakeV1Json,
@@ -71,6 +75,10 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
   if (request.type === "INSPECT_SOURCE") {
     const ingestJson = request.target === "PLACEABLE" || request.target === "TILE"
       ? ingestStaticRigidGlbJson(new Uint8Array(request.sourceGlb))
+      : request.creatureProfile === "EXPERIMENTAL_P300K"
+        ? ingestMeshyP300kExperimentJson(new Uint8Array(request.sourceGlb))
+      : request.creatureProfile === "EXPERIMENTAL_P100K"
+        ? ingestMeshyP100kExperimentJson(new Uint8Array(request.sourceGlb))
       : ingestGlbJson(new Uint8Array(request.sourceGlb));
     return {
       requestId: request.requestId,
@@ -309,6 +317,180 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
     }
   }
 
+  if (
+    request.type === "BUILD_MODEL_PACKAGE"
+    && request.packageLane === "SKINNED_PROCEDURAL_HUMANOID_42"
+  ) {
+    const result = buildMeshyProceduralHumanoidProductWithOptionsV3(
+      new Uint8Array(request.sourceGlb),
+      new Uint8Array(request.appearanceTwoDa),
+      request.identityJson,
+      JSON.stringify({
+        schemaVersion: 1,
+        textureArtifactCleanup: request.textureArtifactCleanup,
+      }),
+    );
+    try {
+      const summary = JSON.parse(result.summaryJson) as {
+        identity?: { modelResref?: unknown; textureResref?: unknown; hakResref?: unknown };
+      };
+      const modelResref = summary.identity?.modelResref;
+      const textureResref = summary.identity?.textureResref;
+      const hakResref = summary.identity?.hakResref;
+      if (
+        typeof modelResref !== "string"
+        || typeof textureResref !== "string"
+        || typeof hakResref !== "string"
+      ) {
+        throw new Error("Procedural product summary has no exact resource identity");
+      }
+      const hak = exactBuffer(result.takeHakBytes());
+      const model = exactBuffer(result.takeModelBytes());
+      const texture = exactBuffer(result.takeTextureBytes());
+      const report = encoder.encode(result.reportJson).buffer;
+      const manifest = encoder.encode(result.manifestJson).buffer;
+      const summaryBytes = encoder.encode(result.summaryJson).buffer;
+      const artifacts = await Promise.all([
+        artifact("package-hak", "HAK", `${hakResref}.hak`, "application/octet-stream", hak),
+        artifact("model-mdl", "MODEL", `${modelResref}.mdl`, "application/octet-stream", model),
+        artifact("texture-tga", "TEXTURE", `${textureResref}.tga`, "image/x-tga", texture),
+        artifact("report-json", "JSON_REPORT", "inspection.json", "application/json", report),
+        artifact("manifest-json", "JSON_REPORT", "conversion-manifest.json", "application/json", manifest),
+        artifact("summary-json", "JSON_REPORT", "summary.json", "application/json", summaryBytes),
+      ]);
+      return {
+        requestId: request.requestId,
+        ok: true,
+        type: "MODEL_PACKAGE_BUILT",
+        artifacts,
+        reportJson: result.reportJson,
+        manifestJson: result.manifestJson,
+        summaryJson: result.summaryJson,
+        readbackJson: result.readbackJson,
+      };
+    } finally {
+      result.free();
+    }
+  }
+
+  if (
+    request.type === "BUILD_MODEL_PACKAGE"
+    && (
+      request.packageLane === "SKINNED_PROCEDURAL_HUMANOID_P100K_EXPERIMENT"
+      || request.packageLane === "SKINNED_PROCEDURAL_HUMANOID_P300K_EXPERIMENT"
+    )
+  ) {
+    const experimentLabel = request.packageLane === "SKINNED_PROCEDURAL_HUMANOID_P300K_EXPERIMENT"
+      ? "P300K"
+      : "P100K";
+    const identity = JSON.parse(request.identityJson) as {
+      modelResref?: unknown;
+      textureResref?: unknown;
+      module?: {
+        moduleResref?: unknown;
+        areaResref?: unknown;
+        hakResref?: unknown;
+      };
+      creatureResref?: unknown;
+    };
+    const modelResref = identity.modelResref;
+    const textureResref = identity.textureResref;
+    const moduleResref = identity.module?.moduleResref;
+    const hakResref = identity.module?.hakResref;
+    if (
+      typeof modelResref !== "string"
+      || typeof textureResref !== "string"
+      || typeof moduleResref !== "string"
+      || typeof hakResref !== "string"
+    ) {
+      throw new Error(`${experimentLabel} package request has no exact resource identity`);
+    }
+    const result = request.packageLane === "SKINNED_PROCEDURAL_HUMANOID_P300K_EXPERIMENT"
+      ? buildMeshyProceduralHumanoidP300kExperimentWithOptionsV2(
+          new Uint8Array(request.sourceGlb),
+          new Uint8Array(request.appearanceTwoDa),
+          request.identityJson,
+          JSON.stringify({
+            schemaVersion: 1,
+            textureArtifactCleanup: request.textureArtifactCleanup,
+          }),
+        )
+      : buildMeshyProceduralHumanoidP100kExperimentWithOptionsV2(
+          new Uint8Array(request.sourceGlb),
+          new Uint8Array(request.appearanceTwoDa),
+          request.identityJson,
+          JSON.stringify({
+            schemaVersion: 1,
+            textureArtifactCleanup: request.textureArtifactCleanup,
+          }),
+        );
+    try {
+      const artifacts = await Promise.all([
+        artifact(
+          "package-hak",
+          "HAK",
+          `${hakResref}.hak`,
+          "application/octet-stream",
+          exactBuffer(result.takeHakBytes()),
+        ),
+        artifact(
+          "model-mdl",
+          "MODEL",
+          `${modelResref}.mdl`,
+          "application/octet-stream",
+          exactBuffer(result.takeModelBytes()),
+        ),
+        artifact(
+          "texture-tga",
+          "TEXTURE",
+          `${textureResref}.tga`,
+          "image/x-tga",
+          exactBuffer(result.takeTextureBytes()),
+        ),
+        artifact(
+          "proof-module",
+          "MODULE",
+          `${moduleResref}.mod`,
+          "application/octet-stream",
+          exactBuffer(result.takeProofModuleBytes()),
+        ),
+        artifact(
+          "report-json",
+          "JSON_REPORT",
+          "inspection.json",
+          "application/json",
+          encoder.encode(result.reportJson).buffer,
+        ),
+        artifact(
+          "manifest-json",
+          "JSON_REPORT",
+          "conversion-manifest.json",
+          "application/json",
+          encoder.encode(result.manifestJson).buffer,
+        ),
+        artifact(
+          "summary-json",
+          "JSON_REPORT",
+          "summary.json",
+          "application/json",
+          encoder.encode(result.summaryJson).buffer,
+        ),
+      ]);
+      return {
+        requestId: request.requestId,
+        ok: true,
+        type: "MODEL_PACKAGE_BUILT",
+        artifacts,
+        reportJson: result.reportJson,
+        manifestJson: result.manifestJson,
+        summaryJson: result.summaryJson,
+        readbackJson: result.readbackJson,
+      };
+    } finally {
+      result.free();
+    }
+  }
+
   const result = (() => {
     switch (request.packageLane) {
       case "M0_STATIC_RIGID":
@@ -324,11 +506,6 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         );
       case "H1_SKINNED_FULL_42":
         return buildMeshyH1ModelPackageV2(
-          new Uint8Array(request.sourceGlb),
-          new Uint8Array(request.appearanceTwoDa),
-        );
-      case "SKINNED_PROCEDURAL_HUMANOID_42":
-        return buildMeshyProceduralHumanoidModelPackageV1(
           new Uint8Array(request.sourceGlb),
           new Uint8Array(request.appearanceTwoDa),
         );

@@ -416,7 +416,7 @@ fn tile_static_profile_emits_classification_two_and_semantic_aabb() {
 }
 
 #[test]
-fn tile_profile_accepts_exactly_twenty_thousand_render_triangles() {
+fn binary_tile_writer_accepts_twenty_thousand_triangles_in_one_stream() {
     let model = simple_model("m2atilemdl1", 20_000);
     let navigation =
         flat_tile_navigation_v1("m2atilemdl1", TileSurfaceV1::Grass).expect("navigation");
@@ -499,6 +499,56 @@ fn package_builds_one_hak_and_custom_two_by_two_module_with_full_readback() {
         panic!("Tile_List");
     };
     assert_eq!(tiles.len(), 4);
+}
+
+#[test]
+fn tile_package_partitions_render_mesh_above_single_stream_boundary() {
+    let identity = StaticTileIdentityV1::owner_candidate_v1();
+    let triangle_count = m2a_core::mdl::NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1 + 1;
+    let request = StaticTileBuildRequestV1 {
+        schema_version: 1,
+        identity: identity.clone(),
+        interior: false,
+        terrain_name: "Grass".to_owned(),
+        surface: TileSurfaceV1::Grass,
+        model: simple_model(&identity.model_resref, triangle_count),
+        navigation: flat_tile_navigation_v1(&identity.model_resref, TileSurfaceV1::Grass)
+            .expect("navigation"),
+        material_textures: vec![MdlMaterialTextureBindingV1 {
+            material_slot: 0,
+            resref: identity.texture_resref.clone(),
+        }],
+        textures: vec![TileTextureInputV1 {
+            resref: identity.texture_resref.clone(),
+            resource_type: 3,
+            payload: vec![0; 18],
+        }],
+    };
+
+    let artifact = build_static_tile_package_v1(&request).expect("segmented tile package");
+    let inspection = inspect_binary_mdl(&artifact.mdl_payload).expect("segmented MDL readback");
+    let mut stack = inspection.node_tree.roots.iter().collect::<Vec<_>>();
+    let mut render_face_counts = Vec::new();
+    while let Some(node) = stack.pop() {
+        stack.extend(node.children.iter());
+        if node.aabb.is_none()
+            && let Some(mesh) = &node.mesh
+        {
+            render_face_counts.push(mesh.faces.len());
+        }
+    }
+
+    assert_eq!(
+        artifact.report.model_triangle_count as usize,
+        triangle_count
+    );
+    assert_eq!(render_face_counts.len(), 2);
+    assert_eq!(render_face_counts.iter().sum::<usize>(), triangle_count);
+    assert!(
+        render_face_counts
+            .iter()
+            .all(|count| *count <= m2a_core::mdl::NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1)
+    );
 }
 
 #[test]

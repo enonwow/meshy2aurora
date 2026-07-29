@@ -120,6 +120,16 @@ function readbackValidation(diagnostic: ReadbackDiagnostic, index: number): Read
 }
 
 function runtimeProof(result: CanonicalResultSnapshot): ReadinessItem {
+  if (result.runtimeAcceptance.status === "OWNER_VERIFIED") {
+    return {
+      id: "RUNTIME_PROOF",
+      label: "Runtime Proof",
+      status: "PASS",
+      statusLabel: "OWNER_VERIFIED",
+      checkCount: 2,
+      detail: "Exact immutable lineage is visible/verified in Aurora Toolset and NWN.",
+    };
+  }
   const { engineFacingProof, uvRuntimeProof } = result.conversionEvidence.policies;
   const samePolicy = engineFacingProof === uvRuntimeProof;
   const status = engineFacingProof.startsWith("OPEN_") || uvRuntimeProof.startsWith("OPEN_") ? "OPEN" : "NOT_CHECKED";

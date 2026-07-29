@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>Meshy2Aurora — Item workflow mockup</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body data-screen="source" data-preview="composed">
+    <main class="app-shell">
+      <header class="app-header">
+        <a class="brand" href="#" aria-label="Meshy2Aurora home">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <strong>meshy<span>2</span>aurora</strong>
+          <small>v0.2.0</small>
+          <em>local</em>
+        </a>
+
+        <nav class="workflow" aria-label="Conversion workflow">
+          <button class="workflow-step workflow-step--active" data-screen-target="source" type="button">
+            <span>1</span><strong>Source</strong><small>Select item inputs</small>
+          </button>
+          <button class="workflow-step" data-screen-target="prepare" type="button">
+            <span>2</span><strong>Prepare Item</strong><small>Assemble &amp; attach</small>
+          </button>
+          <button class="workflow-step" type="button">
+            <span>3</span><strong>Build</strong><small>Convert &amp; validate</small>
+          </button>
+          <button class="workflow-step" data-screen-target="review" type="button">
+            <span>4</span><strong>Review Output</strong><small>Verify resources</small>
+          </button>
+          <button class="workflow-step" type="button">
+            <span>5</span><strong>Download</strong><small>Get proof package</small>
+          </button>
+        </nav>
+
+        <div class="header-actions">
+          <button type="button" aria-label="Help">?</button>
+          <button type="button" aria-label="Settings">⚙</button>
+        </div>
+      </header>
+
+      <section class="screen screen--source" data-screen-content="source">
+        <header class="page-heading">
+          <div>
+            <p class="eyebrow">Step 1 · Conversion target</p>
+            <h1>Create an Aurora item</h1>
+            <p>Turn a Meshy GLB into an NWN item model, inventory icon and exact proof package.</p>
+          </div>
+          <div class="local-badge"><i></i><span><strong>Local-first</strong><small>Files stay in your browser</small></span></div>
+        </header>
+
+        <div class="source-layout">
+          <aside class="source-sidebar panel">
+            <p class="panel-label">TARGET</p>
+            <button class="target-row" type="button"><i class="target-icon target-icon--creature">♙</i><span><strong>Creature</strong><small>Rigged or static model</small></span></button>
+            <button class="target-row" type="button"><i class="target-icon">◇</i><span><strong>Placeable</strong><small>World object + collision</small></span></button>
+            <button class="target-row target-row--active" type="button"><i class="target-icon target-icon--item">◈</i><span><strong>Item</strong><small>Model + UTI + icon</small></span><b>NEW</b></button>
+            <button class="target-row" type="button"><i class="target-icon">▦</i><span><strong>Tile</strong><small>10 × 10 m terrain piece</small></span></button>
+            <div class="sidebar-note">
+              <span>i</span>
+              <p><strong>One Item workflow.</strong> Studio derives assembly from the selected <code>BaseItem</code> row.</p>
+            </div>
+          </aside>
+
+          <section class="source-main">
+            <div class="section-heading">
+              <div><p class="eyebrow">Data-driven item contract</p><h2>BaseItem drives the assembly</h2></div>
+              <span class="contract-chip">No manual item categories</span>
+            </div>
+
+            <div class="contract-resolver">
+              <article class="resolver-card">
+                <span class="resolver-step">1</span>
+                <div><small>REFERENCE TABLE</small><strong>baseitems.2da</strong><p>Read ItemClass, ModelType, equip slots and inventory size.</p></div>
+                <b class="resolver-state">96 rows</b>
+              </article>
+              <span class="resolver-arrow">→</span>
+              <article class="resolver-card resolver-card--selected">
+                <span class="resolver-step">2</span>
+                <div><small>SELECTED ROW</small><strong>BaseItem 1</strong><p>Label: Longsword · ItemClass: WSwLs</p></div>
+                <b class="resolver-state resolver-state--active">selected</b>
+              </article>
+              <span class="resolver-arrow">→</span>
+              <article class="resolver-card resolver-card--result">
+                <span class="resolver-step">3</span>
+                <div><small>DERIVED PART SCHEMA</small><strong>ModelType 2</strong><p>Part1/B · Part2/M · Part3/T · right hand</p></div>
+                <b class="resolver-state resolver-state--pass">resolved</b>
+              </article>
+            </div>
+
+            <div class="source-cards">
+              <article class="input-card">
+                <header><span class="input-icon">⬡</span><div><strong>Part sources</strong><small>One source model assigned to every required part slot</small></div><b>required</b></header>
+                <div class="part-source-stack">
+                  <div><span>B</span><p><strong>blade.glb</strong><small>Part1 · 9,140 triangles</small></p><b>assigned</b></div>
+                  <div><span>M</span><p><strong>crossguard_grip.glb</strong><small>Part2 · 5,120 triangles</small></p><b>assigned</b></div>
+                  <div><span>T</span><p><strong>pommel.glb</strong><small>Part3 · 1,204 triangles</small></p><b>assigned</b></div>
+                </div>
+                <button class="meshy-action" type="button"><span>✦</span><div><strong>Add or generate a part</strong><small>Meshy source → inspect → assign to B, M or T</small></div><i>Open →</i></button>
+              </article>
+
+              <article class="input-card">
+                <header><span class="input-icon">▦</span><div><strong>Base item table</strong><small>Required · retail baseitems.2da</small></div><b>required</b></header>
+                <div class="selected-input selected-input--table">
+                  <span>▦</span>
+                  <div><strong>baseitems.2da</strong><small>96 active rows · schema verified</small><em>read-only reference</em></div>
+                  <button type="button">Replace</button>
+                </div>
+                <label class="baseitem-picker">
+                  <span>Target BaseItem <small>drives the entire item contract</small></span>
+                  <select>
+                    <option>0 · Shortsword · ModelType 2</option>
+                    <option selected>1 · Longsword · ModelType 2</option>
+                    <option>14 · Small Shield · ModelType 0</option>
+                    <option>17 · Helmet · ModelType 1</option>
+                    <option>56 · Large Shield · ModelType 0</option>
+                    <option>80 · Cloak · ModelType 1</option>
+                  </select>
+                </label>
+                <div class="privacy-row"><span>✓</span><p><strong>Existing row, no 2DA mutation.</strong><small>Changing the row recalculates assembly and validation.</small></p></div>
+              </article>
+            </div>
+          </section>
+
+          <aside class="requirements panel">
+            <p class="panel-label">RESOLVED ITEM CONTRACT</p>
+            <div class="recipe-title"><span>◈</span><div><strong>BaseItem 1</strong><small>Longsword · selected example</small></div></div>
+            <dl class="requirement-list">
+              <div><dt>BaseItem</dt><dd><strong>1</strong><small>Longsword</small></dd></div>
+              <div><dt>ItemClass</dt><dd><code>WSwLs</code></dd></div>
+              <div><dt>Part schema</dt><dd><strong>B · M · T</strong><small>ModelType 2</small></dd></div>
+              <div><dt>Geometry budget</dt><dd><strong>15,464 / 20,000</strong><small>sum of all parts</small></dd></div>
+              <div><dt>Texture policy</dt><dd><strong>1 diffuse / part</strong><small>three TGA outputs</small></dd></div>
+              <div><dt>Outputs</dt><dd><strong>3 MDL · 3 TGA · UTI</strong><small>icon + HAK/MOD</small></dd></div>
+            </dl>
+            <div class="scope-card">
+              <span>✓</span>
+              <div><strong>One data-driven workflow</strong><p>Selecting another BaseItem derives a different assembly contract automatically.</p></div>
+            </div>
+          </aside>
+        </div>
+
+        <footer class="action-bar">
+          <div><span class="validation-dot validation-dot--success"></span><p><strong>Three required part slots assigned</strong><small>BaseItem 1 resolves ModelPart1/B, ModelPart2/M and ModelPart3/T.</small></p></div>
+          <button class="button-secondary" type="button">Clear</button>
+          <button class="button-primary" data-screen-target="prepare" type="button">Continue to Prepare Item <span>→</span></button>
+        </footer>
+      </section>
+
+      <section class="screen screen--prepare" data-screen-content="prepare">
+        <header class="page-heading">
+          <div>
+            <p class="eyebrow">Step 2 · Item authoring</p>
+            <h1>Prepare Item</h1>
+            <p>BaseItem 1 · Longsword · ModelType 2. Assemble the exact B, M and T part resources.</p>
+          </div>
+          <div class="source-chip">
+            <span class="status-dot"></span>
+            <div><strong>3 part sources</strong><small>15,464 triangles total · all slots assigned</small></div>
+            <button data-screen-target="source" type="button">Replace</button>
+          </div>
+        </header>
+
+        <section class="item-editor">
+          <aside class="view-rail" aria-label="Item preview modes">
+            <strong>PREVIEW</strong>
+            <button class="view-button view-button--active" data-preview-target="composed" type="button"><span>◇</span>Composed</button>
+            <button class="view-button" data-preview-target="exploded" type="button"><span>↕</span>Exploded</button>
+            <button class="view-button" data-preview-target="icon" type="button"><span>▣</span>Icon</button>
+            <span class="rail-spacer"></span>
+            <button class="view-button" type="button"><span>⌖</span>Frame</button>
+          </aside>
+
+          <section class="viewport-panel">
+            <header class="viewport-toolbar">
+              <div class="tool-group">
+                <button class="tool-button tool-button--active" type="button"><kbd>Q</kbd> Select part</button>
+                <button class="tool-button" type="button"><kbd>W</kbd> Offset</button>
+                <button class="tool-button" type="button"><kbd>E</kbd> Rotate</button>
+                <button class="tool-button" type="button"><kbd>R</kbd> Scale</button>
+              </div>
+              <span class="toolbar-divider"></span>
+              <button class="text-button" type="button">Reset selected part</button>
+              <span class="toolbar-spacer"></span>
+              <div class="segmented"><button class="segmented--active" type="button">Actual scale</button><button type="button">Fit model</button></div>
+              <button class="snap-button" type="button">⌁ Snap 0.01 m</button>
+            </header>
+
+            <div class="viewport">
+              <div class="viewport-badge"><strong>Aurora part assembly</strong><span>3 resources · shared item space · offline only</span></div>
+              <div class="camera-label">Front · seam overlay · actual scale</div>
+              <div class="world-grid"></div>
+              <div class="ground-circle"><span>shared item origin</span></div>
+
+              <div class="part-stack-panel" aria-label="Required item part slots">
+                <p>PART SLOTS</p>
+                <button class="part-slot part-slot--active" type="button"><b>B</b><span><strong>Blade</strong><small>ModelPart1 · 9,140 tris</small></span><i>✓</i></button>
+                <button class="part-slot" type="button"><b>M</b><span><strong>Middle</strong><small>ModelPart2 · 5,120 tris</small></span><i>✓</i></button>
+                <button class="part-slot" type="button"><b>T</b><span><strong>Top</strong><small>ModelPart3 · 1,204 tris</small></span><i>✓</i></button>
+                <div><span>Σ</span><p><strong>15,464</strong><small>of 20,000 triangles</small></p></div>
+              </div>
+
+              <div class="item-parts-stage">
+                <div class="selection-bounds"><i></i><i></i><i></i><i></i></div>
+                <svg class="sword-art" viewBox="0 0 340 700" role="img" aria-label="Three-part longsword preview">
+                  <defs>
+                    <linearGradient id="blade-metal" x1="0" x2="1">
+                      <stop offset="0" stop-color="#34444c" />
+                      <stop offset=".24" stop-color="#d7e0e2" />
+                      <stop offset=".49" stop-color="#66777e" />
+                      <stop offset=".72" stop-color="#eef6f7" />
+                      <stop offset="1" stop-color="#26363e" />
+                    </linearGradient>
+                    <linearGradient id="bronze" x1="0" x2="1">
+                      <stop offset="0" stop-color="#513318" />
+                      <stop offset=".35" stop-color="#d4a256" />
+                      <stop offset=".68" stop-color="#6c4421" />
+                      <stop offset="1" stop-color="#d5b16f" />
+                    </linearGradient>
+                    <filter id="sword-shadow"><feDropShadow dx="0" dy="13" stdDeviation="10" flood-opacity=".75" /></filter>
+                  </defs>
+                  <g filter="url(#sword-shadow)">
+                    <g class="sword-part sword-part--b">
+                      <path d="M170 12 218 78 195 442 170 472 145 442 122 78Z" fill="url(#blade-metal)" stroke="#d6e1e4" stroke-width="5" />
+                      <path d="M170 42v403" fill="none" stroke="#f5fafb" stroke-width="5" opacity=".5" />
+                      <path d="M139 105h62M136 158h68M133 211h74" stroke="#1d6670" stroke-width="5" opacity=".8" />
+                    </g>
+                    <g class="sword-part sword-part--m">
+                      <path d="M65 445 139 429h62l74 16-9 29-68-4-8 25h-40l-8-25-68 4Z" fill="url(#bronze)" stroke="#e0bc78" stroke-width="5" />
+                      <rect x="145" y="475" width="50" height="139" rx="20" fill="#35251d" stroke="#8d683d" stroke-width="6" />
+                      <path d="M150 495h40M150 520h40M150 545h40M150 570h40" stroke="#c49b62" stroke-width="7" />
+                    </g>
+                    <g class="sword-part sword-part--t">
+                      <path d="M170 600 213 638 198 682h-56l-15-44Z" fill="url(#bronze)" stroke="#e0bc78" stroke-width="5" />
+                      <circle cx="170" cy="642" r="16" fill="#173b40" stroke="#5ca3a5" stroke-width="5" />
+                    </g>
+                  </g>
+                </svg>
+                <div class="part-seam part-seam--bm"><span>B → M</span><i></i></div>
+                <div class="part-seam part-seam--mt"><span>M → T</span><i></i></div>
+                <div class="pivot-marker"><i></i><i></i></div>
+              </div>
+
+              <div class="size-ruler size-ruler--height"><i></i><span>1.45 m</span></div>
+              <div class="size-ruler size-ruler--width"><i></i><span>0.24 m</span></div>
+              <div class="icon-frame"><span>1 × 4 slots · composed model</span></div>
+
+              <div class="viewport-legend">
+                <div><i class="legend-dot legend-dot--cyan"></i><span>selected part B</span></div>
+                <div><i class="legend-dot legend-dot--amber"></i><span>part seam</span></div>
+                <div><i class="legend-dot legend-dot--green"></i><span>resolved connection</span></div>
+              </div>
+            </div>
+
+            <footer class="viewport-status">
+              <div><span>Preview</span><strong id="preview-label">Composed</strong></div>
+              <div><span>Part slots</span><strong class="success">3 / 3 assigned</strong></div>
+              <div><span>Seams</span><strong class="success">B→M · M→T</strong></div>
+              <div><span>ModelType</span><strong>2 · three parts</strong></div>
+              <div><span>Runtime proof</span><strong class="pending">OWNER PENDING</strong></div>
+            </footer>
+          </section>
+
+          <aside class="inspector">
+            <nav class="inspector-tabs">
+              <button class="inspector-tab inspector-tab--active" data-tab-target="assembly" type="button">Parts</button>
+              <button class="inspector-tab" data-tab-target="attachment" type="button">Transform</button>
+              <button class="inspector-tab" data-tab-target="icon" type="button">Icon</button>
+              <button class="inspector-tab" data-tab-target="diagnostics" type="button">Checks <i>1</i></button>
+            </nav>
+
+            <div class="inspector-scroll">
+              <section class="inspector-panel inspector-panel--active" data-tab-content="assembly">
+                <div class="inspector-intro"><p class="eyebrow">Aurora part assembly</p><h2>Three required part slots</h2><p>Every UTI ModelPart field resolves a separate binary MDL. The composed preview is not another model resource.</p></div>
+                <fieldset class="control-section">
+                  <legend>Base item identity</legend>
+                  <label class="field"><span>BaseItem</span><select><option>1 · Longsword</option></select></label>
+                  <div class="dimension-grid">
+                    <div><span>ItemClass</span><strong>WSwLs</strong></div>
+                    <div><span>ModelType</span><strong>2</strong></div>
+                    <div><span>Equip slot</span><strong>Right hand</strong></div>
+                    <div><span>Part slots</span><strong>3</strong></div>
+                  </div>
+                </fieldset>
+                <fieldset class="control-section">
+                  <legend>Resolved part resources</legend>
+                  <div class="part-resource part-resource--active"><b>B</b><span><strong>ModelPart1 · 251</strong><code>wswls_b_251.mdl</code></span><i>9,140</i></div>
+                  <div class="part-resource"><b>M</b><span><strong>ModelPart2 · 252</strong><code>wswls_m_252.mdl</code></span><i>5,120</i></div>
+                  <div class="part-resource"><b>T</b><span><strong>ModelPart3 · 253</strong><code>wswls_t_253.mdl</code></span><i>1,204</i></div>
+                  <dl class="resource-list"><div><dt>Blueprint</dt><dd><code>m2a_lsword01.uti</code></dd></div><div><dt>Inventory icon</dt><dd><code>iwswls_251.tga</code></dd></div></dl>
+                </fieldset>
+                <div class="resolved-card"><span>✓</span><div><strong>Part schema complete</strong><p>3 MDL · 3 diffuse · 1 UTI · composed icon</p></div><code>38e2…b7c1</code></div>
+              </section>
+
+              <section class="inspector-panel" data-tab-content="attachment">
+                <div class="inspector-intro"><p class="eyebrow">Selected part · B</p><h2>Align Blade to Middle</h2><p>Each part keeps its own resource transform. Seam readback verifies that neighboring anchors meet.</p></div>
+                <fieldset class="control-section">
+                  <legend>Part selection</legend>
+                  <label class="field"><span>Active slot</span><select><option>B · ModelPart1 · Blade</option><option>M · ModelPart2 · Middle</option><option>T · ModelPart3 · Top</option></select></label>
+                  <label class="field"><span>Source</span><select><option>blade.glb · verified</option></select></label>
+                  <div class="vector-grid">
+                    <label>X <input value="0.000" /><small>m</small></label><label>Y <input value="0.000" /><small>m</small></label><label>Z <input value="0.012" /><small>m</small></label>
+                  </div>
+                </fieldset>
+                <fieldset class="control-section">
+                  <legend>Part transform</legend>
+                  <div class="vector-grid"><label>Pitch <input value="0" /><small>°</small></label><label>Yaw <input value="0" /><small>°</small></label><label>Roll <input value="0" /><small>°</small></label></div>
+                  <label class="field"><span>Uniform part scale</span><div class="number-input"><button>−</button><input value="1.0000" /><button>+</button><em>×</em></div></label>
+                  <dl class="resource-list"><div><dt>Outgoing seam</dt><dd><strong class="success">B → M connected</strong></dd></div><div><dt>Gap</dt><dd><code>0.0004 m</code></dd></div></dl>
+                </fieldset>
+                <p class="proof-note">Part seams are offline geometry checks. The composed item still requires owner-run Toolset/NWN proof.</p>
+              </section>
+
+              <section class="inspector-panel" data-tab-content="icon">
+                <div class="inspector-intro"><p class="eyebrow">Inventory representation</p><h2>Generate a separate icon</h2><p>The icon uses an <code>i…</code> resource name. It is not the MDL filename.</p></div>
+                <div class="icon-preview-card">
+                  <div class="inventory-grid inventory-grid--sword"><span></span><span></span><span></span><span></span><b>†</b></div>
+                  <div><strong>1 × 4 inventory slots</strong><p>Rendered from the composed B+M+T preview, never from one part alone.</p></div>
+                </div>
+                <fieldset class="control-section">
+                  <legend>Icon camera</legend>
+                  <label class="field"><span>View</span><select><option>Front-left · recommended</option><option>Front</option><option>Custom</option></select></label>
+                  <label class="field"><span>Background</span><select><option>Transparent</option><option>Dark neutral</option></select></label>
+                  <label class="switch-row"><span><strong>Auto-center silhouette</strong><small>Preserve aspect ratio</small></span><input type="checkbox" checked /><i></i></label>
+                </fieldset>
+                <button class="primary-outline" type="button">Regenerate icon preview</button>
+              </section>
+
+              <section class="inspector-panel" data-tab-content="diagnostics">
+                <div class="inspector-intro"><p class="eyebrow">Offline gates</p><h2>Item diagnostics</h2><p>Geometry and packaging checks before owner-run visual proof.</p></div>
+                <article class="diagnostic diagnostic--pass"><span>✓</span><div><strong>Required part slots</strong><small>B, M and T each resolve one source and one MDL</small></div><b>PASS</b></article>
+                <article class="diagnostic diagnostic--pass"><span>✓</span><div><strong>Combined geometry budget</strong><small>15,464 / 20,000 triangles across all parts</small></div><b>PASS</b></article>
+                <article class="diagnostic diagnostic--pass"><span>✓</span><div><strong>Part seams</strong><small>B→M and M→T gaps remain below 0.001 m</small></div><b>PASS</b></article>
+                <article class="diagnostic diagnostic--warning"><span>!</span><div><strong>Composed runtime model</strong><small>Offline assembly complete; Toolset/NWN verdict required</small></div><b>PENDING</b></article>
+                <div class="proof-warning"><strong>Owner-run proof boundary</strong><p>The package may become <code>ready_for_owner_proof</code>; this screen cannot claim visual success.</p></div>
+              </section>
+            </div>
+          </aside>
+        </section>
+
+        <footer class="action-bar">
+          <div><span class="validation-pill">1 PENDING</span><p><strong>Part assembly ready to build</strong><small>All three part resources and both seams pass offline checks.</small></p></div>
+          <button class="button-secondary" data-screen-target="source" type="button">Back to Source</button>
+          <button class="button-primary" data-screen-target="review" type="button">Build mock package <span>→</span></button>
+        </footer>
+      </section>
+
+      <section class="screen screen--review" data-screen-content="review">
+        <header class="page-heading">
+          <div>
+            <p class="eyebrow">Step 4 · Review output</p>
+            <h1>Review Item package</h1>
+            <p>BaseItem 1 · Longsword · ModelType 2. Verify all part resources and the composed result.</p>
+          </div>
+          <div class="build-chip"><span>✓</span><div><strong>Build completed</strong><small>Offline validation passed · 12 resources</small></div></div>
+        </header>
+
+        <div class="review-layout">
+          <section class="review-main">
+            <article class="preview-comparison panel">
+              <header><div><p class="eyebrow">Part coverage</p><h2>Parts first, composition second</h2></div><span class="contract-chip">B + M + T</span></header>
+              <div class="comparison-grid">
+                <div class="comparison-card"><div class="mini-scene mini-scene--parts"><span class="mini-part mini-part--b">B</span><span class="mini-part mini-part--m">M</span><span class="mini-part mini-part--t">T</span></div><strong>Part resources</strong><small>three independent binary MDLs</small><b class="pass">OFFLINE PASS</b></div>
+                <div class="comparison-card"><div class="mini-scene mini-scene--equipped"><i class="mini-human"></i><span class="mini-sword">†</span></div><strong>Composed item</strong><small>B→M→T · equipped right hand</small><b>OWNER PROOF</b></div>
+                <div class="comparison-card"><div class="mini-scene mini-scene--icon"><i></i><i></i><i></i><i></i><span class="mini-sword">†</span></div><strong>Inventory icon</strong><small>1 × 4 slots · composed silhouette</small><b class="pass">OFFLINE PASS</b></div>
+              </div>
+            </article>
+
+            <article class="package-tree panel">
+              <header><div><p class="eyebrow">Package contents</p><h2>Exact resource lineage</h2></div><button type="button">Copy manifest</button></header>
+              <div class="tree">
+                <div class="tree-row tree-row--folder"><span>⌄</span><strong>m2a_item_parts_v1.zip</strong><small>proof handoff</small><b>12 files</b></div>
+                <div class="tree-row tree-row--folder tree-row--nested"><span>⌄</span><strong>m2a_item_parts_v1.hak</strong><small>content package</small><b class="pass">HASHED</b></div>
+                <div class="tree-row tree-row--file tree-row--deep"><span>B</span><strong>wswls_b_251.mdl</strong><small>ModelPart1 · 9,140 triangles</small><b>312 KB</b></div>
+                <div class="tree-row tree-row--file tree-row--deep"><span>M</span><strong>wswls_m_252.mdl</strong><small>ModelPart2 · 5,120 triangles</small><b>184 KB</b></div>
+                <div class="tree-row tree-row--file tree-row--deep"><span>T</span><strong>wswls_t_253.mdl</strong><small>ModelPart3 · 1,204 triangles</small><b>62 KB</b></div>
+                <div class="tree-row tree-row--file tree-row--deep"><span>TGA</span><strong>m2a_ls_b/m/t.tga</strong><small>three per-part diffuse textures</small><b>9.1 MB</b></div>
+                <div class="tree-row tree-row--file tree-row--deep"><span>ICO</span><strong>iwswls_251.tga</strong><small>composed inventory icon · alpha</small><b>64 KB</b></div>
+                <div class="tree-row tree-row--folder tree-row--nested"><span>⌄</span><strong>m2a_item_parts_v1.mod</strong><small>owner test module</small><b class="pass">HASHED</b></div>
+                <div class="tree-row tree-row--file tree-row--deep"><span>UTI</span><strong>m2a_lsword01.uti</strong><small>BaseItem 1 · parts 251 / 252 / 253</small><b>2 KB</b></div>
+                <div class="tree-row tree-row--file tree-row--deep"><span>UTC</span><strong>m2a_item_tester.utc</strong><small>composed item equipped in right hand</small><b>4 KB</b></div>
+                <div class="tree-row tree-row--file tree-row--deep"><span>JSON</span><strong>item-build-report.json</strong><small>readback + hashes + gates</small><b>18 KB</b></div>
+                <div class="tree-row tree-row--file tree-row--deep"><span>MD</span><strong>OWNER-PROOF.md</strong><small>module · Area · object · expectations</small><b>3 KB</b></div>
+              </div>
+            </article>
+          </section>
+
+          <aside class="review-sidebar">
+            <article class="panel validation-panel">
+              <header><p class="eyebrow">Validation</p><h2>Ready for owner proof</h2><span>✓</span></header>
+              <dl>
+                <div><dt>Part schema B/M/T</dt><dd class="pass">PASS</dd></div>
+                <div><dt>Three MDL readbacks</dt><dd class="pass">PASS</dd></div>
+                <div><dt>Part seams</dt><dd class="pass">PASS</dd></div>
+                <div><dt>UTI identity</dt><dd class="pass">PASS</dd></div>
+                <div><dt>Resource collisions</dt><dd class="pass">NONE</dd></div>
+                <div><dt>Combined geometry</dt><dd class="pass">15,464 / 20,000</dd></div>
+                <div><dt>Toolset visibility</dt><dd class="pending">NOT TESTED</dd></div>
+                <div><dt>NWN visibility</dt><dd class="pending">NOT TESTED</dd></div>
+              </dl>
+            </article>
+
+            <article class="panel handoff-panel">
+              <p class="eyebrow">Owner handoff</p>
+              <h2>Open this exact lineage</h2>
+              <ol>
+                <li><span>1</span><p><strong>m2a_item_parts_v1.mod</strong><small>test module filename</small></p></li>
+                <li><span>2</span><p><strong>Meshy2Aurora Item Parts V1</strong><small>module name in Toolset</small></p></li>
+                <li><span>3</span><p><strong>M2A Item Proof Arena</strong><small>exact Area</small></p></li>
+              </ol>
+              <div class="handoff-note"><span>!</span><p>Confirm that all three part resources compose correctly when equipped and rendered in NWN.</p></div>
+            </article>
+          </aside>
+        </div>
+
+        <footer class="action-bar">
+          <div><span class="validation-dot validation-dot--success"></span><p><strong>Package review complete</strong><small>No visual success is claimed until the owner reports Toolset/NWN results.</small></p></div>
+          <button class="button-secondary" data-screen-target="prepare" type="button">Back to authoring</button>
+          <button class="button-primary" type="button">Continue to Download <span>→</span></button>
+        </footer>
+      </section>
+
+      <button class="debug-drawer" type="button"><strong>Debug Drawer</strong><span>Collapsed · deterministic item build report available after Build</span><b>⌃</b></button>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>

@@ -33,6 +33,7 @@ pub use skin_deformation::{
 };
 pub(crate) use types::AnimationReport;
 pub use types::{AabbEntryReport, AabbTreeReport, InspectionReport, NodeReport, ParserLimits};
+pub(crate) use write_binary_mdl::write_binary_mdl_with_animations_exact_face_planes_v1;
 pub use write_binary_mdl::{
     write_binary_mdl, write_binary_mdl_with_animations,
     write_binary_mdl_with_animations_and_supermodel, write_binary_mdl_with_supermodel,
@@ -45,5 +46,6 @@ pub use writer_types::{
     MdlAnimationWriterReportV1, MdlFormatProfileV1, MdlLayoutReportV1, MdlMaterialTextureBindingV1,
     MdlMeshNodeLayoutV1, MdlRigNodeLayoutV1, MdlStateProjectionProfileV1,
     MdlStateProjectionProvenanceV1, MdlWriteError, MdlWriterDeviationV1, MdlWriterOptionsV1,
-    MdlWriterReportV1, NWN_EE_MAX_MESH_INDEX_COUNT_V1, NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1,
+    MdlWriterReportV1, NWN_EE_BINARY_MDL_EPSILON_V1, NWN_EE_MAX_MESH_INDEX_COUNT_V1,
+    NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1,
 };

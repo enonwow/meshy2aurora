@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use m2a_core::direct_creature_animation::evaluate_direct_creature_animation_behavior_v1;
+use m2a_core::direct_creature_animation::evaluate_direct_creature_animation_behavior_v2;
 use m2a_core::mdl::{
     MdlAnimationClipV1, MdlAnimationEventV1, MdlAnimationInterpolationV1, MdlAnimationSetV1,
     MdlAnimationTrackPathV1, MdlAnimationTrackV1, MdlFormatProfileV1, MdlMaterialTextureBindingV1,
@@ -1610,8 +1610,9 @@ fn multiple_owned_clips_are_deterministic_and_do_not_mutate_inputs() {
 
 #[test]
 fn full_creature_behavior_oracle_distinguishes_movement_and_terminal_death_offline() {
-    let stable_hold = |name: &str| matches!(name, "ccastoutlp" | "cgetmidlp" | "cdead");
-    let full = MdlAnimationSetV1 {
+    let stable_hold =
+        |name: &str| matches!(name, "ccastoutlp" | "cgetmidlp" | "ckdbckdie" | "cdead");
+    let mut full = MdlAnimationSetV1 {
         schema_version: 1,
         clips: FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1
             .iter()
@@ -1643,15 +1644,33 @@ fn full_creature_behavior_oracle_distinguishes_movement_and_terminal_death_offli
             })
             .collect(),
     };
+    let terminal_death_pose = full
+        .clips
+        .iter()
+        .find(|clip| clip.name == "ckdbck")
+        .expect("ckdbck")
+        .tracks[0]
+        .values[1]
+        .clone();
+    for hold_name in ["ckdbckdie", "cdead"] {
+        full.clips
+            .iter_mut()
+            .find(|clip| clip.name == hold_name)
+            .expect("death-family hold")
+            .tracks[0]
+            .values = vec![terminal_death_pose.clone(), terminal_death_pose.clone()];
+    }
     let artifact = write_binary_mdl_with_animations(&creature(), &full, &options())
         .expect("full behavior fixture");
-    let report = evaluate_direct_creature_animation_behavior_v1(&artifact.inspection);
+    let report = evaluate_direct_creature_animation_behavior_v2(&artifact.inspection);
+    assert_eq!(report.schema_version, 2);
     assert!(report.full_namespace_complete);
     assert!(report.all_required_content_present);
     assert!(report.active_motion_complete);
     assert!(report.walk_run_distinct);
     assert!(report.essential_states_distinct);
     assert!(report.death_transition_terminal_pose);
+    assert!(report.death_family_boundary_continuous);
     assert!(report.behavior_candidate_eligible);
     assert!(report.violations.is_empty());
 
@@ -1673,7 +1692,7 @@ fn full_creature_behavior_oracle_distinguishes_movement_and_terminal_death_offli
         .values = walk_values;
     let artifact =
         write_binary_mdl_with_animations(&creature(), &indistinguishable, &options()).unwrap();
-    let report = evaluate_direct_creature_animation_behavior_v1(&artifact.inspection);
+    let report = evaluate_direct_creature_animation_behavior_v2(&artifact.inspection);
     assert!(!report.walk_run_distinct);
     assert!(!report.behavior_candidate_eligible);
     assert!(
@@ -1704,7 +1723,7 @@ fn full_creature_behavior_oracle_distinguishes_movement_and_terminal_death_offli
     });
     let artifact =
         write_binary_mdl_with_animations(&creature(), &aliased_damage, &options()).unwrap();
-    let report = evaluate_direct_creature_animation_behavior_v1(&artifact.inspection);
+    let report = evaluate_direct_creature_animation_behavior_v2(&artifact.inspection);
     assert!(!report.essential_states_distinct);
     assert!(!report.behavior_candidate_eligible);
     assert!(
@@ -1713,30 +1732,63 @@ fn full_creature_behavior_oracle_distinguishes_movement_and_terminal_death_offli
             .contains(&"ESSENTIAL_STATES_NOT_DISTINCT".to_owned())
     );
 
-    let mut static_death_transition = full.clone();
-    static_death_transition
+    let mut discontinuous_death_transition = full.clone();
+    discontinuous_death_transition
         .clips
         .iter_mut()
         .find(|clip| clip.name == "ckdbckdie")
         .expect("ckdbckdie")
         .tracks[0]
-        .values[1] = vec![0.0, 0.0, 0.0];
+        .values = vec![vec![99.0, 0.0, 0.0], vec![99.0, 0.0, 0.0]];
     let artifact =
-        write_binary_mdl_with_animations(&creature(), &static_death_transition, &options())
+        write_binary_mdl_with_animations(&creature(), &discontinuous_death_transition, &options())
             .unwrap();
-    let report = evaluate_direct_creature_animation_behavior_v1(&artifact.inspection);
-    assert!(!report.death_transition_terminal_pose);
-    assert!(!report.active_motion_complete);
+    let report = evaluate_direct_creature_animation_behavior_v2(&artifact.inspection);
+    assert!(report.death_transition_terminal_pose);
+    assert!(report.active_motion_complete);
+    assert!(!report.death_family_boundary_continuous);
     assert!(!report.behavior_candidate_eligible);
     assert!(
         report
             .violations
-            .contains(&"ACTIVE_MOTION_MISSING:ckdbckdie".to_owned())
+            .contains(&"DEATH_FAMILY_BOUNDARY_DISCONTINUOUS:ckdbck->ckdbckdie".to_owned())
     );
     assert!(
         report
             .violations
-            .contains(&"DEATH_TRANSITION_TERMINAL_POSE_MISSING".to_owned())
+            .contains(&"DEATH_FAMILY_BOUNDARY_DISCONTINUOUS:ckdbckdie->cdead".to_owned())
+    );
+
+    let mut moving_cdead_with_discontinuous_transition = full.clone();
+    moving_cdead_with_discontinuous_transition
+        .clips
+        .iter_mut()
+        .find(|clip| clip.name == "ckdbckdie")
+        .expect("ckdbckdie")
+        .tracks[0]
+        .values = vec![vec![99.0, 0.0, 0.0], vec![99.0, 0.0, 0.0]];
+    moving_cdead_with_discontinuous_transition
+        .clips
+        .iter_mut()
+        .find(|clip| clip.name == "cdead")
+        .expect("cdead")
+        .tracks[0]
+        .values[1] = vec![99.0, 0.0, 0.0];
+    let artifact = write_binary_mdl_with_animations(
+        &creature(),
+        &moving_cdead_with_discontinuous_transition,
+        &options(),
+    )
+    .unwrap();
+    let report = evaluate_direct_creature_animation_behavior_v2(&artifact.inspection);
+    assert!(report.active_motion_complete);
+    assert!(report.death_transition_terminal_pose);
+    assert!(!report.death_family_boundary_continuous);
+    assert!(!report.behavior_candidate_eligible);
+    assert!(
+        report
+            .violations
+            .contains(&"DEATH_FAMILY_BOUNDARY_DISCONTINUOUS:ckdbck->ckdbckdie".to_owned())
     );
 
     let mut moving_dead_hold = full;
@@ -1749,7 +1801,7 @@ fn full_creature_behavior_oracle_distinguishes_movement_and_terminal_death_offli
         .values[1] = vec![99.0, 0.0, 0.0];
     let artifact =
         write_binary_mdl_with_animations(&creature(), &moving_dead_hold, &options()).unwrap();
-    let report = evaluate_direct_creature_animation_behavior_v1(&artifact.inspection);
+    let report = evaluate_direct_creature_animation_behavior_v2(&artifact.inspection);
     assert!(
         report.behavior_candidate_eligible,
         "native families prove that cdead may be either a stable or moving populated state: {:?}",
@@ -1766,7 +1818,7 @@ fn full_creature_behavior_oracle_distinguishes_movement_and_terminal_death_offli
         .clear();
     let artifact =
         write_binary_mdl_with_animations(&creature(), &missing_content, &options()).unwrap();
-    let report = evaluate_direct_creature_animation_behavior_v1(&artifact.inspection);
+    let report = evaluate_direct_creature_animation_behavior_v2(&artifact.inspection);
     assert!(!report.all_required_content_present);
     assert!(!report.active_motion_complete);
     assert!(!report.behavior_candidate_eligible);

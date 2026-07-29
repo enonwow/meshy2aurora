@@ -21,12 +21,14 @@ use crate::{
     hak::{HakResourceInputV1, HakWriterOptionsV1, write_erf_archive_v1, write_hak_v1},
     mdl::{
         MdlFormatProfileV1, MdlMaterialTextureBindingV1, MdlStateProjectionProfileV1,
-        MdlWriterOptionsV1, NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1, write_binary_mdl,
+        MdlWriterOptionsV1, write_binary_mdl,
     },
     model_ir::{AuroraModelIrV1, AuroraSegmentDeformationV1},
+    model_limits::validate_model_triangle_budget_v1,
     model_pipeline::{
         resolve_base_color_image_index_v1, sanitize_meshy_h1_degenerate_triangles_v1,
     },
+    model_segmentation::segment_model_for_binary_mdl_v1,
     placeable_authoring::{
         PlaceableAuthoringApplyReportV1, PlaceableAuthoringDocumentV1,
         PlaceableAuthoringProjectionV1, PlaceableElementInspectionV1,
@@ -36,9 +38,8 @@ use crate::{
     },
     placeable_collision::{inspect_ascii_placeable_walkmesh_v1, write_placeable_walkmesh_v1},
     profile_a::{
-        PROFILE_A_PLACEABLE_TRIANGLE_BLOCKING_ABOVE_V1,
-        PROFILE_A_PLACEABLE_TRIANGLE_WARNING_ABOVE_V1, ProfileAMaterialPolicyV1, ProfileAOptionsV1,
-        convert_profile_a, derive_meshy_m0_static_rigid_profile_v1,
+        ProfileALimitsV1, ProfileAMaterialPolicyV1, ProfileAOptionsV1, convert_profile_a,
+        derive_meshy_m0_static_rigid_profile_v1,
     },
     proof_module::{
         M0_RUNTIME_FIXTURE_X, M0_RUNTIME_FIXTURE_Y, M0_RUNTIME_FIXTURE_Z,
@@ -72,27 +73,23 @@ pub const PWK_RESOURCE_TYPE: u16 = 2053;
 /// placeable and future tile profiles must enter the same binary MDL pipeline.
 pub type AuroraPlaceableIrV1 = AuroraModelIrV1;
 
-/// Profile A admission tuned to the native NWN EE limit for one placeable
-/// render mesh. Creature defaults remain unchanged; only the placeable route
-/// may consume the full 16-bit triangle/index envelope.
+/// Profile A admission for static placeables. Geometry thresholds remain the
+/// shared render-model policy; only the material policy differs by target.
 pub fn static_placeable_profile_a_options_v1() -> ProfileAOptionsV1 {
-    let mut options = ProfileAOptionsV1::default();
-    options.limits.triangle_warning_above = PROFILE_A_PLACEABLE_TRIANGLE_WARNING_ABOVE_V1;
-    options.limits.triangle_blocking_above = PROFILE_A_PLACEABLE_TRIANGLE_BLOCKING_ABOVE_V1;
-    options.material_policy = ProfileAMaterialPolicyV1::BoundedSourceSlots;
-    options.limits.max_unique_materials = 256;
-    options
+    ProfileAOptionsV1 {
+        material_policy: ProfileAMaterialPolicyV1::BoundedSourceSlots,
+        limits: ProfileALimitsV1 {
+            max_unique_materials: 256,
+            ..ProfileALimitsV1::default()
+        },
+        ..ProfileAOptionsV1::default()
+    }
 }
 
-/// GLB admission for the static-placeable route. Resource and allocation
-/// ceilings stay shared; only the triangle diagnostics follow the placeable
-/// Profile A envelope.
+/// GLB admission for the static-placeable route uses the exact same geometry
+/// budget as Creature and every other render-model target.
 pub fn static_placeable_glb_limits_v1() -> GlbLimits {
-    GlbLimits {
-        triangle_warning_above: PROFILE_A_PLACEABLE_TRIANGLE_WARNING_ABOVE_V1 as usize,
-        triangle_blocking_above: NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1,
-        ..GlbLimits::default()
-    }
+    GlbLimits::default()
 }
 
 const REQUIRED_PLACEABLES_COLUMNS: [&str; 13] = [
@@ -1206,6 +1203,9 @@ pub fn build_static_placeable_package_v1(
     request: &StaticPlaceableBuildRequestV1,
 ) -> Result<StaticPlaceablePackageArtifactV1, PlaceableErrorV1> {
     validate_request(request)?;
+    let mut render_model = request.model.clone();
+    segment_model_for_binary_mdl_v1(&mut render_model)
+        .map_err(|source| map_error("PLACEABLE-MODEL-SEGMENTATION-FAILED", "model", source))?;
     let identity_texture = request
         .textures
         .iter()
@@ -1239,7 +1239,7 @@ pub fn build_static_placeable_package_v1(
     let git = build_static_placeable_git(&blueprint, request.placement)?;
     let gic = build_static_placeable_gic(&blueprint, request.placement)?;
     let mdl = write_binary_mdl(
-        &request.model,
+        &render_model,
         &MdlWriterOptionsV1 {
             schema_version: 1,
             format_profile: MdlFormatProfileV1::PlaceableStaticRigidNativeV1,
@@ -1428,6 +1428,13 @@ fn validate_request(request: &StaticPlaceableBuildRequestV1) -> Result<(), Place
         &request.identity.model_resref,
         "request.model",
     )?;
+    validate_model_triangle_budget_v1(&request.model).map_err(|source| {
+        error(
+            &format!("PLACEABLE-{}", source.code),
+            source.path,
+            source.message,
+        )
+    })?;
     if let Some(collision_model) = &request.collision_model {
         validate_static_placeable_model(
             collision_model,

@@ -1,4 +1,8 @@
 import type { WorkerArtifact } from "../../worker/types";
+import {
+  resolveOwnerRuntimeProofV1,
+  type CanonicalRuntimeAcceptance,
+} from "./ownerRuntimeProofs";
 
 export interface CanonicalResultSnapshot {
   status: string;
@@ -22,6 +26,7 @@ export interface CanonicalResultSnapshot {
     resourceCount: number;
     artifactCount: number;
   };
+  runtimeAcceptance: CanonicalRuntimeAcceptance;
   animationEventEvidence?: CanonicalAnimationEventEvidence;
   runtimeFixtureContract?: CanonicalM0RuntimeFixtureContract;
   artifacts: WorkerArtifact[];
@@ -221,7 +226,11 @@ function runtimeFixtureContractParser(value: unknown, path: string): CanonicalM0
 }
 
 function equal(actual: unknown, expected: unknown, path: string) {
-  if (actual !== expected) throw new Error(`Canonical result identity mismatch at ${path}`);
+  if (actual !== expected) {
+    throw new Error(
+      `Canonical result identity mismatch at ${path}: expected ${JSON.stringify(expected)}, received ${JSON.stringify(actual)}`,
+    );
+  }
 }
 
 function conversionGate(value: unknown, path: string): CanonicalConversionGate {
@@ -259,11 +268,19 @@ export function projectCanonicalResult(
   const report = parseJson(reportJson, "reportJson");
   const summary = parseJson(summaryJson, "summaryJson");
   const manifest = parseJson(manifestJson, "manifestJson");
-  for (const [value, path] of [[report, "report"], [summary, "summary"], [manifest, "manifest"]] as const) {
-    if (integer(value.schemaVersion, `${path}.schemaVersion`) !== 1) fail(`${path}.schemaVersion`);
-  }
   const status = string(summary.status, "summary.status");
-  if (status !== "M6_MODEL_PACKAGE_MATERIALIZED" && status !== "M0_MESHY_STATIC_RIGID_PACKAGE_MATERIALIZED") {
+  const productOnly = status === "PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED";
+  const expectedSchemaVersion = productOnly ? 2 : 1;
+  for (const [value, path] of [[report, "report"], [summary, "summary"], [manifest, "manifest"]] as const) {
+    if (integer(value.schemaVersion, `${path}.schemaVersion`) !== expectedSchemaVersion) {
+      fail(`${path}.schemaVersion`);
+    }
+  }
+  if (
+    status !== "M6_MODEL_PACKAGE_MATERIALIZED"
+    && status !== "M0_MESHY_STATIC_RIGID_PACKAGE_MATERIALIZED"
+    && !productOnly
+  ) {
     fail("summary.status");
   }
   equal(string(manifest.status, "manifest.status"), status, "manifest.status");
@@ -325,7 +342,12 @@ export function projectCanonicalResult(
   equal(string(manifest.appearancePayloadPolicy, "manifest.appearancePayloadPolicy"), policy, "manifest.appearancePayloadPolicy");
 
   const outputJson = record(summary.outputs, "summary.outputs");
-  const outputs = Object.fromEntries(["model", "texture", "appearanceTwoDa", "hak", "proofModule", "report"].map((name) => [name, identity(outputJson[name], `summary.outputs.${name}`)]));
+  const outputNames = productOnly
+    ? ["model", "texture", "appearanceTwoDa", "hak", "report"]
+    : ["model", "texture", "appearanceTwoDa", "hak", "proofModule", "report"];
+  const outputs = Object.fromEntries(
+    outputNames.map((name) => [name, identity(outputJson[name], `summary.outputs.${name}`)]),
+  );
   const hakJson = record(report.hak, "report.hak");
   const hak = {
     byteLength: integer(hakJson.byteLength, "report.hak.byteLength"),
@@ -360,11 +382,15 @@ export function projectCanonicalResult(
   equal(integer(record(modelJson.layout, "report.model.layout").fileLength, "report.model.layout.fileLength"), outputs.model.byteLength, "report.model.layout.fileLength");
   equal(integer(appearanceJson.outputByteLength, "report.appearance.outputByteLength"), outputs.appearanceTwoDa.byteLength, "report.appearance.outputByteLength");
   equal(sha256(appearanceJson.outputSha256, "report.appearance.outputSha256"), outputs.appearanceTwoDa.sha256, "report.appearance.outputSha256");
-  const proofModuleJson = record(report.proofModule, "report.proofModule");
-  equal(integer(proofModuleJson.byteLength, "report.proofModule.byteLength"), outputs.proofModule.byteLength, "report.proofModule.byteLength");
-  equal(sha256(proofModuleJson.sha256, "report.proofModule.sha256"), outputs.proofModule.sha256, "report.proofModule.sha256");
-  equal(integer(proofModuleJson.appearanceRow, "report.proofModule.appearanceRow"), appendedRow, "report.proofModule.appearanceRow");
-  if (string(proofModuleJson.semanticReadbackStatus, "report.proofModule.semanticReadbackStatus") !== "PASS") fail("report.proofModule.semanticReadbackStatus");
+  if (!productOnly) {
+    const proofModuleJson = record(report.proofModule, "report.proofModule");
+    equal(integer(proofModuleJson.byteLength, "report.proofModule.byteLength"), outputs.proofModule.byteLength, "report.proofModule.byteLength");
+    equal(sha256(proofModuleJson.sha256, "report.proofModule.sha256"), outputs.proofModule.sha256, "report.proofModule.sha256");
+    equal(integer(proofModuleJson.appearanceRow, "report.proofModule.appearanceRow"), appendedRow, "report.proofModule.appearanceRow");
+    if (string(proofModuleJson.semanticReadbackStatus, "report.proofModule.semanticReadbackStatus") !== "PASS") fail("report.proofModule.semanticReadbackStatus");
+  } else if (report.proofModule !== undefined || outputJson.proofModule !== undefined) {
+    fail("report.proofModule");
+  }
 
   let animationEventEvidence: CanonicalAnimationEventEvidence | undefined;
   if (
@@ -454,9 +480,16 @@ export function projectCanonicalResult(
   reconcile(modelResource, outputs.model, "manifest.packageManifest.resources.MODEL");
   reconcile(textureResource, outputs.texture, "manifest.packageManifest.resources.TEXTURE");
   reconcile(appearanceResource, outputs.appearanceTwoDa, "manifest.packageManifest.resources.APPEARANCE_TABLE");
-  equal(modelResource.resref, string(summary.modelResref, "summary.modelResref"), "manifest.packageManifest.resources.MODEL.resref");
+  const productIdentity = productOnly ? record(summary.identity, "summary.identity") : undefined;
+  const modelResref = productOnly
+    ? string(productIdentity?.modelResref, "summary.identity.modelResref")
+    : string(summary.modelResref, "summary.modelResref");
+  const textureResref = productOnly
+    ? string(productIdentity?.textureResref, "summary.identity.textureResref")
+    : string(summary.textureResref, "summary.textureResref");
+  equal(modelResource.resref, modelResref, "manifest.packageManifest.resources.MODEL.resref");
   equal(string(projection.modelResourceResref, "report.model.projection.modelResourceResref"), modelResource.resref, "report.model.projection.modelResourceResref");
-  equal(textureResource.resref, string(summary.textureResref, "summary.textureResref"), "manifest.packageManifest.resources.TEXTURE.resref");
+  equal(textureResource.resref, textureResref, "manifest.packageManifest.resources.TEXTURE.resref");
   equal(appearanceResource.resref, "appearance", "manifest.packageManifest.resources.APPEARANCE_TABLE.resref");
 
   let runtimeFixtureContract: CanonicalM0RuntimeFixtureContract | undefined;
@@ -487,14 +520,17 @@ export function projectCanonicalResult(
     fail("m0RuntimeFixtureContract");
   }
 
-  if (artifacts.length !== 6 || new Set(artifacts.map(({ artifactId }) => artifactId)).size !== artifacts.length) {
+  const requiresTextureArtifact = productOnly || report.textureArtifactCleanup !== undefined;
+  const expectedArtifactCount = productOnly ? 6 : requiresTextureArtifact ? 7 : 6;
+  if (artifacts.length !== expectedArtifactCount || new Set(artifacts.map(({ artifactId }) => artifactId)).size !== artifacts.length) {
     throw new Error("Canonical result identity mismatch at artifact inventory");
   }
   const requiredArtifacts = [
     ["package-hak", "HAK", outputs.hak],
     ["model-mdl", "MODEL", outputs.model],
-    ["proof-module", "MODULE", outputs.proofModule],
+    ...(requiresTextureArtifact ? [["texture-tga", "TEXTURE", outputs.texture] as const] : []),
     ["report-json", "JSON_REPORT", outputs.report],
+    ...(!productOnly ? [["proof-module", "MODULE", outputs.proofModule] as const] : []),
   ] as const;
   for (const [artifactId, kind, expected] of requiredArtifacts) {
     const artifact = artifacts.find((item) => item.artifactId === artifactId)
@@ -531,8 +567,8 @@ export function projectCanonicalResult(
     animation,
     texture,
     resrefs: {
-      model: string(summary.modelResref, "summary.modelResref"),
-      texture: string(summary.textureResref, "summary.textureResref"),
+      model: modelResref,
+      texture: textureResref,
     },
     appearance: {
       appendedRow,
@@ -549,6 +585,7 @@ export function projectCanonicalResult(
       resourceCount: resources.length,
       artifactCount: artifacts.length,
     },
+    runtimeAcceptance: resolveOwnerRuntimeProofV1(outputs),
     animationEventEvidence,
     runtimeFixtureContract,
     artifacts: [...artifacts],

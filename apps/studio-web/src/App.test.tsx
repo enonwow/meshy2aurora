@@ -375,6 +375,11 @@ function setValue(element: HTMLInputElement | HTMLTextAreaElement, value: string
   element.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+function setSelectValue(element: HTMLSelectElement, value: string) {
+  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set?.call(element, value);
+  element.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 async function renderApp(
   strict = false,
   options: {
@@ -557,6 +562,100 @@ describe("Studio workflow", () => {
     const container = await renderApp();
     const { build } = await driveToBuild(container, singleIdleSkinnedSourceInspectionJson());
     expect(build.packageLane).toBe("SKINNED_PROCEDURAL_HUMANOID_42");
+    if (
+      build.type !== "BUILD_MODEL_PACKAGE"
+      || build.packageLane !== "SKINNED_PROCEDURAL_HUMANOID_42"
+    ) {
+      throw new Error("procedural product request unavailable");
+    }
+    expect(JSON.parse(build.identityJson)).toEqual({
+      modelResref: "m2c2maaaaaaaa",
+      textureResref: "m2c2taaaaaaaa",
+      hakResref: "m2c2haaaaaaaa",
+      appearanceLabel: "M2A_CREATURE_V2_AAAAAAAA",
+    });
+  });
+
+  it("routes the explicit 100K Creature experiment through its full-package app lane", async () => {
+    const container = await renderApp();
+    const profile = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Creature conversion profile"]',
+    );
+    expect(profile).not.toBeNull();
+    await act(async () => setSelectValue(profile!, "EXPERIMENTAL_P100K"));
+
+    const { build, worker } = await driveToBuild(
+      container,
+      singleIdleSkinnedSourceInspectionJson(),
+    );
+    const sourceInspection = worker.requests
+      .filter((request) => request.type === "INSPECT_SOURCE")
+      .at(-1);
+    expect(sourceInspection).toMatchObject({
+      type: "INSPECT_SOURCE",
+      creatureProfile: "EXPERIMENTAL_P100K",
+    });
+    expect(build.packageLane).toBe("SKINNED_PROCEDURAL_HUMANOID_P100K_EXPERIMENT");
+    if (
+      build.type !== "BUILD_MODEL_PACKAGE"
+      || build.packageLane !== "SKINNED_PROCEDURAL_HUMANOID_P100K_EXPERIMENT"
+    ) {
+      throw new Error("P100K application lane unavailable");
+    }
+    expect(JSON.parse(build.identityJson)).toEqual({
+      modelResref: "m2p1maaaaaaaa",
+      textureResref: "m2p1taaaaaaaa",
+      module: {
+        moduleResref: "m2p1daaaaaaaa",
+        areaResref: "m2p1aaaaaaaaa",
+        hakResref: "m2p1haaaaaaaa",
+      },
+      creatureResref: "m2p1caaaaaaaa",
+    });
+  });
+
+  it("routes the explicit 300K Creature experiment through its own full-package app lane", async () => {
+    const container = await renderApp();
+    const profile = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Creature conversion profile"]',
+    );
+    expect(profile).not.toBeNull();
+    await act(async () => setSelectValue(profile!, "EXPERIMENTAL_P300K"));
+    const textureCleanup = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Repair texture artifacts"]',
+    );
+    expect(textureCleanup).not.toBeNull();
+    await act(async () => textureCleanup?.click());
+
+    const { build, worker } = await driveToBuild(
+      container,
+      singleIdleSkinnedSourceInspectionJson(),
+    );
+    const sourceInspection = worker.requests
+      .filter((request) => request.type === "INSPECT_SOURCE")
+      .at(-1);
+    expect(sourceInspection).toMatchObject({
+      type: "INSPECT_SOURCE",
+      creatureProfile: "EXPERIMENTAL_P300K",
+    });
+    expect(build.packageLane).toBe("SKINNED_PROCEDURAL_HUMANOID_P300K_EXPERIMENT");
+    if (
+      build.type !== "BUILD_MODEL_PACKAGE"
+      || build.packageLane !== "SKINNED_PROCEDURAL_HUMANOID_P300K_EXPERIMENT"
+    ) {
+      throw new Error("P300K application lane unavailable");
+    }
+    expect(build.textureArtifactCleanup).toBe(true);
+    expect(JSON.parse(build.identityJson)).toEqual({
+      modelResref: "m2p3hmaaaaaaaa",
+      textureResref: "m2p3htaaaaaaaa",
+      module: {
+        moduleResref: "m2p3hdaaaaaaaa",
+        areaResref: "m2p3haaaaaaaaa",
+        hakResref: "m2p3hhaaaaaaaa",
+      },
+      creatureResref: "m2p3hcaaaaaaaa",
+    });
   });
 
   it("routes caller-owned event JSON through the explicit full H1 V3 lane", async () => {

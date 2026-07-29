@@ -2,10 +2,57 @@ schema: meshy2aurora.sample-3d/v1
 asset_id: n1-quadruped-1500
 provider: meshy
 local_only: true
-qualification: intake
+qualification: static-visibility-control-only
 files:
   - role: source
     path: source.glb
     size_bytes: 6414260
     sha256: 0805699f8428707c7eb654361c6e74aa1211e4af1596aee7157ae31afe1b7784
 provenance_note: owner-selected local Meshy input; payload is not tracked by Git
+source_capabilities:
+  node_count: 1
+  articulated_hierarchy: false
+  skin_count: 0
+  joint_lane_count: 0
+  weight_lane_count: 0
+  animation_count: 0
+proof_scope:
+  static_model_visibility: eligible
+  animated_creature_behavior: ineligible
+  reasons:
+    - no_skin_or_joint_binding
+    - no_joint_or_weight_lanes
+    - no_articulated_rigid_segment_hierarchy
+    - no_source_animation_clips
+  expected_if_visible: frozen_rigid_pose
+  static_visibility_does_not_prove_animation: true
+latest_offline_pipeline:
+  date: 2026-07-27
+  attempted_route: animated-h1
+  attempted_result: rejected
+  attempted_error_code: M4A-MESHY-H1-SOURCE-INVALID
+  supported_route: static-rigid-creature
+  supported_result: materialized
+  model_root_part: 0
+  animation_count: 7
+  animation_type: 5
+  animation_semantics: static-identity
+  emitted_states_create_motion: false
+  animated_creature_eligible: false
+  owner_proof_scope: static-visibility-only
+  animation_root_parts: [0]
+  appearance_cell_count: 35
+  packet: proof-output/n1-static-20260727
+  test_module_filename: m2a_n1static.mod
+  module_resref: m2a_n1static
+  area_resref: m2a_n1area
+  hak_resref: m2a_n1static
+  model_resref: m2a_m0p01
+  texture_resref: m2a_m0t01
+  creature_resref: nw_dwarfmerc001
+  appearance_row: 15100
+  model_sha256: 3bbb24fe1a2e904d8eea6db29fc24ade679e478fed00371ffd1a3d25bb22a86f
+  hak_sha256: fa430e5c0f5e75d56c4f8690c5c5b479b6a14602941f898838624a6fba9aeb53
+  module_sha256: 170523f89b70435eaf9899fa80bc519f54afb8e68bf3ab33d4e04c0f04a7460c
+  native_install_verified: true
+  runtime_visual_status: not_tested

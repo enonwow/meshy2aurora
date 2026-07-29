@@ -46,8 +46,14 @@ function profileById(id) {
   return PROFILES.find((profile) => profile.id === id);
 }
 
-function maximumCredits(profile) {
-  return profile.id.startsWith("H1") ? 38 : 30;
+function animationActionIds(options) {
+  if (Array.isArray(options?.animationActionIds)) return options.animationActionIds;
+  if (Number.isInteger(options?.animationActionId)) return [options.animationActionId];
+  return [0];
+}
+
+function maximumCredits(profile, options) {
+  return profile.id.startsWith("H1") ? 35 + 3 * animationActionIds(options).length : 30;
 }
 
 function targetPolycount(target) {
@@ -102,12 +108,15 @@ function validApiOptions(options, source) {
   if (!["alphaThumbnail", "autoSize", "enablePbr", "shouldTexture", "hdTexture", "removeLighting", "imageEnhancement", "multiViewThumbnails", "rigHumanoid"].every((key) => typeof options[key] === "boolean")) return false;
   if (!["bottom", "center"].includes(options.originAt) || typeof options.texturePrompt !== "string" || options.texturePrompt.length > 600 || typeof options.textureImageUrl !== "string") return false;
   if (!Number.isFinite(options.rigHeightMeters) || options.rigHeightMeters < 0.5 || options.rigHeightMeters > 3) return false;
-  if (options.rigHumanoid && (!Number.isInteger(options.animationActionId) || options.animationActionId < 0)) return false;
+  if (options.rigHumanoid) {
+    const actionIds = animationActionIds(options);
+    if (actionIds.length < 1 || actionIds.length > 10 || actionIds.some((value) => !Number.isInteger(value) || value < 0) || new Set(actionIds).size !== actionIds.length) return false;
+  }
   return !options.rigHumanoid || source !== "MULTI_IMAGE";
 }
 
 function safeRun(run) {
-  const { artifactBytes, imageDataUrls, apiOptions, inputTaskId, ...safe } = run;
+  const { artifactBytes, artifacts, imageDataUrls, apiOptions, inputTaskId, ...safe } = run;
   return safe;
 }
 
@@ -239,6 +248,19 @@ export function createLocalBridge({
       throw bridgeError(code, payload.message || `Meshy request failed with status ${response.status}.`, response.status);
     }
     return payload;
+  };
+
+  const downloadVerifiedGlb = async (assetUrl, failureMessage) => {
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const response = await meshFetch(assetUrl);
+      if (response.ok) {
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        verifyGlbBytes(bytes);
+        return bytes;
+      }
+      if (attempt < 3) await sleep(1_000 * attempt);
+    }
+    throw bridgeError("ARTIFACT_INVALID", failureMessage);
   };
 
   const waitForTask = async (run, stage, endpoint, taskId) => {
@@ -384,24 +406,40 @@ export function createLocalBridge({
         run.taskIds.RIG = rig.result;
         output = await waitForTask(run, "RIG", "/openapi/v1/rigging", rig.result);
 
-        const animationActionId = options?.animationActionId ?? 0;
-        if (animationActionId !== undefined) {
+        const selectedActionIds = animationActionIds(options);
+        run.artifacts = [];
+        for (const animationActionId of selectedActionIds) {
           run.status = "ANIMATING";
           const animation = await meshJson("/openapi/v1/animations", {
             method: "POST", body: JSON.stringify({ rig_task_id: rig.result, action_id: animationActionId }),
           });
-          run.taskIds.ANIMATE = animation.result;
+          const taskKey = selectedActionIds.length === 1 ? "ANIMATE" : `ANIMATE_${animationActionId}`;
+          run.taskIds[taskKey] = animation.result;
           output = await waitForTask(run, "ANIMATE", "/openapi/v1/animations", animation.result);
+          const animationAssetUrl = output.result?.animation_glb_url;
+          if (typeof animationAssetUrl !== "string") throw bridgeError("ARTIFACT_INVALID", `Meshy did not return the GLB for animation action ${animationActionId}.`);
+          const animationBytes = await downloadVerifiedGlb(
+            animationAssetUrl,
+            `The signed Meshy animation GLB download failed for action ${animationActionId}.`,
+          );
+          run.artifacts.push({
+            actionId: animationActionId,
+            bytes: animationBytes,
+            sha256: createHash("sha256").update(animationBytes).digest("hex"),
+            byteLength: animationBytes.byteLength,
+          });
         }
       }
 
-      const assetUrl = output.result?.animation_glb_url ?? output.model_urls?.glb;
-      if (typeof assetUrl !== "string") throw bridgeError("ARTIFACT_INVALID", "Meshy did not return a GLB artifact for this run.");
       run.status = "VERIFYING";
-      const assetResponse = await meshFetch(assetUrl);
-      if (!assetResponse.ok) throw bridgeError("ARTIFACT_INVALID", "The signed Meshy GLB download failed.");
-      const artifactBytes = new Uint8Array(await assetResponse.arrayBuffer());
-      verifyGlbBytes(artifactBytes);
+      let artifactBytes;
+      if (run.artifacts?.length) {
+        artifactBytes = run.artifacts[0].bytes;
+      } else {
+        const assetUrl = output.model_urls?.glb;
+        if (typeof assetUrl !== "string") throw bridgeError("ARTIFACT_INVALID", "Meshy did not return a GLB artifact for this run.");
+        artifactBytes = await downloadVerifiedGlb(assetUrl, "The signed Meshy GLB download failed.");
+      }
       run.artifactBytes = artifactBytes;
       run.provenance = {
         profileId: run.profile.id,
@@ -409,6 +447,9 @@ export function createLocalBridge({
         sha256: createHash("sha256").update(artifactBytes).digest("hex"),
         byteLength: artifactBytes.byteLength,
         taskIds: run.taskIds,
+        ...(run.artifacts?.length ? {
+          animationArtifacts: run.artifacts.map(({ actionId, sha256, byteLength }) => ({ actionId, sha256, byteLength })),
+        } : {}),
       };
       run.status = "READY";
       run.progress = 100;
@@ -660,7 +701,7 @@ export function createLocalBridge({
           throw bridgeError("H1_PREFLIGHT_REQUIRED", "Confirm standard humanoid, clear limbs, and no weapon before H1 rigging.");
         }
         const previewId = randomUUID();
-        const preview = { previewId, profile, prompt: typeof body.prompt === "string" ? body.prompt.trim() : "", source, imageDataUrls, ...(localImageTask ? { inputTaskId } : {}), geometryTarget: body.geometryTarget, apiOptions: body.apiOptions, maximumCredits: maximumCredits(profile), stages: profile.stages };
+          const preview = { previewId, profile, prompt: typeof body.prompt === "string" ? body.prompt.trim() : "", source, imageDataUrls, ...(localImageTask ? { inputTaskId } : {}), geometryTarget: body.geometryTarget, apiOptions: body.apiOptions, maximumCredits: maximumCredits(profile, body.apiOptions), stages: profile.stages };
         previews.set(previewId, preview);
         json(response, 200, safePreview(preview), origin); return;
       }
@@ -731,7 +772,7 @@ export function createLocalBridge({
         }
       }
 
-      const match = url.pathname.match(/^\/v1\/runs\/([^/]+)(?:\/(cancel|artifact|provenance))?$/);
+      const match = url.pathname.match(/^\/v1\/runs\/([^/]+)(?:\/(cancel|artifact|provenance)(?:\/([0-9]+))?)?$/);
       if (match) {
         const run = runs.get(decodeURIComponent(match[1]));
         if (!run) throw bridgeError("RUN_NOT_FOUND", "The requested Meshy run does not exist.", 404);
@@ -746,9 +787,13 @@ export function createLocalBridge({
           json(response, 200, run.provenance, origin); return;
         }
         if (request.method === "GET" && suffix === "artifact") {
-          if (!run.artifactBytes || !run.provenance) throw bridgeError("ARTIFACT_NOT_READY", "The verified GLB is not ready to import.", 409);
-          response.writeHead(200, { "Content-Type": "model/gltf-binary", "Content-Length": run.artifactBytes.byteLength, "Cache-Control": "no-store", "Access-Control-Allow-Origin": origin, "Vary": "Origin" });
-          response.end(run.artifactBytes); return;
+          const requestedActionId = match[3] === undefined ? undefined : Number(match[3]);
+          const selectedArtifact = requestedActionId === undefined
+            ? run.artifactBytes
+            : run.artifacts?.find((artifact) => artifact.actionId === requestedActionId)?.bytes;
+          if (!selectedArtifact || !run.provenance) throw bridgeError("ARTIFACT_NOT_READY", "The requested verified GLB is not ready to import.", 409);
+          response.writeHead(200, { "Content-Type": "model/gltf-binary", "Content-Length": selectedArtifact.byteLength, "Cache-Control": "no-store", "Access-Control-Allow-Origin": origin, "Vary": "Origin" });
+          response.end(selectedArtifact); return;
         }
       }
       throw bridgeError("BRIDGE_UNAVAILABLE", "Bridge route not found.", 404);

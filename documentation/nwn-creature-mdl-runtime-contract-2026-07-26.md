@@ -408,3 +408,17 @@ Pełny wynik:
   — read-only export/disassembly audit exact SHA-256 podanego w rozdziale 2.
 - [Audyt systemowy r43](audyt-systemowy-dlaczego-generowane-creature-nie-dzialaja-w-nwn-2026-07-26.md)
 - [Owner-bound wynik r43](evidence/h2-r43-owner-added-native-control-result-2026-07-26.json)
+
+## 12. Aktualizacja po działającym V4 — 2026-07-28
+
+Sekcje r43/r45 powyżej pozostają historycznym zapisem diagnozy. Nie opisują
+już najwyższej potwierdzonej linii produktu.
+
+Właściciel potwierdził w NWN exact `tlcpowdemo4.mod` +
+`tlcpowhak4.hak`: model jest widoczny, sekwencja śmierci przechodzi i nie ma
+skoku wejściowego. V4 zamyka dynamiczny brak wiedzy dla własnej, dokładnie
+związanej linii; nie przepisuje wstecz wyników r43/r45.
+
+Po tym wyniku wdrożono bramki V2 dla lineage, przejść, root motion i timingów
+eventów oraz rozdzielono produkcyjny HAK od fixture MOD/UTC. Szczegóły:
+[spłata długu pipeline creature](creature-pipeline-debt-paydown-2026-07-28.md).

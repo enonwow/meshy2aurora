@@ -30,18 +30,54 @@ pub enum DirectCreatureAnimationProfileV1 {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DirectCreatureAnimationCompletenessV1 {
-    pub profile: DirectCreatureAnimationProfileV1,
-    pub required_clip_count: u32,
-    pub explicit_clip_count: u32,
-    #[serde(default, skip_serializing_if = "is_zero_u32")]
-    pub procedural_clip_count: u32,
-    pub fallback_alias_count: u32,
-    pub complete: bool,
+pub struct DirectCreatureAnimationClipLineageV2 {
+    pub clip_name: String,
+    pub origin: DirectCreatureAnimationClipOriginV2,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_clip_name: Option<String>,
 }
 
-fn is_zero_u32(value: &u32) -> bool {
-    *value == 0
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum DirectCreatureAnimationClipOriginV2 {
+    PreservedSource,
+    SourceDerived,
+    Procedural,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectCreatureAnimationLineageV2 {
+    pub schema_version: u32,
+    pub input_source_clip_count: u32,
+    pub preserved_source_clip_count: u32,
+    pub source_derived_clip_count: u32,
+    pub procedural_clip_count: u32,
+    pub discarded_source_clips: Vec<String>,
+    pub clips: Vec<DirectCreatureAnimationClipLineageV2>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct AuthoredProceduralHumanoidAnimationSetV2 {
+    pub animations: MdlAnimationSetV1,
+    pub lineage: DirectCreatureAnimationLineageV2,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectCreatureAnimationCompletenessV2 {
+    pub schema_version: u32,
+    pub profile: DirectCreatureAnimationProfileV1,
+    pub required_clip_count: u32,
+    pub input_source_clip_count: u32,
+    pub preserved_source_clip_count: u32,
+    pub source_derived_clip_count: u32,
+    pub procedural_clip_count: u32,
+    pub discarded_source_clip_count: u32,
+    pub discarded_source_clips: Vec<String>,
+    pub clips: Vec<DirectCreatureAnimationClipLineageV2>,
+    pub fallback_alias_count: u32,
+    pub complete: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -81,18 +117,35 @@ impl fmt::Display for ProceduralHumanoidAnimationErrorV1 {
 
 impl std::error::Error for ProceduralHumanoidAnimationErrorV1 {}
 
-/// Authors a complete direct-creature namespace from one caller-owned humanoid
-/// idle clip and an explicit semantic joint binding.
+/// Authors a complete direct-creature namespace from caller-owned humanoid
+/// clips and an explicit semantic joint binding.
 ///
-/// The motions are deterministic clean-room deltas layered over the source
-/// pose. This route does not rename one idle clip 42 times: each non-idle state
-/// receives distinct controller content, locomotion uses opposed limb motion,
-/// attacks/casts use arm and torso motion, and terminal states preserve a
-/// non-looping final pose.
+/// Every source clip must already use one exact name from the confirmed native
+/// 42-state namespace and `cpause1` must occur exactly once. Explicit source
+/// clips are preserved after removal of Aurora-unsafe constant scale tracks;
+/// only missing states receive deterministic clean-room motion layered over
+/// the source idle pose. A moving source clip mapped as `cdead` without an
+/// explicit `ckdbckdie` is treated as a caller-owned Meshy death action:
+/// its full motion replaces the earlier `ckdbck` fall, while `ckdbckps`,
+/// `ckdbckdie` and `cdead` become static holds derived from its terminal pose.
+/// This preserves one visible fall and exact pose continuity across the NWN
+/// death-family sequence instead of concatenating independent Meshy actions.
 pub fn author_procedural_humanoid_full_native_42_v1(
     source: &MdlAnimationSetV1,
     rig: ProceduralHumanoidRigV1,
 ) -> Result<MdlAnimationSetV1, ProceduralHumanoidAnimationErrorV1> {
+    author_procedural_humanoid_full_native_42_v2(source, rig).map(|authored| authored.animations)
+}
+
+/// V2 authoring returns exact per-output source lineage in addition to the
+/// animation set. A source clip counts as preserved only when its complete
+/// motion survives in one output state. Terminal holds derived from a source
+/// pose and source clips deliberately displaced by death-family routing are
+/// reported separately.
+pub fn author_procedural_humanoid_full_native_42_v2(
+    source: &MdlAnimationSetV1,
+    rig: ProceduralHumanoidRigV1,
+) -> Result<AuthoredProceduralHumanoidAnimationSetV2, ProceduralHumanoidAnimationErrorV1> {
     if source.schema_version != 1 {
         return Err(procedural_error(
             "M6-PROCEDURAL-HUMANOID-SCHEMA",
@@ -119,6 +172,36 @@ pub fn author_procedural_humanoid_full_native_42_v1(
             "animations.clips.cpause1.lengthSeconds",
             "cpause1 length must be finite and positive",
         ));
+    }
+
+    let required_names = FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1
+        .iter()
+        .map(|name| name.to_ascii_lowercase())
+        .collect::<BTreeSet<_>>();
+    let mut explicit_by_name = BTreeMap::new();
+    for clip in &source.clips {
+        let folded_name = clip.name.to_ascii_lowercase();
+        if !required_names.contains(&folded_name) {
+            return Err(procedural_error(
+                "M6-PROCEDURAL-HUMANOID-CLIP-NAME",
+                format!("animations.clips.{}", clip.name),
+                "every explicit procedural-profile source clip must use one confirmed direct-creature state name",
+            ));
+        }
+        if explicit_by_name.insert(folded_name, clip).is_some() {
+            return Err(procedural_error(
+                "M6-PROCEDURAL-HUMANOID-CLIP-DUPLICATE",
+                format!("animations.clips.{}", clip.name),
+                "explicit direct-creature state names must be unique after ASCII case-fold",
+            ));
+        }
+        if !clip.length_seconds.is_finite() || clip.length_seconds <= 0.0 {
+            return Err(procedural_error(
+                "M6-PROCEDURAL-HUMANOID-CLIP-LENGTH",
+                format!("animations.clips.{}.lengthSeconds", clip.name),
+                "every explicit source clip length must be finite and positive",
+            ));
+        }
     }
 
     let required_rotation_nodes = [
@@ -156,22 +239,99 @@ pub fn author_procedural_humanoid_full_native_42_v1(
     // time-invariant uniform scale and remove it from the preserved idle as
     // well as every authored state. The bind hierarchy remains the single
     // source of scale truth.
-    let mut normalized_idle = idle.clone();
-    for track in normalized_idle
-        .tracks
-        .iter()
-        .filter(|track| track.path == MdlAnimationTrackPathV1::Scale)
-    {
-        require_removable_constant_scale_track(track)?;
+    let mut normalized_explicit = BTreeMap::new();
+    for (folded_name, source_clip) in explicit_by_name {
+        let mut normalized = source_clip.clone();
+        for track in normalized
+            .tracks
+            .iter()
+            .filter(|track| track.path == MdlAnimationTrackPathV1::Scale)
+        {
+            require_removable_constant_scale_track(track)?;
+        }
+        normalized
+            .tracks
+            .retain(|track| track.path != MdlAnimationTrackPathV1::Scale);
+        normalized_explicit.insert(folded_name, normalized);
     }
-    normalized_idle
-        .tracks
-        .retain(|track| track.path != MdlAnimationTrackPathV1::Scale);
+    let normalized_idle = normalized_explicit
+        .get("cpause1")
+        .expect("the exact idle cardinality gate established cpause1")
+        .clone();
+    let explicit_cdead = normalized_explicit.get("cdead").cloned();
+    let explicit_death_transition = normalized_explicit.get("ckdbckdie").cloned();
+    let route_moving_cdead_to_death_family = explicit_cdead
+        .as_ref()
+        .is_some_and(clip_has_changing_tracks)
+        && explicit_death_transition.is_none();
+    let derive_cdead_from_death_transition = explicit_death_transition
+        .as_ref()
+        .is_some_and(clip_has_changing_tracks)
+        && explicit_cdead.is_none();
+    let procedural_death_fall = if !route_moving_cdead_to_death_family
+        && !normalized_explicit.contains_key("ckdbck")
+        && explicit_death_transition.is_none()
+        && explicit_cdead.is_none()
+    {
+        let clip_index = FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1
+            .iter()
+            .position(|name| *name == "ckdbck")
+            .expect("the full native namespace contains ckdbck");
+        Some(author_procedural_clip(
+            &normalized_idle,
+            rig,
+            "ckdbck",
+            clip_index,
+        )?)
+    } else {
+        None
+    };
 
     let mut clips = Vec::with_capacity(FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1.len());
     for (clip_index, clip_name) in FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1.iter().enumerate() {
-        if *clip_name == "cpause1" {
-            clips.push(normalized_idle.clone());
+        if route_moving_cdead_to_death_family && *clip_name == "ckdbck" {
+            let mut death_fall = explicit_cdead
+                .as_ref()
+                .expect("the moving-cdead route established an explicit cdead")
+                .clone();
+            death_fall.name = (*clip_name).to_owned();
+            clips.push(death_fall);
+            continue;
+        }
+        if route_moving_cdead_to_death_family
+            && matches!(*clip_name, "ckdbckps" | "ckdbckdie" | "cdead")
+        {
+            clips.push(author_terminal_pose_hold(
+                explicit_cdead
+                    .as_ref()
+                    .expect("the moving-cdead route established an explicit cdead"),
+                clip_name,
+            )?);
+            continue;
+        }
+        if let Some(death_fall) = &procedural_death_fall {
+            if *clip_name == "ckdbck" {
+                clips.push(death_fall.clone());
+                continue;
+            }
+            if matches!(*clip_name, "ckdbckps" | "ckdbckdie" | "cdead") {
+                clips.push(author_terminal_pose_hold(death_fall, clip_name)?);
+                continue;
+            }
+        }
+        if derive_cdead_from_death_transition && *clip_name == "cdead" {
+            clips.push(author_terminal_pose_hold(
+                explicit_death_transition
+                    .as_ref()
+                    .expect("the derived-cdead route established an explicit ckdbckdie"),
+                clip_name,
+            )?);
+            continue;
+        }
+        if let Some(explicit) = normalized_explicit.get(&clip_name.to_ascii_lowercase()) {
+            let mut explicit = explicit.clone();
+            explicit.name = (*clip_name).to_owned();
+            clips.push(explicit);
             continue;
         }
         clips.push(author_procedural_clip(
@@ -181,19 +341,522 @@ pub fn author_procedural_humanoid_full_native_42_v1(
             clip_index,
         )?);
     }
-    Ok(MdlAnimationSetV1 {
-        schema_version: 1,
-        clips,
+    normalize_clip_time_zero_v2(&mut clips)?;
+    normalize_knockdown_recovery_family_v2(&mut clips)?;
+
+    let death_fall_source_name = if route_moving_cdead_to_death_family {
+        explicit_cdead.as_ref().map(|clip| clip.name.clone())
+    } else {
+        normalized_explicit
+            .get("ckdbck")
+            .map(|clip| clip.name.clone())
+    };
+    let clip_lineage = FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1
+        .iter()
+        .map(|clip_name| {
+            let (origin, source_clip_name) = if route_moving_cdead_to_death_family
+                && *clip_name == "ckdbck"
+            {
+                (
+                    DirectCreatureAnimationClipOriginV2::PreservedSource,
+                    explicit_cdead.as_ref().map(|clip| clip.name.clone()),
+                )
+            } else if *clip_name == "ckdbckps" && death_fall_source_name.is_some() {
+                (
+                    DirectCreatureAnimationClipOriginV2::SourceDerived,
+                    death_fall_source_name.clone(),
+                )
+            } else if *clip_name == "ckdbckps" {
+                (DirectCreatureAnimationClipOriginV2::Procedural, None)
+            } else if route_moving_cdead_to_death_family
+                && matches!(*clip_name, "ckdbckdie" | "cdead")
+            {
+                (
+                    DirectCreatureAnimationClipOriginV2::SourceDerived,
+                    explicit_cdead.as_ref().map(|clip| clip.name.clone()),
+                )
+            } else if procedural_death_fall.is_some()
+                && matches!(*clip_name, "ckdbck" | "ckdbckps" | "ckdbckdie" | "cdead")
+            {
+                (DirectCreatureAnimationClipOriginV2::Procedural, None)
+            } else if derive_cdead_from_death_transition && *clip_name == "cdead" {
+                (
+                    DirectCreatureAnimationClipOriginV2::SourceDerived,
+                    explicit_death_transition
+                        .as_ref()
+                        .map(|clip| clip.name.clone()),
+                )
+            } else if let Some(explicit) = normalized_explicit.get(&clip_name.to_ascii_lowercase())
+            {
+                (
+                    DirectCreatureAnimationClipOriginV2::PreservedSource,
+                    Some(explicit.name.clone()),
+                )
+            } else {
+                (DirectCreatureAnimationClipOriginV2::Procedural, None)
+            };
+            DirectCreatureAnimationClipLineageV2 {
+                clip_name: (*clip_name).to_owned(),
+                origin,
+                source_clip_name,
+            }
+        })
+        .collect::<Vec<_>>();
+    let retained_source_names = clip_lineage
+        .iter()
+        .filter_map(|clip| clip.source_clip_name.as_deref())
+        .map(str::to_ascii_lowercase)
+        .collect::<BTreeSet<_>>();
+    let discarded_source_clips = source
+        .clips
+        .iter()
+        .filter(|clip| !retained_source_names.contains(&clip.name.to_ascii_lowercase()))
+        .map(|clip| clip.name.clone())
+        .collect::<Vec<_>>();
+    let count_origin = |origin| {
+        clip_lineage
+            .iter()
+            .filter(|clip| clip.origin == origin)
+            .count() as u32
+    };
+
+    Ok(AuthoredProceduralHumanoidAnimationSetV2 {
+        animations: MdlAnimationSetV1 {
+            schema_version: 1,
+            clips,
+        },
+        lineage: DirectCreatureAnimationLineageV2 {
+            schema_version: 2,
+            input_source_clip_count: source.clips.len() as u32,
+            preserved_source_clip_count: count_origin(
+                DirectCreatureAnimationClipOriginV2::PreservedSource,
+            ),
+            source_derived_clip_count: count_origin(
+                DirectCreatureAnimationClipOriginV2::SourceDerived,
+            ),
+            procedural_clip_count: count_origin(DirectCreatureAnimationClipOriginV2::Procedural),
+            discarded_source_clips,
+            clips: clip_lineage,
+        },
     })
 }
 
-/// Creates clean-room gameplay callback timings for the procedural profile.
+fn normalize_clip_time_zero_v2(
+    clips: &mut [MdlAnimationClipV1],
+) -> Result<(), ProceduralHumanoidAnimationErrorV1> {
+    for clip in clips {
+        for track in &mut clip.tracks {
+            if track.times_seconds.len() != track.values.len() || track.times_seconds.is_empty() {
+                return Err(procedural_error(
+                    "M6-PROCEDURAL-HUMANOID-TIME-ZERO",
+                    format!(
+                        "animations.clips.{}.tracks.{}.{:?}",
+                        clip.name, track.target_node_id, track.path
+                    ),
+                    "animation tracks require matching non-empty time and value rows",
+                ));
+            }
+            let first_time = track.times_seconds[0];
+            if !first_time.is_finite() || first_time < 0.0 {
+                return Err(procedural_error(
+                    "M6-PROCEDURAL-HUMANOID-TIME-ZERO",
+                    format!(
+                        "animations.clips.{}.tracks.{}.{:?}.times[0]",
+                        clip.name, track.target_node_id, track.path
+                    ),
+                    "the first animation key must be finite and nonnegative",
+                ));
+            }
+            if first_time > 0.0 {
+                let first_value = track.values[0].clone();
+                track.times_seconds.insert(0, 0.0);
+                track.values.insert(0, first_value);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn normalize_knockdown_recovery_family_v2(
+    clips: &mut [MdlAnimationClipV1],
+) -> Result<(), ProceduralHumanoidAnimationErrorV1> {
+    let knockdown = clips
+        .iter()
+        .find(|clip| clip.name.eq_ignore_ascii_case("ckdbck"))
+        .cloned()
+        .ok_or_else(|| {
+            procedural_error(
+                "M6-PROCEDURAL-HUMANOID-RECOVERY",
+                "animations.clips.ckdbck",
+                "the recovery family requires ckdbck",
+            )
+        })?;
+    let knockdown_hold = author_terminal_pose_hold(&knockdown, "ckdbckps")?;
+    let hold_index = clips
+        .iter()
+        .position(|clip| clip.name.eq_ignore_ascii_case("ckdbckps"))
+        .ok_or_else(|| {
+            procedural_error(
+                "M6-PROCEDURAL-HUMANOID-RECOVERY",
+                "animations.clips.ckdbckps",
+                "the recovery family requires ckdbckps",
+            )
+        })?;
+    clips[hold_index] = knockdown_hold;
+
+    let hold = clips[hold_index].clone();
+    let arise_index = clips
+        .iter()
+        .position(|clip| clip.name.eq_ignore_ascii_case("cguptokdb"))
+        .ok_or_else(|| {
+            procedural_error(
+                "M6-PROCEDURAL-HUMANOID-RECOVERY",
+                "animations.clips.cguptokdb",
+                "the recovery family requires cguptokdb",
+            )
+        })?;
+    align_clip_start_to_terminal_pose_v2(&hold, &mut clips[arise_index])?;
+
+    let arise = clips[arise_index].clone();
+    let idle = clips
+        .iter()
+        .find(|clip| clip.name.eq_ignore_ascii_case("cpause1"))
+        .cloned()
+        .ok_or_else(|| {
+            procedural_error(
+                "M6-PROCEDURAL-HUMANOID-RECOVERY",
+                "animations.clips.cpause1",
+                "the recovery family requires cpause1",
+            )
+        })?;
+    let stand_index = clips
+        .iter()
+        .position(|clip| clip.name.eq_ignore_ascii_case("cgustandb"))
+        .ok_or_else(|| {
+            procedural_error(
+                "M6-PROCEDURAL-HUMANOID-RECOVERY",
+                "animations.clips.cgustandb",
+                "the recovery family requires cgustandb",
+            )
+        })?;
+    author_pose_bridge_v2(&arise, &idle, &mut clips[stand_index])
+}
+
+fn align_clip_start_to_terminal_pose_v2(
+    predecessor: &MdlAnimationClipV1,
+    successor: &mut MdlAnimationClipV1,
+) -> Result<(), ProceduralHumanoidAnimationErrorV1> {
+    let successor_name = successor.name.clone();
+    for predecessor_track in &predecessor.tracks {
+        let successor_track = successor
+            .tracks
+            .iter_mut()
+            .find(|track| {
+                track.target_node_id == predecessor_track.target_node_id
+                    && track.path == predecessor_track.path
+            })
+            .ok_or_else(|| {
+                procedural_error(
+                    "M6-PROCEDURAL-HUMANOID-RECOVERY-TRACK",
+                    format!(
+                        "animations.clips.{}.tracks.{}.{:?}",
+                        successor.name, predecessor_track.target_node_id, predecessor_track.path
+                    ),
+                    "successor is missing a controller required by the predecessor terminal pose",
+                )
+            })?;
+        let target = predecessor_track.values.last().ok_or_else(|| {
+            procedural_error(
+                "M6-PROCEDURAL-HUMANOID-RECOVERY-TRACK",
+                format!(
+                    "animations.clips.{}.tracks.{}.{:?}",
+                    predecessor.name, predecessor_track.target_node_id, predecessor_track.path
+                ),
+                "predecessor track has no terminal value",
+            )
+        })?;
+        let initial = successor_track.values.first().cloned().ok_or_else(|| {
+            procedural_error(
+                "M6-PROCEDURAL-HUMANOID-RECOVERY-TRACK",
+                format!(
+                    "animations.clips.{}.tracks.{}.{:?}",
+                    successor.name, successor_track.target_node_id, successor_track.path
+                ),
+                "successor track has no initial value",
+            )
+        })?;
+        match successor_track.path {
+            MdlAnimationTrackPathV1::Translation => {
+                if target.len() != 3 || initial.len() != 3 {
+                    return Err(recovery_arity_error(&successor_name, successor_track));
+                }
+                let delta = [
+                    target[0] - initial[0],
+                    target[1] - initial[1],
+                    target[2] - initial[2],
+                ];
+                for value in &mut successor_track.values {
+                    if value.len() != 3 {
+                        return Err(recovery_arity_error(&successor_name, successor_track));
+                    }
+                    for axis in 0..3 {
+                        value[axis] += delta[axis];
+                    }
+                }
+            }
+            MdlAnimationTrackPathV1::Rotation => {
+                let target = normalized_quaternion_v2(target)?;
+                let initial = normalized_quaternion_v2(&initial)?;
+                let delta = quaternion_multiply_v2(target, quaternion_conjugate_v2(initial));
+                for value in &mut successor_track.values {
+                    *value =
+                        quaternion_multiply_v2(delta, normalized_quaternion_v2(value)?).to_vec();
+                }
+            }
+            _ => {
+                if target != &initial {
+                    return Err(procedural_error(
+                        "M6-PROCEDURAL-HUMANOID-RECOVERY-TRACK",
+                        format!(
+                            "animations.clips.{}.tracks.{}.{:?}",
+                            successor.name, successor_track.target_node_id, successor_track.path
+                        ),
+                        "non-transform recovery controllers must already match the predecessor",
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn author_pose_bridge_v2(
+    predecessor: &MdlAnimationClipV1,
+    target: &MdlAnimationClipV1,
+    bridge: &mut MdlAnimationClipV1,
+) -> Result<(), ProceduralHumanoidAnimationErrorV1> {
+    for bridge_track in &mut bridge.tracks {
+        let predecessor_track = predecessor
+            .tracks
+            .iter()
+            .find(|track| {
+                track.target_node_id == bridge_track.target_node_id
+                    && track.path == bridge_track.path
+            })
+            .ok_or_else(|| {
+                procedural_error(
+                    "M6-PROCEDURAL-HUMANOID-RECOVERY-BRIDGE",
+                    format!(
+                        "animations.clips.{}.tracks.{}.{:?}",
+                        predecessor.name, bridge_track.target_node_id, bridge_track.path
+                    ),
+                    "recovery bridge predecessor is missing a required controller",
+                )
+            })?;
+        let target_track = target
+            .tracks
+            .iter()
+            .find(|track| {
+                track.target_node_id == bridge_track.target_node_id
+                    && track.path == bridge_track.path
+            })
+            .ok_or_else(|| {
+                procedural_error(
+                    "M6-PROCEDURAL-HUMANOID-RECOVERY-BRIDGE",
+                    format!(
+                        "animations.clips.{}.tracks.{}.{:?}",
+                        target.name, bridge_track.target_node_id, bridge_track.path
+                    ),
+                    "recovery bridge target is missing a required controller",
+                )
+            })?;
+        let from = predecessor_track.values.last().ok_or_else(|| {
+            procedural_error(
+                "M6-PROCEDURAL-HUMANOID-RECOVERY-BRIDGE",
+                format!("animations.clips.{}.tracks", predecessor.name),
+                "recovery bridge predecessor has no terminal value",
+            )
+        })?;
+        let to = target_track.values.first().ok_or_else(|| {
+            procedural_error(
+                "M6-PROCEDURAL-HUMANOID-RECOVERY-BRIDGE",
+                format!("animations.clips.{}.tracks", target.name),
+                "recovery bridge target has no initial value",
+            )
+        })?;
+        for (time, value) in bridge_track
+            .times_seconds
+            .iter()
+            .copied()
+            .zip(&mut bridge_track.values)
+        {
+            let phase = if bridge.length_seconds > 0.0 {
+                (time / bridge.length_seconds).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            *value = match bridge_track.path {
+                MdlAnimationTrackPathV1::Rotation => quaternion_nlerp_v2(from, to, phase)?.to_vec(),
+                _ => {
+                    if from.len() != to.len() {
+                        return Err(procedural_error(
+                            "M6-PROCEDURAL-HUMANOID-RECOVERY-BRIDGE",
+                            format!(
+                                "animations.clips.{}.tracks.{}.{:?}",
+                                bridge.name, bridge_track.target_node_id, bridge_track.path
+                            ),
+                            "recovery bridge endpoints must have identical arity",
+                        ));
+                    }
+                    from.iter()
+                        .zip(to)
+                        .map(|(left, right)| left + (right - left) * phase)
+                        .collect()
+                }
+            };
+        }
+    }
+    Ok(())
+}
+
+fn recovery_arity_error(
+    clip_name: &str,
+    track: &MdlAnimationTrackV1,
+) -> ProceduralHumanoidAnimationErrorV1 {
+    procedural_error(
+        "M6-PROCEDURAL-HUMANOID-RECOVERY-TRACK",
+        format!(
+            "animations.clips.{}.tracks.{}.{:?}",
+            clip_name, track.target_node_id, track.path
+        ),
+        "recovery transform controller has invalid arity",
+    )
+}
+
+fn normalized_quaternion_v2(value: &[f32]) -> Result<[f32; 4], ProceduralHumanoidAnimationErrorV1> {
+    if value.len() != 4 {
+        return Err(procedural_error(
+            "M6-PROCEDURAL-HUMANOID-RECOVERY-QUATERNION",
+            "animations.recovery.rotation",
+            "recovery rotations must contain XYZW quaternions",
+        ));
+    }
+    let length = value
+        .iter()
+        .map(|component| component * component)
+        .sum::<f32>()
+        .sqrt();
+    if !length.is_finite() || length <= f32::EPSILON {
+        return Err(procedural_error(
+            "M6-PROCEDURAL-HUMANOID-RECOVERY-QUATERNION",
+            "animations.recovery.rotation",
+            "recovery rotation must be finite and nonzero",
+        ));
+    }
+    Ok([
+        value[0] / length,
+        value[1] / length,
+        value[2] / length,
+        value[3] / length,
+    ])
+}
+
+fn quaternion_conjugate_v2(value: [f32; 4]) -> [f32; 4] {
+    [-value[0], -value[1], -value[2], value[3]]
+}
+
+fn quaternion_multiply_v2(left: [f32; 4], right: [f32; 4]) -> [f32; 4] {
+    let product = [
+        left[3] * right[0] + left[0] * right[3] + left[1] * right[2] - left[2] * right[1],
+        left[3] * right[1] - left[0] * right[2] + left[1] * right[3] + left[2] * right[0],
+        left[3] * right[2] + left[0] * right[1] - left[1] * right[0] + left[2] * right[3],
+        left[3] * right[3] - left[0] * right[0] - left[1] * right[1] - left[2] * right[2],
+    ];
+    let length = product
+        .iter()
+        .map(|component| component * component)
+        .sum::<f32>()
+        .sqrt();
+    product.map(|component| component / length)
+}
+
+fn quaternion_nlerp_v2(
+    from: &[f32],
+    to: &[f32],
+    phase: f32,
+) -> Result<[f32; 4], ProceduralHumanoidAnimationErrorV1> {
+    let from = normalized_quaternion_v2(from)?;
+    let mut to = normalized_quaternion_v2(to)?;
+    if from
+        .iter()
+        .zip(to)
+        .map(|(left, right)| left * right)
+        .sum::<f32>()
+        < 0.0
+    {
+        to = to.map(|component| -component);
+    }
+    normalized_quaternion_v2(&std::array::from_fn::<_, 4, _>(|index| {
+        from[index] + (to[index] - from[index]) * phase
+    }))
+}
+
+fn clip_has_changing_tracks(clip: &MdlAnimationClipV1) -> bool {
+    clip.tracks
+        .iter()
+        .any(|track| track.values.windows(2).any(|pair| pair[0] != pair[1]))
+}
+
+fn author_terminal_pose_hold(
+    source: &MdlAnimationClipV1,
+    output_name: &str,
+) -> Result<MdlAnimationClipV1, ProceduralHumanoidAnimationErrorV1> {
+    let duration = 1.0 / 30.0;
+    let tracks = source
+        .tracks
+        .iter()
+        .map(|source_track| {
+            let terminal = source_track.values.last().ok_or_else(|| {
+                procedural_error(
+                    "M6-PROCEDURAL-HUMANOID-DEATH-HOLD",
+                    format!(
+                        "animations.clips.{}.tracks.{}.{:?}",
+                        source.name, source_track.target_node_id, source_track.path
+                    ),
+                    "the explicit death-motion track has no terminal pose",
+                )
+            })?;
+            Ok(MdlAnimationTrackV1 {
+                target_node_id: source_track.target_node_id,
+                path: source_track.path,
+                interpolation: MdlAnimationInterpolationV1::Linear,
+                times_seconds: vec![0.0, duration],
+                values: vec![terminal.clone(), terminal.clone()],
+            })
+        })
+        .collect::<Result<Vec<_>, ProceduralHumanoidAnimationErrorV1>>()?;
+    Ok(MdlAnimationClipV1 {
+        name: output_name.to_owned(),
+        animation_root: source.animation_root.clone(),
+        length_seconds: duration,
+        transition_seconds: 0.0,
+        events: Vec::new(),
+        tracks,
+    })
+}
+
+/// Creates clean-room gameplay callback timings from kinematic peaks in the
+/// exact authored animation tracks.
 ///
 /// Names come from the independently confirmed public 42-state/event
-/// namespace. Timings are authored here as normalized fractions of each
-/// generated clip and are not copied from a retail animation.
-pub fn author_procedural_common_native_events_v1(
+/// namespace. V2 no longer guesses fixed percentages of clip duration:
+/// attacks/casts prefer arm motion, footsteps prefer leg motion and ground
+/// contact prefers hips/spine motion. When a preferred group is static the
+/// strongest changing semantic-rig controller is used, still binding every
+/// callback to an observed motion interval.
+pub fn author_procedural_common_native_events_v2(
     animations: &MdlAnimationSetV1,
+    rig: ProceduralHumanoidRigV1,
 ) -> Result<DirectCreatureEventAuthoringV1, ProceduralHumanoidAnimationErrorV1> {
     let mut clips = Vec::new();
     for clip_name in FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1 {
@@ -214,19 +877,14 @@ pub fn author_procedural_common_native_events_v1(
             .iter()
             .filter(|(required_clip, _)| required_clip.eq_ignore_ascii_case(clip_name))
             .map(|(_, event_name)| {
-                let fraction = match *event_name {
-                    "hit" => 0.55,
-                    "cast" => 0.60,
-                    "snd_hitground" => 0.82,
-                    "snd_footstep" => 0.35,
-                    _ => 0.50,
-                };
-                MdlAnimationEventV1 {
-                    time_seconds: clip.length_seconds * fraction,
-                    name: (*event_name).to_owned(),
-                }
+                kinematic_event_time_v2(clip, event_name, rig).map(|time_seconds| {
+                    MdlAnimationEventV1 {
+                        time_seconds,
+                        name: (*event_name).to_owned(),
+                    }
+                })
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, ProceduralHumanoidAnimationErrorV1>>()?;
         if !events.is_empty() {
             clips.push(DirectCreatureClipEventAuthoringV1 {
                 clip_name: clip_name.to_owned(),
@@ -240,6 +898,113 @@ pub fn author_procedural_common_native_events_v1(
     })
 }
 
+fn kinematic_event_time_v2(
+    clip: &MdlAnimationClipV1,
+    event_name: &str,
+    rig: ProceduralHumanoidRigV1,
+) -> Result<f32, ProceduralHumanoidAnimationErrorV1> {
+    let preferred_nodes: &[u32] = match event_name {
+        "hit" | "cast" => &[
+            rig.left_upper_arm,
+            rig.left_forearm,
+            rig.right_upper_arm,
+            rig.right_forearm,
+        ],
+        "snd_footstep" => &[
+            rig.left_thigh,
+            rig.left_shin,
+            rig.right_thigh,
+            rig.right_shin,
+        ],
+        "snd_hitground" => &[rig.hips, rig.spine],
+        _ => &[],
+    };
+    let preferred = strongest_motion_interval_v2(clip, |track| {
+        preferred_nodes.contains(&track.target_node_id)
+            && matches!(
+                track.path,
+                MdlAnimationTrackPathV1::Translation | MdlAnimationTrackPathV1::Rotation
+            )
+    });
+    let observed = preferred.or_else(|| {
+        strongest_motion_interval_v2(clip, |track| {
+            matches!(
+                track.path,
+                MdlAnimationTrackPathV1::Translation | MdlAnimationTrackPathV1::Rotation
+            )
+        })
+    });
+    observed.map(|(_, time)| time).ok_or_else(|| {
+        procedural_error(
+            "M6-PROCEDURAL-HUMANOID-EVENT-MOTION",
+            format!("animations.clips.{}.events.{event_name}", clip.name),
+            "a procedural gameplay event requires one observed changing transform interval",
+        )
+    })
+}
+
+fn strongest_motion_interval_v2(
+    clip: &MdlAnimationClipV1,
+    include: impl Fn(&MdlAnimationTrackV1) -> bool,
+) -> Option<(f32, f32)> {
+    let mut strongest = None::<(f32, f32)>;
+    for track in clip.tracks.iter().filter(|track| include(track)) {
+        for index in 0..track
+            .times_seconds
+            .len()
+            .saturating_sub(1)
+            .min(track.values.len().saturating_sub(1))
+        {
+            let duration = track.times_seconds[index + 1] - track.times_seconds[index];
+            if !duration.is_finite() || duration <= 0.0 {
+                continue;
+            }
+            let left = &track.values[index];
+            let right = &track.values[index + 1];
+            let distance = match track.path {
+                MdlAnimationTrackPathV1::Translation if left.len() == 3 && right.len() == 3 => left
+                    .iter()
+                    .zip(right)
+                    .map(|(from, to)| (to - from).powi(2))
+                    .sum::<f32>()
+                    .sqrt(),
+                MdlAnimationTrackPathV1::Rotation if left.len() == 4 && right.len() == 4 => {
+                    quaternion_angle_radians_v2(left, right)?
+                }
+                _ => continue,
+            };
+            let score = distance / duration;
+            if score.is_finite()
+                && score > 1.0e-6
+                && strongest.as_ref().is_none_or(|(best, _)| score > *best)
+            {
+                strongest = Some((score, track.times_seconds[index + 1]));
+            }
+        }
+    }
+    strongest
+}
+
+fn quaternion_angle_radians_v2(left: &[f32], right: &[f32]) -> Option<f32> {
+    let left_length = left.iter().map(|value| value * value).sum::<f32>().sqrt();
+    let right_length = right.iter().map(|value| value * value).sum::<f32>().sqrt();
+    if !left_length.is_finite()
+        || !right_length.is_finite()
+        || left_length <= f32::EPSILON
+        || right_length <= f32::EPSILON
+    {
+        return None;
+    }
+    let dot = left
+        .iter()
+        .zip(right)
+        .map(|(left, right)| left * right)
+        .sum::<f32>()
+        .abs()
+        / (left_length * right_length);
+    Some(2.0 * dot.clamp(-1.0, 1.0).acos())
+}
+
 fn author_procedural_clip(
     idle: &MdlAnimationClipV1,
     rig: ProceduralHumanoidRigV1,
@@ -248,7 +1013,7 @@ fn author_procedural_clip(
 ) -> Result<MdlAnimationClipV1, ProceduralHumanoidAnimationErrorV1> {
     let terminal = matches!(
         clip_name,
-        "ckdbckdie" | "cdead" | "cdisappear" | "cdisappearlp"
+        "ckdbck" | "ckdbckdie" | "cdead" | "cdisappear" | "cdisappearlp"
     );
     let length_seconds = procedural_duration(clip_name, clip_index);
     let phases: [f32; 5] = if terminal {
@@ -657,6 +1422,13 @@ pub enum DirectCreatureAnimationEventProfileV1 {
     CommonNativeGameplayHooksExplicitV1,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum DirectCreatureEventTimingPolicyV2 {
+    CallerOwnedExplicitV1,
+    KinematicPeakV2,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DirectCreatureClipEventAuthoringV1 {
@@ -892,15 +1664,15 @@ fn event_authoring_error(
 /// controller values are static in some families and changing in others. They
 /// therefore require explicit controller content without imposing either
 /// motion or stillness globally.
-const FAMILY_VARIABLE_MOTION_CLIPS_V1: [&str; 3] = ["ccastoutlp", "cgetmidlp", "cdead"];
-const ESSENTIAL_BEHAVIOR_CLIPS_V1: [&str; 7] = [
+const FAMILY_VARIABLE_MOTION_CLIPS_V1: [&str; 5] =
+    ["ccastoutlp", "cgetmidlp", "ckdbckps", "ckdbckdie", "cdead"];
+const ESSENTIAL_BEHAVIOR_CLIPS_V1: [&str; 6] = [
     "cpause1",
     "cwalk",
     "crun",
     "ca1slashl",
     "cdamagel",
-    "ckdbckdie",
-    "cdead",
+    "ckdbck",
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -916,7 +1688,7 @@ pub struct DirectCreatureClipBehaviorV1 {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DirectCreatureAnimationBehaviorV1 {
+pub struct DirectCreatureAnimationBehaviorV2 {
     pub schema_version: u32,
     pub required_namespace_clip_count: u32,
     pub observed_clip_count: u32,
@@ -926,8 +1698,44 @@ pub struct DirectCreatureAnimationBehaviorV1 {
     pub walk_run_distinct: bool,
     pub essential_states_distinct: bool,
     pub death_transition_terminal_pose: bool,
+    pub death_family_boundary_continuous: bool,
     pub behavior_candidate_eligible: bool,
     pub clips: Vec<DirectCreatureClipBehaviorV1>,
+    pub violations: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectCreatureTransitionBoundaryV2 {
+    pub predecessor: String,
+    pub successor: String,
+    pub max_position_delta_meters: Option<f32>,
+    pub max_rotation_delta_degrees: Option<f32>,
+    pub max_other_controller_delta: Option<f32>,
+    pub continuous: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectCreatureRootMotionV2 {
+    pub clip_name: String,
+    pub horizontal_displacement_meters: f32,
+    pub vertical_displacement_meters: f32,
+    pub locomotion_state: bool,
+    pub in_place: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProceduralHumanoidKinematicsConformanceV2 {
+    pub schema_version: u32,
+    pub all_tracks_start_at_zero: bool,
+    pub required_transition_boundaries_continuous: bool,
+    pub transition_boundaries: Vec<DirectCreatureTransitionBoundaryV2>,
+    pub locomotion_root_motion_assessed: bool,
+    pub locomotion_root_motion_in_place: bool,
+    pub root_motion: Vec<DirectCreatureRootMotionV2>,
+    pub complete: bool,
     pub violations: Vec<String>,
 }
 
@@ -961,13 +1769,14 @@ struct ClipMotionSemanticV1 {
 /// completeness but remains weaker than an NWN runtime verdict.
 ///
 /// The candidate floor requires controller content for all 42 exact states,
-/// changing controllers for every consistently active state, distinct walk/run
-/// semantics, and a terminal pose transition in `ckdbckdie`. The three
-/// family-variable states require content but may be static or moving; local
-/// native families demonstrate both valid forms.
-pub fn evaluate_direct_creature_animation_behavior_v1(
+/// changing controllers for every consistently active state and distinct
+/// walk/run semantics. The one-shot `ckdbck` state owns the visible fall and
+/// must reach a terminal pose. The `ckdbckdie` and `cdead` states are
+/// family-variable, but every admitted death family must preserve pose
+/// continuity across `ckdbck -> ckdbckdie -> cdead`.
+pub fn evaluate_direct_creature_animation_behavior_v2(
     report: &InspectionReport,
-) -> DirectCreatureAnimationBehaviorV1 {
+) -> DirectCreatureAnimationBehaviorV2 {
     let clips = report
         .animations
         .iter()
@@ -989,6 +1798,21 @@ pub fn evaluate_direct_creature_animation_behavior_v1(
             .find(|clip| clip.name.eq_ignore_ascii_case(name))
             .is_some_and(|clip| clip.decoded_controller_count > 0)
     });
+    let knockdown = clips
+        .iter()
+        .find(|clip| clip.name.eq_ignore_ascii_case("ckdbck"));
+    let knockdown_animation = report
+        .animations
+        .iter()
+        .find(|clip| clip.name.eq_ignore_ascii_case("ckdbck"));
+    let death_transition_animation = report
+        .animations
+        .iter()
+        .find(|clip| clip.name.eq_ignore_ascii_case("ckdbckdie"));
+    let corpse_hold_animation = report
+        .animations
+        .iter()
+        .find(|clip| clip.name.eq_ignore_ascii_case("cdead"));
     let active_motion_complete = FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1
         .iter()
         .filter(|name| !FAMILY_VARIABLE_MOTION_CLIPS_V1.contains(name))
@@ -1023,10 +1847,16 @@ pub fn evaluate_direct_creature_animation_behavior_v1(
             .collect::<BTreeSet<_>>()
             .len()
             == ESSENTIAL_BEHAVIOR_CLIPS_V1.len();
-    let death_transition_terminal_pose = clips
-        .iter()
-        .find(|clip| clip.name.eq_ignore_ascii_case("ckdbckdie"))
-        .is_some_and(|clip| clip.terminal_pose_controller_count > 0);
+    let death_transition_terminal_pose =
+        knockdown.is_some_and(|clip| clip.terminal_pose_controller_count > 0);
+    let knockdown_to_death_continuous = knockdown_animation
+        .zip(death_transition_animation)
+        .is_some_and(|(before, after)| animation_boundary_continuous(before, after));
+    let death_to_corpse_continuous = death_transition_animation
+        .zip(corpse_hold_animation)
+        .is_some_and(|(before, after)| animation_boundary_continuous(before, after));
+    let death_family_boundary_continuous =
+        knockdown_to_death_continuous && death_to_corpse_continuous;
 
     let mut violations = Vec::new();
     if !full_namespace_complete {
@@ -1060,10 +1890,16 @@ pub fn evaluate_direct_creature_animation_behavior_v1(
     if !death_transition_terminal_pose {
         violations.push("DEATH_TRANSITION_TERMINAL_POSE_MISSING".to_owned());
     }
+    if !knockdown_to_death_continuous {
+        violations.push("DEATH_FAMILY_BOUNDARY_DISCONTINUOUS:ckdbck->ckdbckdie".to_owned());
+    }
+    if !death_to_corpse_continuous {
+        violations.push("DEATH_FAMILY_BOUNDARY_DISCONTINUOUS:ckdbckdie->cdead".to_owned());
+    }
     let behavior_candidate_eligible = violations.is_empty();
 
-    DirectCreatureAnimationBehaviorV1 {
-        schema_version: 1,
+    DirectCreatureAnimationBehaviorV2 {
+        schema_version: 2,
         required_namespace_clip_count: FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1.len() as u32,
         observed_clip_count: clips.len() as u32,
         full_namespace_complete,
@@ -1072,9 +1908,306 @@ pub fn evaluate_direct_creature_animation_behavior_v1(
         walk_run_distinct,
         essential_states_distinct,
         death_transition_terminal_pose,
+        death_family_boundary_continuous,
         behavior_candidate_eligible,
         clips,
         violations,
+    }
+}
+
+/// Product-specific V2 kinematics gate for the authored procedural humanoid.
+///
+/// Native witnesses remain governed by the broader behavior oracle. Our own
+/// procedural output additionally requires time-zero controller coverage,
+/// continuous death/recovery state boundaries and in-place locomotion at the
+/// weighted `Hips` skeleton root. Non-locomotion root displacement is
+/// reported for audit but is not rejected because falls, dodges and damage
+/// reactions may intentionally move the body relative to the Aurora root.
+pub fn evaluate_procedural_humanoid_kinematics_v2(
+    report: &InspectionReport,
+) -> ProceduralHumanoidKinematicsConformanceV2 {
+    const REQUIRED_TRANSITIONS: [(&str, &str); 6] = [
+        ("ckdbck", "ckdbckps"),
+        ("ckdbckps", "cguptokdb"),
+        ("cguptokdb", "cgustandb"),
+        ("cgustandb", "cpause1"),
+        ("ckdbck", "ckdbckdie"),
+        ("ckdbckdie", "cdead"),
+    ];
+    const LOCOMOTION_STATES: [&str; 7] = [
+        "cwalk", "crun", "ccwalkf", "ccwalkb", "ccwalkl", "ccwalkr", "ccturnr",
+    ];
+    const MAX_IN_PLACE_HORIZONTAL_METERS: f32 = 0.05;
+    const MAX_IN_PLACE_VERTICAL_METERS: f32 = 0.05;
+
+    let all_tracks_start_at_zero = report.animations.iter().all(|animation| {
+        animation
+            .node_tree
+            .roots
+            .iter()
+            .all(node_tracks_start_at_zero)
+    });
+    let transition_boundaries = REQUIRED_TRANSITIONS
+        .iter()
+        .map(|(predecessor, successor)| {
+            let before = report
+                .animations
+                .iter()
+                .find(|clip| clip.name.eq_ignore_ascii_case(predecessor));
+            let after = report
+                .animations
+                .iter()
+                .find(|clip| clip.name.eq_ignore_ascii_case(successor));
+            transition_boundary_report_v2(predecessor, successor, before, after)
+        })
+        .collect::<Vec<_>>();
+    let required_transition_boundaries_continuous = transition_boundaries
+        .iter()
+        .all(|boundary| boundary.continuous);
+
+    let mut root_motion = Vec::new();
+    for animation in &report.animations {
+        let Some(hips) = find_node_by_name_v2(&animation.node_tree.roots, "Hips") else {
+            continue;
+        };
+        let Some(position) = hips.controllers.iter().find(|controller| {
+            controller.decoded
+                && controller.controller_type == 8
+                && controller.values.first().is_some_and(|row| row.len() == 3)
+                && controller.values.last().is_some_and(|row| row.len() == 3)
+        }) else {
+            continue;
+        };
+        let first = position.values.first().expect("position first row");
+        let last = position.values.last().expect("position last row");
+        let horizontal = ((last[0] - first[0]).powi(2) + (last[1] - first[1]).powi(2)).sqrt();
+        let vertical = (last[2] - first[2]).abs();
+        let locomotion_state = LOCOMOTION_STATES
+            .iter()
+            .any(|name| animation.name.eq_ignore_ascii_case(name));
+        root_motion.push(DirectCreatureRootMotionV2 {
+            clip_name: animation.name.clone(),
+            horizontal_displacement_meters: horizontal,
+            vertical_displacement_meters: vertical,
+            locomotion_state,
+            in_place: !locomotion_state
+                || (horizontal <= MAX_IN_PLACE_HORIZONTAL_METERS
+                    && vertical <= MAX_IN_PLACE_VERTICAL_METERS),
+        });
+    }
+    let locomotion_root_motion_assessed = LOCOMOTION_STATES.iter().all(|required| {
+        root_motion
+            .iter()
+            .any(|motion| motion.clip_name.eq_ignore_ascii_case(required))
+    });
+    let locomotion_root_motion_in_place = locomotion_root_motion_assessed
+        && root_motion
+            .iter()
+            .filter(|motion| motion.locomotion_state)
+            .all(|motion| motion.in_place);
+
+    let mut violations = Vec::new();
+    if !all_tracks_start_at_zero {
+        violations.push("ANIMATION_TRACK_TIME_ZERO_MISSING".to_owned());
+    }
+    for boundary in &transition_boundaries {
+        if !boundary.continuous {
+            violations.push(format!(
+                "REQUIRED_TRANSITION_DISCONTINUOUS:{}->{}",
+                boundary.predecessor, boundary.successor
+            ));
+        }
+    }
+    if !locomotion_root_motion_assessed {
+        violations.push("LOCOMOTION_ROOT_MOTION_NOT_ASSESSED".to_owned());
+    } else if !locomotion_root_motion_in_place {
+        violations.push("LOCOMOTION_ROOT_MOTION_NOT_IN_PLACE".to_owned());
+    }
+    let complete = violations.is_empty();
+    ProceduralHumanoidKinematicsConformanceV2 {
+        schema_version: 2,
+        all_tracks_start_at_zero,
+        required_transition_boundaries_continuous,
+        transition_boundaries,
+        locomotion_root_motion_assessed,
+        locomotion_root_motion_in_place,
+        root_motion,
+        complete,
+        violations,
+    }
+}
+
+fn node_tracks_start_at_zero(node: &NodeReport) -> bool {
+    node.controllers
+        .iter()
+        .filter(|controller| controller.decoded)
+        .all(|controller| controller.times.first() == Some(&0.0))
+        && node.children.iter().all(node_tracks_start_at_zero)
+}
+
+fn find_node_by_name_v2<'a>(nodes: &'a [NodeReport], name: &str) -> Option<&'a NodeReport> {
+    for node in nodes {
+        if node.name.eq_ignore_ascii_case(name) {
+            return Some(node);
+        }
+        if let Some(found) = find_node_by_name_v2(&node.children, name) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn transition_boundary_report_v2(
+    predecessor: &str,
+    successor: &str,
+    before: Option<&AnimationReport>,
+    after: Option<&AnimationReport>,
+) -> DirectCreatureTransitionBoundaryV2 {
+    let Some((before, after)) = before.zip(after) else {
+        return DirectCreatureTransitionBoundaryV2 {
+            predecessor: predecessor.to_owned(),
+            successor: successor.to_owned(),
+            max_position_delta_meters: None,
+            max_rotation_delta_degrees: None,
+            max_other_controller_delta: None,
+            continuous: false,
+        };
+    };
+    let mut terminal = BTreeMap::<(String, i32), Vec<f32>>::new();
+    collect_boundary_controller_values(&before.node_tree.roots, false, &mut terminal);
+    let mut initial = BTreeMap::<(String, i32), Vec<f32>>::new();
+    collect_boundary_controller_values(&after.node_tree.roots, true, &mut initial);
+    let mut max_position = None::<f32>;
+    let mut max_rotation = None::<f32>;
+    let mut max_other = None::<f32>;
+    if !terminal.is_empty() && terminal.len() == initial.len() {
+        for (key, before_value) in &terminal {
+            let Some(after_value) = initial.get(key) else {
+                continue;
+            };
+            match (key.1, before_value.len(), after_value.len()) {
+                (8, 3, 3) => {
+                    let delta = before_value
+                        .iter()
+                        .zip(after_value)
+                        .map(|(left, right)| (left - right).powi(2))
+                        .sum::<f32>()
+                        .sqrt();
+                    max_position = Some(max_position.unwrap_or(0.0).max(delta));
+                }
+                (20, 4, 4) => {
+                    let left_norm = before_value
+                        .iter()
+                        .map(|value| value * value)
+                        .sum::<f32>()
+                        .sqrt();
+                    let right_norm = after_value
+                        .iter()
+                        .map(|value| value * value)
+                        .sum::<f32>()
+                        .sqrt();
+                    if left_norm > f32::EPSILON && right_norm > f32::EPSILON {
+                        let dot = before_value
+                            .iter()
+                            .zip(after_value)
+                            .map(|(left, right)| left * right)
+                            .sum::<f32>()
+                            .abs()
+                            / (left_norm * right_norm);
+                        let degrees = (2.0 * dot.clamp(-1.0, 1.0).acos()).to_degrees();
+                        max_rotation = Some(max_rotation.unwrap_or(0.0).max(degrees));
+                    }
+                }
+                _ if before_value.len() == after_value.len() => {
+                    let delta = before_value
+                        .iter()
+                        .zip(after_value)
+                        .map(|(left, right)| (left - right).abs())
+                        .fold(0.0f32, f32::max);
+                    max_other = Some(max_other.unwrap_or(0.0).max(delta));
+                }
+                _ => {}
+            }
+        }
+    }
+    DirectCreatureTransitionBoundaryV2 {
+        predecessor: predecessor.to_owned(),
+        successor: successor.to_owned(),
+        max_position_delta_meters: max_position,
+        max_rotation_delta_degrees: max_rotation,
+        max_other_controller_delta: max_other,
+        continuous: animation_boundary_continuous(before, after),
+    }
+}
+
+fn animation_boundary_continuous(before: &AnimationReport, after: &AnimationReport) -> bool {
+    let mut terminal = BTreeMap::<(String, i32), Vec<f32>>::new();
+    collect_boundary_controller_values(&before.node_tree.roots, false, &mut terminal);
+    let mut initial = BTreeMap::<(String, i32), Vec<f32>>::new();
+    collect_boundary_controller_values(&after.node_tree.roots, true, &mut initial);
+    if terminal.is_empty() || terminal.len() != initial.len() {
+        return false;
+    }
+    terminal.iter().all(|(key, before_value)| {
+        initial.get(key).is_some_and(|after_value| {
+            controller_boundary_values_match(key.1, before_value, after_value)
+        })
+    })
+}
+
+fn collect_boundary_controller_values(
+    nodes: &[NodeReport],
+    first: bool,
+    output: &mut BTreeMap<(String, i32), Vec<f32>>,
+) {
+    for node in nodes {
+        for controller in &node.controllers {
+            if !controller.decoded {
+                continue;
+            }
+            let value = if first {
+                controller.values.first()
+            } else {
+                controller.values.last()
+            };
+            if let Some(value) = value {
+                output.insert(
+                    (node.name.to_ascii_lowercase(), controller.controller_type),
+                    value.clone(),
+                );
+            }
+        }
+        collect_boundary_controller_values(&node.children, first, output);
+    }
+}
+
+fn controller_boundary_values_match(controller_type: i32, before: &[f32], after: &[f32]) -> bool {
+    if before.len() != after.len() || before.iter().chain(after).any(|value| !value.is_finite()) {
+        return false;
+    }
+    match (controller_type, before.len()) {
+        (8, 3) => {
+            let squared_distance = before
+                .iter()
+                .zip(after)
+                .map(|(left, right)| (left - right) * (left - right))
+                .sum::<f32>();
+            squared_distance.sqrt() <= 0.001
+        }
+        (20, 4) => {
+            let dot = before
+                .iter()
+                .zip(after)
+                .map(|(left, right)| left * right)
+                .sum::<f32>()
+                .abs()
+                .clamp(-1.0, 1.0);
+            2.0 * dot.acos() <= 1.0_f32.to_radians()
+        }
+        _ => before
+            .iter()
+            .zip(after)
+            .all(|(left, right)| (left - right).abs() <= 0.001),
     }
 }
 
@@ -1290,5 +2423,302 @@ mod procedural_tests {
                 .iter()
                 .all(|track| track.path != MdlAnimationTrackPathV1::Scale)
         }));
+    }
+
+    #[test]
+    fn procedural_profile_preserves_explicit_native_clips_and_authors_only_missing_states() {
+        let mut source = idle_with_required_rotations();
+        let mut walk = source.clips[0].clone();
+        walk.name = "cwalk".to_owned();
+        walk.length_seconds = 1.5;
+        walk.tracks[0].values[1] = vec![0.0, 0.1, 0.0, 0.995];
+        source.clips.push(walk.clone());
+
+        let output = author_procedural_humanoid_full_native_42_v1(&source, semantic_rig())
+            .expect("a native-name Meshy subset must be preserved");
+        assert_eq!(output.clips.len(), 42);
+        let preserved_walk = output
+            .clips
+            .iter()
+            .find(|clip| clip.name == "cwalk")
+            .expect("cwalk must remain explicit");
+        assert_eq!(preserved_walk.length_seconds, 1.5);
+        assert_eq!(preserved_walk.tracks[0].values, walk.tracks[0].values);
+    }
+
+    #[test]
+    fn moving_explicit_cdead_owns_the_complete_continuous_death_family() {
+        let mut source = idle_with_required_rotations();
+        let mut dead = source.clips[0].clone();
+        dead.name = "cdead".to_owned();
+        dead.length_seconds = 3.0;
+        dead.tracks[0].values[1] = vec![0.0, 0.4, 0.0, 0.9165151];
+        dead.events.push(MdlAnimationEventV1 {
+            time_seconds: 1.5,
+            name: "owned_death_event".to_owned(),
+        });
+        source.clips.push(dead.clone());
+
+        let output = author_procedural_humanoid_full_native_42_v1(&source, semantic_rig())
+            .expect("a moving Meshy death action must own the NWN death-family fall");
+        let death_fall = output
+            .clips
+            .iter()
+            .find(|clip| clip.name == "ckdbck")
+            .expect("one-shot death-family fall");
+        assert_eq!(death_fall.length_seconds, 3.0);
+        assert_eq!(death_fall.transition_seconds, dead.transition_seconds);
+        assert_eq!(death_fall.events, dead.events);
+        assert_eq!(death_fall.tracks, dead.tracks);
+
+        for hold_name in ["ckdbckps", "ckdbckdie", "cdead"] {
+            let hold = output
+                .clips
+                .iter()
+                .find(|clip| clip.name == hold_name)
+                .expect("terminal death-family hold");
+            assert_eq!(hold.length_seconds, 1.0 / 30.0);
+            assert_eq!(hold.transition_seconds, 0.0);
+            assert!(hold.events.is_empty());
+            assert!(hold.tracks.iter().all(|track| {
+                track.times_seconds == [0.0, 1.0 / 30.0]
+                    && track.values.len() == 2
+                    && track.values[0] == track.values[1]
+            }));
+            assert_eq!(
+                hold.tracks[0].values[0],
+                *dead.tracks[0].values.last().expect("terminal death pose")
+            );
+        }
+    }
+
+    #[test]
+    fn moving_explicit_cdead_replaces_a_separate_knockdown_in_the_death_family() {
+        let mut source = idle_with_required_rotations();
+        let mut knockdown = source.clips[0].clone();
+        knockdown.name = "ckdbck".to_owned();
+        knockdown.length_seconds = 2.5;
+        knockdown.tracks[0].values[1] = vec![0.4, 0.0, 0.0, 0.9165151];
+        source.clips.push(knockdown);
+
+        let mut dead = source.clips[0].clone();
+        dead.name = "cdead".to_owned();
+        dead.length_seconds = 3.0;
+        dead.tracks[0].values[1] = vec![0.0, 0.4, 0.0, 0.9165151];
+        source.clips.push(dead.clone());
+
+        let authored = author_procedural_humanoid_full_native_42_v2(&source, semantic_rig())
+            .expect("the accepted Meshy Dead clip must replace a concatenated Knock_Down");
+        let output = authored.animations;
+        let death_fall = output
+            .clips
+            .iter()
+            .find(|clip| clip.name == "ckdbck")
+            .expect("one death-family fall");
+        assert_eq!(death_fall.length_seconds, dead.length_seconds);
+        assert_eq!(death_fall.tracks, dead.tracks);
+        assert_ne!(death_fall.length_seconds, 2.5);
+        assert_eq!(authored.lineage.schema_version, 2);
+        assert_eq!(authored.lineage.input_source_clip_count, 3);
+        assert_eq!(authored.lineage.preserved_source_clip_count, 2);
+        assert_eq!(authored.lineage.source_derived_clip_count, 3);
+        assert_eq!(authored.lineage.procedural_clip_count, 37);
+        assert_eq!(authored.lineage.discarded_source_clips, ["ckdbck"]);
+        assert_eq!(
+            authored
+                .lineage
+                .clips
+                .iter()
+                .find(|clip| clip.clip_name == "ckdbck")
+                .expect("routed death clip")
+                .source_clip_name
+                .as_deref(),
+            Some("cdead"),
+        );
+    }
+
+    #[test]
+    fn explicit_death_transition_derives_cdead_from_its_terminal_pose() {
+        let mut source = idle_with_required_rotations();
+        let mut dead = source.clips[0].clone();
+        dead.name = "ckdbckdie".to_owned();
+        dead.length_seconds = 3.0;
+        dead.tracks[0].values[1] = vec![0.0, 0.4, 0.0, 0.9165151];
+        source.clips.push(dead.clone());
+
+        let output = author_procedural_humanoid_full_native_42_v1(&source, semantic_rig())
+            .expect("an explicit one-shot death transition must derive its corpse hold");
+        let death_transition = output
+            .clips
+            .iter()
+            .find(|clip| clip.name == "ckdbckdie")
+            .expect("one-shot death transition");
+        assert_eq!(death_transition.length_seconds, dead.length_seconds);
+        assert_eq!(death_transition.tracks, dead.tracks);
+
+        let corpse_hold = output
+            .clips
+            .iter()
+            .find(|clip| clip.name == "cdead")
+            .expect("derived terminal corpse hold");
+        assert_eq!(corpse_hold.length_seconds, 1.0 / 30.0);
+        assert!(corpse_hold.tracks.iter().all(|track| {
+            track.times_seconds == [0.0, 1.0 / 30.0]
+                && track.values.len() == 2
+                && track.values[0] == track.values[1]
+        }));
+        assert_eq!(
+            corpse_hold.tracks[0].values[0],
+            *dead.tracks[0].values.last().expect("terminal death pose")
+        );
+    }
+
+    #[test]
+    fn procedural_profile_normalizes_time_zero_and_closes_the_knockdown_recovery_chain() {
+        let mut source = idle_with_required_rotations();
+        source.clips[0].tracks.push(MdlAnimationTrackV1 {
+            target_node_id: semantic_rig().hips,
+            path: MdlAnimationTrackPathV1::Translation,
+            interpolation: MdlAnimationInterpolationV1::Linear,
+            times_seconds: vec![0.0, 1.0],
+            values: vec![vec![0.0, 0.0, 0.0]; 2],
+        });
+
+        let mut dead = source.clips[0].clone();
+        dead.name = "cdead".to_owned();
+        dead.length_seconds = 3.0;
+        for track in &mut dead.tracks {
+            match track.path {
+                MdlAnimationTrackPathV1::Rotation => {
+                    track.values[1] = vec![0.70710677, 0.0, 0.0, 0.70710677];
+                }
+                MdlAnimationTrackPathV1::Translation => {
+                    track.values[1] = vec![0.4, -0.7, 0.2];
+                }
+                _ => {}
+            }
+        }
+        source.clips.push(dead);
+
+        let mut arise = source.clips[0].clone();
+        arise.name = "cguptokdb".to_owned();
+        arise.length_seconds = 2.0;
+        for track in &mut arise.tracks {
+            track.times_seconds[0] = 1.0 / 30.0;
+            match track.path {
+                MdlAnimationTrackPathV1::Rotation => {
+                    track.values[0] = vec![0.0, 0.70710677, 0.0, 0.70710677];
+                }
+                MdlAnimationTrackPathV1::Translation => {
+                    track.values[0] = vec![1.0, 0.0, 0.0];
+                }
+                _ => {}
+            }
+        }
+        source.clips.push(arise);
+
+        let output = author_procedural_humanoid_full_native_42_v2(&source, semantic_rig())
+            .expect("recovery must be normalized without concatenating unrelated source origins")
+            .animations;
+        assert!(
+            output
+                .clips
+                .iter()
+                .flat_map(|clip| &clip.tracks)
+                .all(|track| track.times_seconds.first() == Some(&0.0))
+        );
+
+        for (before_name, after_name) in [
+            ("ckdbck", "ckdbckps"),
+            ("ckdbckps", "cguptokdb"),
+            ("cguptokdb", "cgustandb"),
+            ("cgustandb", "cpause1"),
+        ] {
+            let before = output
+                .clips
+                .iter()
+                .find(|clip| clip.name == before_name)
+                .expect("predecessor");
+            let after = output
+                .clips
+                .iter()
+                .find(|clip| clip.name == after_name)
+                .expect("successor");
+            for before_track in &before.tracks {
+                let after_track = after
+                    .tracks
+                    .iter()
+                    .find(|track| {
+                        track.target_node_id == before_track.target_node_id
+                            && track.path == before_track.path
+                    })
+                    .expect("matching recovery track");
+                let before_value = before_track.values.last().expect("terminal value");
+                let after_value = after_track.values.first().expect("initial value");
+                assert!(
+                    controller_boundary_values_match(
+                        match before_track.path {
+                            MdlAnimationTrackPathV1::Translation => 8,
+                            MdlAnimationTrackPathV1::Rotation => 20,
+                            _ => 0,
+                        },
+                        before_value,
+                        after_value,
+                    ),
+                    "{before_name} -> {after_name} differs for node {} {:?}: {:?} -> {:?}",
+                    before_track.target_node_id,
+                    before_track.path,
+                    before_value,
+                    after_value,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn procedural_event_timing_uses_motion_peaks_instead_of_fixed_clip_percentages() {
+        let mut source = idle_with_required_rotations();
+        let mut attack = source.clips[0].clone();
+        attack.name = "ca1slashl".to_owned();
+        attack.length_seconds = 1.0;
+        let arm = attack
+            .tracks
+            .iter_mut()
+            .find(|track| track.target_node_id == semantic_rig().right_forearm)
+            .expect("right forearm");
+        arm.times_seconds = vec![0.0, 0.2, 0.7, 1.0];
+        arm.values = vec![
+            vec![0.0, 0.0, 0.0, 1.0],
+            vec![0.0, 0.0, 0.05, 0.9987492],
+            vec![0.0, 0.0, 0.8, 0.6],
+            vec![0.0, 0.0, 0.81, 0.5864299],
+        ];
+        source.clips.push(attack);
+
+        let animations = author_procedural_humanoid_full_native_42_v2(&source, semantic_rig())
+            .expect("procedural animation set")
+            .animations;
+        let authoring = author_procedural_common_native_events_v2(&animations, semantic_rig())
+            .expect("kinematic event authoring");
+        let hit = authoring
+            .clips
+            .iter()
+            .find(|clip| clip.clip_name == "ca1slashl")
+            .and_then(|clip| clip.events.iter().find(|event| event.name == "hit"))
+            .expect("attack hit event");
+        assert_eq!(hit.time_seconds, 0.7);
+        assert_ne!(hit.time_seconds, 0.55);
+    }
+
+    #[test]
+    fn procedural_profile_rejects_unknown_explicit_clip_names() {
+        let mut source = idle_with_required_rotations();
+        let mut unknown = source.clips[0].clone();
+        unknown.name = "meshy_action_198".to_owned();
+        source.clips.push(unknown);
+
+        let error = author_procedural_humanoid_full_native_42_v1(&source, semantic_rig())
+            .expect_err("paid clips without an explicit NWN semantic must fail closed");
+        assert_eq!(error.code, "M6-PROCEDURAL-HUMANOID-CLIP-NAME");
     }
 }

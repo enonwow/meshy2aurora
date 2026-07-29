@@ -278,11 +278,18 @@ GlbLimitsV1:
   maxKeyframes: 1000000
   maxDecodedSkinAnimationBytes: 67108864 # 64 MiB WASM memory guardrail
   maxDiagnostics: 2048
-  triangleWarningAbove: 5000
-  triangleBlockingAbove: 10000
+  triangleWarningAbove: 150000
+  triangleBlockingAbove: 300000
 ```
 
 Kazde count*stride, offset+length, accessor range, index conversion i allocation estimate jest checked przed alokacja. `maxDecodedSkinAnimationBytes` obejmuje skumulowany koszt zdekodowanych joint IDs, weights, inverse-bind matrices, animation input times i output values w calym dokumencie; wspoldzielony accessor jest liczony raz wedlug rzeczywistej materializacji. Limit jest akceptowany na granicy i odrzucany dopiero po przekroczeniu. Te wartosci sa project/WASM guardrails, nie faktami ani limitami Aurory.
+
+Budzet geometrii jest wspolny dla Creature, Placeable i pozostalych tras
+render-model. Jedynym numerycznym source of truth jest
+`AURORA_MODEL_TRIANGLE_BUDGET_V1 = 300000`; warning jest wyliczany jako polowa
+tej wartosci. Techniczny limit writera `21845` triangles per pojedynczy mesh
+stream pozostaje osobna bramka formatu MDL, rozwiazywana przez deterministyczna
+segmentacje bez utraty geometrii.
 
 ## 5. Fatal errors i nonfatal gates
 
@@ -334,7 +341,7 @@ Poprawnie zakodowany GLB zawsze zwraca report, nawet gdy nie kwalifikuje sie do 
 - `M2A-GLB-POSITION-MISSING`;
 - `M2A-GLB-UV0-MISSING`;
 - `M2A-GLB-PRIMITIVE-MODE-UNSUPPORTED`;
-- `M2A-GLB-GEOMETRY-OVER-BUDGET` dla triangles > 10000;
+- `M2A-GLB-GEOMETRY-OVER-BUDGET` dla triangles > 300000;
 - `M2A-GLB-MORPH-TARGETS-DEFERRED`;
 - `M2A-GLB-ANIMATION-WEIGHTS-DEFERRED`;
 - `M2A-GLB-ATTRIBUTE-COUNT-MISMATCH`;
@@ -344,7 +351,7 @@ Poprawnie zakodowany GLB zawsze zwraca report, nawet gdy nie kwalifikuje sie do 
 
 Warnings:
 
-- `M2A-GLB-GEOMETRY-WARNING` dla triangles > 5000 i <= 10000;
+- `M2A-GLB-GEOMETRY-WARNING` dla triangles > 150000 i <= 300000;
 - `M2A-GLB-NORMALS-MISSING`;
 - `M2A-GLB-BASECOLOR-TEXTURE-MISSING`;
 - `M2A-GLB-OPTIONAL-EXTENSION-IGNORED`;

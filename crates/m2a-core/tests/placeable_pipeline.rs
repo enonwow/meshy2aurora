@@ -1,4 +1,5 @@
 use m2a_core::{
+    AURORA_MODEL_TRIANGLE_BUDGET_V1, AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1,
     AuroraMaterialSourceBindingV1, AuroraModelIrV1, AuroraModelNodeV1, AuroraModelSegmentV1,
     AuroraSegmentDeformationV1,
     erf::ErfArchive,
@@ -439,6 +440,11 @@ fn placeable_package_rejects_nonfinite_placement_and_unbound_identity_texture() 
     let error =
         build_static_placeable_package_v1(&request).expect_err("identity texture not bound");
     assert_eq!(error.code, "PLACEABLE-IDENTITY-TEXTURE-MISSING");
+
+    let mut request = static_request();
+    request.model.segments[0].indices = [0_u32, 1, 2].repeat(300_001);
+    let error = build_static_placeable_package_v1(&request).expect_err("shared triangle budget");
+    assert_eq!(error.code, "PLACEABLE-M2A-MODEL-TRIANGLE-BUDGET-EXCEEDED");
 }
 
 #[test]
@@ -581,19 +587,30 @@ fn inspect_owner_placeable_glb_without_materializing_a_candidate() {
 }
 
 #[test]
-fn placeable_profile_admits_the_native_single_mesh_triangle_boundary() {
+fn placeable_profile_uses_the_shared_three_hundred_thousand_triangle_budget() {
     let options = static_placeable_profile_a_options_v1();
     let glb_limits = static_placeable_glb_limits_v1();
     assert_eq!(
+        options.limits.triangle_warning_above,
+        AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 as u64
+    );
+    assert_eq!(
         options.limits.triangle_blocking_above,
-        m2a_core::mdl::NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1 as u64
+        AURORA_MODEL_TRIANGLE_BUDGET_V1 as u64
+    );
+    assert_eq!(
+        glb_limits.triangle_warning_above,
+        AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1
     );
     assert_eq!(
         glb_limits.triangle_blocking_above,
-        m2a_core::mdl::NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1
+        AURORA_MODEL_TRIANGLE_BUDGET_V1
     );
-    assert!(options.limits.triangle_warning_above < 20_000);
-    assert!(glb_limits.triangle_warning_above < 20_000);
+    assert_eq!(AURORA_MODEL_TRIANGLE_BUDGET_V1, 300_000);
+    assert_eq!(AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1, 150_000);
+    const {
+        assert!(AURORA_MODEL_TRIANGLE_BUDGET_V1 > m2a_core::mdl::NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1);
+    }
     assert_eq!(m2a_core::mdl::NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1, 21_845);
     assert_eq!(m2a_core::mdl::NWN_EE_MAX_MESH_INDEX_COUNT_V1, 65_535);
 }

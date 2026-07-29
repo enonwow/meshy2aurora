@@ -15,7 +15,9 @@ pub mod hook_horror_clone_diagnostic;
 pub mod m7_corpus;
 pub mod mdl;
 pub mod model_ir;
+pub mod model_limits;
 pub mod model_pipeline;
+pub mod model_segmentation;
 pub mod owned_fixture;
 pub mod package;
 pub mod placeable;
@@ -52,6 +54,7 @@ pub use model_ir::{
     AuroraMaterialSourceBindingV1, AuroraModelIrV1, AuroraModelNodeV1, AuroraModelSegmentV1,
     AuroraSegmentDeformationV1, AuroraVertexWeightsV1,
 };
+pub use model_limits::{AURORA_MODEL_TRIANGLE_BUDGET_V1, AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1};
 pub use reference_proof::{
     CapabilityResult, CapabilityStatus, ExecutionMetadata, HashAlgorithm, InputFingerprint,
     InvariantResult, InvariantStatus, REFERENCE_PROOF_SCHEMA_VERSION, ReaderIdentity,
