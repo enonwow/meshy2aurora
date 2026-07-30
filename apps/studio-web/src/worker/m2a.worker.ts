@@ -2,9 +2,8 @@
 
 import init, {
   buildM7CorpusBatchV1,
-  buildMeshyH1ModelPackageV2,
-  buildMeshyH1ModelPackageV3,
-  buildMeshyProceduralHumanoidProductWithOptionsV3,
+  buildMeshyProceduralHumanoidProductDemoWithOptionsV1,
+  buildMeshyFullNativeH1PackageWithOptionsV4,
   buildMeshyProceduralHumanoidP100kExperimentWithOptionsV2,
   buildMeshyProceduralHumanoidP300kExperimentWithOptionsV2,
   buildMeshyM0StaticRigidPackageV1,
@@ -31,6 +30,11 @@ function proceduralBuildOptionsJson(
   skinAccessoryStabilization?: {
     mode: "AUTO" | "KEEP_SOURCE_WEIGHTS" | "SELECT_BONE";
     selectedBoneName?: string;
+    componentBoneOverrides?: readonly {
+      segmentIndex: number;
+      componentIndex: number;
+      boneName: string;
+    }[];
   },
 ): string {
   const stabilization = skinAccessoryStabilization ?? { mode: "AUTO" as const };
@@ -38,10 +42,15 @@ function proceduralBuildOptionsJson(
     schemaVersion: 1,
     textureArtifactCleanup,
     skinAccessoryStabilization: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       mode: stabilization.mode,
       ...(stabilization.mode === "SELECT_BONE"
-        ? { selectedBoneName: stabilization.selectedBoneName?.trim() }
+        ? {
+            ...(stabilization.selectedBoneName?.trim()
+              ? { selectedBoneName: stabilization.selectedBoneName.trim() }
+              : {}),
+            componentBoneOverrides: stabilization.componentBoneOverrides ?? [],
+          }
         : {}),
     },
   });
@@ -340,24 +349,59 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
 
   if (
     request.type === "BUILD_MODEL_PACKAGE"
-    && request.packageLane === "SKINNED_PROCEDURAL_HUMANOID_42"
+    && (
+      request.packageLane === "SKINNED_PROCEDURAL_HUMANOID_42"
+      || request.packageLane === "H1_SKINNED_FULL_42"
+      || request.packageLane === "H1_SKINNED_FULL_42_EVENTS"
+    )
   ) {
-    const result = buildMeshyProceduralHumanoidProductWithOptionsV3(
-      new Uint8Array(request.sourceGlb),
-      new Uint8Array(request.appearanceTwoDa),
-      request.identityJson,
-      proceduralBuildOptionsJson(
-        request.textureArtifactCleanup,
-        request.skinAccessoryStabilization,
-      ),
+    const sourceGlb = new Uint8Array(request.sourceGlb);
+    const appearanceTwoDa = new Uint8Array(request.appearanceTwoDa);
+    const buildOptionsJson = proceduralBuildOptionsJson(
+      request.textureArtifactCleanup,
+      request.skinAccessoryStabilization,
     );
+    const result = request.packageLane === "H1_SKINNED_FULL_42"
+      || request.packageLane === "H1_SKINNED_FULL_42_EVENTS"
+      ? buildMeshyFullNativeH1PackageWithOptionsV4(
+          sourceGlb,
+          appearanceTwoDa,
+          request.identityJson,
+          buildOptionsJson,
+          request.packageLane === "H1_SKINNED_FULL_42_EVENTS"
+            ? request.eventAuthoringJson
+            : "",
+          request.demoModuleIdentityJson,
+          request.demoCreatureResref,
+        )
+      : buildMeshyProceduralHumanoidProductDemoWithOptionsV1(
+          sourceGlb,
+          appearanceTwoDa,
+          request.identityJson,
+          buildOptionsJson,
+          request.demoModuleIdentityJson,
+          request.demoCreatureResref,
+        );
     try {
       const summary = JSON.parse(result.summaryJson) as {
         identity?: { modelResref?: unknown; textureResref?: unknown; hakResref?: unknown };
       };
-      const modelResref = summary.identity?.modelResref;
-      const textureResref = summary.identity?.textureResref;
-      const hakResref = summary.identity?.hakResref;
+      const requestedIdentity = JSON.parse(request.identityJson) as {
+        modelResref?: unknown;
+        textureResref?: unknown;
+        hakResref?: unknown;
+      };
+      const fullNativeLane = request.packageLane === "H1_SKINNED_FULL_42"
+        || request.packageLane === "H1_SKINNED_FULL_42_EVENTS";
+      const modelResref = fullNativeLane
+        ? requestedIdentity.modelResref
+        : summary.identity?.modelResref;
+      const textureResref = fullNativeLane
+        ? requestedIdentity.textureResref
+        : summary.identity?.textureResref;
+      const hakResref = fullNativeLane
+        ? requestedIdentity.hakResref
+        : summary.identity?.hakResref;
       if (
         typeof modelResref !== "string"
         || typeof textureResref !== "string"
@@ -371,13 +415,36 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
       const report = encoder.encode(result.reportJson).buffer;
       const manifest = encoder.encode(result.manifestJson).buffer;
       const summaryBytes = encoder.encode(result.summaryJson).buffer;
+      const demoReport = JSON.parse(result.demoReportJson) as {
+        moduleResref?: unknown;
+        hakResref?: unknown;
+      };
+      if (demoReport.moduleResref !== JSON.parse(request.demoModuleIdentityJson).moduleResref
+        || demoReport.hakResref !== hakResref) {
+        throw new Error("Procedural demo report has no exact module/HAK identity");
+      }
+      const demoReportBytes = encoder.encode(result.demoReportJson).buffer;
       const artifacts = await Promise.all([
         artifact("package-hak", "HAK", `${hakResref}.hak`, "application/octet-stream", hak),
         artifact("model-mdl", "MODEL", `${modelResref}.mdl`, "application/octet-stream", model),
         artifact("texture-tga", "TEXTURE", `${textureResref}.tga`, "image/x-tga", texture),
+        artifact(
+          "proof-module",
+          "MODULE",
+          `${demoReport.moduleResref}.mod`,
+          "application/octet-stream",
+          exactBuffer(result.takeProofModuleBytes()),
+        ),
         artifact("report-json", "JSON_REPORT", "inspection.json", "application/json", report),
         artifact("manifest-json", "JSON_REPORT", "conversion-manifest.json", "application/json", manifest),
         artifact("summary-json", "JSON_REPORT", "summary.json", "application/json", summaryBytes),
+        artifact(
+          "demo-report-json",
+          "JSON_REPORT",
+          "demo-report.json",
+          "application/json",
+          demoReportBytes,
+        ),
       ]);
       return {
         requestId: request.requestId,
@@ -388,6 +455,7 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         manifestJson: result.manifestJson,
         summaryJson: result.summaryJson,
         readbackJson: result.readbackJson,
+        demoReportJson: result.demoReportJson,
       };
     } finally {
       result.free();
@@ -516,17 +584,6 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
     switch (request.packageLane) {
       case "M0_STATIC_RIGID":
         return buildMeshyM0StaticRigidPackageV1(
-          new Uint8Array(request.sourceGlb),
-          new Uint8Array(request.appearanceTwoDa),
-        );
-      case "H1_SKINNED_FULL_42_EVENTS":
-        return buildMeshyH1ModelPackageV3(
-          new Uint8Array(request.sourceGlb),
-          new Uint8Array(request.appearanceTwoDa),
-          request.eventAuthoringJson,
-        );
-      case "H1_SKINNED_FULL_42":
-        return buildMeshyH1ModelPackageV2(
           new Uint8Array(request.sourceGlb),
           new Uint8Array(request.appearanceTwoDa),
         );

@@ -124,9 +124,78 @@ describe("canonical result projector", () => {
 
   it("projects a schema V2 production creature without inventing a proof module", () => {
     const value = fixture();
-    value.report.schemaVersion = 2;
+    value.report.schemaVersion = 3;
     delete (value.report as Partial<typeof value.report>).proofModule;
-    value.summary.schemaVersion = 2;
+    Object.assign(value.report, {
+      skinAccessoryStabilization: {
+        schemaVersion: 2,
+        mode: "AUTO",
+        auditedClipCount: 42,
+        weldTolerance: 0.00001,
+        componentCount: 5,
+        detachedComponentCount: 4,
+        riskyComponentCount: 2,
+        stabilizedComponentCount: 2,
+        changedVertexCount: 128,
+        components: [{
+          segmentIndex: 0,
+          componentIndex: 1,
+          triangleCount: 64,
+          vertexCount: 48,
+          isPrimaryBody: false,
+          centroid: [1, 2, 3],
+          activeBoneCount: 4,
+          dominantBoneName: "LeftArm",
+          dominantBoneShare: 0.503,
+          riskReasons: ["PAIR_DISTANCE_RATIO_ABOVE_LIMIT"],
+          action: "STABILIZED",
+          selectedBoneId: 7,
+          selectedBoneName: "Spine02",
+          changedVertexCount: 48,
+          before: {
+            sampledClipCount: 42,
+            sampledPoseCount: 128,
+            sampledVertexCount: 48,
+            vertexSamplingMode: "EXACT_ALL_VERTICES",
+            timeSamplingTruncatedClipCount: 0,
+            maxPairDistanceRatio: 2.39,
+            maxPairDistanceError: 0.1,
+            minAxisAlignment: 0.26,
+          },
+          after: {
+            sampledClipCount: 42,
+            sampledPoseCount: 128,
+            sampledVertexCount: 48,
+            vertexSamplingMode: "EXACT_ALL_VERTICES",
+            timeSamplingTruncatedClipCount: 0,
+            maxPairDistanceRatio: 1,
+            maxPairDistanceError: 0,
+            minAxisAlignment: 0.26,
+          },
+        }],
+        warnings: ["Component 1 was stabilized to Spine02."],
+      },
+      materialFidelity: {
+        schemaVersion: 1,
+        materialSlot: 0,
+        sourceMaterialId: 0,
+        baseColorFactor: [0.8, 1, 0.5, 1],
+        baseColorFactorBaked: true,
+        alphaMode: "OPAQUE",
+        alphaCutoff: null,
+        alphaChannelPreserved: true,
+        metallicFactor: 0,
+        roughnessFactor: 0.7,
+        normalTexturePresent: true,
+        emissiveFactor: [0.1, 0, 0],
+        emissiveTexturePresent: false,
+        doubleSided: true,
+        auroraMaterialProfile: "CLASSIC_DIFFUSE_TGA_SAFE_V1",
+        mappedFields: ["baseColorTexture->diffuseTga", "baseColorFactor->diffuseTgaPixels"],
+        unsupportedFields: ["roughnessFactor", "normalTexture", "emissiveFactor", "doubleSided"],
+      },
+    });
+    value.summary.schemaVersion = 3;
     value.summary.status = "PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED";
     delete (value.summary.outputs as Partial<typeof value.summary.outputs>).proofModule;
     delete (value.summary as Partial<typeof value.summary>).modelResref;
@@ -139,7 +208,7 @@ describe("canonical result projector", () => {
         appearanceLabel: "M2A_PRODUCT",
       },
     });
-    value.manifest.schemaVersion = 2;
+    value.manifest.schemaVersion = 3;
     value.manifest.status = "PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED";
     value.reportJson = JSON.stringify(value.report);
     value.summary.outputs.report = id(bytes(value.reportJson).byteLength, "c");
@@ -181,12 +250,85 @@ describe("canonical result projector", () => {
     expect(result.outputs).not.toHaveProperty("proofModule");
     expect(result.artifacts.map(({ artifactId }) => artifactId)).not.toContain("proof-module");
     expect(result.packageAssemblyEvidence.artifactCount).toBe(6);
+    expect(result.skinAccessoryStabilization).toMatchObject({
+      mode: "AUTO",
+      auditedClipCount: 42,
+      componentCount: 5,
+      detachedComponentCount: 4,
+      riskyComponentCount: 2,
+      stabilizedComponentCount: 2,
+      changedVertexCount: 128,
+      components: [{
+        segmentIndex: 0,
+        componentIndex: 1,
+        action: "STABILIZED",
+        selectedBoneName: "Spine02",
+        changedVertexCount: 48,
+        before: { maxPairDistanceRatio: 2.39 },
+        after: { maxPairDistanceRatio: 1 },
+      }],
+    });
+    expect(result.materialFidelity).toMatchObject({
+      baseColorFactor: [0.8, 1, 0.5, 1],
+      baseColorFactorBaked: true,
+      auroraMaterialProfile: "CLASSIC_DIFFUSE_TGA_SAFE_V1",
+      mappedFields: ["baseColorTexture->diffuseTga", "baseColorFactor->diffuseTgaPixels"],
+      unsupportedFields: ["roughnessFactor", "normalTexture", "emissiveFactor", "doubleSided"],
+    });
+
+    const demoReport = {
+      schemaVersion: 2,
+      moduleResref: "m2c2demo",
+      moduleDisplayName: "Meshy2Aurora procedural humanoid proof",
+      areaResref: "m2c2area",
+      areaDisplayName: "Meshy2Aurora procedural humanoid proof area",
+      creatureResref: "m2c2utc",
+      hakResref: "m2a_hak",
+      appearanceRow: 1,
+      resourceCount: 6,
+      byteLength: 4,
+      sha256: "7".repeat(64),
+      semanticReadbackStatus: "PASS",
+    };
+    const demoReportJson = JSON.stringify(demoReport);
+    const withDemo = [
+      ...value.artifacts,
+      {
+        artifactId: "proof-module",
+        kind: "MODULE" as const,
+        fileName: "m2c2demo.mod",
+        mediaType: "application/octet-stream",
+        byteLength: 4,
+        sha256: "7".repeat(64),
+        bytes: new Uint8Array([4, 5, 6, 7]).buffer,
+        provenance: "M2A_WASM_WORKER" as const,
+      },
+      {
+        artifactId: "demo-report-json",
+        kind: "JSON_REPORT" as const,
+        fileName: "demo-report.json",
+        mediaType: "application/json",
+        byteLength: bytes(demoReportJson).byteLength,
+        sha256: "6".repeat(64),
+        bytes: bytes(demoReportJson),
+        provenance: "M2A_WASM_WORKER" as const,
+      },
+    ];
+    const resultWithDemo = projectCanonicalResult(
+      value.reportJson,
+      value.summaryJson,
+      value.manifestJson,
+      withDemo,
+      demoReportJson,
+    );
+    expect(resultWithDemo.demo).toEqual(demoReport);
+    expect(resultWithDemo.packageAssemblyEvidence.artifactCount).toBe(8);
   });
 
   it("accepts the separately identified static M0 runtime package", () => {
     const value = fixture();
     const contract = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       lane: "M0_BINARY_VERTICAL_SLICE",
       module: { resref: "m2a_bm0p1", ...id(4, "7") },
       hak: { resref: "m2a_m0_proof", ...id(3, "a") },

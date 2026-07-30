@@ -32,10 +32,11 @@ use m2a_core::{
         DirectCreatureAnimationProfileV1, FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1,
         M0_APPEARANCE_LABEL, M0_CONTROL_APPEARANCE_LABEL, M0_MODEL_RESREF, M0_TEXTURE_RESREF,
         M0RuntimeResourceBindingV1, M6_APPEARANCE_LABEL, M6_HAK_FILE_NAME, M6_MODEL_RESREF,
-        M6_PROOF_MODULE_FILE_NAME, M6_TEXTURE_RESREF, ProceduralCreaturePackageIdentityV1,
-        ProceduralCreatureProductIdentityV2, build_m6_model_package_v1,
-        build_m6_model_package_with_profile_v1, build_m6_model_package_with_profile_v2,
-        build_m6_model_package_with_profile_v3, build_meshy_h1_model_package_v2,
+        M6_PROOF_MODULE_FILE_NAME, M6_TEXTURE_RESREF, ProceduralCreatureBuildOptionsV1,
+        ProceduralCreaturePackageIdentityV1, ProceduralCreatureProductIdentityV2,
+        build_m6_model_package_v1, build_m6_model_package_with_profile_v1,
+        build_m6_model_package_with_profile_v2, build_m6_model_package_with_profile_v3,
+        build_meshy_full_native_h1_package_with_options_v4, build_meshy_h1_model_package_v2,
         build_meshy_h1_model_package_v3, build_meshy_h1_rigid_runtime_diagnostic_package_v1,
         build_meshy_m0_canonical_runtime_package_v1,
         build_meshy_m0_canonical_runtime_package_with_identity_and_profile_v2,
@@ -559,6 +560,38 @@ fn procedural_humanoid_profile_authors_a_distinct_owned_42_state_set_from_h2_idl
 }
 
 #[test]
+fn full_native_v4_rejects_split_product_and_runtime_identity_before_ingest() {
+    let product = ProceduralCreatureProductIdentityV2 {
+        model_resref: "m2a_fullmdl".to_owned(),
+        texture_resref: "m2a_fulltex".to_owned(),
+        hak_resref: "m2a_fullhak".to_owned(),
+        appearance_label: "M2A_FULL_NATIVE".to_owned(),
+    };
+    let runtime = ProceduralCreaturePackageIdentityV1 {
+        model_resref: "different_model".to_owned(),
+        texture_resref: product.texture_resref.clone(),
+        module: BinaryCreatureModuleIdentityV1 {
+            module_resref: "m2a_fullmod".to_owned(),
+            area_resref: "m2a_fullarea".to_owned(),
+            hak_resref: product.hak_resref.clone(),
+        },
+        creature_resref: "m2a_fullutc".to_owned(),
+    };
+    let error = build_meshy_full_native_h1_package_with_options_v4(
+        &[],
+        &[],
+        &runtime,
+        &product,
+        &ProceduralCreatureBuildOptionsV1::default(),
+        None,
+    )
+    .expect_err("split full-native identity must fail before reading the source");
+    assert_eq!(error.stage, "IDENTITY");
+    assert_eq!(error.code, "M6-FULL-NATIVE-IDENTITY-MISMATCH");
+    assert_eq!(error.path, "runtimeIdentity.modelResref");
+}
+
+#[test]
 fn procedural_product_and_fixture_module_are_two_separate_build_steps() {
     let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -580,7 +613,7 @@ fn procedural_product_and_fixture_module_are_two_separate_build_steps() {
     )
     .expect("production creature resources");
 
-    assert_eq!(product.report.schema_version, 2);
+    assert_eq!(product.report.schema_version, 3);
     assert_eq!(product.report.identity, product_identity);
     assert_eq!(
         product.summary.status,
@@ -609,6 +642,14 @@ fn procedural_product_and_fixture_module_are_two_separate_build_steps() {
     let demo = build_procedural_creature_demo_v2(&product, &demo_identity, "m2a_prdutc")
         .expect("optional demo wrapper");
     assert_eq!(demo.report.module_resref, demo_identity.module_resref);
+    assert_eq!(
+        demo.report.module_display_name,
+        "Meshy2Aurora procedural humanoid proof"
+    );
+    assert_eq!(
+        demo.report.area_display_name,
+        "Meshy2Aurora procedural humanoid proof area"
+    );
     assert_eq!(demo.report.hak_resref, product_identity.hak_resref);
     assert_eq!(
         demo.report.appearance_row,

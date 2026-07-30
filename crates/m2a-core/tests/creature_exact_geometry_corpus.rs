@@ -1,6 +1,7 @@
 use std::{fs, path::PathBuf};
 
 use m2a_core::{
+    direct_creature_animation::DirectCreatureAnimationClipOriginV2,
     model_pipeline::{
         ProceduralCreatureBuildOptionsV1, ProceduralCreaturePackageIdentityV1,
         ProceduralCreatureProductIdentityV2,
@@ -12,7 +13,7 @@ use m2a_core::{
     proof_module::BinaryCreatureModuleIdentityV1,
     skin_accessory::{
         SkinAccessoryComponentActionV1, SkinAccessoryStabilizationModeV1,
-        SkinAccessoryStabilizationOptionsV1,
+        SkinAccessoryStabilizationOptionsV2,
     },
 };
 
@@ -148,6 +149,24 @@ fn product_300k_accepts_and_writes_owner_verified_stoneback_geometry_without_fac
         artifact.report.model.projection.triangle_count,
     );
     assert!(artifact.report.model.projection.mesh_node_count > 1);
+    let animations = &artifact.report.animation_completeness;
+    assert_eq!(animations.input_source_clip_count, 10);
+    assert_eq!(animations.preserved_source_clip_count, 9);
+    assert_eq!(animations.source_derived_clip_count, 3);
+    assert_eq!(animations.procedural_clip_count, 30);
+    assert_eq!(animations.discarded_source_clips, ["ckdbck"]);
+    for clip_name in ["cpause1", "cwalk", "crun", "ca1slashl", "ca1slashr"] {
+        let clip = animations
+            .clips
+            .iter()
+            .find(|clip| clip.clip_name == clip_name)
+            .unwrap_or_else(|| panic!("missing {clip_name} lineage"));
+        assert_eq!(
+            clip.origin,
+            DirectCreatureAnimationClipOriginV2::PreservedSource,
+            "{clip_name} must remain a real Meshy source clip"
+        );
+    }
 }
 
 #[test]
@@ -168,10 +187,11 @@ fn void_crystal_knight_auto_stabilizes_four_detached_crystals_without_geometry_l
         &ProceduralCreatureBuildOptionsV1 {
             schema_version: 1,
             texture_artifact_cleanup: false,
-            skin_accessory_stabilization: SkinAccessoryStabilizationOptionsV1 {
-                schema_version: 1,
+            skin_accessory_stabilization: SkinAccessoryStabilizationOptionsV2 {
+                schema_version: 2,
                 mode: SkinAccessoryStabilizationModeV1::Auto,
                 selected_bone_name: None,
+                component_bone_overrides: Vec::new(),
             },
         },
     )
@@ -188,6 +208,10 @@ fn void_crystal_knight_auto_stabilizes_four_detached_crystals_without_geometry_l
         artifact.report.model.projection.triangle_count,
     );
     let report = &artifact.report.skin_accessory_stabilization;
+    assert_eq!(
+        report.audited_clip_count, 42,
+        "accessory stabilization must audit the final NWN animation set"
+    );
     assert_eq!(report.component_count, 5);
     assert_eq!(report.detached_component_count, 4);
     assert_eq!(report.risky_component_count, 4);

@@ -1,97 +1,74 @@
 # Stabilizacja odłączonych skinned accessories Creature
 
 Data: 2026-07-29
+Aktualizacja kontraktu: 2026-07-30
 Status: `IMPLEMENTED / EXACT_SOURCE_REPLAY_PASS / OWNER_VISUAL_FIX_CONFIRMED`
 
-## Wynik
+## Potwierdzona przyczyna
 
-Pipeline Creature ma wersjonowany, deterministyczny etap
-`SkinAccessoryStabilizationV1`. Etap wykrywa odłączone części siatki po
-przestrzennym sklejeniu pozycji, mierzy spójność wag oraz deformację na
-źródłowych klipach, a zatwierdzony sztywny accessory może przepiąć do jednej
-stabilnej kości.
+Dla `void-crystal-knight-h1-v1-demo1` właściciel potwierdził model widoczny,
+ale proof niekompletny z powodu `detached_skin_accessory_deformation`.
+Po przestrzennym weldzie źródło ma pięć komponentów: ciało i cztery kryształy.
+Dolne kryształy miały około 50% wpływu ramion i mieszankę tułowia/nóg, a górne
+85–88% wpływu ramion. Podczas animacji mieszane wagi obracały i rozciągały
+sztywne części.
 
-Nie jest to filtr pikseli, wygładzanie tekstury ani usuwanie geometrii. Naprawa
-zmienia wyłącznie `JOINTS_0/WEIGHTS_0` zatwierdzonego komponentu. Pozycje,
-indeksy, liczba trójkątów, normalne, tangenty, UV, materiały, hierarchia i
-animacje pozostają bez zmian. `source.glb` pozostaje bajtowo niezmieniony.
+Logical hashe `POSITION/JOINTS_0/WEIGHTS_0/INDICES` były identyczne w rigged
+GLB, animation GLB i merged `source.glb`. Merge, segmentacja i writer nie
+wprowadziły błędu. `doubleSided` i `emissive` pozostają osobnym ograniczeniem
+materiałowym i nie wyjaśniają czarnych „skrzydeł”.
 
-## Potwierdzona przyczyna `void-crystal-knight-h1-v1-demo1`
+## Kontrakt V2
 
-Właścicielski screenshot exact kandydata `vckdemo1.mod` / `vckhak1.hak` /
-`vcknight_m1` potwierdził:
+Canonical API:
 
-```yaml
-modelVisibility: visible
-proofCompleteness: failed
-failure: detached_skin_accessory_deformation
-screenshotSha256: c631239994d395b72fe0622b6eef2154142d684b4bf8a6a5f0f2ee646f5c8850
-```
+- `SkinAccessoryStabilizationOptionsV2`;
+- `SkinAccessoryStabilizationReportV2`;
+- `audit_and_stabilize_skin_accessories_v2`.
 
-Po przestrzennym weldzie źródło ma pięć komponentów:
-
-- główne ciało;
-- dwa dolne kryształy z około 50% wpływu lewego/prawego ramienia i mieszanką
-  tułowia/nóg;
-- dwa górne kryształy z 85–88% wpływu ramion.
-
-Takie wagi obracają i rozciągają sztywne kryształy podczas animacji. Logical
-hash `POSITION/JOINTS_0/WEIGHTS_0/INDICES` jest identyczny w rigged GLB,
-animation GLB i połączonym `source.glb`; łączenie animacji nie wprowadziło
-błędu. Segmentacja i binary writer zachowały wejściowe wagi, więc nie były
-źródłem artefaktu.
-
-`doubleSided` i `emissive` materiału wejściowego pozostają osobnym problemem
-zgodności materiału. Nie wyjaśniają czarnych „skrzydeł” i nie zastępują naprawy
-skinningu.
-
-## Algorytm
-
-1. Tolerancja weld jest wyprowadzana deterministycznie ze skali całego modelu:
-   `max(diagonal * 1e-6, 1e-6)`.
-2. Wierzchołki są łączone przestrzennie przez siatkę komórek i 27 sąsiednich
-   komórek. Dzięki temu seamy UV/normalnych nie tworzą tysięcy fałszywych wysp.
-3. Komponent główny to największy komponent liczony trójkątami, potem
-   wierzchołkami i stabilnym indeksem. Nigdy nie jest automatycznie
-   stabilizowany.
-4. Dla każdego komponentu raportowane są: udział dominującej kości, liczba
-   aktywnych kości, jednorodna waga sztywna oraz metryki deformacji dla
-   maksymalnie 128 czasów na klip i 64 deterministycznie wybranych
-   wierzchołków.
-5. Metryki obejmują maksymalny stosunek i błąd odległości par względem bind
-   pose oraz minimalną zgodność osi. Jednorodna skala pozy jest normalizowana,
-   aby nie uznać stałego skalu armatury Meshy za rozciągnięcie accessory.
-6. Auto rozpatruje wyłącznie mały odłączony komponent (co najmniej dwa
-   trójkąty, najwyżej 25% segmentu), który nie ma już jednolitej sztywnej wagi
-   i ma audytowalny powód ryzyka.
-7. Kość Auto jest wybierana spośród stabilnych kości tułowia (`spine`,
-   `chest`, `torso`, `hips`, `pelvis`) według odległości bind-space, a nie
-   według najsilniejszego obecnego wpływu. Zapobiega to ponownemu wyborowi
-   ramienia.
-
-## Opcje Studio
-
-Studio, Worker, WASM i core używają jednego kontraktu:
+Nazwy V1 pozostają jedynie jako deprecated alias/wrapper kompatybilności.
 
 ```json
 {
   "schemaVersion": 1,
   "textureArtifactCleanup": false,
   "skinAccessoryStabilization": {
-    "schemaVersion": 1,
-    "mode": "AUTO"
+    "schemaVersion": 2,
+    "mode": "SELECT_BONE",
+    "componentBoneOverrides": [
+      { "segmentIndex": 0, "componentIndex": 2, "boneName": "Spine02" },
+      { "segmentIndex": 0, "componentIndex": 4, "boneName": "Spine" }
+    ]
   }
 }
 ```
 
-Dostępne tryby:
+W `SELECT_BONE` globalne `selectedBoneName` jest opcjonalnym fallbackiem.
+Jawne mapowanie komponentu ma pierwszeństwo. Duplikat mapowania, pusta,
+nieistniejąca lub niejednoznaczna nazwa kości jest błędem fail-closed.
 
-- `Auto` — audytuje i stabilizuje ryzykowne odłączone accessories;
-- `Keep source weights` — wykonuje pełny audyt i raport, ale nie zmienia wag;
-- `Select bone` — wymaga istniejącej, jednoznacznej nazwy kości i stosuje ją
-  do wszystkich zatwierdzonych ryzykownych accessories.
+## Algorytm
 
-Brak lub niejednoznaczność jawnie wybranej kości jest błędem fail-closed.
+1. Tolerancja weld: `max(diagonal * 1e-6, 1e-6)`.
+2. Pozycje są łączone przez komórki przestrzenne i 27 sąsiadów; seamy UV i
+   normalnych nie tworzą fałszywych wysp.
+3. Największy komponent po liczbie trójkątów, wierzchołków i stabilnym indeksie
+   jest głównym ciałem i nigdy nie jest automatycznie stabilizowany.
+4. Komponent do 128 wierzchołków jest mierzony dokładnie. Większy używa
+   deterministycznej próbki obejmującej ekstrema pozycji, maksymalne wpływy
+   aktywnych kości i farthest-feature selection pozycji+wag.
+5. Do 256 czasów kluczy na klip jest mierzonych dokładnie; większa liczba jest
+   próbkowana deterministycznie i raportowana.
+6. Metryki obejmują stosunek/błąd odległości par i zgodność osi względem bind
+   pose, z normalizacją jednolitej skali pozy.
+7. `AUTO` rozpatruje tylko odłączony komponent mający co najmniej 2 trójkąty,
+   najwyżej 25% segmentu, niejednolite wagi i zmierzoną niesztywną deformację.
+8. Kość Auto jest wybierana spośród stabilnych kości tułowia według odległości
+   bind-space, nie według najsilniejszego wpływu kończyny.
+
+Naprawa zmienia wyłącznie wagi zatwierdzonego komponentu na jednolite `1.0` do
+wybranej kości. `source.glb`, pozycje, indeksy, liczba trójkątów, normalne,
+tangenty, UV, materiały, hierarchia i animacje pozostają bez zmian.
 
 ## Exact replay Void Crystal Knight
 
@@ -113,58 +90,30 @@ stabilizedComponentCount: 4
 changedVertexCount: 341
 geometryTrianglesBefore: 19704
 geometryTrianglesAfter: 19704
-lowerPositiveX:
-  bone: Spine02
-  changedVertices: 94
-  maxPairDistanceRatio: 12.815454 -> 1.0
-  maxPairDistanceError: 11.815454 -> 0.0000000147
-lowerNegativeX:
-  bone: Spine02
-  changedVertices: 87
-  maxPairDistanceRatio: 13.860403 -> 1.0
-  maxPairDistanceError: 12.860403 -> 0.0000000146
-upperNegativeX:
-  bone: Spine
-  changedVertices: 77
-  maxPairDistanceRatio: 2.3176343 -> 1.0
-  maxPairDistanceError: 1.3176343 -> 0.0000000236
-upperPositiveX:
-  bone: Spine
-  changedVertices: 83
-  maxPairDistanceRatio: 2.1471014 -> 1.0
-  maxPairDistanceError: 1.1471013 -> 0.0000000253
+lowerPair: Spine02
+upperPair: Spine
 ```
 
-Każdy pomiar objął trzy klipy i 176 próbek pozy. Dobór kości zgadza się z
-oczekiwaniem diagnozy: dolna para → `Spine02`, górna para → `Spine`.
+Maksymalne rozciągnięcie czterech akcesoriów spadło do około `1.0`, a linia
+geometrii pozostała `19 704 -> 19 704 -> 19 704`.
 
 ## Testy regresyjne
 
-Testy syntetyczne obejmują:
+Pokryte są:
 
-- sklejenie seamów i brak fałszywych wysp raw-index;
-- bezwzględną ochronę komponentu głównego;
+- seamy i brak raw-index false positives;
+- ochrona głównego ciała;
 - brak zmian dla poprawnego sztywnego accessory;
-- poprawę metryk mieszanego accessory;
-- tryby Keep i Select bone;
+- brak Auto-fix dla samych mieszanych wag bez zmierzonej deformacji;
+- Auto, Keep, global Select i Select per komponent;
+- brak duplikatów override;
 - deterministyczność;
+- outlier wag w dużym komponencie;
 - zachowanie geometrii, UV, materiału, hierarchii i animacji.
-
-Ignored exact-corpus test odtwarza lokalny kanoniczny model i sprawdza pięć
-komponentów, cztery naprawy, dokładne kości oraz pełną linię 19 704 trójkątów.
-
-## Demo2
-
-Właściciel jawnie dopuścił nową iterację po wyniku `visible/failed` z artefaktem
-deformacji. Dokładny `vckdemo2.mod` został zbudowany przez Product V3 + Demo V2
-i zachowuje `19 704 -> 19 704 -> 19 704` trójkątów. MOD i HAK są zainstalowane
-oraz zweryfikowane bajtowo; szczegóły:
-[handoff demo2](evidence/void-crystal-knight-h1-v1-demo2-product-v3-ready-for-owner-proof-2026-07-29.md).
 
 ## Wynik właścicielski
 
-2026-07-30 właściciel potwierdził, że model jest „ładnie poprawiony”, a następnie
-zlecił publikację brancha do merge. Jest to pozytywny wynik dla naprawy
-`detached_skin_accessory_deformation`: czarne skrzydła i wydłużone odłamki nie
-blokują już kandydata. Właściciel nie przypisał tej wypowiedzi osobno do linii
-Toolset i NWN, dlatego dokumentacja nie fabrykuje niezależnych wyników per-lane.
+Właściciel potwierdził, że `vckdemo2.mod` jest „ładnie poprawiony”. To jest
+pozytywny wynik dla naprawy `detached_skin_accessory_deformation`. Dokument nie
+fabrykuje oddzielnych wyników Toolset/NWN ponad dokładny zakres przekazanego
+potwierdzenia.

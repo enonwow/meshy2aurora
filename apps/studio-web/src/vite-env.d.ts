@@ -111,6 +111,45 @@ declare module "@m2a-wasm" {
     takeTextureBytes(): Uint8Array;
     free(): void;
   };
+  export function buildMeshyProceduralHumanoidProductDemoWithOptionsV1(
+    sourceGlb: Uint8Array,
+    appearanceTwoDa: Uint8Array,
+    identityJson: string,
+    buildOptionsJson: string,
+    moduleIdentityJson: string,
+    creatureResref: string,
+  ): {
+    readonly reportJson: string;
+    readonly manifestJson: string;
+    readonly summaryJson: string;
+    readonly readbackJson: string;
+    readonly demoReportJson: string;
+    takeHakBytes(): Uint8Array;
+    takeModelBytes(): Uint8Array;
+    takeTextureBytes(): Uint8Array;
+    takeProofModuleBytes(): Uint8Array;
+    free(): void;
+  };
+  export function buildMeshyFullNativeH1PackageWithOptionsV4(
+    sourceGlb: Uint8Array,
+    appearanceTwoDa: Uint8Array,
+    identityJson: string,
+    buildOptionsJson: string,
+    eventAuthoringJson: string,
+    moduleIdentityJson: string,
+    creatureResref: string,
+  ): {
+    readonly reportJson: string;
+    readonly manifestJson: string;
+    readonly summaryJson: string;
+    readonly readbackJson: string;
+    readonly demoReportJson: string;
+    takeHakBytes(): Uint8Array;
+    takeModelBytes(): Uint8Array;
+    takeTextureBytes(): Uint8Array;
+    takeProofModuleBytes(): Uint8Array;
+    free(): void;
+  };
   export function ingestMeshyP100kExperimentJson(sourceGlb: Uint8Array): string;
   export function ingestMeshyP300kExperimentJson(sourceGlb: Uint8Array): string;
   export function buildMeshyProceduralHumanoidP100kExperimentV1(

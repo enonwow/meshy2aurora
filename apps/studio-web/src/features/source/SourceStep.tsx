@@ -10,6 +10,7 @@ import {
 } from "./InputsPanel";
 import type { StudioTarget } from "../../app/studioSession";
 import type { MeshyArtifactProvenance } from "../meshy/bridge";
+import { parseSkinAccessoryComponentBoneOverridesV2 } from "./skinAccessoryOverrides";
 
 export interface SourceStepProps extends SourceInputProps {
   onContinue: () => void;
@@ -127,6 +128,7 @@ export function SourceStep({
   textureArtifactCleanup = false,
   skinAccessoryStabilizationMode = "AUTO",
   skinAccessorySelectedBoneName = "",
+  skinAccessoryComponentBoneOverrides = "",
   sourceIdentity,
   appearanceIdentity,
   sourceError,
@@ -139,6 +141,7 @@ export function SourceStep({
   onTextureArtifactCleanupChange,
   onSkinAccessoryStabilizationModeChange,
   onSkinAccessorySelectedBoneNameChange,
+  onSkinAccessoryComponentBoneOverridesChange,
   onRemoveSource,
   onRemoveAppearance,
   onRemoveAnimationEvents,
@@ -156,13 +159,28 @@ export function SourceStep({
   const tileOptionsValid = tileOptions.terrainName.trim().length > 0
     && tileOptions.terrainName.length <= 64
     && /^[\x20-\x7e]+$/.test(tileOptions.terrainName);
+  let componentOverridesValid = true;
+  let componentOverrideCount = 0;
+  try {
+    componentOverrideCount = parseSkinAccessoryComponentBoneOverridesV2(
+      skinAccessoryComponentBoneOverrides,
+    ).length;
+  } catch {
+    componentOverridesValid = false;
+  }
   const ready = Boolean(
     source
     && (target === "TILE" ? tileOptionsValid : appearance)
     && (
       target !== "CREATURE"
       || skinAccessoryStabilizationMode !== "SELECT_BONE"
-      || skinAccessorySelectedBoneName.trim().length > 0
+      || (
+        componentOverridesValid
+        && (
+          skinAccessorySelectedBoneName.trim().length > 0
+          || componentOverrideCount > 0
+        )
+      )
     )
     && !sourceError
     && !appearanceError
@@ -321,23 +339,41 @@ export function SourceStep({
                 </select>
               </label>
               {skinAccessoryStabilizationMode === "SELECT_BONE" ? (
-                <label>
-                  Accessory bone name
-                  <input
-                    aria-label="Accessory bone name"
-                    value={skinAccessorySelectedBoneName}
-                    onChange={(event) => onSkinAccessorySelectedBoneNameChange?.(
-                      event.currentTarget.value,
-                    )}
-                    placeholder="Spine02"
-                  />
-                </label>
+                <>
+                  <label>
+                    Default accessory bone
+                    <input
+                      aria-label="Accessory bone name"
+                      value={skinAccessorySelectedBoneName}
+                      onChange={(event) => onSkinAccessorySelectedBoneNameChange?.(
+                        event.currentTarget.value,
+                      )}
+                      placeholder="Optional fallback, e.g. Spine02"
+                    />
+                  </label>
+                  <label>
+                    Component bone overrides
+                    <textarea
+                      aria-label="Accessory component bone overrides"
+                      value={skinAccessoryComponentBoneOverrides}
+                      onChange={(event) => onSkinAccessoryComponentBoneOverridesChange?.(
+                        event.currentTarget.value,
+                      )}
+                      aria-invalid={!componentOverridesValid || undefined}
+                      placeholder={"0:1=Spine02\n0:2=Spine"}
+                    />
+                  </label>
+                  {!componentOverridesValid ? (
+                    <p role="alert">Each override must use segment:component=BoneName.</p>
+                  ) : null}
+                </>
               ) : null}
               <p role="note">
                 Auto audits spatially welded detached parts across animation clips and stabilizes
                 only risky accessories on a nearby torso bone. Keep source weights records the
-                risk without changing it. Select bone applies the named bone to every approved
-                risky accessory. Geometry, UVs, materials, and animation clips are preserved.
+                risk without changing it. Select bone accepts a default bone plus optional
+                per-component overrides such as 0:1=Spine02. Geometry, UVs, materials, and
+                animation clips are preserved.
               </p>
             </>
           ) : null}

@@ -1,6 +1,12 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
+import { inspectGlbTriangleCount, mergeMeshyAnimationGlbs } from "./merge-animation-glbs.mjs";
+import {
+  AURORA_MODEL_TRIANGLE_BUDGET_V1,
+  MESHY_RIG_FACE_LIMIT,
+  planAutomaticRigFaceRecovery,
+} from "./remesh-rig-animation-recovery-options.mjs";
 
 const PROTOCOL_VERSION = 1;
 const API_ORIGIN = "https://api.meshy.ai";
@@ -16,9 +22,18 @@ const IMAGE_MODELS = new Set(["nano-banana", "nano-banana-2", "nano-banana-pro",
 const IMAGE_RATIOS = new Set(["1:1", "16:9", "9:16", "4:3", "3:4"]);
 const GPT_IMAGE_RATIOS = new Set(["1:1", "3:2", "2:3"]);
 const RETEXTURE_MAXIMUM_CREDITS = 10;
+const NWN_DIRECT_CREATURE_CLIPS = new Set([
+  "ca1slashl", "ca1slashr", "ca1stab", "creach", "cconjure1", "ccastout",
+  "cparryl", "cparryr", "cdodgelr", "cdodges", "creadyr", "creadyl",
+  "cdamagel", "cdamager", "cdamages", "ckdbck", "ckdbckps", "ckdbckdie",
+  "cguptokdb", "cgustandb", "cwalk", "crun", "ccwalkf", "ccwalkb",
+  "ccwalkl", "ccwalkr", "cpause1", "chturnl", "chturnr", "ctaunt",
+  "cclosel", "ccloseh", "cgetmid", "ckdbckdmg", "ccastoutlp", "cspasm",
+  "cappear", "cdisappear", "cgetmidlp", "cdead", "cdisappearlp", "ccturnr",
+]);
 
 const PROFILES = [
-  { id: "H1-humanoid-animated/v1", label: "Humanoid Animated", description: "Textured standard humanoid with rigging and one Idle animation proof.", stages: ["PREVIEW", "REFINE", "RIG", "ANIMATE"], expectedOutput: { texture: true, rigging: true, animation: "IDLE" } },
+  { id: "H1-humanoid-animated/v1", label: "Humanoid Animated", description: "Textured standard humanoid with rigging and one to ten explicitly mapped Meshy animations.", stages: ["PREVIEW", "REFINE", "RIG", "ANIMATE"], expectedOutput: { texture: true, rigging: true, animation: "MAPPED_SET" } },
   { id: "N1-quadruped/v1", label: "Quadruped", description: "Textured non-humanoid proof asset without auto-rigging.", stages: ["PREVIEW", "REFINE"], expectedOutput: { texture: true, rigging: false, animation: null } },
   { id: "S1-static-prop/v1", label: "Static Prop", description: "Textured static proof asset without a skeleton or animation.", stages: ["PREVIEW", "REFINE"], expectedOutput: { texture: true, rigging: false, animation: null } },
 ];
@@ -46,14 +61,19 @@ function profileById(id) {
   return PROFILES.find((profile) => profile.id === id);
 }
 
-function animationActionIds(options) {
-  if (Array.isArray(options?.animationActionIds)) return options.animationActionIds;
-  if (Number.isInteger(options?.animationActionId)) return [options.animationActionId];
-  return [0];
+function animationActions(options) {
+  if (Array.isArray(options?.animationActions)) return options.animationActions;
+  if (Number.isInteger(options?.animationActionId)) {
+    return [{ actionId: options.animationActionId, clipName: "cpause1" }];
+  }
+  if (Array.isArray(options?.animationActionIds) && options.animationActionIds.length === 1) {
+    return [{ actionId: options.animationActionIds[0], clipName: "cpause1" }];
+  }
+  return [{ actionId: 0, clipName: "cpause1" }];
 }
 
 function maximumCredits(profile, options) {
-  return profile.id.startsWith("H1") ? 35 + 3 * animationActionIds(options).length : 30;
+  return profile.id.startsWith("H1") ? 40 + 3 * animationActions(options).length : 30;
 }
 
 function targetPolycount(target) {
@@ -100,7 +120,9 @@ function validApiOptions(options, source) {
   if (options.modelType !== "smart-topology" && !["latest", "meshy-5", "meshy-6"].includes(options.aiModel)) return false;
   if (source === "MULTI_IMAGE" && options.modelType !== "standard") return false;
   if (typeof options.shouldRemesh !== "boolean" || !["triangle", "quad"].includes(options.topology)) return false;
-  const maxPolycount = options.modelType === "smart-topology" && options.aiModel === "meshy-t2" ? 15000 : 300000;
+  const maxPolycount = options.modelType === "smart-topology" && options.aiModel === "meshy-t2"
+    ? 15_000
+    : AURORA_MODEL_TRIANGLE_BUDGET_V1;
   if (!Number.isInteger(options.targetPolycount) || options.targetPolycount < 100 || options.targetPolycount > maxPolycount) return false;
   if (options.decimationMode !== undefined && ![1, 2, 3, 4].includes(options.decimationMode)) return false;
   if (!["", "a-pose", "t-pose"].includes(options.poseMode) || typeof options.moderation !== "boolean") return false;
@@ -109,8 +131,12 @@ function validApiOptions(options, source) {
   if (!["bottom", "center"].includes(options.originAt) || typeof options.texturePrompt !== "string" || options.texturePrompt.length > 600 || typeof options.textureImageUrl !== "string") return false;
   if (!Number.isFinite(options.rigHeightMeters) || options.rigHeightMeters < 0.5 || options.rigHeightMeters > 3) return false;
   if (options.rigHumanoid) {
-    const actionIds = animationActionIds(options);
-    if (actionIds.length < 1 || actionIds.length > 10 || actionIds.some((value) => !Number.isInteger(value) || value < 0) || new Set(actionIds).size !== actionIds.length) return false;
+    const actions = animationActions(options);
+    if (actions.length < 1 || actions.length > 10) return false;
+    if (actions.some(({ actionId, clipName }) => !Number.isInteger(actionId) || actionId < 0 || !NWN_DIRECT_CREATURE_CLIPS.has(clipName))) return false;
+    if (new Set(actions.map(({ actionId }) => actionId)).size !== actions.length) return false;
+    if (new Set(actions.map(({ clipName }) => clipName.toLowerCase())).size !== actions.length) return false;
+    if (actions.filter(({ clipName }) => clipName === "cpause1").length !== 1) return false;
   }
   return !options.rigHumanoid || source !== "MULTI_IMAGE";
 }
@@ -399,6 +425,64 @@ export function createLocalBridge({
 
       const shouldRig = options?.rigHumanoid ?? run.profile.id.startsWith("H1");
       if (shouldRig) {
+        const generatedAssetUrl = output.model_urls?.glb;
+        if (typeof generatedAssetUrl !== "string") {
+          throw bridgeError(
+            "ARTIFACT_INVALID",
+            "Meshy did not expose the generated GLB required for the pre-rig face-budget gate.",
+          );
+        }
+        const generatedBytes = await downloadVerifiedGlb(
+          generatedAssetUrl,
+          "The signed pre-rig Meshy GLB download failed.",
+        );
+        const requestedTargetPolycount = options?.targetPolycount ?? targetPolycount(run.geometryTarget);
+        const recovery = planAutomaticRigFaceRecovery({
+          observedFaceCount: inspectGlbTriangleCount(generatedBytes, "generated pre-rig GLB"),
+          requestedTargetPolycount,
+        });
+        run.geometryAdmission = {
+          generatedFaceCount: recovery.observedFaceCount,
+          rigFaceLimit: MESHY_RIG_FACE_LIMIT,
+          automaticRemeshApplied: recovery.required,
+        };
+        if (recovery.required) {
+          run.status = "REMESHING";
+          const remesh = await meshJson("/openapi/v1/remesh", {
+            method: "POST",
+            body: JSON.stringify({
+              input_task_id: inputTaskId,
+              target_formats: ["glb"],
+              topology: "triangle",
+              target_polycount: recovery.targetPolycount,
+              alpha_thumbnail: false,
+            }),
+          });
+          run.taskIds.REMESH = remesh.result;
+          inputTaskId = remesh.result;
+          output = await waitForTask(run, "REMESH", "/openapi/v1/remesh", remesh.result);
+          const remeshedAssetUrl = output.model_urls?.glb;
+          if (typeof remeshedAssetUrl !== "string") {
+            throw bridgeError("ARTIFACT_INVALID", "Meshy did not expose the automatically remeshed GLB.");
+          }
+          const remeshedBytes = await downloadVerifiedGlb(
+            remeshedAssetUrl,
+            "The signed automatically remeshed Meshy GLB download failed.",
+          );
+          const remeshedFaceCount = inspectGlbTriangleCount(remeshedBytes, "automatically remeshed GLB");
+          run.geometryAdmission = {
+            ...run.geometryAdmission,
+            remeshTaskId: remesh.result,
+            remeshTargetPolycount: recovery.targetPolycount,
+            remeshedFaceCount,
+          };
+          if (remeshedFaceCount > MESHY_RIG_FACE_LIMIT) {
+            throw bridgeError(
+              "ARTIFACT_INVALID",
+              `Automatic remesh still has ${remeshedFaceCount} faces; Meshy rigging requires at most ${MESHY_RIG_FACE_LIMIT}.`,
+            );
+          }
+        }
         run.status = "RIGGING";
         const rig = await meshJson("/openapi/v1/rigging", {
           method: "POST", body: JSON.stringify({ input_task_id: inputTaskId, height_meters: options?.rigHeightMeters ?? 1.7 }),
@@ -406,14 +490,14 @@ export function createLocalBridge({
         run.taskIds.RIG = rig.result;
         output = await waitForTask(run, "RIG", "/openapi/v1/rigging", rig.result);
 
-        const selectedActionIds = animationActionIds(options);
+        const selectedActions = animationActions(options);
         run.artifacts = [];
-        for (const animationActionId of selectedActionIds) {
+        for (const { actionId: animationActionId, clipName } of selectedActions) {
           run.status = "ANIMATING";
           const animation = await meshJson("/openapi/v1/animations", {
             method: "POST", body: JSON.stringify({ rig_task_id: rig.result, action_id: animationActionId }),
           });
-          const taskKey = selectedActionIds.length === 1 ? "ANIMATE" : `ANIMATE_${animationActionId}`;
+          const taskKey = selectedActions.length === 1 ? "ANIMATE" : `ANIMATE_${animationActionId}`;
           run.taskIds[taskKey] = animation.result;
           output = await waitForTask(run, "ANIMATE", "/openapi/v1/animations", animation.result);
           const animationAssetUrl = output.result?.animation_glb_url;
@@ -424,6 +508,7 @@ export function createLocalBridge({
           );
           run.artifacts.push({
             actionId: animationActionId,
+            clipName,
             bytes: animationBytes,
             sha256: createHash("sha256").update(animationBytes).digest("hex"),
             byteLength: animationBytes.byteLength,
@@ -434,7 +519,11 @@ export function createLocalBridge({
       run.status = "VERIFYING";
       let artifactBytes;
       if (run.artifacts?.length) {
-        artifactBytes = run.artifacts[0].bytes;
+        artifactBytes = mergeMeshyAnimationGlbs(run.artifacts.map(({ actionId, clipName, bytes }) => ({
+          clipName,
+          label: `Meshy action ${actionId}`,
+          bytes,
+        })));
       } else {
         const assetUrl = output.model_urls?.glb;
         if (typeof assetUrl !== "string") throw bridgeError("ARTIFACT_INVALID", "Meshy did not return a GLB artifact for this run.");
@@ -447,9 +536,13 @@ export function createLocalBridge({
         sha256: createHash("sha256").update(artifactBytes).digest("hex"),
         byteLength: artifactBytes.byteLength,
         taskIds: run.taskIds,
+        artifactKind: run.artifacts?.length ? "MERGED_ANIMATION_GLTF" : "GENERATED_GLTF",
         ...(run.artifacts?.length ? {
-          animationArtifacts: run.artifacts.map(({ actionId, sha256, byteLength }) => ({ actionId, sha256, byteLength })),
+          animationArtifacts: run.artifacts.map(({ actionId, clipName, sha256, byteLength }) => ({
+            actionId, clipName, sha256, byteLength,
+          })),
         } : {}),
+        ...(run.geometryAdmission ? { geometryAdmission: run.geometryAdmission } : {}),
       };
       run.status = "READY";
       run.progress = 100;

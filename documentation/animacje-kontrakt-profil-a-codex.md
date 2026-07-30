@@ -297,11 +297,15 @@ MDL, ponownie czyta jego dokladne bajty i dopiero z binary readbacku wymaga
 - kanoniczny `byteLength` i SHA-256 sparsowanego sidecara w
   `animationEventAuthoringCanonical`.
 
-WASM udostepnia `buildMeshyH1ModelPackageV3`. Worker ma osobny lane
-`H1_SKINNED_FULL_42_EVENTS`, a Studio przekazuje wybrany
-`animation-events.json` bez zmiany. Sidecar z placeable albo source bez exact
-42 stanow jest odrzucany fail-closed. Legacy V1 i V2 zachowuja dotychczasowe
-bajty i nie dostaja niejawnych eventow.
+Niskopoziomowy WASM nadal udostępnia zgodnościowe
+`buildMeshyH1ModelPackageV3`. Studio używa jednak collision-free granicy
+`buildMeshyFullNativeH1PackageWithOptionsV4` dla obu lane'ów full-native:
+`H1_SKINNED_FULL_42` i `H1_SKINNED_FULL_42_EVENTS`. Granica V4 przyjmuje
+identity modelu, tekstury, HAK, MOD, Area i UTC, opcje naprawy oraz opcjonalny
+sidecar. SHA-256 dokładnych bajtów sidecaru wchodzi do 70-bitowej identity
+resrefów. Sidecar z placeable albo source bez exact 42 stanów jest odrzucany
+fail-closed. Legacy V1–V3 zachowują dotychczasowe bajty i nie są już
+wybierane przez normalny workflow Studio.
 
 Zamkniete offline:
 
@@ -320,3 +324,30 @@ Nadal otwarte runtime:
 Dlatego status GB-005 pozostaje `DIRECTION_DEFINED_RUNTIME_OPEN`: implementacja
 event payloadu jest kompletna offline, lecz callback semantics wymagaja
 hash-bound owner proof w NWN.
+
+## 10. Meshy multi-action do jednego source.glb — 2026-07-30
+
+Studio i Local Bridge używają teraz jawnego kontraktu `animationActions`:
+
+```json
+[
+  { "actionId": 0, "clipName": "cpause1" },
+  { "actionId": 198, "clipName": "ca1slashl" }
+]
+```
+
+Lista ma od 1 do 10 elementów. IDs i nazwy klipów są unikalne, nazwy należą
+do exact 42-state namespace, a `cpause1` występuje dokładnie raz. Koszt
+maksymalny jest liczony jako model + rig + rzeczywista liczba akcji.
+
+Bridge uruchamia wszystkie akcje na jednym rig task, pobiera exact GLB każdej
+akcji, weryfikuje zgodność POSITION/JOINTS/WEIGHTS/INDICES i automatycznie
+scala animacje. Dopiero scalony `MERGED_ANIMATION_GLTF` jest kanonicznym
+`/artifact` importowanym przez Studio. Oddzielne action GLB są zachowane w
+provenance, ale nie są alternatywnymi source models.
+
+Core otrzymuje jeden GLB z wieloma nazwanymi animacjami. Profil proceduralny
+zachowuje zgodne klipy źródłowe, raportuje ich lineage i dopiero potem
+uzupełnia brakujące stany proceduralnie. Audyt skin accessories jest wykonywany
+po utworzeniu finalnych 42 klipów, dzięki czemu żadna później wygenerowana
+animacja nie omija testu deformacji.

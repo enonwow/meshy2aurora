@@ -34,6 +34,7 @@ export interface SourceInputProps {
   textureArtifactCleanup?: boolean;
   skinAccessoryStabilizationMode?: SkinAccessoryStabilizationModeV1;
   skinAccessorySelectedBoneName?: string;
+  skinAccessoryComponentBoneOverrides?: string;
   sourceIdentity?: FileIdentityValue;
   appearanceIdentity?: FileIdentityValue;
   sourceError?: string;
@@ -48,6 +49,7 @@ export interface SourceInputProps {
     mode: SkinAccessoryStabilizationModeV1,
   ) => void;
   onSkinAccessorySelectedBoneNameChange?: (boneName: string) => void;
+  onSkinAccessoryComponentBoneOverridesChange?: (overrides: string) => void;
   onRemoveSource: () => void;
   onRemoveAppearance: () => void;
   onRemoveAnimationEvents: () => void;
@@ -154,6 +156,7 @@ export function InputsPanel({
   textureArtifactCleanup = false,
   skinAccessoryStabilizationMode = "AUTO",
   skinAccessorySelectedBoneName = "",
+  skinAccessoryComponentBoneOverrides = "",
   sourceIdentity,
   appearanceIdentity,
   sourceError,
@@ -166,6 +169,7 @@ export function InputsPanel({
   onTextureArtifactCleanupChange,
   onSkinAccessoryStabilizationModeChange,
   onSkinAccessorySelectedBoneNameChange,
+  onSkinAccessoryComponentBoneOverridesChange,
   onRemoveSource,
   onRemoveAppearance,
   onRemoveAnimationEvents,
@@ -246,17 +250,30 @@ export function InputsPanel({
                 </select>
               </label>
               {skinAccessoryStabilizationMode === "SELECT_BONE" ? (
-                <label>
-                  Accessory bone name
-                  <input
-                    aria-label="Accessory bone name"
-                    value={skinAccessorySelectedBoneName}
-                    onChange={(event) => onSkinAccessorySelectedBoneNameChange?.(
-                      event.currentTarget.value,
-                    )}
-                    placeholder="Spine02"
-                  />
-                </label>
+                <>
+                  <label>
+                    Default accessory bone
+                    <input
+                      aria-label="Accessory bone name"
+                      value={skinAccessorySelectedBoneName}
+                      onChange={(event) => onSkinAccessorySelectedBoneNameChange?.(
+                        event.currentTarget.value,
+                      )}
+                      placeholder="Optional fallback, e.g. Spine02"
+                    />
+                  </label>
+                  <label>
+                    Component bone overrides
+                    <textarea
+                      aria-label="Accessory component bone overrides"
+                      value={skinAccessoryComponentBoneOverrides}
+                      onChange={(event) => onSkinAccessoryComponentBoneOverridesChange?.(
+                        event.currentTarget.value,
+                      )}
+                      placeholder={"0:1=Spine02\n0:2=Spine"}
+                    />
+                  </label>
+                </>
               ) : null}
             </>
           ) : null}

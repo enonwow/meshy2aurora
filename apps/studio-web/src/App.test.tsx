@@ -62,16 +62,19 @@ class FakeWorker {
 const roots: Root[] = [];
 
 function localFile(name: string, marker: number, text = ""): File {
+  const payload = text === ""
+    ? new Uint8Array([marker])
+    : new TextEncoder().encode(text);
   return {
     name,
-    size: 1,
+    size: payload.byteLength,
     type: name.endsWith(".glb")
       ? "model/gltf-binary"
       : name.endsWith(".json")
         ? "application/json"
         : "text/plain",
     lastModified: marker,
-    arrayBuffer: async () => new Uint8Array([marker]).buffer,
+    arrayBuffer: async () => payload.slice().buffer,
     text: async () => text,
   } as File;
 }
@@ -157,9 +160,9 @@ function singleIdleSkinnedSourceInspectionJson() {
   return JSON.stringify(value);
 }
 
-function appearanceInspectionJson() {
+function appearanceInspectionJson(sourceSha256 = "b".repeat(64)) {
   return JSON.stringify({
-    schemaVersion: 1, format: "2DA", version: "V2.0", sourceSha256: "b".repeat(64), byteLength: 1,
+    schemaVersion: 1, format: "2DA", version: "V2.0", sourceSha256, byteLength: 1,
     newline: "LF", terminalNewline: true, defaultValue: null, columns: ["LABEL"], physicalRowCount: 0, nextAppendIndex: 0, rowLabelMismatchCount: 0, diagnostics: [],
   });
 }
@@ -401,6 +404,7 @@ async function driveToBuild(
   container: HTMLElement,
   sourceJson = sourceInspectionJson(),
   eventAuthoringJson?: string,
+  appearanceJson = appearanceInspectionJson(),
 ) {
   const [sourceInput, appearanceInput, animationEventsInput] = Array.from(
     container.querySelectorAll<HTMLInputElement>('input[type="file"]'),
@@ -418,7 +422,7 @@ async function driveToBuild(
   const appearanceRequest = worker.requests.filter((request) => request.type === "INSPECT_APPEARANCE").at(-1)!;
   await act(async () => {
     worker.emit({ requestId: sourceRequest.requestId, ok: true, type: "SOURCE_INSPECTED", ingestJson: sourceJson });
-    worker.emit({ requestId: appearanceRequest.requestId, ok: true, type: "APPEARANCE_INSPECTED", inspectionJson: appearanceInspectionJson() });
+    worker.emit({ requestId: appearanceRequest.requestId, ok: true, type: "APPEARANCE_INSPECTED", inspectionJson: appearanceJson });
     await Promise.resolve();
   });
   await act(async () => button(container, "Continue to Inspect")?.click());
@@ -552,10 +556,27 @@ describe("Studio workflow", () => {
     expect(container.querySelector('[aria-label="Tile preview overlays"]')).not.toBeNull();
   });
 
-  it("routes an exact 42-name skinned source through the full H1 V2 lane", async () => {
+  it("routes an exact 42-name source through the collision-free full H1 V4 lane", async () => {
     const container = await renderApp();
     const { build } = await driveToBuild(container, fullNativeSourceInspectionJson());
     expect(build.packageLane).toBe("H1_SKINNED_FULL_42");
+    if (
+      build.type !== "BUILD_MODEL_PACKAGE"
+      || build.packageLane !== "H1_SKINNED_FULL_42"
+    ) {
+      throw new Error("full-native H1 request unavailable");
+    }
+    expect(JSON.parse(build.identityJson)).toMatchObject({
+      modelResref: expect.stringMatching(/^cm[a-z2-7]{14}$/),
+      textureResref: expect.stringMatching(/^ct[a-z2-7]{14}$/),
+      hakResref: expect.stringMatching(/^ch[a-z2-7]{14}$/),
+    });
+    expect(JSON.parse(build.demoModuleIdentityJson)).toMatchObject({
+      moduleResref: expect.stringMatching(/^cd[a-z2-7]{14}$/),
+      areaResref: expect.stringMatching(/^ca[a-z2-7]{14}$/),
+      hakResref: expect.stringMatching(/^ch[a-z2-7]{14}$/),
+    });
+    expect(build.skinAccessoryStabilization).toEqual({ mode: "AUTO" });
   });
 
   it("routes a one-idle skinned Meshy humanoid through the procedural 42-state lane", async () => {
@@ -572,13 +593,21 @@ describe("Studio workflow", () => {
     ) {
       throw new Error("procedural product request unavailable");
     }
-    expect(JSON.parse(build.identityJson)).toEqual({
-      modelResref: "m2c2maaaaaaaa",
-      textureResref: "m2c2taaaaaaaa",
-      hakResref: "m2c2haaaaaaaa",
-      appearanceLabel: "M2A_CREATURE_V2_AAAAAAAA",
+    const identity = JSON.parse(build.identityJson);
+    expect(identity).toEqual({
+      modelResref: expect.stringMatching(/^cm[a-z2-7]{14}$/),
+      textureResref: expect.stringMatching(/^ct[a-z2-7]{14}$/),
+      hakResref: expect.stringMatching(/^ch[a-z2-7]{14}$/),
+      appearanceLabel: expect.stringMatching(/^M2A_CREATURE_V3_[A-Z2-7]{14}$/),
     });
+    const suffix = identity.modelResref.slice(2);
     expect(build.skinAccessoryStabilization).toEqual({ mode: "AUTO" });
+    expect(JSON.parse(build.demoModuleIdentityJson)).toEqual({
+      moduleResref: `cd${suffix}`,
+      areaResref: `ca${suffix}`,
+      hakResref: `ch${suffix}`,
+    });
+    expect(build.demoCreatureResref).toBe(`cc${suffix}`);
   });
 
   it("routes an explicit accessory bone through the procedural build request", async () => {
@@ -604,7 +633,74 @@ describe("Studio workflow", () => {
     expect(build.skinAccessoryStabilization).toEqual({
       mode: "SELECT_BONE",
       selectedBoneName: "Spine02",
+      componentBoneOverrides: [],
     });
+    expect(JSON.parse(build.identityJson)).toEqual({
+      modelResref: expect.stringMatching(/^cm[a-z2-7]{14}$/),
+      textureResref: expect.stringMatching(/^ct[a-z2-7]{14}$/),
+      hakResref: expect.stringMatching(/^ch[a-z2-7]{14}$/),
+      appearanceLabel: expect.stringMatching(/^M2A_CREATURE_V3_[A-Z2-7]{14}$/),
+    });
+  });
+
+  it("routes deterministic per-component accessory bone overrides without a global fallback", async () => {
+    const container = await renderApp();
+    const stabilization = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Detached accessory skinning"]',
+    );
+    expect(stabilization).not.toBeNull();
+    await act(async () => setSelectValue(stabilization!, "SELECT_BONE"));
+    const overrides = container.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Accessory component bone overrides"]',
+    );
+    expect(overrides).not.toBeNull();
+    await act(async () => setValue(overrides!, "0:4=Spine\n0:2=Spine02"));
+
+    const { build } = await driveToBuild(container, singleIdleSkinnedSourceInspectionJson());
+    if (
+      build.type !== "BUILD_MODEL_PACKAGE"
+      || build.packageLane !== "SKINNED_PROCEDURAL_HUMANOID_42"
+    ) {
+      throw new Error("procedural product request unavailable");
+    }
+    expect(build.skinAccessoryStabilization).toEqual({
+      mode: "SELECT_BONE",
+      componentBoneOverrides: [
+        { segmentIndex: 0, componentIndex: 2, boneName: "Spine02" },
+        { segmentIndex: 0, componentIndex: 4, boneName: "Spine" },
+      ],
+    });
+  });
+
+  it("changes every Creature artifact identity when the base appearance.2da changes", async () => {
+    const firstContainer = await renderApp();
+    const first = await driveToBuild(
+      firstContainer,
+      singleIdleSkinnedSourceInspectionJson(),
+      undefined,
+      appearanceInspectionJson("b".repeat(64)),
+    );
+    const secondContainer = await renderApp();
+    const second = await driveToBuild(
+      secondContainer,
+      singleIdleSkinnedSourceInspectionJson(),
+      undefined,
+      appearanceInspectionJson("c".repeat(64)),
+    );
+    if (
+      first.build.type !== "BUILD_MODEL_PACKAGE"
+      || first.build.packageLane !== "SKINNED_PROCEDURAL_HUMANOID_42"
+      || second.build.type !== "BUILD_MODEL_PACKAGE"
+      || second.build.packageLane !== "SKINNED_PROCEDURAL_HUMANOID_42"
+    ) {
+      throw new Error("procedural product request unavailable");
+    }
+    const firstIdentity = JSON.parse(first.build.identityJson);
+    const secondIdentity = JSON.parse(second.build.identityJson);
+    expect(secondIdentity.modelResref).not.toBe(firstIdentity.modelResref);
+    expect(secondIdentity.textureResref).not.toBe(firstIdentity.textureResref);
+    expect(secondIdentity.hakResref).not.toBe(firstIdentity.hakResref);
+    expect(second.build.demoModuleIdentityJson).not.toBe(first.build.demoModuleIdentityJson);
   });
 
   it("routes the explicit 100K Creature experiment through its full-package app lane", async () => {
@@ -633,15 +729,17 @@ describe("Studio workflow", () => {
     ) {
       throw new Error("P100K application lane unavailable");
     }
-    expect(JSON.parse(build.identityJson)).toEqual({
-      modelResref: "m2p1maaaaaaaa",
-      textureResref: "m2p1taaaaaaaa",
+    const identity = JSON.parse(build.identityJson);
+    const token = identity.modelResref.slice(2);
+    expect(identity).toEqual({
+      modelResref: expect.stringMatching(/^pm[a-z2-7]{14}$/),
+      textureResref: `pt${token}`,
       module: {
-        moduleResref: "m2p1daaaaaaaa",
-        areaResref: "m2p1aaaaaaaaa",
-        hakResref: "m2p1haaaaaaaa",
+        moduleResref: `pd${token}`,
+        areaResref: `pa${token}`,
+        hakResref: `ph${token}`,
       },
-      creatureResref: "m2p1caaaaaaaa",
+      creatureResref: `pc${token}`,
     });
   });
 
@@ -677,15 +775,17 @@ describe("Studio workflow", () => {
       throw new Error("P300K application lane unavailable");
     }
     expect(build.textureArtifactCleanup).toBe(true);
-    expect(JSON.parse(build.identityJson)).toEqual({
-      modelResref: "m2p3hmaaaaaaaa",
-      textureResref: "m2p3htaaaaaaaa",
+    const identity = JSON.parse(build.identityJson);
+    const token = identity.modelResref.slice(2);
+    expect(identity).toEqual({
+      modelResref: expect.stringMatching(/^pm[a-z2-7]{14}$/),
+      textureResref: `pt${token}`,
       module: {
-        moduleResref: "m2p3hdaaaaaaaa",
-        areaResref: "m2p3haaaaaaaaa",
-        hakResref: "m2p3hhaaaaaaaa",
+        moduleResref: `pd${token}`,
+        areaResref: `pa${token}`,
+        hakResref: `ph${token}`,
       },
-      creatureResref: "m2p3hcaaaaaaaa",
+      creatureResref: `pc${token}`,
     });
   });
 
@@ -703,6 +803,29 @@ describe("Studio workflow", () => {
       throw new Error("eventful model request unavailable");
     }
     expect(build.eventAuthoringJson).toBe(eventAuthoringJson);
+  });
+
+  it("binds exact animation event sidecar bytes into the generated artifact identity", async () => {
+    const first = await driveToBuild(
+      await renderApp(),
+      fullNativeSourceInspectionJson(),
+      JSON.stringify({ schemaVersion: 1, clips: [{ clip: "ca1slashl", event: "hit", time: 0.25 }] }),
+    );
+    const second = await driveToBuild(
+      await renderApp(),
+      fullNativeSourceInspectionJson(),
+      JSON.stringify({ schemaVersion: 1, clips: [{ clip: "ca1slashl", event: "hit", time: 0.75 }] }),
+    );
+    if (
+      first.build.type !== "BUILD_MODEL_PACKAGE"
+      || first.build.packageLane !== "H1_SKINNED_FULL_42_EVENTS"
+      || second.build.type !== "BUILD_MODEL_PACKAGE"
+      || second.build.packageLane !== "H1_SKINNED_FULL_42_EVENTS"
+    ) {
+      throw new Error("eventful model request unavailable");
+    }
+    expect(JSON.parse(first.build.identityJson).modelResref)
+      .not.toBe(JSON.parse(second.build.identityJson).modelResref);
   });
 
   it("routes placeables.2da through the explicit placeable lane and shows offline-only evidence", async () => {

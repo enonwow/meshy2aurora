@@ -251,6 +251,12 @@ describe("local file to canonical web-WASM Worker integration", () => {
           hakResref: "m2a_stcrhak2",
           appearanceLabel: "M2A_STUDIO_CREATURE_V2",
         }),
+        demoModuleIdentityJson: JSON.stringify({
+          moduleResref: "m2a_stcrmod2",
+          areaResref: "m2a_stcrarea2",
+          hakResref: "m2a_stcrhak2",
+        }),
+        demoCreatureResref: "m2a_stcrutc2",
       },
       [sourceGlb, appearanceTwoDa],
     );
@@ -371,11 +377,19 @@ describe("local file to canonical web-WASM Worker integration", () => {
       response.summaryJson,
       response.manifestJson,
       response.artifacts,
+      response.demoReportJson,
     );
     expect(snapshot.status).toBe("PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED");
     expect(snapshot.geometry).toMatchObject({ joints: report.geometry?.activeJointCount, deformation: "SKIN" });
     expect(snapshot.resrefs).toMatchObject({ model: "m2a_stcrmdl2", texture: "m2a_stcrtex2" });
     expect(snapshot.hak.entryCount).toBe(3);
+    expect(snapshot.demo).toMatchObject({
+      moduleResref: "m2a_stcrmod2",
+      areaResref: "m2a_stcrarea2",
+      creatureResref: "m2a_stcrutc2",
+      hakResref: "m2a_stcrhak2",
+      semanticReadbackStatus: "PASS",
+    });
     expect(projectCanonicalReadback(response.readbackJson).nodeTree.roots.length).toBeGreaterThan(0);
   }, 60_000);
 
@@ -433,7 +447,7 @@ describe("local file to canonical web-WASM Worker integration", () => {
       ) {
         throw new Error("P100K source inspection did not complete");
       }
-      expect(JSON.parse(defaultInspection.ingestJson).report.conversionEligible).toBe(false);
+      expect(JSON.parse(defaultInspection.ingestJson).report.conversionEligible).toBe(true);
       expect(JSON.parse(experimentInspection.ingestJson).report).toMatchObject({
         conversionEligible: true,
         statistics: { triangleCount: 102_335 },
@@ -531,7 +545,7 @@ describe("local file to canonical web-WASM Worker integration", () => {
       ) {
         throw new Error("P300K source inspection did not complete");
       }
-      expect(JSON.parse(defaultInspection.ingestJson).report.conversionEligible).toBe(false);
+      expect(JSON.parse(defaultInspection.ingestJson).report.conversionEligible).toBe(true);
       const experimentReport = JSON.parse(experimentInspection.ingestJson).report;
       expect(experimentReport.conversionEligible).toBe(true);
       expect(experimentReport.statistics.triangleCount).toBeGreaterThan(100_000);
@@ -650,6 +664,17 @@ describe("local file to canonical web-WASM Worker integration", () => {
   it("carries caller-owned gameplay events through the real Full-42 WASM Worker lane", async () => {
     const sourceGlb = await fetchBytes(fullNative42SourceUrl);
     const appearanceTwoDa = await fetchBytes(appearanceUrl);
+    const identityJson = JSON.stringify({
+      modelResref: "m2a_evtmdl_v2",
+      textureResref: "m2a_evttex_v2",
+      hakResref: "m2a_evthak_v2",
+      appearanceLabel: "M2A_EVENT_CREATURE_V2",
+    });
+    const demoModuleIdentityJson = JSON.stringify({
+      moduleResref: "m2a_evtmod_v2",
+      areaResref: "m2a_evtarea_v2",
+      hakResref: "m2a_evthak_v2",
+    });
     const client = new StudioWorkerClient();
     clients.push(client);
     const response = await client.request(
@@ -660,6 +685,10 @@ describe("local file to canonical web-WASM Worker integration", () => {
         appearanceTwoDa,
         packageLane: "H1_SKINNED_FULL_42_EVENTS",
         eventAuthoringJson: commonNativeEventAuthoringJson(),
+        identityJson,
+        demoModuleIdentityJson,
+        demoCreatureResref: "m2a_evtutc_v2",
+        textureArtifactCleanup: false,
       },
       [sourceGlb, appearanceTwoDa],
     );
@@ -693,6 +722,7 @@ describe("local file to canonical web-WASM Worker integration", () => {
       response.summaryJson,
       response.manifestJson,
       response.artifacts,
+      response.demoReportJson,
     );
     expect(snapshot.animationEventEvidence).toMatchObject({
       requiredPairCount: 23,
@@ -718,6 +748,10 @@ describe("local file to canonical web-WASM Worker integration", () => {
         appearanceTwoDa: malformedAppearance,
         packageLane: "H1_SKINNED_FULL_42_EVENTS",
         eventAuthoringJson: "{",
+        identityJson,
+        demoModuleIdentityJson,
+        demoCreatureResref: "m2a_evtutc_v2",
+        textureArtifactCleanup: false,
       },
       [malformedSource, malformedAppearance],
     )).rejects.toThrow("M6-ANIMATION-EVENT-AUTHORING-JSON");

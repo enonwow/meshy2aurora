@@ -1,3 +1,7 @@
+export const AURORA_MODEL_TRIANGLE_BUDGET_V1 = 300_000;
+export const MESHY_RIG_FACE_LIMIT = AURORA_MODEL_TRIANGLE_BUDGET_V1;
+export const MESHY_AUTOMATIC_RECOVERY_TARGET = AURORA_MODEL_TRIANGLE_BUDGET_V1 - 5_000;
+
 export function parseRemeshRecoveryOptions({
   targetPolycount,
   rigHeightMeters,
@@ -5,8 +9,14 @@ export function parseRemeshRecoveryOptions({
 }) {
   const parsedTarget = Number(targetPolycount);
   const parsedHeight = Number(rigHeightMeters);
-  if (!Number.isInteger(parsedTarget) || parsedTarget < 100 || parsedTarget > 300_000) {
-    throw new Error("remesh targetPolycount must be an integer in 100..=300000");
+  if (
+    !Number.isInteger(parsedTarget)
+    || parsedTarget < 100
+    || parsedTarget > AURORA_MODEL_TRIANGLE_BUDGET_V1
+  ) {
+    throw new Error(
+      `remesh targetPolycount must be an integer in 100..=${AURORA_MODEL_TRIANGLE_BUDGET_V1}`,
+    );
   }
   if (!Number.isFinite(parsedHeight) || parsedHeight < 0.5 || parsedHeight > 3) {
     throw new Error("rigHeightMeters must be in 0.5..=3");
@@ -51,4 +61,30 @@ export function calculateRemeshRecoveryCreditGate({
     maximumAdditionalCredits,
     maximumTotalCredits,
   };
+}
+
+export function planAutomaticRigFaceRecovery({
+  observedFaceCount,
+  requestedTargetPolycount,
+}) {
+  if (!Number.isInteger(observedFaceCount) || observedFaceCount < 0) {
+    throw new Error("observedFaceCount must be a non-negative integer");
+  }
+  if (
+    !Number.isInteger(requestedTargetPolycount)
+    || requestedTargetPolycount < 100
+    || requestedTargetPolycount > MESHY_RIG_FACE_LIMIT
+  ) {
+    throw new Error(
+      `requestedTargetPolycount must be an integer in 100..=${AURORA_MODEL_TRIANGLE_BUDGET_V1}`,
+    );
+  }
+  return observedFaceCount <= MESHY_RIG_FACE_LIMIT
+    ? { required: false, observedFaceCount }
+    : {
+        required: true,
+        observedFaceCount,
+        targetPolycount: Math.min(requestedTargetPolycount, MESHY_AUTOMATIC_RECOVERY_TARGET),
+        reason: "generated_model_exceeds_meshy_rig_face_limit",
+      };
 }

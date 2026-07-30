@@ -179,6 +179,154 @@ describe("ReviewModelDetails", () => {
     );
   });
 
+  it("shows the full accessory stabilization audit for a creature product", async () => {
+    const result = resultFixture();
+    result.skinAccessoryStabilization = {
+      schemaVersion: 2,
+      mode: "AUTO",
+      auditedClipCount: 42,
+      weldTolerance: 0.00001,
+      componentCount: 5,
+      detachedComponentCount: 4,
+      riskyComponentCount: 2,
+      stabilizedComponentCount: 2,
+      changedVertexCount: 128,
+      components: [{
+        segmentIndex: 0,
+        componentIndex: 1,
+        triangleCount: 64,
+        vertexCount: 48,
+        isPrimaryBody: false,
+        centroid: [1, 2, 3],
+        activeBoneCount: 4,
+        dominantBoneName: "LeftArm",
+        dominantBoneShare: 0.503,
+        riskReasons: ["PAIR_DISTANCE_RATIO_ABOVE_LIMIT"],
+        action: "STABILIZED",
+        selectedBoneId: 7,
+        selectedBoneName: "Spine02",
+        changedVertexCount: 48,
+        before: {
+          sampledClipCount: 42,
+          sampledPoseCount: 128,
+          sampledVertexCount: 48,
+          vertexSamplingMode: "EXACT_ALL_VERTICES",
+          timeSamplingTruncatedClipCount: 0,
+          maxPairDistanceRatio: 2.39,
+          maxPairDistanceError: 0.1,
+          minAxisAlignment: 0.26,
+        },
+        after: {
+          sampledClipCount: 42,
+          sampledPoseCount: 128,
+          sampledVertexCount: 48,
+          vertexSamplingMode: "EXACT_ALL_VERTICES",
+          timeSamplingTruncatedClipCount: 0,
+          maxPairDistanceRatio: 1,
+          maxPairDistanceError: 0,
+          minAxisAlignment: 0.26,
+        },
+      }],
+      warnings: ["Component 1 was stabilized to Spine02."],
+    };
+    const container = await render(
+      <ReviewModelDetails
+        result={result}
+        readback={readbackFixture}
+        activeViewport="CONVERTED"
+        onViewportChange={vi.fn()}
+        onInspectBinary={vi.fn()}
+        sourceViewport={<div />}
+        convertedReadbackViewport={<div />}
+      />,
+    );
+
+    expect(container.textContent).toContain("Accessory skinning audit");
+    expect(container.textContent).toContain("42 animation clips audited");
+    expect(container.textContent).toContain("2/4 detached components stabilized");
+    expect(container.textContent).toContain("Segment 0 · component 1");
+    expect(container.textContent).toContain("LeftArm → Spine02");
+    expect(container.textContent).toContain("2.390 → 1.000");
+    expect(container.textContent).toContain("48/48 vertices · EXACT_ALL_VERTICES");
+    expect(container.textContent).toContain("Component 1 was stabilized to Spine02.");
+  });
+
+  it("shows the exact downloadable demo MOD and module-local UTC identity", async () => {
+    const result = resultFixture();
+    result.demo = {
+      schemaVersion: 2,
+      moduleResref: "m2c2demo",
+      moduleDisplayName: "Meshy2Aurora procedural humanoid proof",
+      areaResref: "m2c2area",
+      areaDisplayName: "Meshy2Aurora procedural humanoid proof area",
+      creatureResref: "m2c2utc",
+      hakResref: "m2c2hak",
+      appearanceRow: 42,
+      resourceCount: 6,
+      byteLength: 2048,
+      sha256: "7".repeat(64),
+      semanticReadbackStatus: "PASS",
+    };
+    const container = await render(
+      <ReviewModelDetails
+        result={result}
+        readback={readbackFixture}
+        activeViewport="CONVERTED"
+        onViewportChange={vi.fn()}
+        onInspectBinary={vi.fn()}
+        sourceViewport={<div />}
+        convertedReadbackViewport={<div />}
+      />,
+    );
+    expect(container.textContent).toContain("Demo module / UTC");
+    expect(container.textContent).toContain("m2c2demo.mod");
+    expect(container.textContent).toContain("Module “Meshy2Aurora procedural humanoid proof”");
+    expect(container.textContent).toContain(
+      "Area “Meshy2Aurora procedural humanoid proof area” (m2c2area)",
+    );
+    expect(container.textContent).toContain("UTC m2c2utc");
+    expect(container.textContent).toContain("appearance row 42");
+  });
+
+  it("shows which source material fields were mapped and which remain unsupported", async () => {
+    const result = resultFixture();
+    result.materialFidelity = {
+      schemaVersion: 1,
+      materialSlot: 0,
+      sourceMaterialId: 0,
+      baseColorFactor: [0.8, 1, 0.5, 1],
+      baseColorFactorBaked: true,
+      alphaMode: "OPAQUE",
+      alphaChannelPreserved: true,
+      metallicFactor: 0,
+      roughnessFactor: 0.7,
+      normalTexturePresent: true,
+      emissiveFactor: [0.1, 0, 0],
+      emissiveTexturePresent: false,
+      doubleSided: true,
+      auroraMaterialProfile: "CLASSIC_DIFFUSE_TGA_SAFE_V1",
+      mappedFields: ["baseColorTexture->diffuseTga", "baseColorFactor->diffuseTgaPixels"],
+      unsupportedFields: ["roughnessFactor", "normalTexture", "emissiveFactor", "doubleSided"],
+    };
+    const container = await render(
+      <ReviewModelDetails
+        result={result}
+        readback={readbackFixture}
+        activeViewport="CONVERTED"
+        onViewportChange={vi.fn()}
+        onInspectBinary={vi.fn()}
+        sourceViewport={<div />}
+        convertedReadbackViewport={<div />}
+      />,
+    );
+    expect(container.textContent).toContain("Material fidelity");
+    expect(container.textContent).toContain("Base-color factor baked");
+    expect(container.textContent).toContain("baseColorTexture→diffuseTga");
+    expect(container.textContent).toContain("Unsupported in safe classic profile");
+    expect(container.textContent).toContain("roughnessFactor");
+    expect(container.textContent).toContain("doubleSided");
+  });
+
   it.each([
     ["PASS", "Verified by binary readback"],
     ["WARNING", "Binary readback has warnings"],

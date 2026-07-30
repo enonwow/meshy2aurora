@@ -15,6 +15,31 @@
 .review-model__evidence strong[data-status="pass"] { color: var(--success); }
 .review-model__evidence strong[data-status="difference"] { color: var(--warning); }
 .review-model__metrics { overflow-x: auto; padding: 12px 14px 16px; }
+.review-model__accessory-audit { margin: 14px; padding: 14px; border: 1px solid #28545b; border-radius: var(--radius-sm); background: #0d1c22; }
+.review-model__accessory-audit > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.review-model__accessory-audit h3 { margin: 0; font-size: .88rem; }
+.review-model__accessory-audit p { margin: 4px 0 0; color: var(--text-muted); font-size: .73rem; }
+.review-model__accessory-audit > header > strong { color: var(--success); font-size: .76rem; text-align: right; }
+.review-model__accessory-audit dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+.review-model__accessory-audit dl div { padding: 8px; border: 1px solid var(--border); border-radius: 4px; }
+.review-model__accessory-audit dt, .review-model__accessory-audit span { color: var(--text-muted); font-size: .68rem; }
+.review-model__accessory-audit dd { margin: 3px 0 0; font-size: .8rem; font-weight: 700; }
+.review-model__accessory-components { display: grid; gap: 7px; }
+.review-model__accessory-components article { display: grid; grid-template-columns: 1.3fr 1fr .8fr 1fr; gap: 10px; padding: 9px; border-top: 1px solid var(--border); }
+.review-model__accessory-components article > div { display: grid; align-content: start; gap: 3px; min-width: 0; }
+.review-model__accessory-components small, .review-model__accessory-components article > div > strong { overflow-wrap: anywhere; font-size: .7rem; }
+.review-model__accessory-warnings { margin: 10px 0 0; padding-left: 18px; color: var(--warning); font-size: .72rem; }
+.review-model__material-fidelity { margin: 14px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #0c1720; }
+.review-model__material-fidelity > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.review-model__material-fidelity h3 { margin: 0; font-size: .88rem; }
+.review-model__material-fidelity header p { margin: 4px 0 0; color: var(--text-muted); font-size: .7rem; }
+.review-model__material-fidelity header strong { color: var(--success); font-size: .75rem; }
+.review-model__material-fidelity header strong[data-status="warning"] { color: var(--warning); }
+.review-model__material-fidelity > div { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+.review-model__material-fidelity article { padding: 9px; border: 1px solid var(--border); border-radius: 4px; }
+.review-model__material-fidelity span { color: var(--text-muted); font-size: .7rem; }
+.review-model__material-fidelity ul { margin: 7px 0 0; padding-left: 18px; font-size: .72rem; }
+.review-model__material-fidelity p { margin: 7px 0 0; font-size: .72rem; }
 .review-model__metrics table { width: 100%; border-collapse: collapse; font-size: .78rem; }
 .review-model__metrics caption { padding: 3px 0 10px; color: var(--text-muted); text-align: left; }
 .review-model__metrics th, .review-model__metrics td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: right; font-variant-numeric: tabular-nums; }
@@ -29,4 +54,10 @@
   .review-model__evidence { grid-template-columns: 1fr; }
   .review-model__evidence article { border-right: 0; border-bottom: 1px solid var(--border); }
   .review-model__evidence article:last-child { border-bottom: 0; }
+  .review-model__accessory-audit > header { flex-direction: column; }
+  .review-model__accessory-audit > header > strong { text-align: left; }
+  .review-model__accessory-audit dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .review-model__accessory-components article { grid-template-columns: 1fr; }
+  .review-model__material-fidelity > header { flex-direction: column; }
+  .review-model__material-fidelity > div { grid-template-columns: 1fr; }
 }

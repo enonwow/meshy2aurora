@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { createLocalBridge } from "./index.mjs";
+import { AURORA_MODEL_TRIANGLE_BUDGET_V1 } from "./remesh-rig-animation-recovery-options.mjs";
 
 const profiles = new Set(["H1-humanoid-animated/v1", "N1-quadruped/v1", "S1-static-prop/v1"]);
 const geometryTargets = new Set(["AURORA_PROOF", "LOWER_DETAIL", "BALANCED", "HIGHER_DETAIL"]);
@@ -44,8 +45,17 @@ async function main() {
   if (!Number.isFinite(maxCredits) || maxCredits <= 0) throw new Error("MESHY_MAX_CREDITS must be a positive number.");
   if (!profiles.has(profileId)) throw new Error("MESHY_REAL_E2E_PROFILE must be H1-humanoid-animated/v1, N1-quadruped/v1, or S1-static-prop/v1.");
   if (!geometryTargets.has(geometryTarget)) throw new Error("MESHY_REAL_E2E_GEOMETRY_TARGET must be AURORA_PROOF, LOWER_DETAIL, BALANCED, or HIGHER_DETAIL.");
-  if (targetPolycount !== undefined && (!Number.isInteger(targetPolycount) || targetPolycount < 100 || targetPolycount > 300_000)) {
-    throw new Error("MESHY_REAL_E2E_TARGET_POLYCOUNT must be an integer in 100..=300000.");
+  if (
+    targetPolycount !== undefined
+    && (
+      !Number.isInteger(targetPolycount)
+      || targetPolycount < 100
+      || targetPolycount > AURORA_MODEL_TRIANGLE_BUDGET_V1
+    )
+  ) {
+    throw new Error(
+      `MESHY_REAL_E2E_TARGET_POLYCOUNT must be an integer in 100..=${AURORA_MODEL_TRIANGLE_BUDGET_V1}.`,
+    );
   }
   const apiOptions = targetPolycount === undefined ? undefined : {
     modelType: "standard",

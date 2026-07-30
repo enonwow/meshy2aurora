@@ -8,8 +8,9 @@ use m2a_core::{
         AuroraSegmentDeformationV1, AuroraVertexWeightsV1,
     },
     skin_accessory::{
-        SkinAccessoryComponentActionV1, SkinAccessoryStabilizationModeV1,
-        SkinAccessoryStabilizationOptionsV1, audit_and_stabilize_skin_accessories_v1,
+        SkinAccessoryComponentActionV1, SkinAccessoryComponentBoneOverrideV2,
+        SkinAccessoryStabilizationModeV1, SkinAccessoryStabilizationOptionsV2,
+        audit_and_stabilize_skin_accessories_v2,
     },
 };
 
@@ -206,11 +207,26 @@ fn animation_set() -> MdlAnimationSetV1 {
     }
 }
 
-fn options(mode: SkinAccessoryStabilizationModeV1) -> SkinAccessoryStabilizationOptionsV1 {
-    SkinAccessoryStabilizationOptionsV1 {
+fn static_animation_set() -> MdlAnimationSetV1 {
+    MdlAnimationSetV1 {
         schema_version: 1,
+        clips: vec![MdlAnimationClipV1 {
+            name: "cpause1".to_owned(),
+            animation_root: "Root".to_owned(),
+            length_seconds: 1.0,
+            transition_seconds: 0.0,
+            events: Vec::new(),
+            tracks: Vec::new(),
+        }],
+    }
+}
+
+fn options(mode: SkinAccessoryStabilizationModeV1) -> SkinAccessoryStabilizationOptionsV2 {
+    SkinAccessoryStabilizationOptionsV2 {
+        schema_version: 2,
         mode,
         selected_bone_name: None,
+        component_bone_overrides: Vec::new(),
     }
 }
 
@@ -218,7 +234,7 @@ fn options(mode: SkinAccessoryStabilizationModeV1) -> SkinAccessoryStabilization
 fn spatial_weld_connects_seams_and_primary_body_is_never_stabilized() {
     let mut creature = synthetic_creature();
     let original_body_weights = creature.segments[0].weights[..12].to_vec();
-    let report = audit_and_stabilize_skin_accessories_v1(
+    let report = audit_and_stabilize_skin_accessories_v2(
         &mut creature,
         &animation_set(),
         &options(SkinAccessoryStabilizationModeV1::Auto),
@@ -226,6 +242,7 @@ fn spatial_weld_connects_seams_and_primary_body_is_never_stabilized() {
     .expect("accessory audit");
 
     assert_eq!(report.component_count, 3);
+    assert_eq!(report.audited_clip_count, 1);
     let primary = report
         .components
         .iter()
@@ -237,9 +254,36 @@ fn spatial_weld_connects_seams_and_primary_body_is_never_stabilized() {
 }
 
 #[test]
+fn auto_does_not_rigidify_mixed_weights_without_observed_non_rigid_deformation() {
+    let mut creature = synthetic_creature();
+    let original = creature.clone();
+    let report = audit_and_stabilize_skin_accessories_v2(
+        &mut creature,
+        &static_animation_set(),
+        &options(SkinAccessoryStabilizationModeV1::Auto),
+    )
+    .expect("conservative accessory audit");
+
+    assert_eq!(creature, original);
+    assert_eq!(report.stabilized_component_count, 0);
+    let mixed = report
+        .components
+        .iter()
+        .find(|component| component.risk_reasons == ["MIXED_COMPONENT_WEIGHTS"])
+        .expect("mixed detached component remains auditable");
+    assert_eq!(
+        mixed.action,
+        SkinAccessoryComponentActionV1::UnchangedDetachedComponent
+    );
+    assert!(report.warnings.iter().any(|warning| {
+        warning.contains("mixed weights") && warning.contains("no sampled non-rigid deformation")
+    }));
+}
+
+#[test]
 fn auto_stabilizes_mixed_detached_accessory_and_improves_deformation_metrics() {
     let mut creature = synthetic_creature();
-    let report = audit_and_stabilize_skin_accessories_v1(
+    let report = audit_and_stabilize_skin_accessories_v2(
         &mut creature,
         &animation_set(),
         &options(SkinAccessoryStabilizationModeV1::Auto),
@@ -265,7 +309,7 @@ fn auto_stabilizes_mixed_detached_accessory_and_improves_deformation_metrics() {
 fn correct_rigid_accessory_is_reported_without_weight_changes() {
     let mut creature = synthetic_creature();
     let original = creature.clone();
-    let report = audit_and_stabilize_skin_accessories_v1(
+    let report = audit_and_stabilize_skin_accessories_v2(
         &mut creature,
         &animation_set(),
         &options(SkinAccessoryStabilizationModeV1::Auto),
@@ -288,7 +332,7 @@ fn correct_rigid_accessory_is_reported_without_weight_changes() {
 fn keep_source_weights_is_auditable_and_does_not_mutate_the_model() {
     let mut creature = synthetic_creature();
     let original = creature.clone();
-    let report = audit_and_stabilize_skin_accessories_v1(
+    let report = audit_and_stabilize_skin_accessories_v2(
         &mut creature,
         &animation_set(),
         &options(SkinAccessoryStabilizationModeV1::KeepSourceWeights),
@@ -309,7 +353,7 @@ fn explicit_bone_selection_is_applied_only_to_approved_accessories() {
     let mut selected = options(SkinAccessoryStabilizationModeV1::SelectBone);
     selected.selected_bone_name = Some("Spine".to_owned());
     let report =
-        audit_and_stabilize_skin_accessories_v1(&mut creature, &animation_set(), &selected)
+        audit_and_stabilize_skin_accessories_v2(&mut creature, &animation_set(), &selected)
             .expect("selected-bone stabilization");
 
     let repaired = report
@@ -324,19 +368,76 @@ fn explicit_bone_selection_is_applied_only_to_approved_accessories() {
 }
 
 #[test]
+fn explicit_component_bone_override_can_target_one_risky_accessory_without_global_bone() {
+    let mut creature = synthetic_creature();
+    let selected = SkinAccessoryStabilizationOptionsV2 {
+        schema_version: 2,
+        mode: SkinAccessoryStabilizationModeV1::SelectBone,
+        selected_bone_name: None,
+        component_bone_overrides: vec![SkinAccessoryComponentBoneOverrideV2 {
+            segment_index: 0,
+            component_index: 1,
+            bone_name: "Spine".to_owned(),
+        }],
+    };
+
+    let report =
+        audit_and_stabilize_skin_accessories_v2(&mut creature, &animation_set(), &selected)
+            .expect("component-selected stabilization");
+
+    let repaired = report
+        .components
+        .iter()
+        .find(|component| component.component_index == 1)
+        .expect("mixed accessory");
+    assert_eq!(repaired.action, SkinAccessoryComponentActionV1::Stabilized);
+    assert_eq!(repaired.selected_bone_name.as_deref(), Some("Spine"));
+    for vertex in &creature.segments[0].weights[12..18] {
+        assert_eq!(vertex, &hard_weight(2));
+    }
+}
+
+#[test]
+fn duplicate_component_bone_overrides_are_rejected() {
+    let mut creature = synthetic_creature();
+    let selected = SkinAccessoryStabilizationOptionsV2 {
+        schema_version: 2,
+        mode: SkinAccessoryStabilizationModeV1::SelectBone,
+        selected_bone_name: None,
+        component_bone_overrides: vec![
+            SkinAccessoryComponentBoneOverrideV2 {
+                segment_index: 0,
+                component_index: 1,
+                bone_name: "Spine".to_owned(),
+            },
+            SkinAccessoryComponentBoneOverrideV2 {
+                segment_index: 0,
+                component_index: 1,
+                bone_name: "Spine02".to_owned(),
+            },
+        ],
+    };
+
+    let error = audit_and_stabilize_skin_accessories_v2(&mut creature, &animation_set(), &selected)
+        .expect_err("duplicate component override must fail");
+
+    assert_eq!(error.code, "M6-SKIN-ACCESSORY-COMPONENT-OVERRIDE-DUPLICATE");
+}
+
+#[test]
 fn stabilization_is_deterministic_and_preserves_non_weight_payloads() {
     let animations = animation_set();
     let original_animations = animations.clone();
     let mut first = synthetic_creature();
     let mut second = first.clone();
     let original = first.clone();
-    let first_report = audit_and_stabilize_skin_accessories_v1(
+    let first_report = audit_and_stabilize_skin_accessories_v2(
         &mut first,
         &animations,
         &options(SkinAccessoryStabilizationModeV1::Auto),
     )
     .expect("first");
-    let second_report = audit_and_stabilize_skin_accessories_v1(
+    let second_report = audit_and_stabilize_skin_accessories_v2(
         &mut second,
         &animations,
         &options(SkinAccessoryStabilizationModeV1::Auto),

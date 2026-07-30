@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_MESHY_ANIMATION_ACTIONS,
   InMemoryMeshyBridgeClient,
   MESHY_PROFILES,
+  NWN_DIRECT_CREATURE_CLIPS,
   MeshyBridgeError,
   findMeshyProfile,
   resolveLocalMeshyBridgeOrigin,
+  validateMeshyAnimationActions,
 } from "./bridge";
 
 describe("Meshy Lab profiles", () => {
@@ -29,6 +32,22 @@ describe("Meshy Lab profiles", () => {
       prompt: "A small wooden treasure chest",
       geometryTarget: "AURORA_PROOF",
     })).resolves.toMatchObject({});
+  });
+
+  it("uses explicit, unique Meshy action to NWN clip mappings and requires an idle source", () => {
+    expect(DEFAULT_MESHY_ANIMATION_ACTIONS).toEqual([{ actionId: 0, clipName: "cpause1" }]);
+    expect(NWN_DIRECT_CREATURE_CLIPS).toHaveLength(42);
+    expect(validateMeshyAnimationActions([
+      { actionId: 0, clipName: "cpause1" },
+      { actionId: 198, clipName: "ca1slashl" },
+      { actionId: 193, clipName: "ca1slashr" },
+    ])).toEqual([]);
+    expect(validateMeshyAnimationActions([{ actionId: 198, clipName: "ca1slashl" }]))
+      .toContain("Map exactly one Meshy action to cpause1 so the Creature has a source idle clip.");
+    expect(validateMeshyAnimationActions([
+      { actionId: 0, clipName: "cpause1" },
+      { actionId: 198, clipName: "cpause1" },
+    ])).toContain("Every NWN clip name can be mapped only once.");
   });
 
   it("accepts image and multi-image preview contracts without inventing a text prompt", async () => {
@@ -111,6 +130,7 @@ describe("InMemoryMeshyBridgeClient", () => {
       h1Preflight: { standardHumanoid: true, clearLimbs: true, noWeapon: true },
     });
 
+    expect(preview.maximumCredits).toBe(43);
     expect(JSON.stringify({ pairing, health, preview })).not.toContain("MESHY_API_KEY");
     await expect(bridge.createRun(pairing.sessionToken, {
       previewId: preview.previewId,

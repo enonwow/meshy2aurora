@@ -62,21 +62,31 @@ hidden by default when the feature is not explicitly enabled.
 
 | Profile | Pipeline |
 | --- | --- |
-| H1 humanoid animated | Text/Image-to-3D -> rigging -> od 1 do 10 akcji Animation API -> osobne GLB |
+| H1 humanoid animated | Text/Image-to-3D -> rigging -> od 1 do 10 akcji Animation API -> jeden scalony GLB |
 | N1 quadruped | Text-to-3D preview -> refine -> GLB |
 | S1 static prop | Text-to-3D preview -> refine -> GLB |
 
-Only H1 can use rigging/animation. Pole `animationActionIds` accepts from one
-to ten unique Meshy action IDs. The Bridge creates every action on the same
+Only H1 can use rigging/animation. Studio sends `animationActions`: from one
+to ten unique pairs `{actionId, clipName}`. Action IDs must be unique, clip
+names must be unique members of the exact 42-state NWN namespace, and exactly
+one mapping must target `cpause1`. The Bridge creates every action on the same
 exact rig, downloads and validates every GLB, calculates its SHA-256 and
-exposes it only after the whole run reaches `READY`. The maximum credit estimate
-is calculated from the actual number of requested actions, not from a fixed
-single-animation assumption.
+exposes the canonical artifact only after the whole run reaches `READY`. The
+maximum credit estimate is calculated from the actual number of requested
+actions, not from a fixed single-animation assumption. H1 confirmation also
+reserves the worst-case five-credit automatic-remesh recovery before any paid
+task is created. For one action the maximum is therefore 43 credits
+(`30 generation + 5 recovery reserve + 5 rig + 3 animation`); unused recovery
+reserve is not spent.
 
-`merge-animation-glbs.mjs` combines same-rig action GLBs into one canonical
-source GLB and gives each clip its requested NWN name. It fails closed when
-node or skin topology differs. A signed download failure is a transport-lane
-failure, not permission to create another model or rig:
+The Bridge invokes `merge-animation-glbs.mjs` automatically. It combines all
+same-rig action GLBs into one canonical `/artifact`, gives each clip its
+requested NWN name and records `artifactKind=MERGED_ANIMATION_GLTF` plus every
+raw action identity in provenance. Studio imports that one merged file into
+Source; the user must not manually choose the first action GLB. The merge fails
+closed when node, skin, POSITION, JOINTS, WEIGHTS or index topology differs. A
+signed download failure is a transport-lane failure, not permission to create
+another model or rig:
 `resume-animation-lineage.mjs` first binds to the exact recorded model and rig
 task IDs, reuses already completed animation tasks, and creates only missing
 actions within the remaining owner-approved credit cap.
@@ -151,8 +161,10 @@ For an owner-approved image-to-3D H1 run with several animations, use
 directory, refuses to overwrite any payload or provenance file, enforces the
 owner credit ceiling before the paid request, and accepts one to ten
 `{actionId,fileStem,clipName}` entries through
-`MESHY_REAL_E2E_ANIMATIONS`. After download, merge those exact same-rig files
-with `merge-animation-glbs.mjs`; do not create a second source library.
+`MESHY_REAL_E2E_ANIMATIONS`. The runner downloads every raw action for
+provenance, then writes the automatically merged canonical `source.glb` in the
+same declared `sample-3d/<asset-id>/` directory. Do not manually substitute a
+single action GLB or create a second source library.
 
 The runner enables Meshy moderation by default. If Meshy rejects an
 owner-approved fictional horror concept before creating a model with

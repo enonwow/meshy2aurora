@@ -1,4 +1,5 @@
 export const MESHY_BRIDGE_PROTOCOL_VERSION = 1 as const;
+export const AURORA_MODEL_TRIANGLE_BUDGET_V1 = 300_000 as const;
 
 export type MeshyProfileId =
   | "H1-humanoid-animated/v1"
@@ -8,6 +9,10 @@ export type MeshyProfileId =
 export type MeshyArtifactProfileId = MeshyProfileId | "RECOVERED-text-to-3d/v1" | "RETEXTURED-model/v1";
 
 export type MeshyPipelineStage = "PREVIEW" | "REFINE" | "RIG" | "ANIMATE";
+export type MeshyTaskStage =
+  | MeshyPipelineStage
+  | "REMESH"
+  | `ANIMATE_${number}`;
 export type MeshyGeometryTarget = "AURORA_PROOF" | "LOWER_DETAIL" | "BALANCED" | "HIGHER_DETAIL";
 export type MeshyAiModel = "latest" | "meshy-5" | "meshy-6" | "meshy-t1" | "meshy-t2";
 export type MeshyModelType = "standard" | "lowpoly" | "smart-topology";
@@ -15,6 +20,51 @@ export type MeshyTopology = "triangle" | "quad";
 export type MeshyPoseMode = "" | "a-pose" | "t-pose";
 export type MeshyTargetFormat = "glb" | "obj" | "fbx" | "stl" | "usdz" | "3mf";
 export type MeshyGenerationSource = "TEXT" | "IMAGE" | "MULTI_IMAGE";
+
+/** Exact direct-Creature state namespace accepted by the native NWN pipeline. */
+export const NWN_DIRECT_CREATURE_CLIPS = [
+  "ca1slashl", "ca1slashr", "ca1stab", "creach", "cconjure1", "ccastout",
+  "cparryl", "cparryr", "cdodgelr", "cdodges", "creadyr", "creadyl",
+  "cdamagel", "cdamager", "cdamages", "ckdbck", "ckdbckps", "ckdbckdie",
+  "cguptokdb", "cgustandb", "cwalk", "crun", "ccwalkf", "ccwalkb",
+  "ccwalkl", "ccwalkr", "cpause1", "chturnl", "chturnr", "ctaunt",
+  "cclosel", "ccloseh", "cgetmid", "ckdbckdmg", "ccastoutlp", "cspasm",
+  "cappear", "cdisappear", "cgetmidlp", "cdead", "cdisappearlp", "ccturnr",
+] as const;
+
+export type NwnDirectCreatureClip = typeof NWN_DIRECT_CREATURE_CLIPS[number];
+
+export interface MeshyAnimationActionMapping {
+  readonly actionId: number;
+  readonly clipName: NwnDirectCreatureClip;
+}
+
+export const DEFAULT_MESHY_ANIMATION_ACTIONS: readonly MeshyAnimationActionMapping[] = [
+  { actionId: 0, clipName: "cpause1" },
+] as const;
+
+export function validateMeshyAnimationActions(actions: readonly MeshyAnimationActionMapping[]) {
+  const errors: string[] = [];
+  if (actions.length < 1 || actions.length > 10) {
+    errors.push("Choose between one and ten Meshy animation actions.");
+  }
+  if (actions.some(({ actionId }) => !Number.isInteger(actionId) || actionId < 0)) {
+    errors.push("Every Meshy animation action ID must be a non-negative integer.");
+  }
+  if (new Set(actions.map(({ actionId }) => actionId)).size !== actions.length) {
+    errors.push("Every Meshy animation action ID can be selected only once.");
+  }
+  if (actions.some(({ clipName }) => !NWN_DIRECT_CREATURE_CLIPS.includes(clipName))) {
+    errors.push("Every animation must map to a supported NWN Creature clip.");
+  }
+  if (new Set(actions.map(({ clipName }) => clipName.toLowerCase())).size !== actions.length) {
+    errors.push("Every NWN clip name can be mapped only once.");
+  }
+  if (actions.filter(({ clipName }) => clipName === "cpause1").length !== 1) {
+    errors.push("Map exactly one Meshy action to cpause1 so the Creature has a source idle clip.");
+  }
+  return errors;
+}
 
 export const MESHY_GEOMETRY_TARGETS: readonly MeshyGeometryTarget[] = [
   "AURORA_PROOF",
@@ -100,7 +150,7 @@ export interface MeshyProfile {
   readonly expectedOutput: {
     readonly texture: boolean;
     readonly rigging: boolean;
-    readonly animation: "IDLE" | null;
+    readonly animation: "MAPPED_SET" | null;
   };
 }
 
@@ -108,9 +158,9 @@ export const MESHY_PROFILES: readonly MeshyProfile[] = [
   {
     id: "H1-humanoid-animated/v1",
     label: "Humanoid Animated",
-    description: "Textured standard humanoid with rigging and one Idle animation proof.",
+    description: "Textured standard humanoid with rigging and one to ten explicitly mapped Meshy animations.",
     stages: ["PREVIEW", "REFINE", "RIG", "ANIMATE"],
-    expectedOutput: { texture: true, rigging: true, animation: "IDLE" },
+    expectedOutput: { texture: true, rigging: true, animation: "MAPPED_SET" },
   },
   {
     id: "N1-quadruped/v1",
@@ -211,7 +261,7 @@ export interface MeshyTextTo3DOptions {
   readonly multiViewThumbnails: boolean;
   readonly rigHumanoid: boolean;
   readonly rigHeightMeters: number;
-  readonly animationActionId?: number;
+  readonly animationActions: readonly MeshyAnimationActionMapping[];
 }
 
 export const DEFAULT_MESHY_TEXT_TO_3D_OPTIONS: MeshyTextTo3DOptions = {
@@ -239,7 +289,7 @@ export const DEFAULT_MESHY_TEXT_TO_3D_OPTIONS: MeshyTextTo3DOptions = {
   multiViewThumbnails: false,
   rigHumanoid: false,
   rigHeightMeters: 1.7,
-  animationActionId: 0,
+  animationActions: DEFAULT_MESHY_ANIMATION_ACTIONS,
 };
 
 export interface MeshyRunPreview {
@@ -256,7 +306,7 @@ export interface MeshyRun {
   readonly geometryTarget: MeshyGeometryTarget;
   readonly status: MeshyRunStatus;
   readonly progress: number;
-  readonly taskIds: Readonly<Partial<Record<MeshyPipelineStage, string>>>;
+  readonly taskIds: Readonly<Partial<Record<MeshyTaskStage, string>>>;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly error?: { readonly code: MeshyBridgeErrorCode; readonly message: string };
@@ -267,7 +317,14 @@ export interface MeshyArtifactProvenance {
   readonly bridgeProtocolVersion: typeof MESHY_BRIDGE_PROTOCOL_VERSION;
   readonly sha256: string;
   readonly byteLength: number;
-  readonly taskIds: Readonly<Partial<Record<MeshyPipelineStage, string>>>;
+  readonly taskIds: Readonly<Partial<Record<MeshyTaskStage, string>>>;
+  readonly artifactKind?: "GENERATED_GLTF" | "MERGED_ANIMATION_GLTF";
+  readonly animationArtifacts?: readonly {
+    readonly actionId: number;
+    readonly clipName: NwnDirectCreatureClip;
+    readonly sha256: string;
+    readonly byteLength: number;
+  }[];
 }
 
 export interface MeshyRunArtifact {
@@ -447,11 +504,19 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
     if (profile.id.startsWith("H1") && !isH1PreflightComplete(input.h1Preflight)) {
       throw new MeshyBridgeError("H1_PREFLIGHT_REQUIRED", "Confirm standard humanoid, clear limbs, and no weapon before H1 rigging.");
     }
+    if (profile.id.startsWith("H1")) {
+      const animationErrors = validateMeshyAnimationActions(
+        input.apiOptions?.animationActions ?? DEFAULT_MESHY_ANIMATION_ACTIONS,
+      );
+      if (animationErrors.length) {
+        throw new MeshyBridgeError("PREVIEW_NOT_FOUND", animationErrors.join(" "));
+      }
+    }
     const preview: StoredPreview = {
       ...input,
       previewId: identifier("meshy-preview"),
       profile,
-      maximumCredits: this.maximumCredits(profile),
+      maximumCredits: this.maximumCredits(profile, input.apiOptions),
       stages: profile.stages,
     };
     this.previews.set(preview.previewId, preview);
@@ -629,7 +694,7 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
     const hash = await sha256(bytes);
     const taskIds = Object.fromEntries(
       stored.run.profile.stages.map((stage) => [stage, identifier(`task-${stage.toLowerCase()}`)]),
-    ) as Readonly<Partial<Record<MeshyPipelineStage, string>>>;
+    ) as Readonly<Partial<Record<MeshyTaskStage, string>>>;
     stored.run = {
       ...stored.run,
       status: "READY",
@@ -695,8 +760,12 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
     return run;
   }
 
-  private maximumCredits(profile: MeshyProfile) {
-    return profile.id.startsWith("H1") ? 38 : 30;
+  private maximumCredits(profile: MeshyProfile, options?: MeshyTextTo3DOptions) {
+    const actionCount = options?.animationActions.length ?? DEFAULT_MESHY_ANIMATION_ACTIONS.length;
+    // H1 reserves the worst-case 30 generation + 5 automatic-remesh
+    // recovery + 5 rigging credits before adding the exact action count.
+    // Keep this test bridge identical to the local Bridge confirmation.
+    return profile.id.startsWith("H1") ? 40 + 3 * actionCount : 30;
   }
 }
 

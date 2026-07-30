@@ -104,6 +104,14 @@
 .meshy-lab__api-toggles { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .meshy-lab__api-toggles label { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: .8rem; }
 .meshy-lab__api-toggles select { width: auto; min-height: 30px; padding: 4px 6px; }
+.meshy-lab__animation-mappings { display: grid; gap: 9px; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: rgb(8 16 23 / 58%); }
+.meshy-lab__animation-mappings-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.meshy-lab__animation-mappings-heading > div { display: grid; gap: 3px; }
+.meshy-lab__animation-mappings small { color: var(--text-muted); }
+.meshy-lab__animation-mapping { display: grid; grid-template-columns: minmax(110px, .7fr) minmax(150px, 1fr) auto; align-items: end; gap: 8px; }
+.meshy-lab__animation-mapping label { display: grid; gap: 5px; color: var(--text-muted); font-size: .72rem; }
+.meshy-lab__animation-mapping input, .meshy-lab__animation-mapping select { width: 100%; min-height: 34px; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: #0b151e; color: var(--text); }
+.meshy-lab__validation-errors { display: grid; gap: 3px; margin: 0; padding-left: 18px; color: var(--danger); font-size: .72rem; }
 .meshy-lab__api-section fieldset { padding-top: 8px; border-top: 1px solid var(--border); }
 .meshy-lab__layout { display: grid; grid-template-columns: minmax(190px, .24fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 .meshy-lab__navigation { position: sticky; top: 16px; display: grid; align-content: start; gap: 8px; padding: 14px; }

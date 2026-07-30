@@ -171,7 +171,7 @@ describe("SourceStep", () => {
     expect(onTextureArtifactCleanupChange).toHaveBeenCalledWith(true);
   });
 
-  it("exposes audited detached-accessory modes and requires a bone for Select bone", async () => {
+  it("exposes audited detached-accessory modes and accepts a global bone or valid component overrides", async () => {
     const onModeChange = vi.fn();
     const onBoneChange = vi.fn();
     const container = await render(
@@ -227,6 +227,46 @@ describe("SourceStep", () => {
       .find((candidate) => candidate.textContent?.includes("Continue to Inspect"));
     expect(bone).not.toBeNull();
     expect(continueButton?.disabled).toBe(true);
+
+    await act(async () => {
+      rootRender(
+        container,
+        <SourceStep
+          {...handlers()}
+          source={source()}
+          appearance={appearance()}
+          skinAccessoryStabilizationMode="SELECT_BONE"
+          skinAccessorySelectedBoneName=""
+          skinAccessoryComponentBoneOverrides={"0:4=Spine\n0:2=Spine02"}
+          onCreatureProfileChange={vi.fn()}
+          onSkinAccessoryStabilizationModeChange={onModeChange}
+          onSkinAccessorySelectedBoneNameChange={onBoneChange}
+          onContinue={vi.fn()}
+        />,
+      );
+    });
+    expect(continueButton?.disabled).toBe(false);
+    expect(container.textContent).not.toContain("Invalid override");
+
+    await act(async () => {
+      rootRender(
+        container,
+        <SourceStep
+          {...handlers()}
+          source={source()}
+          appearance={appearance()}
+          skinAccessoryStabilizationMode="SELECT_BONE"
+          skinAccessorySelectedBoneName=""
+          skinAccessoryComponentBoneOverrides="0:2"
+          onCreatureProfileChange={vi.fn()}
+          onSkinAccessoryStabilizationModeChange={onModeChange}
+          onSkinAccessorySelectedBoneNameChange={onBoneChange}
+          onContinue={vi.fn()}
+        />,
+      );
+    });
+    expect(continueButton?.disabled).toBe(true);
+    expect(container.textContent).toContain("segment:component=BoneName");
   });
 
   it("uses the shared 300K product profile by default", async () => {

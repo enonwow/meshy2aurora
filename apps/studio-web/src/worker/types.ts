@@ -1,11 +1,17 @@
-export type ModelPackageLaneV1 =
-  | "H1_SKINNED_FULL_42"
-  | "M0_STATIC_RIGID";
+export type ModelPackageLaneV1 = "M0_STATIC_RIGID";
 
-export type SkinAccessoryStabilizationOptionsV1 = {
+export type SkinAccessoryStabilizationOptionsV2 = {
   mode: "AUTO" | "KEEP_SOURCE_WEIGHTS" | "SELECT_BONE";
   selectedBoneName?: string;
+  componentBoneOverrides?: readonly {
+    segmentIndex: number;
+    componentIndex: number;
+    boneName: string;
+  }[];
 };
+
+/** @deprecated Use SkinAccessoryStabilizationOptionsV2. */
+export type SkinAccessoryStabilizationOptionsV1 = SkinAccessoryStabilizationOptionsV2;
 
 export type StudioWorkerRequest =
   | { requestId: string; type: "INITIALIZE" }
@@ -31,8 +37,10 @@ export type StudioWorkerRequest =
       appearanceTwoDa: ArrayBuffer;
       packageLane: "SKINNED_PROCEDURAL_HUMANOID_42";
       identityJson: string;
+      demoModuleIdentityJson: string;
+      demoCreatureResref: string;
       textureArtifactCleanup: boolean;
-      skinAccessoryStabilization?: SkinAccessoryStabilizationOptionsV1;
+      skinAccessoryStabilization?: SkinAccessoryStabilizationOptionsV2;
     }
   | {
       requestId: string;
@@ -42,7 +50,7 @@ export type StudioWorkerRequest =
       packageLane: "SKINNED_PROCEDURAL_HUMANOID_P100K_EXPERIMENT";
       identityJson: string;
       textureArtifactCleanup: boolean;
-      skinAccessoryStabilization?: SkinAccessoryStabilizationOptionsV1;
+      skinAccessoryStabilization?: SkinAccessoryStabilizationOptionsV2;
     }
   | {
       requestId: string;
@@ -52,7 +60,19 @@ export type StudioWorkerRequest =
       packageLane: "SKINNED_PROCEDURAL_HUMANOID_P300K_EXPERIMENT";
       identityJson: string;
       textureArtifactCleanup: boolean;
-      skinAccessoryStabilization?: SkinAccessoryStabilizationOptionsV1;
+      skinAccessoryStabilization?: SkinAccessoryStabilizationOptionsV2;
+    }
+  | {
+      requestId: string;
+      type: "BUILD_MODEL_PACKAGE";
+      sourceGlb: ArrayBuffer;
+      appearanceTwoDa: ArrayBuffer;
+      packageLane: "H1_SKINNED_FULL_42";
+      identityJson: string;
+      demoModuleIdentityJson: string;
+      demoCreatureResref: string;
+      textureArtifactCleanup: boolean;
+      skinAccessoryStabilization?: SkinAccessoryStabilizationOptionsV2;
     }
   | {
       requestId: string;
@@ -61,6 +81,11 @@ export type StudioWorkerRequest =
       appearanceTwoDa: ArrayBuffer;
       packageLane: "H1_SKINNED_FULL_42_EVENTS";
       eventAuthoringJson: string;
+      identityJson: string;
+      demoModuleIdentityJson: string;
+      demoCreatureResref: string;
+      textureArtifactCleanup: boolean;
+      skinAccessoryStabilization?: SkinAccessoryStabilizationOptionsV2;
     }
   | {
       requestId: string;
@@ -124,6 +149,7 @@ export type StudioWorkerSuccess =
       manifestJson: string;
       summaryJson: string;
       readbackJson: string;
+      demoReportJson?: string;
     }
   | {
       requestId: string;

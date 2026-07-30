@@ -42,6 +42,27 @@ function parseGlb(bytes, label) {
   return { json, bin: buffer.subarray(binHeader + 8, binHeader + 8 + declaredBinLength) };
 }
 
+export function inspectGlbTriangleCount(bytes, label = "GLB") {
+  const parsed = parseGlb(bytes, label);
+  let triangleCount = 0;
+  for (let meshIndex = 0; meshIndex < (parsed.json.meshes ?? []).length; meshIndex += 1) {
+    const primitives = parsed.json.meshes[meshIndex].primitives ?? [];
+    for (let primitiveIndex = 0; primitiveIndex < primitives.length; primitiveIndex += 1) {
+      const primitive = primitives[primitiveIndex];
+      const path = `meshes[${meshIndex}].primitives[${primitiveIndex}]`;
+      if ((primitive.mode ?? 4) !== 4) fail(`${label} ${path} is not a triangle list`);
+      const accessorIndex = primitive.indices ?? primitive.attributes?.POSITION;
+      if (!Number.isInteger(accessorIndex)) fail(`${label} ${path} has no indices or POSITION accessor`);
+      accessorDigest(parsed, accessorIndex, label, primitive.indices === undefined ? `${path}.attributes.POSITION` : `${path}.indices`);
+      const accessor = parsed.json.accessors[accessorIndex];
+      if (accessor.count % 3 !== 0) fail(`${label} ${path} triangle-list accessor count is not divisible by three`);
+      triangleCount += accessor.count / 3;
+      if (!Number.isSafeInteger(triangleCount)) fail(`${label} triangle count exceeds the safe integer range`);
+    }
+  }
+  return triangleCount;
+}
+
 function nodeSignature(node) {
   return JSON.stringify({
     name: node.name ?? null,
@@ -55,18 +76,201 @@ function nodeSignature(node) {
   });
 }
 
+const ACCESSOR_COMPONENT_BYTES = new Map([
+  [5120, 1],
+  [5121, 1],
+  [5122, 2],
+  [5123, 2],
+  [5125, 4],
+  [5126, 4],
+]);
+const ACCESSOR_TYPE_COMPONENTS = new Map([
+  ["SCALAR", 1],
+  ["VEC2", 2],
+  ["VEC3", 3],
+  ["VEC4", 4],
+  ["MAT2", 4],
+  ["MAT3", 9],
+  ["MAT4", 16],
+]);
+
+function accessorDigest(parsed, accessorIndex, label, path) {
+  const accessor = parsed.json.accessors?.[accessorIndex];
+  if (!accessor || !Number.isInteger(accessorIndex) || accessorIndex < 0) {
+    fail(`${label} ${path} references missing accessor ${accessorIndex}`);
+  }
+  if (accessor.sparse !== undefined) {
+    fail(`${label} ${path} uses a sparse accessor, which the strict rig-identity check does not accept`);
+  }
+  const componentBytes = ACCESSOR_COMPONENT_BYTES.get(accessor.componentType);
+  const componentCount = ACCESSOR_TYPE_COMPONENTS.get(accessor.type);
+  if (!componentBytes || !componentCount || !Number.isInteger(accessor.count) || accessor.count < 0) {
+    fail(`${label} ${path} has invalid accessor metadata`);
+  }
+  if (!Number.isInteger(accessor.bufferView) || accessor.bufferView < 0) {
+    fail(`${label} ${path} must use a dense embedded bufferView`);
+  }
+  const view = parsed.json.bufferViews?.[accessor.bufferView];
+  if (!view || view.buffer !== 0 || !Number.isInteger(view.byteLength) || view.byteLength < 0) {
+    fail(`${label} ${path} references an invalid bufferView ${accessor.bufferView}`);
+  }
+  const viewStart = view.byteOffset ?? 0;
+  const accessorOffset = accessor.byteOffset ?? 0;
+  const elementBytes = componentBytes * componentCount;
+  const stride = view.byteStride ?? elementBytes;
+  if (
+    !Number.isInteger(viewStart)
+    || viewStart < 0
+    || !Number.isInteger(accessorOffset)
+    || accessorOffset < 0
+    || !Number.isInteger(stride)
+    || stride < elementBytes
+  ) {
+    fail(`${label} ${path} has an invalid byte range or stride`);
+  }
+  const first = viewStart + accessorOffset;
+  const last = accessor.count === 0
+    ? first
+    : first + (accessor.count - 1) * stride + elementBytes;
+  if (first < viewStart || last > viewStart + view.byteLength || last > parsed.bin.length) {
+    fail(`${label} ${path} exceeds its embedded bufferView`);
+  }
+  const hash = createHash("sha256");
+  hash.update(JSON.stringify({
+    componentType: accessor.componentType,
+    count: accessor.count,
+    type: accessor.type,
+    normalized: accessor.normalized === true,
+  }));
+  for (let element = 0; element < accessor.count; element += 1) {
+    const start = first + element * stride;
+    hash.update(parsed.bin.subarray(start, start + elementBytes));
+  }
+  return hash.digest("hex");
+}
+
+function requireAccessorMatch(base, donor, baseIndex, donorIndex, label, path) {
+  const baseDigest = accessorDigest(base, baseIndex, "base animation GLB", path);
+  const donorDigest = accessorDigest(donor, donorIndex, label, path);
+  if (baseDigest !== donorDigest) fail(`${label} ${path} differs from the base animation GLB`);
+}
+
+function requireMatchingMeshes(base, donor, label) {
+  const baseMeshes = base.json.meshes ?? [];
+  const donorMeshes = donor.json.meshes ?? [];
+  if (baseMeshes.length !== donorMeshes.length) fail(`${label} mesh count differs from the base animation GLB`);
+  for (let meshIndex = 0; meshIndex < baseMeshes.length; meshIndex += 1) {
+    const basePrimitives = baseMeshes[meshIndex].primitives ?? [];
+    const donorPrimitives = donorMeshes[meshIndex].primitives ?? [];
+    if (basePrimitives.length !== donorPrimitives.length) {
+      fail(`${label} mesh ${meshIndex} primitive count differs from the base animation GLB`);
+    }
+    for (let primitiveIndex = 0; primitiveIndex < basePrimitives.length; primitiveIndex += 1) {
+      const path = `meshes[${meshIndex}].primitives[${primitiveIndex}]`;
+      const basePrimitive = basePrimitives[primitiveIndex];
+      const donorPrimitive = donorPrimitives[primitiveIndex];
+      if (
+        (basePrimitive.mode ?? 4) !== (donorPrimitive.mode ?? 4)
+        || (basePrimitive.material ?? null) !== (donorPrimitive.material ?? null)
+      ) {
+        fail(`${label} ${path} topology or material differs from the base animation GLB`);
+      }
+      const baseAttributes = basePrimitive.attributes ?? {};
+      const donorAttributes = donorPrimitive.attributes ?? {};
+      const attributeNames = Object.keys(baseAttributes).sort();
+      if (JSON.stringify(attributeNames) !== JSON.stringify(Object.keys(donorAttributes).sort())) {
+        fail(`${label} ${path} vertex attributes differ from the base animation GLB`);
+      }
+      for (const attributeName of attributeNames) {
+        requireAccessorMatch(
+          base,
+          donor,
+          baseAttributes[attributeName],
+          donorAttributes[attributeName],
+          label,
+          `${path}.attributes.${attributeName}`,
+        );
+      }
+      const baseHasIndices = basePrimitive.indices !== undefined;
+      const donorHasIndices = donorPrimitive.indices !== undefined;
+      if (baseHasIndices !== donorHasIndices) {
+        fail(`${label} ${path}.indices differs from the base animation GLB`);
+      }
+      if (baseHasIndices) {
+        requireAccessorMatch(
+          base,
+          donor,
+          basePrimitive.indices,
+          donorPrimitive.indices,
+          label,
+          `${path}.indices`,
+        );
+      }
+      const baseTargets = basePrimitive.targets ?? [];
+      const donorTargets = donorPrimitive.targets ?? [];
+      if (baseTargets.length !== donorTargets.length) {
+        fail(`${label} ${path}.targets differs from the base animation GLB`);
+      }
+      for (let targetIndex = 0; targetIndex < baseTargets.length; targetIndex += 1) {
+        const baseTarget = baseTargets[targetIndex];
+        const donorTarget = donorTargets[targetIndex] ?? {};
+        const targetNames = Object.keys(baseTarget).sort();
+        if (JSON.stringify(targetNames) !== JSON.stringify(Object.keys(donorTarget).sort())) {
+          fail(`${label} ${path}.targets[${targetIndex}] differs from the base animation GLB`);
+        }
+        for (const attributeName of targetNames) {
+          requireAccessorMatch(
+            base,
+            donor,
+            baseTarget[attributeName],
+            donorTarget[attributeName],
+            label,
+            `${path}.targets[${targetIndex}].${attributeName}`,
+          );
+        }
+      }
+    }
+  }
+}
+
 function requireMatchingRig(base, donor, label) {
-  const baseNodes = base.nodes ?? [];
-  const donorNodes = donor.nodes ?? [];
+  const baseNodes = base.json.nodes ?? [];
+  const donorNodes = donor.json.nodes ?? [];
   if (baseNodes.length !== donorNodes.length) fail(`${label} node count differs from the base animation GLB`);
   for (let index = 0; index < baseNodes.length; index += 1) {
     if (nodeSignature(baseNodes[index]) !== nodeSignature(donorNodes[index])) {
       fail(`${label} node ${index} differs from the base rig`);
     }
   }
-  const baseSkins = (base.skins ?? []).map((skin) => JSON.stringify({ joints: skin.joints, skeleton: skin.skeleton ?? null }));
-  const donorSkins = (donor.skins ?? []).map((skin) => JSON.stringify({ joints: skin.joints, skeleton: skin.skeleton ?? null }));
-  if (JSON.stringify(baseSkins) !== JSON.stringify(donorSkins)) fail(`${label} skin joint topology differs from the base animation GLB`);
+  const baseSkins = base.json.skins ?? [];
+  const donorSkins = donor.json.skins ?? [];
+  if (baseSkins.length !== donorSkins.length) fail(`${label} skin count differs from the base animation GLB`);
+  for (let skinIndex = 0; skinIndex < baseSkins.length; skinIndex += 1) {
+    const baseSkin = baseSkins[skinIndex];
+    const donorSkin = donorSkins[skinIndex];
+    if (
+      JSON.stringify(baseSkin.joints ?? []) !== JSON.stringify(donorSkin.joints ?? [])
+      || (baseSkin.skeleton ?? null) !== (donorSkin.skeleton ?? null)
+    ) {
+      fail(`${label} skin ${skinIndex} joint topology differs from the base animation GLB`);
+    }
+    const baseHasInverseBind = baseSkin.inverseBindMatrices !== undefined;
+    const donorHasInverseBind = donorSkin.inverseBindMatrices !== undefined;
+    if (baseHasInverseBind !== donorHasInverseBind) {
+      fail(`${label} skins[${skinIndex}].inverseBindMatrices differs from the base animation GLB`);
+    }
+    if (baseHasInverseBind) {
+      requireAccessorMatch(
+        base,
+        donor,
+        baseSkin.inverseBindMatrices,
+        donorSkin.inverseBindMatrices,
+        label,
+        `skins[${skinIndex}].inverseBindMatrices`,
+      );
+    }
+  }
+  requireMatchingMeshes(base, donor, label);
 }
 
 function requireSingleAnimation(document, label) {
@@ -131,7 +335,7 @@ export function mergeMeshyAnimationGlbs(inputs) {
     const input = parsed[inputIndex];
     const { json: donorJson, bin: donorBin } = input.parsed;
     const label = input.label ?? `input[${inputIndex}]`;
-    requireMatchingRig(base.json, donorJson, label);
+    requireMatchingRig(base, input.parsed, label);
     const donorAnimation = requireSingleAnimation(donorJson, label);
     const viewMap = new Map();
     const accessorMap = new Map();

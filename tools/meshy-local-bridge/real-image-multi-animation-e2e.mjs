@@ -4,6 +4,7 @@ import { extname, resolve } from "node:path";
 
 import { createLocalBridge } from "./index.mjs";
 import { parseModerationFlag } from "./real-image-multi-animation-options.mjs";
+import { AURORA_MODEL_TRIANGLE_BUDGET_V1 } from "./remesh-rig-animation-recovery-options.mjs";
 
 function required(name) {
   const value = process.env[name];
@@ -62,7 +63,15 @@ async function main() {
   const rigHeightMeters = Number(process.env.MESHY_REAL_E2E_RIG_HEIGHT_METERS ?? "1.85");
   const moderation = parseModerationFlag(process.env.MESHY_REAL_E2E_MODERATION);
   if (!Number.isFinite(maxCredits) || maxCredits <= 0) throw new Error("MESHY_MAX_CREDITS must be a positive number.");
-  if (!Number.isInteger(targetPolycount) || targetPolycount < 100 || targetPolycount > 300_000) throw new Error("MESHY_REAL_E2E_TARGET_POLYCOUNT must be an integer in 100..=300000.");
+  if (
+    !Number.isInteger(targetPolycount)
+    || targetPolycount < 100
+    || targetPolycount > AURORA_MODEL_TRIANGLE_BUDGET_V1
+  ) {
+    throw new Error(
+      `MESHY_REAL_E2E_TARGET_POLYCOUNT must be an integer in 100..=${AURORA_MODEL_TRIANGLE_BUDGET_V1}.`,
+    );
+  }
   if (!Number.isFinite(rigHeightMeters) || rigHeightMeters < 0.5 || rigHeightMeters > 3) throw new Error("MESHY_REAL_E2E_RIG_HEIGHT_METERS must be in 0.5..=3.");
   const extension = extname(sourceImagePath).toLowerCase();
   const mimeType = extension === ".png" ? "image/png" : [".jpg", ".jpeg"].includes(extension) ? "image/jpeg" : undefined;
@@ -70,8 +79,9 @@ async function main() {
   const sourceImage = await readFile(sourceImagePath);
   const imageDataUrl = `data:${mimeType};base64,${sourceImage.toString("base64")}`;
   const outputPaths = animations.map((animation) => resolve(outputDirectory, `${animation.fileStem}.glb`));
+  const combinedOutputPath = resolve(outputDirectory, "source.glb");
   const provenancePath = resolve(outputDirectory, "meshy-run-provenance.json");
-  for (const path of [...outputPaths, provenancePath]) await requireAbsent(path);
+  for (const path of [...outputPaths, combinedOutputPath, provenancePath]) await requireAbsent(path);
 
   const localOrigin = "http://127.0.0.1";
   const bridge = createLocalBridge({ apiKey, allowedOrigin: localOrigin });
@@ -115,7 +125,7 @@ async function main() {
       multiViewThumbnails: false,
       rigHumanoid: true,
       rigHeightMeters,
-      animationActionIds: animations.map((animation) => animation.actionId),
+      animationActions: animations.map(({ actionId, clipName }) => ({ actionId, clipName })),
     };
     const previewResponse = await request("/v1/runs/preview", {
       method: "POST",
@@ -152,6 +162,17 @@ async function main() {
     const provenanceResponse = await request(`/v1/runs/${encodeURIComponent(run.id)}/provenance`, { headers: { "X-Meshy-Session": pairing.sessionToken } });
     if (!provenanceResponse.ok) throw new Error("Meshy run did not yield provenance.");
     const bridgeProvenance = await provenanceResponse.json();
+    if (bridgeProvenance.artifactKind !== "MERGED_ANIMATION_GLTF") {
+      throw new Error("Meshy run did not yield the required merged animation GLB.");
+    }
+    const combinedResponse = await request(`/v1/runs/${encodeURIComponent(run.id)}/artifact`, {
+      headers: { "X-Meshy-Session": pairing.sessionToken },
+    });
+    if (!combinedResponse.ok) throw new Error("Meshy run did not yield its merged animation GLB.");
+    const combinedBytes = new Uint8Array(await combinedResponse.arrayBuffer());
+    if (sha256(combinedBytes) !== bridgeProvenance.sha256 || combinedBytes.byteLength !== bridgeProvenance.byteLength) {
+      throw new Error("Merged animation GLB does not match Bridge provenance.");
+    }
     const downloaded = [];
     for (let index = 0; index < animations.length; index += 1) {
       const animation = animations[index];
@@ -167,6 +188,7 @@ async function main() {
     }
     await mkdir(outputDirectory, { recursive: true });
     for (const artifact of downloaded) await writeFile(artifact.outputPath, artifact.bytes, { flag: "wx" });
+    await writeFile(combinedOutputPath, combinedBytes, { flag: "wx" });
     const durableProvenance = {
       schemaVersion: 1,
       profileId: "H1-humanoid-animated/v1",
@@ -191,6 +213,12 @@ async function main() {
       },
       runId: run.id,
       taskIds: bridgeProvenance.taskIds,
+      canonicalSource: {
+        file: "source.glb",
+        sha256: bridgeProvenance.sha256,
+        byteLength: bridgeProvenance.byteLength,
+        artifactKind: bridgeProvenance.artifactKind,
+      },
       animations: downloaded.map(({ actionId, clipName, fileStem, sha256: digest, byteLength }) => ({
         actionId, clipName, file: `${fileStem}.glb`, sha256: digest, byteLength,
       })),
@@ -201,6 +229,7 @@ async function main() {
       maximumCredits: preview.maximumCredits,
       balanceBeforeRun: balance.availableCredits,
       outputDirectory,
+      combinedOutputPath,
       provenancePath,
       animations: durableProvenance.animations,
     }, null, 2)}\n`);

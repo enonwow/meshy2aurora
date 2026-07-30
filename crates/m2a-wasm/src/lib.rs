@@ -984,6 +984,22 @@ pub struct StudioCreatureProductArtifactV2 {
     readback_json: String,
 }
 
+/// Browser result for one immutable production creature plus its separately
+/// authored demo MOD. The product report/manifest remain product-only; the
+/// module has its own canonical report and does not mutate product bytes.
+#[wasm_bindgen]
+pub struct StudioCreatureProductDemoArtifactV1 {
+    hak_bytes: Vec<u8>,
+    model_bytes: Vec<u8>,
+    texture_bytes: Vec<u8>,
+    proof_module_bytes: Vec<u8>,
+    report_json: String,
+    manifest_json: String,
+    summary_json: String,
+    readback_json: String,
+    demo_report_json: String,
+}
+
 /// Browser-transferable complete output of the isolated P100K Creature
 /// experiment. Unlike the production-only V2 artifact, this boundary includes
 /// the caller-identified demo MOD and exposes every generated resource for
@@ -1084,6 +1100,54 @@ impl StudioCreatureProductArtifactV2 {
     #[wasm_bindgen(getter, js_name = readbackJson)]
     pub fn readback_json(&self) -> String {
         self.readback_json.clone()
+    }
+}
+
+#[wasm_bindgen]
+impl StudioCreatureProductDemoArtifactV1 {
+    #[wasm_bindgen(js_name = takeHakBytes)]
+    pub fn take_hak_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.hak_bytes)
+    }
+
+    #[wasm_bindgen(js_name = takeModelBytes)]
+    pub fn take_model_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.model_bytes)
+    }
+
+    #[wasm_bindgen(js_name = takeTextureBytes)]
+    pub fn take_texture_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.texture_bytes)
+    }
+
+    #[wasm_bindgen(js_name = takeProofModuleBytes)]
+    pub fn take_proof_module_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.proof_module_bytes)
+    }
+
+    #[wasm_bindgen(getter, js_name = reportJson)]
+    pub fn report_json(&self) -> String {
+        self.report_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = manifestJson)]
+    pub fn manifest_json(&self) -> String {
+        self.manifest_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = summaryJson)]
+    pub fn summary_json(&self) -> String {
+        self.summary_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = readbackJson)]
+    pub fn readback_json(&self) -> String {
+        self.readback_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = demoReportJson)]
+    pub fn demo_report_json(&self) -> String {
+        self.demo_report_json.clone()
     }
 }
 
@@ -1302,8 +1366,221 @@ fn build_meshy_procedural_humanoid_product_with_options_v3_inner(
     finish_procedural_creature_product_v2(artifact)
 }
 
+/// Builds an immutable production creature and then wraps that exact product
+/// in a separately identified demo MOD containing its module-local UTC.
+#[wasm_bindgen(js_name = buildMeshyProceduralHumanoidProductDemoWithOptionsV1)]
+pub fn build_meshy_procedural_humanoid_product_demo_with_options_v1(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    identity_json: &str,
+    build_options_json: &str,
+    module_identity_json: &str,
+    creature_resref: &str,
+) -> Result<StudioCreatureProductDemoArtifactV1, JsValue> {
+    build_meshy_procedural_humanoid_product_demo_with_options_v1_inner(
+        source_glb,
+        appearance_two_da,
+        identity_json,
+        build_options_json,
+        module_identity_json,
+        creature_resref,
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+fn build_meshy_procedural_humanoid_product_demo_with_options_v1_inner(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    identity_json: &str,
+    build_options_json: &str,
+    module_identity_json: &str,
+    creature_resref: &str,
+) -> Result<StudioCreatureProductDemoArtifactV1, String> {
+    let identity = serde_json::from_str::<
+        m2a_core::model_pipeline::ProceduralCreatureProductIdentityV2,
+    >(identity_json)
+    .map_err(|_| {
+        serialize_json(&m2a_core::model_pipeline::M6PipelineErrorV1 {
+            schema_version: 1,
+            stage: "IDENTITY".to_owned(),
+            code: "M6-PRODUCT-IDENTITY-JSON".to_owned(),
+            path: "identityJson".to_owned(),
+            message: "product identity JSON does not match the strict V2 schema".to_owned(),
+        })
+    })?;
+    let module_identity = serde_json::from_str::<
+        m2a_core::proof_module::BinaryCreatureModuleIdentityV1,
+    >(module_identity_json)
+    .map_err(|_| {
+        serialize_json(&m2a_core::model_pipeline::M6PipelineErrorV1 {
+            schema_version: 1,
+            stage: "IDENTITY".to_owned(),
+            code: "M6-DEMO-IDENTITY-JSON".to_owned(),
+            path: "moduleIdentityJson".to_owned(),
+            message: "demo module identity JSON does not match the strict V1 schema".to_owned(),
+        })
+    })?;
+    let build_options = parse_procedural_creature_build_options_v1(build_options_json)?;
+    let product =
+        m2a_core::model_pipeline::build_meshy_procedural_humanoid_product_with_options_v3(
+            source_glb,
+            appearance_two_da,
+            &identity,
+            &build_options,
+        )
+        .map_err(|error| serialize_json(&error))?;
+    let demo = m2a_core::model_pipeline::build_procedural_creature_demo_v2(
+        &product,
+        &module_identity,
+        creature_resref,
+    )
+    .map_err(|error| serialize_json(&error))?;
+    let readback =
+        m2a_core::inspect_binary_mdl(&product.model).map_err(|error| serialize_json(&error))?;
+
+    Ok(StudioCreatureProductDemoArtifactV1 {
+        hak_bytes: product.hak,
+        model_bytes: product.model,
+        texture_bytes: product.texture,
+        proof_module_bytes: demo.payload,
+        report_json: String::from_utf8(product.report_json).map_err(|error| error.to_string())?,
+        manifest_json: String::from_utf8(product.manifest_json)
+            .map_err(|error| error.to_string())?,
+        summary_json: String::from_utf8(product.summary_json).map_err(|error| error.to_string())?,
+        readback_json: serialize_json(&readback),
+        demo_report_json: serialize_json(&demo.report),
+    })
+}
+
+/// Builds an exact full-native H1 package under caller-owned product/demo
+/// identities. An empty event JSON preserves the source event policy; a
+/// non-empty strict sidecar replaces only the event table.
+#[wasm_bindgen(js_name = buildMeshyFullNativeH1PackageWithOptionsV4)]
+pub fn build_meshy_full_native_h1_package_with_options_v4(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    identity_json: &str,
+    build_options_json: &str,
+    event_authoring_json: &str,
+    module_identity_json: &str,
+    creature_resref: &str,
+) -> Result<StudioCreatureProductDemoArtifactV1, JsValue> {
+    build_meshy_full_native_h1_package_with_options_v4_inner(
+        source_glb,
+        appearance_two_da,
+        identity_json,
+        build_options_json,
+        event_authoring_json,
+        module_identity_json,
+        creature_resref,
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+fn build_meshy_full_native_h1_package_with_options_v4_inner(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    identity_json: &str,
+    build_options_json: &str,
+    event_authoring_json: &str,
+    module_identity_json: &str,
+    creature_resref: &str,
+) -> Result<StudioCreatureProductDemoArtifactV1, String> {
+    let identity = serde_json::from_str::<
+        m2a_core::model_pipeline::ProceduralCreatureProductIdentityV2,
+    >(identity_json)
+    .map_err(|_| {
+        serialize_json(&m2a_core::model_pipeline::M6PipelineErrorV1 {
+            schema_version: 1,
+            stage: "IDENTITY".to_owned(),
+            code: "M6-PRODUCT-IDENTITY-JSON".to_owned(),
+            path: "identityJson".to_owned(),
+            message: "product identity JSON does not match the strict V2 schema".to_owned(),
+        })
+    })?;
+    let module_identity = serde_json::from_str::<
+        m2a_core::proof_module::BinaryCreatureModuleIdentityV1,
+    >(module_identity_json)
+    .map_err(|_| {
+        serialize_json(&m2a_core::model_pipeline::M6PipelineErrorV1 {
+            schema_version: 1,
+            stage: "IDENTITY".to_owned(),
+            code: "M6-DEMO-IDENTITY-JSON".to_owned(),
+            path: "moduleIdentityJson".to_owned(),
+            message: "demo module identity JSON does not match the strict V1 schema".to_owned(),
+        })
+    })?;
+    let build_options = parse_procedural_creature_build_options_v1(build_options_json)?;
+    if module_identity.hak_resref != identity.hak_resref {
+        return Err(serialize_json(
+            &m2a_core::model_pipeline::M6PipelineErrorV1 {
+                schema_version: 1,
+                stage: "IDENTITY".to_owned(),
+                code: "M6-DEMO-HAK-IDENTITY-MISMATCH".to_owned(),
+                path: "moduleIdentityJson.hakResref".to_owned(),
+                message: "demo HAK resref does not match the product HAK resref".to_owned(),
+            },
+        ));
+    }
+    let runtime_identity = m2a_core::model_pipeline::ProceduralCreaturePackageIdentityV1 {
+        model_resref: identity.model_resref.clone(),
+        texture_resref: identity.texture_resref.clone(),
+        module: module_identity,
+        creature_resref: creature_resref.to_owned(),
+    };
+    let event_authoring = if event_authoring_json.is_empty() {
+        None
+    } else {
+        Some(
+            serde_json::from_str::<m2a_core::model_pipeline::DirectCreatureEventAuthoringV1>(
+                event_authoring_json,
+            )
+            .map_err(|_| {
+                serialize_json(&m2a_core::model_pipeline::M6PipelineErrorV1 {
+                    schema_version: 1,
+                    stage: "ANIMATION".to_owned(),
+                    code: "M6-ANIMATION-EVENT-AUTHORING-JSON".to_owned(),
+                    path: "eventAuthoringJson".to_owned(),
+                    message: "event authoring JSON does not match the strict V1 schema".to_owned(),
+                })
+            })?,
+        )
+    };
+    let event_configuration = event_authoring.as_ref().map(|authoring| {
+        (
+            m2a_core::model_pipeline::DirectCreatureAnimationEventProfileV1::CommonNativeGameplayHooksExplicitV1,
+            authoring,
+        )
+    });
+    let package = m2a_core::model_pipeline::build_meshy_full_native_h1_package_with_options_v4(
+        source_glb,
+        appearance_two_da,
+        &runtime_identity,
+        &identity,
+        &build_options,
+        event_configuration,
+    )
+    .map_err(|error| serialize_json(&error))?;
+    let readback =
+        m2a_core::inspect_binary_mdl(&package.model).map_err(|error| serialize_json(&error))?;
+    let demo_report_json = serialize_json(&package.report.proof_module);
+
+    Ok(StudioCreatureProductDemoArtifactV1 {
+        hak_bytes: package.hak,
+        model_bytes: package.model,
+        texture_bytes: package.texture,
+        proof_module_bytes: package.proof_module,
+        report_json: String::from_utf8(package.report_json).map_err(|error| error.to_string())?,
+        manifest_json: String::from_utf8(package.manifest_json)
+            .map_err(|error| error.to_string())?,
+        summary_json: String::from_utf8(package.summary_json).map_err(|error| error.to_string())?,
+        readback_json: serialize_json(&readback),
+        demo_report_json,
+    })
+}
+
 fn finish_procedural_creature_product_v2(
-    artifact: m2a_core::model_pipeline::ProceduralCreatureProductArtifactV2,
+    artifact: m2a_core::model_pipeline::ProceduralCreatureProductArtifactV3,
 ) -> Result<StudioCreatureProductArtifactV2, String> {
     let readback =
         m2a_core::inspect_binary_mdl(&artifact.model).map_err(|error| serialize_json(&error))?;
@@ -2319,7 +2596,7 @@ mod m7_native_tests {
     }"#;
     const EMPTY_DESCRIPTORS: &str = r#"{"schemaVersion":1,"payloads":[]}"#;
     const READY_BATCH_JSON_SHA256: &str =
-        "b7905695b1873d9b858bb1430c77a5cb10fb6f1e82672ffc7067b9dc9ffcefc2";
+        "dbe8d7254dc6fedc0a2a3cd0f1f82f18aee8848de00b528accaf286d7f22988d";
     const APPEARANCE: &[u8] =
         include_bytes!("../../../apps/studio-web/tests/fixtures/appearance.2da");
 
@@ -2785,9 +3062,11 @@ mod m5_native_tests {
     use super::{
         HakResourceDescriptorV1, HakResourceDescriptorsV1, append_two_da_row_artifact_json,
         append_two_da_row_v1, append_two_da_row_v1_report_json, build_m6_model_package_v1,
+        build_meshy_full_native_h1_package_with_options_v4_inner,
         build_meshy_h1_model_package_v2_inner, build_meshy_h1_model_package_v3_inner,
         build_meshy_procedural_humanoid_model_package_v1_inner,
         build_meshy_procedural_humanoid_p100k_experiment_v1_inner,
+        build_meshy_procedural_humanoid_product_demo_with_options_v1_inner,
         build_meshy_procedural_humanoid_product_v2_inner,
         build_meshy_procedural_humanoid_product_with_options_v3_inner,
         build_meshy_static_placeable_package_v1_inner,
@@ -3481,7 +3760,7 @@ mod m5_native_tests {
     }
 
     #[test]
-    fn studio_procedural_v2_uses_fresh_product_identity_and_has_no_module_surface() {
+    fn studio_procedural_v3_uses_fresh_product_identity_and_has_no_module_surface() {
         let source = std::fs::read(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../sample-3d/h2-clockwork-sentinel-1500/source.glb"),
@@ -3516,7 +3795,7 @@ mod m5_native_tests {
         assert!(studio.take_texture_bytes().is_empty());
         let summary: serde_json::Value =
             serde_json::from_str(&studio.summary_json()).expect("summary JSON");
-        assert_eq!(summary["schemaVersion"], 2);
+        assert_eq!(summary["schemaVersion"], 3);
         assert_eq!(
             summary["status"],
             "PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED"
@@ -3537,7 +3816,7 @@ mod m5_native_tests {
             &source,
             DIRECT_CREATURE_APPEARANCE,
             identity_json,
-            r#"{"schemaVersion":1,"textureArtifactCleanup":true,"skinAccessoryStabilization":{"schemaVersion":1,"mode":"KEEP_SOURCE_WEIGHTS"}}"#,
+            r#"{"schemaVersion":1,"textureArtifactCleanup":true,"skinAccessoryStabilization":{"schemaVersion":2,"mode":"KEEP_SOURCE_WEIGHTS"}}"#,
         )
         .expect("Studio product with texture cleanup");
         let cleaned_report: serde_json::Value =
@@ -3553,6 +3832,29 @@ mod m5_native_tests {
             cleaned_report["skinAccessoryStabilization"]["mode"],
             "KEEP_SOURCE_WEIGHTS"
         );
+
+        let mut studio_demo =
+            build_meshy_procedural_humanoid_product_demo_with_options_v1_inner(
+                &source,
+                DIRECT_CREATURE_APPEARANCE,
+                identity_json,
+                r#"{"schemaVersion":1,"textureArtifactCleanup":false,"skinAccessoryStabilization":{"schemaVersion":2,"mode":"AUTO"}}"#,
+                r#"{"moduleResref":"m2a_stdemo2","areaResref":"m2a_starea2","hakResref":"m2a_sthak2"}"#,
+                "m2a_stutc2",
+            )
+            .expect("Studio product plus optional demo");
+        assert_eq!(studio_demo.take_hak_bytes(), core.hak);
+        assert_eq!(studio_demo.take_model_bytes(), core.model);
+        assert_eq!(studio_demo.take_texture_bytes(), core.texture);
+        let demo_report: serde_json::Value =
+            serde_json::from_str(&studio_demo.demo_report_json()).expect("demo report JSON");
+        assert_eq!(demo_report["moduleResref"], "m2a_stdemo2");
+        assert_eq!(demo_report["areaResref"], "m2a_starea2");
+        assert_eq!(demo_report["creatureResref"], "m2a_stutc2");
+        assert_eq!(demo_report["hakResref"], "m2a_sthak2");
+        assert_eq!(demo_report["semanticReadbackStatus"], "PASS");
+        assert!(!studio_demo.take_proof_module_bytes().is_empty());
+        assert!(studio_demo.take_proof_module_bytes().is_empty());
 
         let options_error = match build_meshy_procedural_humanoid_product_with_options_v3_inner(
             &source,
@@ -3631,7 +3933,7 @@ mod m5_native_tests {
     }
 
     #[test]
-    fn studio_p100k_inspection_is_explicit_and_default_inspection_stays_at_20k() {
+    fn studio_product_inspection_uses_the_shared_300k_budget() {
         if std::env::var_os("M2A_REQUIRE_P100K_STUDIO_REPLAY").is_none() {
             return;
         }
@@ -3646,13 +3948,13 @@ mod m5_native_tests {
             serde_json::from_str(&ingest_meshy_p100k_experiment_json(&source))
                 .expect("P100K inspection JSON");
 
-        assert_eq!(default["report"]["conversionEligible"], false);
+        assert_eq!(default["report"]["conversionEligible"], true);
         assert_eq!(experiment["report"]["conversionEligible"], true);
         assert_eq!(experiment["report"]["statistics"]["triangleCount"], 102_335);
     }
 
     #[test]
-    fn studio_full_native_h1_v3_is_exact_core_and_rejects_invalid_or_incomplete_events() {
+    fn studio_full_native_h1_v3_compatibility_and_v4_product_boundaries_are_exact() {
         let source = full_native_42_owned_glb();
         let appearance = DIRECT_CREATURE_APPEARANCE;
         let event_authoring = common_native_event_authoring();
@@ -3683,6 +3985,77 @@ mod m5_native_tests {
             23
         );
         assert_eq!(report["animationEventConformance"]["complete"], true);
+
+        let product_identity_json = r#"{
+            "modelResref":"m2a_evtmdl_v2",
+            "textureResref":"m2a_evttex_v2",
+            "hakResref":"m2a_evthak_v2",
+            "appearanceLabel":"M2A_EVENT_CREATURE_V2"
+        }"#;
+        let mut product_demo = build_meshy_full_native_h1_package_with_options_v4_inner(
+                &source,
+                appearance,
+                product_identity_json,
+                r#"{"schemaVersion":1,"textureArtifactCleanup":false,"skinAccessoryStabilization":{"schemaVersion":2,"mode":"AUTO"}}"#,
+                &event_authoring_json,
+                r#"{"moduleResref":"m2a_evtmod_v2","areaResref":"m2a_evtarea_v2","hakResref":"m2a_evthak_v2"}"#,
+                "m2a_evtutc_v2",
+            )
+            .expect("collision-free full-native package with caller-owned events");
+        let product_report: serde_json::Value =
+            serde_json::from_str(&product_demo.report_json()).expect("product report JSON");
+        let product_summary: serde_json::Value =
+            serde_json::from_str(&product_demo.summary_json()).expect("product summary JSON");
+        assert_eq!(product_summary["modelResref"], "m2a_evtmdl_v2");
+        assert_eq!(
+            product_report["animationEventConformance"]["requiredPairCount"],
+            23
+        );
+        assert_eq!(
+            product_report["animationEventConformance"]["satisfiedPairCount"],
+            23
+        );
+        let product_demo_report: serde_json::Value =
+            serde_json::from_str(&product_demo.demo_report_json()).expect("demo report JSON");
+        assert_eq!(product_demo_report["moduleResref"], "m2a_evtmod_v2");
+        assert_eq!(product_demo_report["hakResref"], "m2a_evthak_v2");
+        assert!(!product_demo.take_hak_bytes().is_empty());
+        assert!(!product_demo.take_model_bytes().is_empty());
+        assert!(!product_demo.take_texture_bytes().is_empty());
+        assert!(!product_demo.take_proof_module_bytes().is_empty());
+
+        let plain = build_meshy_full_native_h1_package_with_options_v4_inner(
+            &source,
+            appearance,
+            product_identity_json,
+            r#"{"schemaVersion":1,"textureArtifactCleanup":false,"skinAccessoryStabilization":{"schemaVersion":2,"mode":"KEEP_SOURCE_WEIGHTS"}}"#,
+            "",
+            r#"{"moduleResref":"m2a_evtmod_v2","areaResref":"m2a_evtarea_v2","hakResref":"m2a_evthak_v2"}"#,
+            "m2a_evtutc_v2",
+        )
+        .expect("collision-free full-native package without an event sidecar");
+        let plain_report: serde_json::Value =
+            serde_json::from_str(&plain.report_json()).expect("plain report JSON");
+        assert!(plain_report["animationEventConformance"].is_null());
+
+        let boundary_malformed = match build_meshy_full_native_h1_package_with_options_v4_inner(
+            &source,
+            appearance,
+            product_identity_json,
+            r#"{"schemaVersion":1,"textureArtifactCleanup":false,"skinAccessoryStabilization":{"schemaVersion":2,"mode":"AUTO"}}"#,
+            "{",
+            r#"{"moduleResref":"m2a_evtmod_v2","areaResref":"m2a_evtarea_v2","hakResref":"m2a_evthak_v2"}"#,
+            "m2a_evtutc_v2",
+        ) {
+            Ok(_) => panic!("malformed full-native sidecar must fail"),
+            Err(error) => error,
+        };
+        let boundary_malformed: serde_json::Value =
+            serde_json::from_str(&boundary_malformed).expect("structured boundary error");
+        assert_eq!(
+            boundary_malformed["code"],
+            "M6-ANIMATION-EVENT-AUTHORING-JSON"
+        );
 
         let malformed = match build_meshy_h1_model_package_v3_inner(&source, appearance, "{") {
             Ok(_) => panic!("malformed event authoring JSON must fail"),

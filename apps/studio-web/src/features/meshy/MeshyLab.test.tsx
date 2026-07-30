@@ -47,6 +47,11 @@ function setValue(element: HTMLInputElement | HTMLTextAreaElement, value: string
   element.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+function setSelectValue(element: HTMLSelectElement, value: string) {
+  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set?.call(element, value);
+  element.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 afterEach(async () => {
   await act(async () => roots.splice(0).forEach((root) => root.unmount()));
   document.body.replaceChildren();
@@ -127,12 +132,69 @@ describe("MeshyLab", () => {
     await settle();
 
     expect(container.textContent).toContain("Review generation");
-    expect(container.textContent).toContain("38 credits maximum");
+    expect(container.textContent).toContain("43 credits maximum");
     await act(async () => button(container, "Generate model")?.click());
     await settle();
 
     expect(container.textContent).toContain("Generation queued");
     expect(onImport).not.toHaveBeenCalled();
+  });
+
+  it("configures up to ten explicit Meshy action to NWN clip mappings in the paid preview", async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const bridge = new InMemoryMeshyBridgeClient({ availableCredits: 120 });
+    const previewRun = vi.spyOn(bridge, "previewRun");
+    const container = await render(<MeshyLab bridge={bridge} onBack={vi.fn()} onImport={vi.fn()} />);
+
+    await act(async () => {
+      setValue(container.querySelector<HTMLInputElement>("#meshy-pairing-code")!, "local-proof");
+      button(container, "Connect local bridge")?.click();
+    });
+    await settle();
+    await act(async () => {
+      setValue(container.querySelector<HTMLTextAreaElement>("#meshy-asset-prompt")!, "A neutral humanoid adventurer in T-pose");
+      const rig = Array.from(container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
+        .find((checkbox) => checkbox.parentElement?.textContent?.includes("Rig as standard humanoid"));
+      rig?.click();
+    });
+    await settle();
+
+    expect(container.querySelector<HTMLInputElement>('[aria-label="Meshy action ID 1"]')?.value).toBe("0");
+    expect(container.querySelector<HTMLSelectElement>('[aria-label="NWN clip 1"]')?.value).toBe("cpause1");
+    await act(async () => button(container, "Add Meshy animation")?.click());
+    const secondActionInput = container.querySelector<HTMLInputElement>('[aria-label="Meshy action ID 2"]')!;
+    secondActionInput.focus();
+    await act(async () => {
+      setValue(secondActionInput, "198");
+    });
+    expect(document.activeElement).toBe(secondActionInput);
+    await act(async () => {
+      setSelectValue(container.querySelector<HTMLSelectElement>('[aria-label="NWN clip 2"]')!, "ca1slashl");
+      button(container, "Review generation")?.click();
+    });
+    await settle();
+
+    expect(previewRun).toHaveBeenCalledOnce();
+    expect(previewRun.mock.calls[0][1].apiOptions?.animationActions).toEqual([
+      { actionId: 0, clipName: "cpause1" },
+      { actionId: 198, clipName: "ca1slashl" },
+    ]);
+    expect(container.textContent).toContain("46 credits maximum");
+    expect(container.textContent).toContain("0 → cpause1");
+    expect(container.textContent).toContain("198 → ca1slashl");
+  });
+
+  it("describes Meshy polycount as a measured target instead of an exact guarantee", async () => {
+    const bridge = new InMemoryMeshyBridgeClient({ availableCredits: 20 });
+    const container = await render(<MeshyLab bridge={bridge} onBack={vi.fn()} onImport={vi.fn()} />);
+    await act(async () => {
+      setValue(container.querySelector<HTMLInputElement>("#meshy-pairing-code")!, "local-proof");
+      button(container, "Connect local bridge")?.click();
+    });
+    await settle();
+
+    expect(container.textContent).toContain("Meshy target, not an exact output");
+    expect(container.textContent).toContain("300,000 triangles");
   });
 
   it("reviews a 2D concept generation before it can create its paid task", async () => {

@@ -137,6 +137,15 @@ export function ReviewModelDetails({
             </small>
           </article>
         )}
+        {result.demo && (
+          <article>
+            <span>Demo module / UTC</span>
+            <strong data-status="pass">{`${result.demo.moduleResref}.mod`}</strong>
+            <small>
+              {`Module “${result.demo.moduleDisplayName}” · Area “${result.demo.areaDisplayName}” (${result.demo.areaResref}) · UTC ${result.demo.creatureResref} · appearance row ${result.demo.appearanceRow}`}
+            </small>
+          </article>
+        )}
         <article>
           <span>Binary readback</span>
           <strong data-status={readbackStatus.toLowerCase()}>{readbackStatusLabel}</strong>
@@ -161,6 +170,105 @@ export function ReviewModelDetails({
           <small>Reported by the canonical writer; no UI score is calculated.</small>
         </article>
       </div>
+
+      {result.skinAccessoryStabilization && (
+        <section className="review-model__accessory-audit" aria-label="Accessory skinning audit">
+          <header>
+            <div>
+              <h3>Accessory skinning audit</h3>
+              <p>
+                {`${result.skinAccessoryStabilization.auditedClipCount} animation clips audited · mode ${result.skinAccessoryStabilization.mode}`}
+              </p>
+            </div>
+            <strong>
+              {`${result.skinAccessoryStabilization.stabilizedComponentCount}/${result.skinAccessoryStabilization.detachedComponentCount} detached components stabilized`}
+            </strong>
+          </header>
+          <dl>
+            <div><dt>All components</dt><dd>{result.skinAccessoryStabilization.componentCount}</dd></div>
+            <div><dt>Risky</dt><dd>{result.skinAccessoryStabilization.riskyComponentCount}</dd></div>
+            <div><dt>Changed vertices</dt><dd>{result.skinAccessoryStabilization.changedVertexCount.toLocaleString("en-US")}</dd></div>
+            <div><dt>Spatial weld</dt><dd>{result.skinAccessoryStabilization.weldTolerance}</dd></div>
+          </dl>
+          {result.skinAccessoryStabilization.components.some((component) => !component.isPrimaryBody) && (
+            <div className="review-model__accessory-components">
+              {result.skinAccessoryStabilization.components
+                .filter((component) => !component.isPrimaryBody)
+                .map((component) => (
+                  <article key={`${component.segmentIndex}:${component.componentIndex}`}>
+                    <div>
+                      <strong>{`Segment ${component.segmentIndex} · component ${component.componentIndex}`}</strong>
+                      <small>
+                        {`${component.triangleCount.toLocaleString("en-US")} triangles · ${component.vertexCount.toLocaleString("en-US")} vertices · ${component.action}`}
+                      </small>
+                    </div>
+                    <div>
+                      <span>Bone</span>
+                      <strong>
+                        {`${component.dominantBoneName ?? "none"} → ${component.selectedBoneName ?? "source weights"}`}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Max pair stretch</span>
+                      <strong>
+                        {`${component.before.maxPairDistanceRatio.toFixed(3)} → ${component.after.maxPairDistanceRatio.toFixed(3)}`}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Metric coverage</span>
+                      <strong>
+                        {`${component.before.sampledVertexCount}/${component.vertexCount} vertices · ${component.before.vertexSamplingMode}`}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Risk</span>
+                      <strong>{component.riskReasons.length > 0 ? component.riskReasons.join(", ") : "none"}</strong>
+                    </div>
+                  </article>
+                ))}
+            </div>
+          )}
+          {result.skinAccessoryStabilization.warnings.length > 0 && (
+            <ul className="review-model__accessory-warnings">
+              {result.skinAccessoryStabilization.warnings.map((warning, index) => (
+                <li key={`${index}:${warning}`}>{warning}</li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {result.materialFidelity && (
+        <section className="review-model__material-fidelity" aria-label="Material fidelity">
+          <header>
+            <div>
+              <h3>Material fidelity</h3>
+              <p>{result.materialFidelity.auroraMaterialProfile}</p>
+            </div>
+            <strong data-status={result.materialFidelity.unsupportedFields.length === 0 ? "pass" : "warning"}>
+              {result.materialFidelity.baseColorFactorBaked
+                ? "Base-color factor baked"
+                : "Base-color texture preserved"}
+            </strong>
+          </header>
+          <div>
+            <article>
+              <span>Mapped safely</span>
+              <ul>
+                {result.materialFidelity.mappedFields.map((field) => (
+                  <li key={field}>{field.replaceAll("->", "→")}</li>
+                ))}
+              </ul>
+            </article>
+            <article>
+              <span>Unsupported in safe classic profile</span>
+              {result.materialFidelity.unsupportedFields.length > 0
+                ? <ul>{result.materialFidelity.unsupportedFields.map((field) => <li key={field}>{field}</li>)}</ul>
+                : <p>None</p>}
+            </article>
+          </div>
+        </section>
+      )}
 
       <div className="review-model__metrics">
         <table>

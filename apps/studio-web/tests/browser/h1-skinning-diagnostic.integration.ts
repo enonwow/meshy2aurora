@@ -46,6 +46,12 @@ describe("real Meshy H2 procedural humanoid skin readback", () => {
         hakResref: "m2a_stcrhak2",
         appearanceLabel: "M2A_STUDIO_CREATURE_V2",
       }),
+      demoModuleIdentityJson: JSON.stringify({
+        moduleResref: "m2a_stcrmod2",
+        areaResref: "m2a_stcrarea2",
+        hakResref: "m2a_stcrhak2",
+      }),
+      demoCreatureResref: "m2a_stcrutc2",
     }, [sourceGlb, appearanceTwoDa]);
     expect(response).toMatchObject({ ok: true, type: "MODEL_PACKAGE_BUILT" });
     if (!response.ok || response.type !== "MODEL_PACKAGE_BUILT") {

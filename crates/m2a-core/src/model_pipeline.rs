@@ -44,7 +44,10 @@ use crate::{
         verify_direct_creature_state_projection_v1, write_binary_mdl_with_animations,
         write_binary_mdl_with_animations_exact_face_planes_v1,
     },
-    model_limits::MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_CEILING_V1,
+    model_limits::{
+        AURORA_MODEL_TRIANGLE_BUDGET_V1, AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1,
+        MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_CEILING_V1,
+    },
     model_segmentation::segment_model_for_binary_mdl_v1,
     owned_fixture::{synthetic_owned_m6_animation_mapping_v1, synthetic_owned_m6_rig_v1},
     package::{PackageManifestV1, write_model_package_v1},
@@ -62,7 +65,7 @@ use crate::{
     proof_module::{
         BinaryCreatureModuleIdentityV1, BinaryCreatureRuntimeProfileV2,
         BinaryM0VerticalSliceIdentityV1, BinaryM0VerticalSliceReadbackV1, ProofModuleArtifactV1,
-        ProofModuleReportV1, build_binary_m0_vertical_slice_module_v1,
+        ProofModuleReportV2, build_binary_m0_vertical_slice_module_v1,
         build_binary_m0_vertical_slice_module_with_identity_v1,
         build_canonical_m0_creature_proof_module_v1, build_creature_proof_module_v1,
         build_single_profiled_creature_proof_module_with_identity_v3,
@@ -70,8 +73,8 @@ use crate::{
         inspect_binary_m0_vertical_slice_module_v1,
     },
     skin_accessory::{
-        SkinAccessoryStabilizationOptionsV1, SkinAccessoryStabilizationReportV1,
-        audit_and_stabilize_skin_accessories_v1,
+        SkinAccessoryStabilizationOptionsV2, SkinAccessoryStabilizationReportV2,
+        audit_and_stabilize_skin_accessories_v2,
     },
     tga::{
         TextureArtifactCleanupOptionsV1, TextureArtifactCleanupReportV1, TgaWriterOptionsV1,
@@ -94,8 +97,10 @@ pub const M6_MANIFEST_FILE_NAME: &str = "materialization-manifest.json";
 pub const MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_COUNT_V1: usize = 100_000;
 const MESHY_CREATURE_P100K_EXPERIMENT_RAW_TRIANGLE_CEILING_V1: usize =
     MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_CEILING_V1;
-pub const MESHY_CREATURE_P300K_EXPERIMENT_TRIANGLE_COUNT_V1: usize = 300_000;
-const MESHY_CREATURE_P300K_EXPERIMENT_RAW_TRIANGLE_CEILING_V1: usize = 330_000;
+pub const MESHY_CREATURE_P300K_EXPERIMENT_TRIANGLE_COUNT_V1: usize =
+    AURORA_MODEL_TRIANGLE_BUDGET_V1;
+const MESHY_CREATURE_P300K_EXPERIMENT_RAW_TRIANGLE_CEILING_V1: usize =
+    AURORA_MODEL_TRIANGLE_BUDGET_V1 + AURORA_MODEL_TRIANGLE_BUDGET_V1 / 10;
 const DIRECT_CREATURE_APPEARANCE_DONOR_ROW_V1: u32 = 102;
 const DIRECT_CREATURE_APPEARANCE_DONOR_RACE_V1: &str = "c_horror";
 const DIRECT_CREATURE_RUNTIME_APPEARANCE_COLUMNS_V1: [&str; 35] = [
@@ -183,7 +188,7 @@ pub struct ProceduralCreatureBuildOptionsV1 {
     pub schema_version: u32,
     pub texture_artifact_cleanup: bool,
     #[serde(default)]
-    pub skin_accessory_stabilization: SkinAccessoryStabilizationOptionsV1,
+    pub skin_accessory_stabilization: SkinAccessoryStabilizationOptionsV2,
 }
 
 impl Default for ProceduralCreatureBuildOptionsV1 {
@@ -191,7 +196,7 @@ impl Default for ProceduralCreatureBuildOptionsV1 {
         Self {
             schema_version: 1,
             texture_artifact_cleanup: false,
-            skin_accessory_stabilization: SkinAccessoryStabilizationOptionsV1::default(),
+            skin_accessory_stabilization: SkinAccessoryStabilizationOptionsV2::default(),
         }
     }
 }
@@ -630,6 +635,28 @@ pub struct M6TextureSelectionV1 {
     pub source_image_sha256: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct M6MaterialFidelityReportV1 {
+    pub schema_version: u32,
+    pub material_slot: u32,
+    pub source_material_id: u32,
+    pub base_color_factor: [f32; 4],
+    pub base_color_factor_baked: bool,
+    pub alpha_mode: String,
+    pub alpha_cutoff: Option<f32>,
+    pub alpha_channel_preserved: bool,
+    pub metallic_factor: f32,
+    pub roughness_factor: f32,
+    pub normal_texture_present: bool,
+    pub emissive_factor: [f32; 3],
+    pub emissive_texture_present: bool,
+    pub double_sided: bool,
+    pub aurora_material_profile: String,
+    pub mapped_fields: Vec<String>,
+    pub unsupported_fields: Vec<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct M6GeneratedFileV1 {
@@ -692,10 +719,10 @@ pub struct M6MaterializationReportV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub texture_artifact_cleanup: Option<TextureArtifactCleanupReportV1>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub skin_accessory_stabilization: Option<SkinAccessoryStabilizationReportV1>,
+    pub skin_accessory_stabilization: Option<SkinAccessoryStabilizationReportV2>,
     pub appearance: TwoDaAppendReportV1,
     pub hak: HakWriterReportV1,
-    pub proof_module: ProofModuleReportV1,
+    pub proof_module: ProofModuleReportV2,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub animation_completeness: Option<DirectCreatureAnimationCompletenessV2>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -775,12 +802,13 @@ pub struct ProceduralCreatureProductOutputIdentitiesV2 {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ProceduralCreatureProductReportV2 {
+pub struct ProceduralCreatureProductReportV3 {
     pub schema_version: u32,
     pub identity: ProceduralCreatureProductIdentityV2,
     pub appearance_semantic_profile: DirectCreatureAppearanceSemanticProfileV2,
     pub resolved_base_color_image_index: usize,
     pub texture_selection: M6TextureSelectionV1,
+    pub material_fidelity: M6MaterialFidelityReportV1,
     pub geometry: M6GeometryReportV1,
     pub ingest: crate::glb::GlbInspectionReport,
     pub conversion: ProfileAConversionReportV1,
@@ -788,7 +816,7 @@ pub struct ProceduralCreatureProductReportV2 {
     pub texture: TgaWriterReportV1,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub texture_artifact_cleanup: Option<TextureArtifactCleanupReportV1>,
-    pub skin_accessory_stabilization: SkinAccessoryStabilizationReportV1,
+    pub skin_accessory_stabilization: SkinAccessoryStabilizationReportV2,
     pub appearance: TwoDaAppendReportV1,
     pub hak: HakWriterReportV1,
     pub animation_completeness: DirectCreatureAnimationCompletenessV2,
@@ -802,7 +830,7 @@ pub struct ProceduralCreatureProductReportV2 {
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ProceduralCreatureProductSummaryV2 {
+pub struct ProceduralCreatureProductSummaryV3 {
     pub schema_version: u32,
     pub status: String,
     pub input_glb: M6ByteIdentityV1,
@@ -818,7 +846,7 @@ pub struct ProceduralCreatureProductSummaryV2 {
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ProceduralCreatureProductManifestV2 {
+pub struct ProceduralCreatureProductManifestV3 {
     pub schema_version: u32,
     pub status: String,
     pub input_glb: M6ByteIdentityV1,
@@ -833,19 +861,28 @@ pub struct ProceduralCreatureProductManifestV2 {
 }
 
 #[derive(Clone, Debug)]
-pub struct ProceduralCreatureProductArtifactV2 {
+pub struct ProceduralCreatureProductArtifactV3 {
     pub model: Vec<u8>,
     pub texture: Vec<u8>,
     pub appearance_two_da: Vec<u8>,
     pub hak: Vec<u8>,
     pub package_manifest: PackageManifestV1,
-    pub manifest: ProceduralCreatureProductManifestV2,
+    pub manifest: ProceduralCreatureProductManifestV3,
     pub manifest_json: Vec<u8>,
-    pub report: ProceduralCreatureProductReportV2,
+    pub report: ProceduralCreatureProductReportV3,
     pub report_json: Vec<u8>,
-    pub summary: ProceduralCreatureProductSummaryV2,
+    pub summary: ProceduralCreatureProductSummaryV3,
     pub summary_json: Vec<u8>,
 }
+
+#[deprecated(note = "use ProceduralCreatureProductReportV3; serialized schema is version 3")]
+pub type ProceduralCreatureProductReportV2 = ProceduralCreatureProductReportV3;
+#[deprecated(note = "use ProceduralCreatureProductSummaryV3; serialized schema is version 3")]
+pub type ProceduralCreatureProductSummaryV2 = ProceduralCreatureProductSummaryV3;
+#[deprecated(note = "use ProceduralCreatureProductManifestV3; serialized schema is version 3")]
+pub type ProceduralCreatureProductManifestV2 = ProceduralCreatureProductManifestV3;
+#[deprecated(note = "use ProceduralCreatureProductArtifactV3; its reports use schema version 3")]
+pub type ProceduralCreatureProductArtifactV2 = ProceduralCreatureProductArtifactV3;
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -859,16 +896,16 @@ pub struct ProceduralCreatureProductDemoPacketManifestV2 {
     pub creature_resref: String,
     pub appearance_row: u16,
     pub geometry: M6GeometryReportV1,
-    pub skin_accessory_stabilization: SkinAccessoryStabilizationReportV1,
+    pub skin_accessory_stabilization: SkinAccessoryStabilizationReportV2,
     pub generated_files: Vec<M6GeneratedFileV1>,
     pub package_manifest: PackageManifestV1,
-    pub demo: ProofModuleReportV1,
+    pub demo: ProofModuleReportV2,
     pub manifest_self_hash_policy: String,
 }
 
 enum M6BuildArtifactV2 {
     LegacyBundle(Box<M6ModelPackageArtifactV1>),
-    ProceduralProduct(Box<ProceduralCreatureProductArtifactV2>),
+    ProceduralProduct(Box<ProceduralCreatureProductArtifactV3>),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1057,7 +1094,7 @@ pub fn build_meshy_procedural_humanoid_product_v2(
     source_glb: &[u8],
     appearance_two_da: &[u8],
     product_identity: &ProceduralCreatureProductIdentityV2,
-) -> Result<ProceduralCreatureProductArtifactV2, M6PipelineErrorV1> {
+) -> Result<ProceduralCreatureProductArtifactV3, M6PipelineErrorV1> {
     build_meshy_procedural_humanoid_product_with_options_v3(
         source_glb,
         appearance_two_da,
@@ -1073,7 +1110,7 @@ pub fn build_meshy_procedural_humanoid_product_with_options_v3(
     appearance_two_da: &[u8],
     product_identity: &ProceduralCreatureProductIdentityV2,
     build_options: &ProceduralCreatureBuildOptionsV1,
-) -> Result<ProceduralCreatureProductArtifactV2, M6PipelineErrorV1> {
+) -> Result<ProceduralCreatureProductArtifactV3, M6PipelineErrorV1> {
     let mut source = ingest_glb(source_glb, &GlbLimits::default()).map_err(|error| {
         pipeline_error(
             "ingest",
@@ -1117,6 +1154,87 @@ pub fn build_meshy_procedural_humanoid_product_with_options_v3(
     )? {
         M6BuildArtifactV2::ProceduralProduct(artifact) => Ok(*artifact),
         M6BuildArtifactV2::LegacyBundle(_) => unreachable!("product output mode is exact"),
+    }
+}
+
+/// Builds a collision-free full-native 42-state Creature package under
+/// caller-owned product and demo identities. This route preserves arbitrary
+/// source rig node names, applies the shared product budget and repair options,
+/// and optionally replaces only the animation event table.
+pub fn build_meshy_full_native_h1_package_with_options_v4(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    runtime_identity: &ProceduralCreaturePackageIdentityV1,
+    product_identity: &ProceduralCreatureProductIdentityV2,
+    build_options: &ProceduralCreatureBuildOptionsV1,
+    event_configuration: Option<(
+        DirectCreatureAnimationEventProfileV1,
+        &DirectCreatureEventAuthoringV1,
+    )>,
+) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
+    for (path, runtime, product) in [
+        (
+            "runtimeIdentity.modelResref",
+            runtime_identity.model_resref.as_str(),
+            product_identity.model_resref.as_str(),
+        ),
+        (
+            "runtimeIdentity.textureResref",
+            runtime_identity.texture_resref.as_str(),
+            product_identity.texture_resref.as_str(),
+        ),
+        (
+            "runtimeIdentity.module.hakResref",
+            runtime_identity.module.hak_resref.as_str(),
+            product_identity.hak_resref.as_str(),
+        ),
+    ] {
+        if runtime != product {
+            return Err(pipeline_error(
+                "identity",
+                "M6-FULL-NATIVE-IDENTITY-MISMATCH",
+                path,
+                format!(
+                    "full-native package runtime identity {runtime:?} does not match product identity {product:?}"
+                ),
+            ));
+        }
+    }
+    let mut source = ingest_glb(source_glb, &GlbLimits::default()).map_err(|error| {
+        pipeline_error(
+            "ingest",
+            error.code,
+            error.json_path.unwrap_or_else(|| "input".to_owned()),
+            error.message,
+        )
+    })?;
+    sanitize_meshy_h1_degenerate_triangles_exact_v1(&mut source)?;
+    let (rig, mut mapping) = derive_meshy_h1_profile_and_mapping_exact_v1(&source)
+        .map_err(|error| pipeline_error("profile", error.code, error.path, error.message))?;
+    apply_automatic_h1_animation_profile_names_v1(
+        &source,
+        &mut mapping,
+        DirectCreatureAnimationProfileV1::FullNative42ExplicitV1,
+    );
+    match build_m6_model_package_with_ingest_v5(
+        source_glb,
+        appearance_two_da,
+        source,
+        &rig,
+        &Default::default(),
+        &mapping,
+        DirectCreatureAnimationProfileV1::FullNative42ExplicitV1,
+        event_configuration,
+        runtime_identity,
+        product_identity,
+        M6BuildOutputV2::LegacyBundle,
+        M6GeometryPolicyV1::ProductBudget,
+        build_options,
+    )? {
+        M6BuildArtifactV2::LegacyBundle(artifact) => Ok(*artifact),
+        M6BuildArtifactV2::ProceduralProduct(_) => {
+            unreachable!("the full-native H1 package output mode is exact")
+        }
     }
 }
 
@@ -1314,7 +1432,7 @@ fn p300k_experiment_glb_limits_v1() -> GlbLimits {
         max_input_bytes: 256 * 1024 * 1024,
         max_decoded_geometry_bytes: 512 * 1024 * 1024,
         max_decoded_skin_animation_bytes: 512 * 1024 * 1024,
-        triangle_warning_above: 150_000,
+        triangle_warning_above: AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1,
         // Meshy may emit degenerate faces above the requested target. They are
         // removed before the exact post-sanitize 300K experiment gate.
         triangle_blocking_above: MESHY_CREATURE_P300K_EXPERIMENT_RAW_TRIANGLE_CEILING_V1,
@@ -1325,7 +1443,7 @@ fn p300k_experiment_glb_limits_v1() -> GlbLimits {
 /// Adds an optional fixture-only MOD/UTC around an already materialized
 /// production product. The product bytes are neither rebuilt nor mutated.
 pub fn build_procedural_creature_demo_v2(
-    product: &ProceduralCreatureProductArtifactV2,
+    product: &ProceduralCreatureProductArtifactV3,
     module_identity: &BinaryCreatureModuleIdentityV1,
     creature_resref: &str,
 ) -> Result<ProofModuleArtifactV1, M6PipelineErrorV1> {
@@ -2864,12 +2982,6 @@ fn build_m6_model_package_with_ingest_v5(
             "M6 proof requires one mapped source animation",
         )
     })?;
-    let skin_accessory_stabilization = audit_and_stabilize_skin_accessories_v1(
-        &mut creature,
-        source_animations,
-        &build_options.skin_accessory_stabilization,
-    )
-    .map_err(|error| pipeline_error("profile", error.code, error.path, error.message))?;
     let procedural_rig = (animation_profile
         == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1)
         .then(|| procedural_humanoid_rig_from_creature_v1(&creature))
@@ -2909,6 +3021,12 @@ fn build_m6_model_package_with_ingest_v5(
             });
         (animations, lineage)
     };
+    let skin_accessory_stabilization = audit_and_stabilize_skin_accessories_v2(
+        &mut creature,
+        &animations,
+        &build_options.skin_accessory_stabilization,
+    )
+    .map_err(|error| pipeline_error("profile", error.code, error.path, error.message))?;
     let procedural_event_authoring = if animation_profile
         == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1
         && event_configuration.is_none()
@@ -2993,6 +3111,8 @@ fn build_m6_model_package_with_ingest_v5(
             error.message,
         )
     })?;
+    let (texture_image, material_fidelity) =
+        prepare_creature_base_color_texture_v1(&ingest, &texture_selection, texture_image)?;
     let texture_cleanup = cleanup_texture_artifacts_v1(
         &texture_image,
         &TextureArtifactCleanupOptionsV1 {
@@ -3280,13 +3400,14 @@ fn build_m6_model_package_with_ingest_v5(
                 "the procedural product requires exact V2 clip lineage",
             )
         })?;
-        let report = ProceduralCreatureProductReportV2 {
-            schema_version: 2,
+        let report = ProceduralCreatureProductReportV3 {
+            schema_version: 3,
             identity: product_identity.clone(),
             appearance_semantic_profile:
                 DirectCreatureAppearanceSemanticProfileV2::HumanoidMediumV1,
             resolved_base_color_image_index: texture_selection.source_image_index,
             texture_selection: texture_selection.clone(),
+            material_fidelity,
             geometry: geometry_report,
             ingest: ingest.report,
             conversion: animated.base.report,
@@ -3323,8 +3444,8 @@ fn build_m6_model_package_with_ingest_v5(
                 .expect("procedural skin animation was evaluated"),
         };
         let report_json = json_bytes(&report, "report")?;
-        let summary = ProceduralCreatureProductSummaryV2 {
-            schema_version: 2,
+        let summary = ProceduralCreatureProductSummaryV3 {
+            schema_version: 3,
             status: "PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED".to_owned(),
             input_glb: input_glb_identity.clone(),
             input_appearance_two_da: input_appearance_identity.clone(),
@@ -3379,8 +3500,8 @@ fn build_m6_model_package_with_ingest_v5(
             }
         })
         .collect();
-        let manifest = ProceduralCreatureProductManifestV2 {
-            schema_version: 2,
+        let manifest = ProceduralCreatureProductManifestV3 {
+            schema_version: 3,
             status: "PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED".to_owned(),
             input_glb: input_glb_identity,
             input_appearance_two_da: input_appearance_identity,
@@ -3394,7 +3515,7 @@ fn build_m6_model_package_with_ingest_v5(
         };
         let manifest_json = json_bytes(&manifest, "manifest")?;
         return Ok(M6BuildArtifactV2::ProceduralProduct(Box::new(
-            ProceduralCreatureProductArtifactV2 {
+            ProceduralCreatureProductArtifactV3 {
                 model,
                 texture,
                 appearance_two_da,
@@ -3412,6 +3533,7 @@ fn build_m6_model_package_with_ingest_v5(
 
     let proof_module = if animation_profile
         == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1
+        || runtime_identity != &ProceduralCreaturePackageIdentityV1::historical_default()
     {
         build_single_profiled_creature_proof_module_with_identity_v3(
             appearance.report.appended_row_index,
@@ -4664,6 +4786,195 @@ pub fn resolve_base_color_image_index_v1(
     })
 }
 
+fn prepare_creature_base_color_texture_v1(
+    ingest: &GlbIngestResult,
+    selection: &M6TextureSelectionV1,
+    mut image: crate::tga::TgaImageV1,
+) -> Result<(crate::tga::TgaImageV1, M6MaterialFidelityReportV1), M6PipelineErrorV1> {
+    let material = ingest
+        .ir
+        .materials
+        .iter()
+        .find(|material| material.id == selection.source_material_id)
+        .ok_or_else(|| {
+            pipeline_error(
+                "material",
+                "M6-MATERIAL-FIDELITY-SOURCE-MISSING",
+                "textureSelection.sourceMaterialId",
+                "selected source material is absent from the ingested IR",
+            )
+        })?;
+    // glTF explicitly ignores base-color alpha when alphaMode is OPAQUE.
+    // Keeping an arbitrary source alpha channel in the classic Aurora TGA
+    // would silently change that meaning, because the runtime can consume it.
+    // Bake only the effective factor, then emit an RGB TGA for OPAQUE.
+    let mut effective_base_color_factor = material.base_color_factor;
+    if material.alpha_mode == "OPAQUE" {
+        effective_base_color_factor[3] = 1.0;
+    }
+    let base_color_factor_baked = effective_base_color_factor != [1.0; 4];
+    if base_color_factor_baked {
+        bake_gltf_base_color_factor_v1(&mut image, effective_base_color_factor)?;
+    }
+    let source_had_alpha = image.pixel_format == crate::tga::TgaPixelFormatV1::Rgba8;
+    if material.alpha_mode == "OPAQUE" {
+        discard_ignored_opaque_alpha_v1(&mut image)?;
+    }
+    let alpha_channel_preserved = material.alpha_mode != "OPAQUE"
+        && image.pixel_format == crate::tga::TgaPixelFormatV1::Rgba8;
+    let mut mapped_fields = vec!["baseColorTexture->diffuseTga".to_owned()];
+    if base_color_factor_baked {
+        mapped_fields.push("baseColorFactor->diffuseTgaPixels".to_owned());
+    }
+    if material.alpha_mode == "OPAQUE" && source_had_alpha {
+        mapped_fields.push("alphaMode:OPAQUE->discardIgnoredSourceAlpha".to_owned());
+    }
+    if alpha_channel_preserved {
+        mapped_fields.push("baseColorAlpha->tgaAlpha".to_owned());
+    }
+    let mut unsupported_fields = Vec::new();
+    if material.metallic_factor != 0.0 {
+        unsupported_fields.push("metallicFactor".to_owned());
+    }
+    if material.roughness_factor != 1.0 {
+        unsupported_fields.push("roughnessFactor".to_owned());
+    }
+    if material.metallic_roughness_texture.is_some() {
+        unsupported_fields.push("metallicRoughnessTexture".to_owned());
+    }
+    if material.normal_texture.is_some() {
+        unsupported_fields.push("normalTexture".to_owned());
+    }
+    if material.emissive_factor != [0.0; 3] {
+        unsupported_fields.push("emissiveFactor".to_owned());
+    }
+    if material.emissive_texture.is_some() {
+        unsupported_fields.push("emissiveTexture".to_owned());
+    }
+    if material.alpha_mode != "OPAQUE" {
+        unsupported_fields.push(format!("alphaMode:{}", material.alpha_mode));
+    }
+    if material.alpha_cutoff.is_some() {
+        unsupported_fields.push("alphaCutoff".to_owned());
+    }
+    if material.double_sided {
+        unsupported_fields.push("doubleSided".to_owned());
+    }
+    Ok((
+        image,
+        M6MaterialFidelityReportV1 {
+            schema_version: 1,
+            material_slot: selection.material_slot,
+            source_material_id: selection.source_material_id,
+            base_color_factor: material.base_color_factor,
+            base_color_factor_baked,
+            alpha_mode: material.alpha_mode.clone(),
+            alpha_cutoff: material.alpha_cutoff,
+            alpha_channel_preserved,
+            metallic_factor: material.metallic_factor,
+            roughness_factor: material.roughness_factor,
+            normal_texture_present: material.normal_texture.is_some(),
+            emissive_factor: material.emissive_factor,
+            emissive_texture_present: material.emissive_texture.is_some(),
+            double_sided: material.double_sided,
+            aurora_material_profile: "CLASSIC_DIFFUSE_TGA_SAFE_V1".to_owned(),
+            mapped_fields,
+            unsupported_fields,
+        },
+    ))
+}
+
+fn discard_ignored_opaque_alpha_v1(
+    image: &mut crate::tga::TgaImageV1,
+) -> Result<(), M6PipelineErrorV1> {
+    if image.pixel_format == crate::tga::TgaPixelFormatV1::Rgb8 {
+        return Ok(());
+    }
+    if !image.pixels.len().is_multiple_of(4) {
+        return Err(pipeline_error(
+            "material",
+            "M6-MATERIAL-TEXTURE-PIXELS",
+            "texture.pixels",
+            "decoded RGBA texture pixels do not match the declared pixel format",
+        ));
+    }
+    let pixel_count = image.pixels.len() / 4;
+    let mut opaque_rgb = Vec::new();
+    opaque_rgb
+        .try_reserve_exact(pixel_count.checked_mul(3).ok_or_else(|| {
+            pipeline_error(
+                "material",
+                "M6-MATERIAL-TEXTURE-PIXELS",
+                "texture.pixels",
+                "opaque RGB texture byte length overflowed",
+            )
+        })?)
+        .map_err(|_| {
+            pipeline_error(
+                "material",
+                "M6-MATERIAL-TEXTURE-PIXELS",
+                "texture.pixels",
+                "could not allocate the opaque RGB texture payload",
+            )
+        })?;
+    for pixel in image.pixels.chunks_exact(4) {
+        opaque_rgb.extend_from_slice(&pixel[..3]);
+    }
+    image.pixel_format = crate::tga::TgaPixelFormatV1::Rgb8;
+    image.pixels = opaque_rgb;
+    Ok(())
+}
+
+fn bake_gltf_base_color_factor_v1(
+    image: &mut crate::tga::TgaImageV1,
+    factor: [f32; 4],
+) -> Result<(), M6PipelineErrorV1> {
+    if factor
+        .iter()
+        .any(|value| !value.is_finite() || !(0.0..=1.0).contains(value))
+    {
+        return Err(pipeline_error(
+            "material",
+            "M6-MATERIAL-BASE-COLOR-FACTOR",
+            "materials.baseColorFactor",
+            "base-color factors must be finite values in the inclusive range 0..1",
+        ));
+    }
+    let channels = match image.pixel_format {
+        crate::tga::TgaPixelFormatV1::Rgb8 => 3,
+        crate::tga::TgaPixelFormatV1::Rgba8 => 4,
+    };
+    if !image.pixels.len().is_multiple_of(channels) {
+        return Err(pipeline_error(
+            "material",
+            "M6-MATERIAL-TEXTURE-PIXELS",
+            "texture.pixels",
+            "decoded texture pixels do not match the declared pixel format",
+        ));
+    }
+    for pixel in image.pixels.chunks_exact_mut(channels) {
+        for channel in 0..3 {
+            let encoded = f32::from(pixel[channel]) / 255.0;
+            let linear = if encoded <= 0.04045 {
+                encoded / 12.92
+            } else {
+                ((encoded + 0.055) / 1.055).powf(2.4)
+            };
+            let factored = (linear * factor[channel]).clamp(0.0, 1.0);
+            let encoded = if factored <= 0.003_130_8 {
+                factored * 12.92
+            } else {
+                1.055 * factored.powf(1.0 / 2.4) - 0.055
+            };
+            pixel[channel] = (encoded * 255.0).round().clamp(0.0, 255.0) as u8;
+        }
+        if channels == 4 {
+            pixel[3] = (f32::from(pixel[3]) * factor[3]).round().clamp(0.0, 255.0) as u8;
+        }
+    }
+    Ok(())
+}
+
 pub fn write_m6_proof_packet_v1(
     output_dir: &Path,
     artifact: &M6ModelPackageArtifactV1,
@@ -4803,7 +5114,7 @@ pub fn write_procedural_creature_proof_packet_with_identity_v1(
 /// product's recorded input identity.
 pub fn write_procedural_creature_product_demo_packet_v2(
     output_dir: &Path,
-    product: &ProceduralCreatureProductArtifactV2,
+    product: &ProceduralCreatureProductArtifactV3,
     demo: &ProofModuleArtifactV1,
     source_glb: &[u8],
     module_identity: &BinaryCreatureModuleIdentityV1,
@@ -4842,7 +5153,10 @@ pub fn write_procedural_creature_product_demo_packet_v2(
             "product payloads, reports and identities must match the immutable product summary",
         ));
     }
-    if module_identity.hak_resref != product.report.identity.hak_resref
+    if demo.report.schema_version != 2
+        || demo.report.module_display_name != "Meshy2Aurora procedural humanoid proof"
+        || demo.report.area_display_name != "Meshy2Aurora procedural humanoid proof area"
+        || module_identity.hak_resref != product.report.identity.hak_resref
         || demo.report.module_resref != module_identity.module_resref
         || demo.report.area_resref != module_identity.area_resref
         || demo.report.hak_resref != module_identity.hak_resref
@@ -5316,7 +5630,8 @@ mod tests {
 
     use super::{
         M6_REQUIRED_DIRECT_CREATURE_CLIPS, M6BuildOutputV2, M6GeometryPolicyV1,
-        TriangleDegeneracyPolicyV1, materialize_direct_creature_runtime_clips,
+        TriangleDegeneracyPolicyV1, bake_gltf_base_color_factor_v1,
+        discard_ignored_opaque_alpha_v1, materialize_direct_creature_runtime_clips,
         p100k_experiment_glb_limits_v1, p100k_experiment_triangle_count_is_eligible_v1,
         p300k_experiment_glb_limits_v1, sanitize_meshy_h1_degenerate_triangles_exact_v1,
         sanitize_meshy_h1_degenerate_triangles_v1, sanitize_runtime_creature_face_planes_exact_v1,
@@ -5331,6 +5646,7 @@ mod tests {
             AuroraCreatureIrV1, AuroraCreatureSegmentV1, AuroraVertexWeightsV1,
             RigSegmentDeformationV1, derive_meshy_h1_profile_and_mapping_p300k_experiment_v1,
         },
+        tga::{TgaImageV1, TgaPixelFormatV1},
     };
 
     fn clip(name: &str, length_seconds: f32) -> MdlAnimationClipV1 {
@@ -5342,6 +5658,71 @@ mod tests {
             events: Vec::new(),
             tracks: Vec::new(),
         }
+    }
+
+    #[test]
+    fn gltf_base_color_factor_is_baked_in_linear_space_and_preserves_layout() {
+        let mut image = TgaImageV1 {
+            schema_version: 1,
+            width: 2,
+            height: 1,
+            pixel_format: TgaPixelFormatV1::Rgba8,
+            pixels: vec![128, 64, 32, 200, 255, 128, 0, 255],
+        };
+        let original_layout = (image.width, image.height, image.pixel_format);
+
+        bake_gltf_base_color_factor_v1(&mut image, [0.5, 1.0, 0.25, 0.5]).unwrap();
+
+        assert_eq!(
+            (image.width, image.height, image.pixel_format),
+            original_layout
+        );
+        assert_eq!(image.pixels[3], 100);
+        assert_eq!(image.pixels[7], 128);
+        assert!(image.pixels[0] < 128);
+        assert_eq!(image.pixels[1], 64);
+        assert!(image.pixels[2] < 32);
+        assert!(image.pixels[4] < 255);
+        assert_eq!(image.pixels[5], 128);
+        assert_eq!(image.pixels[6], 0);
+
+        let factored = image.clone();
+        bake_gltf_base_color_factor_v1(&mut image, [1.0; 4]).unwrap();
+        assert_eq!(image, factored);
+    }
+
+    #[test]
+    fn opaque_gltf_alpha_is_discarded_without_changing_rgb_or_dimensions() {
+        let mut image = TgaImageV1 {
+            schema_version: 1,
+            width: 2,
+            height: 1,
+            pixel_format: TgaPixelFormatV1::Rgba8,
+            pixels: vec![10, 20, 30, 0, 40, 50, 60, 127],
+        };
+
+        discard_ignored_opaque_alpha_v1(&mut image).unwrap();
+
+        assert_eq!(image.width, 2);
+        assert_eq!(image.height, 1);
+        assert_eq!(image.pixel_format, TgaPixelFormatV1::Rgb8);
+        assert_eq!(image.pixels, vec![10, 20, 30, 40, 50, 60]);
+    }
+
+    #[test]
+    fn opaque_alpha_discard_is_idempotent_for_rgb_textures() {
+        let mut image = TgaImageV1 {
+            schema_version: 1,
+            width: 1,
+            height: 1,
+            pixel_format: TgaPixelFormatV1::Rgb8,
+            pixels: vec![10, 20, 30],
+        };
+        let expected = image.clone();
+
+        discard_ignored_opaque_alpha_v1(&mut image).unwrap();
+
+        assert_eq!(image, expected);
     }
 
     #[test]

@@ -7,6 +7,8 @@
 //! discovers components after a spatial position weld (so UV/normal seams do
 //! not create false islands), measures their deformation on source clips and
 //! can replace an approved accessory's mixed weights with one explicit bone.
+//! Auto mode requires measured non-rigid deformation; mixed weights alone are
+//! reported but never rewritten.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -26,8 +28,8 @@ use crate::{
     },
 };
 
-const MAX_METRIC_VERTICES_V1: usize = 64;
-const MAX_SAMPLE_TIMES_PER_CLIP_V1: usize = 128;
+const MAX_METRIC_VERTICES_V2: usize = 128;
+const MAX_SAMPLE_TIMES_PER_CLIP_V2: usize = 256;
 const MIN_ACCESSORY_TRIANGLES_V1: usize = 2;
 const MAX_ACCESSORY_TRIANGLE_SHARE_V1: f64 = 0.25;
 const STABLE_WEIGHT_EPSILON_V1: f32 = 1.0e-5;
@@ -46,20 +48,31 @@ pub enum SkinAccessoryStabilizationModeV1 {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SkinAccessoryStabilizationOptionsV1 {
+pub struct SkinAccessoryComponentBoneOverrideV2 {
+    pub segment_index: usize,
+    pub component_index: usize,
+    pub bone_name: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SkinAccessoryStabilizationOptionsV2 {
     pub schema_version: u32,
     #[serde(default)]
     pub mode: SkinAccessoryStabilizationModeV1,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected_bone_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub component_bone_overrides: Vec<SkinAccessoryComponentBoneOverrideV2>,
 }
 
-impl Default for SkinAccessoryStabilizationOptionsV1 {
+impl Default for SkinAccessoryStabilizationOptionsV2 {
     fn default() -> Self {
         Self {
-            schema_version: 1,
+            schema_version: 2,
             mode: SkinAccessoryStabilizationModeV1::Auto,
             selected_bone_name: None,
+            component_bone_overrides: Vec::new(),
         }
     }
 }
@@ -76,9 +89,12 @@ pub enum SkinAccessoryComponentActionV1 {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SkinAccessoryDeformationMetricsV1 {
+pub struct SkinAccessoryDeformationMetricsV2 {
     pub sampled_clip_count: u32,
     pub sampled_pose_count: u32,
+    pub sampled_vertex_count: u32,
+    pub vertex_sampling_mode: String,
+    pub time_sampling_truncated_clip_count: u32,
     pub max_pair_distance_ratio: f32,
     pub max_pair_distance_error: f32,
     pub min_axis_alignment: f32,
@@ -86,7 +102,7 @@ pub struct SkinAccessoryDeformationMetricsV1 {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SkinAccessoryComponentReportV1 {
+pub struct SkinAccessoryComponentReportV2 {
     pub segment_index: usize,
     pub component_index: usize,
     pub triangle_count: usize,
@@ -101,24 +117,34 @@ pub struct SkinAccessoryComponentReportV1 {
     pub selected_bone_id: Option<u32>,
     pub selected_bone_name: Option<String>,
     pub changed_vertex_count: usize,
-    pub before: SkinAccessoryDeformationMetricsV1,
-    pub after: SkinAccessoryDeformationMetricsV1,
+    pub before: SkinAccessoryDeformationMetricsV2,
+    pub after: SkinAccessoryDeformationMetricsV2,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SkinAccessoryStabilizationReportV1 {
+pub struct SkinAccessoryStabilizationReportV2 {
     pub schema_version: u32,
     pub mode: SkinAccessoryStabilizationModeV1,
+    pub audited_clip_count: u32,
     pub weld_tolerance: f32,
     pub component_count: usize,
     pub detached_component_count: usize,
     pub risky_component_count: usize,
     pub stabilized_component_count: usize,
     pub changed_vertex_count: usize,
-    pub components: Vec<SkinAccessoryComponentReportV1>,
+    pub components: Vec<SkinAccessoryComponentReportV2>,
     pub warnings: Vec<String>,
 }
+
+#[deprecated(note = "use SkinAccessoryStabilizationOptionsV2; serialized schema is version 2")]
+pub type SkinAccessoryStabilizationOptionsV1 = SkinAccessoryStabilizationOptionsV2;
+#[deprecated(note = "use SkinAccessoryDeformationMetricsV2; report schema is version 2")]
+pub type SkinAccessoryDeformationMetricsV1 = SkinAccessoryDeformationMetricsV2;
+#[deprecated(note = "use SkinAccessoryComponentReportV2; report schema is version 2")]
+pub type SkinAccessoryComponentReportV1 = SkinAccessoryComponentReportV2;
+#[deprecated(note = "use SkinAccessoryStabilizationReportV2; serialized schema is version 2")]
+pub type SkinAccessoryStabilizationReportV1 = SkinAccessoryStabilizationReportV2;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -251,11 +277,20 @@ struct TrsV1 {
 /// Audits every Skin segment and optionally replaces only approved detached
 /// accessory weights. Geometry, hierarchy, materials, UVs, tangents and
 /// animation tracks are read-only.
+#[deprecated(note = "use audit_and_stabilize_skin_accessories_v2; report schema is version 2")]
 pub fn audit_and_stabilize_skin_accessories_v1(
     model: &mut AuroraModelIrV1,
     animations: &MdlAnimationSetV1,
-    options: &SkinAccessoryStabilizationOptionsV1,
-) -> Result<SkinAccessoryStabilizationReportV1, SkinAccessoryStabilizationErrorV1> {
+    options: &SkinAccessoryStabilizationOptionsV2,
+) -> Result<SkinAccessoryStabilizationReportV2, SkinAccessoryStabilizationErrorV1> {
+    audit_and_stabilize_skin_accessories_v2(model, animations, options)
+}
+
+pub fn audit_and_stabilize_skin_accessories_v2(
+    model: &mut AuroraModelIrV1,
+    animations: &MdlAnimationSetV1,
+    options: &SkinAccessoryStabilizationOptionsV2,
+) -> Result<SkinAccessoryStabilizationReportV2, SkinAccessoryStabilizationErrorV1> {
     validate_options(options)?;
     let bind_worlds = node_worlds(&model.nodes, None, 0.0)?;
     let node_names = model
@@ -264,6 +299,7 @@ pub fn audit_and_stabilize_skin_accessories_v1(
         .map(|node| (node.id, node.name.clone()))
         .collect::<BTreeMap<_, _>>();
     let explicit_bone = selected_bone(options, &model.nodes)?;
+    let component_bone_overrides = selected_component_bones(options, &model.nodes)?;
     let weld_tolerance = model_weld_tolerance(model)?;
     let mut reports = Vec::new();
     let mut detached_component_count = 0usize;
@@ -321,16 +357,27 @@ pub fn audit_and_stabilize_skin_accessories_v1(
             {
                 risk_reasons.push("MIXED_COMPONENT_WEIGHTS".to_owned());
             }
-            if before.max_pair_distance_ratio > RISKY_PAIR_DISTANCE_RATIO_ABOVE_V1
-                || before.max_pair_distance_error > RISKY_PAIR_DISTANCE_ERROR_ABOVE_V1
-            {
+            let observed_non_rigid_deformation = before.max_pair_distance_ratio
+                > RISKY_PAIR_DISTANCE_RATIO_ABOVE_V1
+                || before.max_pair_distance_error > RISKY_PAIR_DISTANCE_ERROR_ABOVE_V1;
+            if observed_non_rigid_deformation {
                 risk_reasons.push("NON_RIGID_CLIP_DEFORMATION".to_owned());
             }
             let risky = small_detached_candidate
                 && weight_summary.uniform_hard_bone.is_none()
-                && !risk_reasons.is_empty();
+                && observed_non_rigid_deformation;
             if risky {
                 risky_component_count += 1;
+            } else if small_detached_candidate
+                && weight_summary.uniform_hard_bone.is_none()
+                && risk_reasons
+                    .iter()
+                    .any(|reason| reason == "MIXED_COMPONENT_WEIGHTS")
+            {
+                warnings.push(format!(
+                    "segment {segment_index} component {} has mixed weights but no sampled non-rigid deformation; Auto kept source weights",
+                    component.component_index
+                ));
             }
 
             let mut action = if is_primary_body {
@@ -351,14 +398,21 @@ pub fn audit_and_stabilize_skin_accessories_v1(
                     }
                     SkinAccessoryStabilizationModeV1::Auto
                     | SkinAccessoryStabilizationModeV1::SelectBone => {
-                        let bone = explicit_bone.or_else(|| {
-                            auto_torso_bone(
+                        let bone = match options.mode {
+                            SkinAccessoryStabilizationModeV1::SelectBone => {
+                                component_bone_overrides
+                                    .get(&(segment_index, component.component_index))
+                                    .copied()
+                                    .or(explicit_bone)
+                            }
+                            SkinAccessoryStabilizationModeV1::Auto => auto_torso_bone(
                                 &model.nodes,
                                 &bind_worlds,
                                 model.segments[segment_index].parent_node_id,
                                 centroid,
-                            )
-                        });
+                            ),
+                            SkinAccessoryStabilizationModeV1::KeepSourceWeights => None,
+                        };
                         if let Some(bone_id) = bone {
                             selected_bone_id = Some(bone_id);
                             selected_bone_name = node_names.get(&bone_id).cloned();
@@ -372,8 +426,13 @@ pub fn audit_and_stabilize_skin_accessories_v1(
                             changed_vertex_count += changed;
                         } else {
                             warnings.push(format!(
-                                "segment {segment_index} component {} is risky but no stable torso bone was found",
-                                component.component_index
+                                "segment {segment_index} component {} is risky but no {} bone was available",
+                                component.component_index,
+                                if options.mode == SkinAccessoryStabilizationModeV1::SelectBone {
+                                    "explicitly selected"
+                                } else {
+                                    "stable torso"
+                                }
                             ));
                         }
                     }
@@ -390,7 +449,7 @@ pub fn audit_and_stabilize_skin_accessories_v1(
             } else {
                 before.clone()
             };
-            reports.push(SkinAccessoryComponentReportV1 {
+            reports.push(SkinAccessoryComponentReportV2 {
                 segment_index,
                 component_index: component.component_index,
                 triangle_count: component.triangle_indices.len(),
@@ -411,9 +470,10 @@ pub fn audit_and_stabilize_skin_accessories_v1(
         }
     }
 
-    Ok(SkinAccessoryStabilizationReportV1 {
-        schema_version: 1,
+    Ok(SkinAccessoryStabilizationReportV2 {
+        schema_version: 2,
         mode: options.mode,
+        audited_clip_count: animations.clips.len() as u32,
         weld_tolerance,
         component_count: reports.len(),
         detached_component_count,
@@ -426,14 +486,14 @@ pub fn audit_and_stabilize_skin_accessories_v1(
 }
 
 fn validate_options(
-    options: &SkinAccessoryStabilizationOptionsV1,
+    options: &SkinAccessoryStabilizationOptionsV2,
 ) -> Result<(), SkinAccessoryStabilizationErrorV1> {
-    if options.schema_version != 1 {
+    if options.schema_version != 2 {
         return Err(error(
             "M6-SKIN-ACCESSORY-OPTIONS-SCHEMA",
             "skinAccessoryStabilization.schemaVersion",
             format!(
-                "expected skin-accessory options schema 1, got {}",
+                "expected skin-accessory options schema 2, got {}",
                 options.schema_version
             ),
         ));
@@ -443,39 +503,64 @@ fn validate_options(
             if options
                 .selected_bone_name
                 .as_deref()
-                .is_none_or(str::is_empty) =>
+                .is_none_or(str::is_empty)
+                && options.component_bone_overrides.is_empty() =>
         {
             Err(error(
                 "M6-SKIN-ACCESSORY-BONE-MISSING",
                 "skinAccessoryStabilization.selectedBoneName",
-                "SELECT_BONE mode requires a nonempty bone name",
+                "SELECT_BONE mode requires a global bone name or at least one component override",
             ))
         }
         SkinAccessoryStabilizationModeV1::Auto
         | SkinAccessoryStabilizationModeV1::KeepSourceWeights
-            if options.selected_bone_name.is_some() =>
+            if options.selected_bone_name.is_some()
+                || !options.component_bone_overrides.is_empty() =>
         {
             Err(error(
                 "M6-SKIN-ACCESSORY-BONE-UNEXPECTED",
                 "skinAccessoryStabilization.selectedBoneName",
-                "selectedBoneName is valid only in SELECT_BONE mode",
+                "selectedBoneName and componentBoneOverrides are valid only in SELECT_BONE mode",
             ))
         }
-        _ => Ok(()),
+        _ => {
+            let mut component_keys = BTreeSet::new();
+            for (index, component_override) in options.component_bone_overrides.iter().enumerate() {
+                if component_override.bone_name.trim().is_empty() {
+                    return Err(error(
+                        "M6-SKIN-ACCESSORY-BONE-MISSING",
+                        format!(
+                            "skinAccessoryStabilization.componentBoneOverrides[{index}].boneName"
+                        ),
+                        "component override bone name must be nonempty",
+                    ));
+                }
+                if !component_keys.insert((
+                    component_override.segment_index,
+                    component_override.component_index,
+                )) {
+                    return Err(error(
+                        "M6-SKIN-ACCESSORY-COMPONENT-OVERRIDE-DUPLICATE",
+                        format!("skinAccessoryStabilization.componentBoneOverrides[{index}]"),
+                        "each segment/component pair may be overridden only once",
+                    ));
+                }
+            }
+            Ok(())
+        }
     }
 }
 
 fn selected_bone(
-    options: &SkinAccessoryStabilizationOptionsV1,
+    options: &SkinAccessoryStabilizationOptionsV2,
     nodes: &[AuroraModelNodeV1],
 ) -> Result<Option<u32>, SkinAccessoryStabilizationErrorV1> {
     if options.mode != SkinAccessoryStabilizationModeV1::SelectBone {
         return Ok(None);
     }
-    let requested = options
-        .selected_bone_name
-        .as_deref()
-        .expect("validated SELECT_BONE name");
+    let Some(requested) = options.selected_bone_name.as_deref() else {
+        return Ok(None);
+    };
     let matches = nodes
         .iter()
         .filter(|node| node.name.eq_ignore_ascii_case(requested))
@@ -493,6 +578,53 @@ fn selected_bone(
             format!("selected bone {requested:?} is not unique after ASCII case-fold"),
         )),
     }
+}
+
+fn selected_component_bones(
+    options: &SkinAccessoryStabilizationOptionsV2,
+    nodes: &[AuroraModelNodeV1],
+) -> Result<BTreeMap<(usize, usize), u32>, SkinAccessoryStabilizationErrorV1> {
+    let mut selected = BTreeMap::new();
+    for (index, component_override) in options.component_bone_overrides.iter().enumerate() {
+        let matches = nodes
+            .iter()
+            .filter(|node| {
+                node.name
+                    .eq_ignore_ascii_case(&component_override.bone_name)
+            })
+            .collect::<Vec<_>>();
+        let bone_id = match matches.as_slice() {
+            [node] => node.id,
+            [] => {
+                return Err(error(
+                    "M6-SKIN-ACCESSORY-BONE-NOT-FOUND",
+                    format!("skinAccessoryStabilization.componentBoneOverrides[{index}].boneName"),
+                    format!(
+                        "selected component bone {:?} is absent",
+                        component_override.bone_name
+                    ),
+                ));
+            }
+            _ => {
+                return Err(error(
+                    "M6-SKIN-ACCESSORY-BONE-AMBIGUOUS",
+                    format!("skinAccessoryStabilization.componentBoneOverrides[{index}].boneName"),
+                    format!(
+                        "selected component bone {:?} is not unique after ASCII case-fold",
+                        component_override.bone_name
+                    ),
+                ));
+            }
+        };
+        selected.insert(
+            (
+                component_override.segment_index,
+                component_override.component_index,
+            ),
+            bone_id,
+        );
+    }
+    Ok(selected)
 }
 
 fn model_weld_tolerance(model: &AuroraModelIrV1) -> Result<f32, SkinAccessoryStabilizationErrorV1> {
@@ -835,9 +967,10 @@ fn component_deformation_metrics(
     nodes: &[AuroraModelNodeV1],
     bind_worlds: &BTreeMap<u32, Mat4>,
     animations: &MdlAnimationSetV1,
-) -> Result<SkinAccessoryDeformationMetricsV1, SkinAccessoryStabilizationErrorV1> {
-    let sampled_vertices = sampled_component_vertices(&component.vertex_indices);
+) -> Result<SkinAccessoryDeformationMetricsV2, SkinAccessoryStabilizationErrorV1> {
+    let sampled_vertices = sampled_component_vertices(segment, component);
     let bind_points = sampled_vertices
+        .indices
         .iter()
         .map(|&vertex_index| segment.positions[vertex_index].map(f64::from))
         .collect::<Vec<_>>();
@@ -861,16 +994,22 @@ fn component_deformation_metrics(
     let mut min_axis_alignment = 1.0_f64;
     let mut sampled_pose_count = 0u32;
     let mut sampled_clip_count = 0u32;
+    let mut time_sampling_truncated_clip_count = 0u32;
     for clip in &animations.clips {
         let times = clip_sample_times(clip);
-        if times.is_empty() {
+        if times.values.is_empty() {
             continue;
         }
+        if times.truncated {
+            time_sampling_truncated_clip_count =
+                time_sampling_truncated_clip_count.saturating_add(1);
+        }
         sampled_clip_count = sampled_clip_count.saturating_add(1);
-        for time in times {
+        for time in times.values {
             sampled_pose_count = sampled_pose_count.saturating_add(1);
             let animated_worlds = node_worlds(nodes, Some(clip), time)?;
             let deformed = sampled_vertices
+                .indices
                 .iter()
                 .map(|&vertex_index| {
                     deform_position(
@@ -923,25 +1062,170 @@ fn component_deformation_metrics(
             }
         }
     }
-    Ok(SkinAccessoryDeformationMetricsV1 {
+    Ok(SkinAccessoryDeformationMetricsV2 {
         sampled_clip_count,
         sampled_pose_count,
+        sampled_vertex_count: u32::try_from(sampled_vertices.indices.len()).unwrap_or(u32::MAX),
+        vertex_sampling_mode: sampled_vertices.mode.to_owned(),
+        time_sampling_truncated_clip_count,
         max_pair_distance_ratio: max_ratio as f32,
         max_pair_distance_error: max_error as f32,
         min_axis_alignment: min_axis_alignment as f32,
     })
 }
 
-fn sampled_component_vertices(vertices: &[usize]) -> Vec<usize> {
-    if vertices.len() <= MAX_METRIC_VERTICES_V1 {
-        return vertices.to_vec();
+struct SampledComponentVerticesV2 {
+    indices: Vec<usize>,
+    mode: &'static str,
+}
+
+fn sampled_component_vertices(
+    segment: &AuroraModelSegmentV1,
+    component: &ComponentV1,
+) -> SampledComponentVerticesV2 {
+    let vertices = &component.vertex_indices;
+    if vertices.len() <= MAX_METRIC_VERTICES_V2 {
+        return SampledComponentVerticesV2 {
+            indices: vertices.to_vec(),
+            mode: "EXACT_ALL_VERTICES",
+        };
     }
-    (0..MAX_METRIC_VERTICES_V1)
-        .map(|sample| {
-            let index = sample * (vertices.len() - 1) / (MAX_METRIC_VERTICES_V1 - 1);
-            vertices[index]
+    let mut selected = BTreeSet::new();
+    selected.insert(vertices[0]);
+    for axis in 0..3 {
+        if let Some(&minimum) = vertices.iter().min_by(|left, right| {
+            segment.positions[**left][axis]
+                .total_cmp(&segment.positions[**right][axis])
+                .then_with(|| left.cmp(right))
+        }) {
+            selected.insert(minimum);
+        }
+        if let Some(&maximum) = vertices.iter().max_by(|left, right| {
+            segment.positions[**left][axis]
+                .total_cmp(&segment.positions[**right][axis])
+                .then_with(|| right.cmp(left))
+        }) {
+            selected.insert(maximum);
+        }
+    }
+
+    let active_bones = vertices
+        .iter()
+        .flat_map(|&vertex_index| {
+            let weights = &segment.weights[vertex_index];
+            weights
+                .bone_node_ids
+                .iter()
+                .copied()
+                .take(usize::from(weights.influence_count))
+                .flatten()
         })
-        .collect()
+        .collect::<BTreeSet<_>>();
+    for bone in active_bones {
+        if selected.len() >= MAX_METRIC_VERTICES_V2 {
+            break;
+        }
+        if let Some(&maximum) = vertices.iter().max_by(|left, right| {
+            vertex_bone_weight(&segment.weights[**left], bone)
+                .total_cmp(&vertex_bone_weight(&segment.weights[**right], bone))
+                .then_with(|| right.cmp(left))
+        }) {
+            selected.insert(maximum);
+        }
+    }
+
+    let bounds = component_position_bounds(segment, vertices);
+    while selected.len() < MAX_METRIC_VERTICES_V2 {
+        let next = vertices
+            .iter()
+            .copied()
+            .filter(|vertex| !selected.contains(vertex))
+            .map(|candidate| {
+                let nearest = selected
+                    .iter()
+                    .map(|chosen| {
+                        combined_vertex_feature_distance(segment, candidate, *chosen, bounds)
+                    })
+                    .fold(f64::INFINITY, f64::min);
+                (candidate, nearest)
+            })
+            .max_by(|left, right| {
+                left.1
+                    .total_cmp(&right.1)
+                    .then_with(|| right.0.cmp(&left.0))
+            })
+            .map(|(candidate, _)| candidate);
+        let Some(next) = next else {
+            break;
+        };
+        selected.insert(next);
+    }
+    SampledComponentVerticesV2 {
+        indices: selected.into_iter().collect(),
+        mode: "GEOMETRY_AND_WEIGHT_DIVERSE_V2",
+    }
+}
+
+fn vertex_bone_weight(weights: &AuroraVertexWeightsV1, bone: u32) -> f32 {
+    weights
+        .bone_node_ids
+        .iter()
+        .copied()
+        .zip(weights.values)
+        .take(usize::from(weights.influence_count))
+        .filter_map(|(candidate, value)| (candidate == Some(bone)).then_some(value))
+        .sum()
+}
+
+fn component_position_bounds(
+    segment: &AuroraModelSegmentV1,
+    vertices: &[usize],
+) -> ([f64; 3], [f64; 3]) {
+    let mut min = [f64::INFINITY; 3];
+    let mut max = [f64::NEG_INFINITY; 3];
+    for &vertex in vertices {
+        for axis in 0..3 {
+            let value = f64::from(segment.positions[vertex][axis]);
+            min[axis] = min[axis].min(value);
+            max[axis] = max[axis].max(value);
+        }
+    }
+    (min, max)
+}
+
+fn combined_vertex_feature_distance(
+    segment: &AuroraModelSegmentV1,
+    left: usize,
+    right: usize,
+    bounds: ([f64; 3], [f64; 3]),
+) -> f64 {
+    let spatial = (0..3)
+        .map(|axis| {
+            let extent = (bounds.1[axis] - bounds.0[axis]).max(f64::EPSILON);
+            ((f64::from(segment.positions[left][axis]) - f64::from(segment.positions[right][axis]))
+                / extent)
+                .powi(2)
+        })
+        .sum::<f64>();
+    let left_weights = &segment.weights[left];
+    let right_weights = &segment.weights[right];
+    let bones = left_weights
+        .bone_node_ids
+        .iter()
+        .chain(&right_weights.bone_node_ids)
+        .copied()
+        .flatten()
+        .collect::<BTreeSet<_>>();
+    let weight = bones
+        .into_iter()
+        .map(|bone| {
+            f64::from(
+                vertex_bone_weight(left_weights, bone) - vertex_bone_weight(right_weights, bone),
+            )
+            .powi(2)
+        })
+        .sum::<f64>();
+    spatial + weight
 }
 
 fn longest_pair(points: &[[f64; 3]]) -> (usize, usize, f64) {
@@ -957,7 +1241,12 @@ fn longest_pair(points: &[[f64; 3]]) -> (usize, usize, f64) {
     selected
 }
 
-fn clip_sample_times(clip: &MdlAnimationClipV1) -> Vec<f32> {
+struct ClipSampleTimesV2 {
+    values: Vec<f32>,
+    truncated: bool,
+}
+
+fn clip_sample_times(clip: &MdlAnimationClipV1) -> ClipSampleTimesV2 {
     let mut times = clip
         .tracks
         .iter()
@@ -967,15 +1256,21 @@ fn clip_sample_times(clip: &MdlAnimationClipV1) -> Vec<f32> {
     times.extend([0.0, clip.length_seconds]);
     times.sort_by(f32::total_cmp);
     times.dedup_by(|left, right| left.to_bits() == right.to_bits());
-    if times.len() <= MAX_SAMPLE_TIMES_PER_CLIP_V1 {
-        return times;
+    if times.len() <= MAX_SAMPLE_TIMES_PER_CLIP_V2 {
+        return ClipSampleTimesV2 {
+            values: times,
+            truncated: false,
+        };
     }
-    (0..MAX_SAMPLE_TIMES_PER_CLIP_V1)
-        .map(|sample| {
-            let index = sample * (times.len() - 1) / (MAX_SAMPLE_TIMES_PER_CLIP_V1 - 1);
-            times[index]
-        })
-        .collect()
+    ClipSampleTimesV2 {
+        values: (0..MAX_SAMPLE_TIMES_PER_CLIP_V2)
+            .map(|sample| {
+                let index = sample * (times.len() - 1) / (MAX_SAMPLE_TIMES_PER_CLIP_V2 - 1);
+                times[index]
+            })
+            .collect(),
+        truncated: true,
+    }
 }
 
 fn deform_position(
@@ -1369,4 +1664,56 @@ fn dot4(left: [f64; 4], right: [f64; 4]) -> f64 {
         .zip(right)
         .map(|(left, right)| left * right)
         .sum()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ComponentV1, sampled_component_vertices};
+    use crate::model_ir::{
+        AuroraModelSegmentV1, AuroraSegmentDeformationV1, AuroraVertexWeightsV1,
+    };
+
+    fn hard_weight(bone: u32) -> AuroraVertexWeightsV1 {
+        AuroraVertexWeightsV1 {
+            bone_node_ids: [Some(bone), None, None, None],
+            values: [1.0, 0.0, 0.0, 0.0],
+            influence_count: 1,
+        }
+    }
+
+    #[test]
+    fn large_component_sampling_is_geometry_and_weight_diverse_and_deterministic() {
+        let positions = (0..200)
+            .map(|index| [index as f32, (index % 7) as f32, (index % 11) as f32])
+            .collect::<Vec<_>>();
+        let mut weights = vec![hard_weight(1); positions.len()];
+        weights[157] = hard_weight(2);
+        let segment = AuroraModelSegmentV1 {
+            segment_id: 1,
+            material_slot: 0,
+            deformation: AuroraSegmentDeformationV1::Skin,
+            parent_node_id: 0,
+            cast_shadow: true,
+            normals: vec![[0.0, 1.0, 0.0]; positions.len()],
+            uv0: vec![[0.0, 0.0]; positions.len()],
+            tangents: None,
+            indices: vec![0, 1, 2],
+            face_surface_ids: Vec::new(),
+            positions,
+            weights,
+        };
+        let component = ComponentV1 {
+            component_index: 0,
+            triangle_indices: vec![0],
+            vertex_indices: (0..200).collect(),
+        };
+
+        let first = sampled_component_vertices(&segment, &component);
+        let second = sampled_component_vertices(&segment, &component);
+
+        assert_eq!(first.mode, "GEOMETRY_AND_WEIGHT_DIVERSE_V2");
+        assert_eq!(first.indices.len(), 128);
+        assert!(first.indices.contains(&157));
+        assert_eq!(first.indices, second.indices);
+    }
 }

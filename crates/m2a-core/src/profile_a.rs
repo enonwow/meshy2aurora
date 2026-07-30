@@ -687,8 +687,8 @@ pub(crate) fn derive_meshy_h1_profile_and_mapping_p300k_experiment_v1(
     source: &GlbIngestResult,
 ) -> Result<(CreatureRigProfileV1, ProfileAAnimationMappingV1), ProfileAConversionFatalError> {
     let limits = ProfileALimitsV1 {
-        triangle_warning_above: 150_000,
-        triangle_blocking_above: 300_000,
+        triangle_warning_above: AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 as u64,
+        triangle_blocking_above: AURORA_MODEL_TRIANGLE_BUDGET_V1 as u64,
         ..ProfileALimitsV1::default()
     };
     derive_meshy_h1_profile_and_mapping_with_limits_v1(
@@ -1573,8 +1573,8 @@ pub(crate) fn convert_profile_a_with_animations_p300k_experiment_v1(
 ) -> Result<ProfileAAnimatedOutcomeV1, ProfileAAnimationFatalError> {
     let options = ProfileAOptionsV1 {
         limits: ProfileALimitsV1 {
-            triangle_warning_above: 150_000,
-            triangle_blocking_above: 300_000,
+            triangle_warning_above: AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 as u64,
+            triangle_blocking_above: AURORA_MODEL_TRIANGLE_BUDGET_V1 as u64,
             ..ProfileALimitsV1::default()
         },
         ..ProfileAOptionsV1::default()
@@ -1772,7 +1772,7 @@ fn convert_profile_a_impl(
             gate(
                 "M3A-MATERIAL-LIMIT",
                 "sourceSelection.meshInstances",
-                "unique material count exceeds Profile A guardrail",
+                "Creature Profile A admits exactly one used source material and one classic diffuse TGA; multiple used materials are blocked instead of silently selecting the first material",
             ),
             &options.limits,
         )?;
@@ -3515,7 +3515,10 @@ fn validate_options(
             50_000,
             MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_CEILING_V1 as u64,
         ),
-        ProfileATriangleThresholdContractV1::P300kExperiment => (150_000, 300_000),
+        ProfileATriangleThresholdContractV1::P300kExperiment => (
+            AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 as u64,
+            AURORA_MODEL_TRIANGLE_BUDGET_V1 as u64,
+        ),
     };
     let triangle_thresholds_are_compiled_profile = (
         limits.triangle_warning_above,

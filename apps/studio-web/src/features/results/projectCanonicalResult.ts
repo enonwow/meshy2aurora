@@ -28,6 +28,9 @@ export interface CanonicalResultSnapshot {
   };
   runtimeAcceptance: CanonicalRuntimeAcceptance;
   animationEventEvidence?: CanonicalAnimationEventEvidence;
+  skinAccessoryStabilization?: CanonicalSkinAccessoryStabilizationReport;
+  materialFidelity?: CanonicalMaterialFidelityReport;
+  demo?: CanonicalCreatureDemoReport;
   runtimeFixtureContract?: CanonicalM0RuntimeFixtureContract;
   artifacts: WorkerArtifact[];
   reportJson: string;
@@ -84,6 +87,85 @@ export interface CanonicalAnimationEventEvidence {
   authoringCanonical: { byteLength: number; sha256: string };
 }
 
+export interface CanonicalSkinAccessoryDeformationMetrics {
+  sampledClipCount: number;
+  sampledPoseCount: number;
+  sampledVertexCount: number;
+  vertexSamplingMode: string;
+  timeSamplingTruncatedClipCount: number;
+  maxPairDistanceRatio: number;
+  maxPairDistanceError: number;
+  minAxisAlignment: number;
+}
+
+export interface CanonicalSkinAccessoryComponentReport {
+  segmentIndex: number;
+  componentIndex: number;
+  triangleCount: number;
+  vertexCount: number;
+  isPrimaryBody: boolean;
+  centroid: [number, number, number];
+  activeBoneCount: number;
+  dominantBoneName?: string;
+  dominantBoneShare: number;
+  riskReasons: string[];
+  action: string;
+  selectedBoneId?: number;
+  selectedBoneName?: string;
+  changedVertexCount: number;
+  before: CanonicalSkinAccessoryDeformationMetrics;
+  after: CanonicalSkinAccessoryDeformationMetrics;
+}
+
+export interface CanonicalSkinAccessoryStabilizationReport {
+  schemaVersion: 2;
+  mode: string;
+  auditedClipCount: number;
+  weldTolerance: number;
+  componentCount: number;
+  detachedComponentCount: number;
+  riskyComponentCount: number;
+  stabilizedComponentCount: number;
+  changedVertexCount: number;
+  components: CanonicalSkinAccessoryComponentReport[];
+  warnings: string[];
+}
+
+export interface CanonicalCreatureDemoReport {
+  schemaVersion: 2;
+  moduleResref: string;
+  moduleDisplayName: string;
+  areaResref: string;
+  areaDisplayName: string;
+  creatureResref: string;
+  hakResref: string;
+  appearanceRow: number;
+  resourceCount: number;
+  byteLength: number;
+  sha256: string;
+  semanticReadbackStatus: "PASS";
+}
+
+export interface CanonicalMaterialFidelityReport {
+  schemaVersion: 1;
+  materialSlot: number;
+  sourceMaterialId: number;
+  baseColorFactor: [number, number, number, number];
+  baseColorFactorBaked: boolean;
+  alphaMode: string;
+  alphaCutoff?: number;
+  alphaChannelPreserved: boolean;
+  metallicFactor: number;
+  roughnessFactor: number;
+  normalTexturePresent: boolean;
+  emissiveFactor: [number, number, number];
+  emissiveTexturePresent: boolean;
+  doubleSided: boolean;
+  auroraMaterialProfile: string;
+  mappedFields: string[];
+  unsupportedFields: string[];
+}
+
 export interface CanonicalM0RuntimeResource {
   resref: string;
   byteLength: number;
@@ -91,7 +173,7 @@ export interface CanonicalM0RuntimeResource {
 }
 
 export interface CanonicalM0RuntimeFixtureContract {
-  schemaVersion: 1;
+  schemaVersion: 2;
   lane: "M0_BINARY_VERTICAL_SLICE";
   module: CanonicalM0RuntimeResource;
   hak: CanonicalM0RuntimeResource;
@@ -167,14 +249,14 @@ function direction2(value: unknown, path: string) {
 
 function runtimeFixtureContractParser(value: unknown, path: string): CanonicalM0RuntimeFixtureContract {
   const item = record(value, path);
-  if (integer(item.schemaVersion, `${path}.schemaVersion`) !== 1) fail(`${path}.schemaVersion`);
+  if (integer(item.schemaVersion, `${path}.schemaVersion`) !== 2) fail(`${path}.schemaVersion`);
   if (string(item.lane, `${path}.lane`) !== "M0_BINARY_VERTICAL_SLICE") fail(`${path}.lane`);
   const appearance = record(item.appearance, `${path}.appearance`);
   const binaryScene = record(item.binaryScene, `${path}.binaryScene`);
   const fixture = record(binaryScene.fixture, `${path}.binaryScene.fixture`);
   const meshEligibility = record(item.meshEligibility, `${path}.meshEligibility`);
   const contract: CanonicalM0RuntimeFixtureContract = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     lane: "M0_BINARY_VERTICAL_SLICE",
     module: runtimeResource(item.module, `${path}.module`),
     hak: runtimeResource(item.hak, `${path}.hak`),
@@ -259,18 +341,181 @@ function conversionDiagnostic(value: unknown, path: string): CanonicalConversion
   };
 }
 
+function optionalString(value: unknown, path: string): string | undefined {
+  return value === undefined || value === null ? undefined : string(value, path);
+}
+
+function optionalInteger(value: unknown, path: string): number | undefined {
+  return value === undefined || value === null ? undefined : integer(value, path);
+}
+
+function optionalNumber(value: unknown, path: string): number | undefined {
+  return value === undefined || value === null ? undefined : number(value, path);
+}
+
+function skinAccessoryMetrics(
+  value: unknown,
+  path: string,
+): CanonicalSkinAccessoryDeformationMetrics {
+  const item = record(value, path);
+  return {
+    sampledClipCount: integer(item.sampledClipCount, `${path}.sampledClipCount`),
+    sampledPoseCount: integer(item.sampledPoseCount, `${path}.sampledPoseCount`),
+    sampledVertexCount: integer(item.sampledVertexCount, `${path}.sampledVertexCount`),
+    vertexSamplingMode: string(item.vertexSamplingMode, `${path}.vertexSamplingMode`),
+    timeSamplingTruncatedClipCount: integer(
+      item.timeSamplingTruncatedClipCount,
+      `${path}.timeSamplingTruncatedClipCount`,
+    ),
+    maxPairDistanceRatio: number(item.maxPairDistanceRatio, `${path}.maxPairDistanceRatio`),
+    maxPairDistanceError: number(item.maxPairDistanceError, `${path}.maxPairDistanceError`),
+    minAxisAlignment: number(item.minAxisAlignment, `${path}.minAxisAlignment`),
+  };
+}
+
+function skinAccessoryStabilizationParser(
+  value: unknown,
+  path: string,
+): CanonicalSkinAccessoryStabilizationReport {
+  const item = record(value, path);
+  if (integer(item.schemaVersion, `${path}.schemaVersion`) !== 2) fail(`${path}.schemaVersion`);
+  const components = array(item.components, `${path}.components`).map((value, index) => {
+    const componentPath = `${path}.components[${index}]`;
+    const component = record(value, componentPath);
+    const centroid = array(component.centroid, `${componentPath}.centroid`);
+    if (centroid.length !== 3) fail(`${componentPath}.centroid`);
+    return {
+      segmentIndex: integer(component.segmentIndex, `${componentPath}.segmentIndex`),
+      componentIndex: integer(component.componentIndex, `${componentPath}.componentIndex`),
+      triangleCount: integer(component.triangleCount, `${componentPath}.triangleCount`),
+      vertexCount: integer(component.vertexCount, `${componentPath}.vertexCount`),
+      isPrimaryBody: boolean(component.isPrimaryBody, `${componentPath}.isPrimaryBody`),
+      centroid: [
+        number(centroid[0], `${componentPath}.centroid[0]`),
+        number(centroid[1], `${componentPath}.centroid[1]`),
+        number(centroid[2], `${componentPath}.centroid[2]`),
+      ] as [number, number, number],
+      activeBoneCount: integer(component.activeBoneCount, `${componentPath}.activeBoneCount`),
+      dominantBoneName: optionalString(component.dominantBoneName, `${componentPath}.dominantBoneName`),
+      dominantBoneShare: number(component.dominantBoneShare, `${componentPath}.dominantBoneShare`),
+      riskReasons: stringArray(component.riskReasons, `${componentPath}.riskReasons`),
+      action: string(component.action, `${componentPath}.action`),
+      selectedBoneId: optionalInteger(component.selectedBoneId, `${componentPath}.selectedBoneId`),
+      selectedBoneName: optionalString(component.selectedBoneName, `${componentPath}.selectedBoneName`),
+      changedVertexCount: integer(component.changedVertexCount, `${componentPath}.changedVertexCount`),
+      before: skinAccessoryMetrics(component.before, `${componentPath}.before`),
+      after: skinAccessoryMetrics(component.after, `${componentPath}.after`),
+    };
+  });
+  return {
+    schemaVersion: 2,
+    mode: string(item.mode, `${path}.mode`),
+    auditedClipCount: integer(item.auditedClipCount, `${path}.auditedClipCount`),
+    weldTolerance: number(item.weldTolerance, `${path}.weldTolerance`),
+    componentCount: integer(item.componentCount, `${path}.componentCount`),
+    detachedComponentCount: integer(item.detachedComponentCount, `${path}.detachedComponentCount`),
+    riskyComponentCount: integer(item.riskyComponentCount, `${path}.riskyComponentCount`),
+    stabilizedComponentCount: integer(item.stabilizedComponentCount, `${path}.stabilizedComponentCount`),
+    changedVertexCount: integer(item.changedVertexCount, `${path}.changedVertexCount`),
+    components,
+    warnings: stringArray(item.warnings, `${path}.warnings`),
+  };
+}
+
+function creatureDemoParser(value: unknown, path: string): CanonicalCreatureDemoReport {
+  const item = record(value, path);
+  if (integer(item.schemaVersion, `${path}.schemaVersion`) !== 2) fail(`${path}.schemaVersion`);
+  const semanticReadbackStatus = string(
+    item.semanticReadbackStatus,
+    `${path}.semanticReadbackStatus`,
+  );
+  if (semanticReadbackStatus !== "PASS") fail(`${path}.semanticReadbackStatus`);
+  return {
+    schemaVersion: 2,
+    moduleResref: string(item.moduleResref, `${path}.moduleResref`),
+    moduleDisplayName: string(item.moduleDisplayName, `${path}.moduleDisplayName`),
+    areaResref: string(item.areaResref, `${path}.areaResref`),
+    areaDisplayName: string(item.areaDisplayName, `${path}.areaDisplayName`),
+    creatureResref: string(item.creatureResref, `${path}.creatureResref`),
+    hakResref: string(item.hakResref, `${path}.hakResref`),
+    appearanceRow: integer(item.appearanceRow, `${path}.appearanceRow`),
+    resourceCount: integer(item.resourceCount, `${path}.resourceCount`),
+    byteLength: integer(item.byteLength, `${path}.byteLength`),
+    sha256: sha256(item.sha256, `${path}.sha256`),
+    semanticReadbackStatus: "PASS",
+  };
+}
+
+function finiteNumberTuple<const Length extends number>(
+  value: unknown,
+  length: Length,
+  path: string,
+): number[] {
+  const values = array(value, path);
+  if (values.length !== length) fail(path);
+  return values.map((entry, index) => number(entry, `${path}[${index}]`));
+}
+
+function materialFidelityParser(value: unknown, path: string): CanonicalMaterialFidelityReport {
+  const item = record(value, path);
+  if (integer(item.schemaVersion, `${path}.schemaVersion`) !== 1) fail(`${path}.schemaVersion`);
+  return {
+    schemaVersion: 1,
+    materialSlot: integer(item.materialSlot, `${path}.materialSlot`),
+    sourceMaterialId: integer(item.sourceMaterialId, `${path}.sourceMaterialId`),
+    baseColorFactor: finiteNumberTuple(
+      item.baseColorFactor,
+      4,
+      `${path}.baseColorFactor`,
+    ) as [number, number, number, number],
+    baseColorFactorBaked: boolean(
+      item.baseColorFactorBaked,
+      `${path}.baseColorFactorBaked`,
+    ),
+    alphaMode: string(item.alphaMode, `${path}.alphaMode`),
+    alphaCutoff: optionalNumber(item.alphaCutoff, `${path}.alphaCutoff`),
+    alphaChannelPreserved: boolean(
+      item.alphaChannelPreserved,
+      `${path}.alphaChannelPreserved`,
+    ),
+    metallicFactor: number(item.metallicFactor, `${path}.metallicFactor`),
+    roughnessFactor: number(item.roughnessFactor, `${path}.roughnessFactor`),
+    normalTexturePresent: boolean(
+      item.normalTexturePresent,
+      `${path}.normalTexturePresent`,
+    ),
+    emissiveFactor: finiteNumberTuple(
+      item.emissiveFactor,
+      3,
+      `${path}.emissiveFactor`,
+    ) as [number, number, number],
+    emissiveTexturePresent: boolean(
+      item.emissiveTexturePresent,
+      `${path}.emissiveTexturePresent`,
+    ),
+    doubleSided: boolean(item.doubleSided, `${path}.doubleSided`),
+    auroraMaterialProfile: string(
+      item.auroraMaterialProfile,
+      `${path}.auroraMaterialProfile`,
+    ),
+    mappedFields: stringArray(item.mappedFields, `${path}.mappedFields`),
+    unsupportedFields: stringArray(item.unsupportedFields, `${path}.unsupportedFields`),
+  };
+}
+
 export function projectCanonicalResult(
   reportJson: string,
   summaryJson: string,
   manifestJson: string,
   artifacts: readonly WorkerArtifact[],
+  demoReportJson?: string,
 ): CanonicalResultSnapshot {
   const report = parseJson(reportJson, "reportJson");
   const summary = parseJson(summaryJson, "summaryJson");
   const manifest = parseJson(manifestJson, "manifestJson");
   const status = string(summary.status, "summary.status");
   const productOnly = status === "PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED";
-  const expectedSchemaVersion = productOnly ? 2 : 1;
+  const expectedSchemaVersion = productOnly ? 3 : 1;
   for (const [value, path] of [[report, "report"], [summary, "summary"], [manifest, "manifest"]] as const) {
     if (integer(value.schemaVersion, `${path}.schemaVersion`) !== expectedSchemaVersion) {
       fail(`${path}.schemaVersion`);
@@ -382,8 +627,12 @@ export function projectCanonicalResult(
   equal(integer(record(modelJson.layout, "report.model.layout").fileLength, "report.model.layout.fileLength"), outputs.model.byteLength, "report.model.layout.fileLength");
   equal(integer(appearanceJson.outputByteLength, "report.appearance.outputByteLength"), outputs.appearanceTwoDa.byteLength, "report.appearance.outputByteLength");
   equal(sha256(appearanceJson.outputSha256, "report.appearance.outputSha256"), outputs.appearanceTwoDa.sha256, "report.appearance.outputSha256");
+  let embeddedDemo: CanonicalCreatureDemoReport | undefined;
   if (!productOnly) {
     const proofModuleJson = record(report.proofModule, "report.proofModule");
+    if (demoReportJson !== undefined) {
+      embeddedDemo = creatureDemoParser(proofModuleJson, "report.proofModule");
+    }
     equal(integer(proofModuleJson.byteLength, "report.proofModule.byteLength"), outputs.proofModule.byteLength, "report.proofModule.byteLength");
     equal(sha256(proofModuleJson.sha256, "report.proofModule.sha256"), outputs.proofModule.sha256, "report.proofModule.sha256");
     equal(integer(proofModuleJson.appearanceRow, "report.proofModule.appearanceRow"), appendedRow, "report.proofModule.appearanceRow");
@@ -453,6 +702,16 @@ export function projectCanonicalResult(
     };
   }
 
+  const skinAccessoryStabilization = report.skinAccessoryStabilization === undefined
+    ? undefined
+    : skinAccessoryStabilizationParser(
+      report.skinAccessoryStabilization,
+      "report.skinAccessoryStabilization",
+    );
+  const materialFidelity = report.materialFidelity === undefined
+    ? undefined
+    : materialFidelityParser(report.materialFidelity, "report.materialFidelity");
+
   const packageManifest = record(manifest.packageManifest, "manifest.packageManifest");
   equal(sha256(packageManifest.packageSha256, "manifest.packageManifest.packageSha256"), hak.sha256, "manifest.packageManifest.packageSha256");
   const resources = array(packageManifest.resources, "manifest.packageManifest.resources").map((value, index) => {
@@ -492,6 +751,28 @@ export function projectCanonicalResult(
   equal(textureResource.resref, textureResref, "manifest.packageManifest.resources.TEXTURE.resref");
   equal(appearanceResource.resref, "appearance", "manifest.packageManifest.resources.APPEARANCE_TABLE.resref");
 
+  const demo = demoReportJson === undefined
+    ? undefined
+    : creatureDemoParser(parseJson(demoReportJson, "demoReportJson"), "demo");
+  if (demo) {
+    if (productOnly) {
+      equal(
+        demo.hakResref,
+        string(productIdentity?.hakResref, "summary.identity.hakResref"),
+        "demo.hakResref",
+      );
+    } else {
+      if (status !== "M6_MODEL_PACKAGE_MATERIALIZED" || embeddedDemo === undefined) {
+        fail("demoReportJson");
+      }
+      if (JSON.stringify(demo) !== JSON.stringify(embeddedDemo)) {
+        throw new Error("Canonical result identity mismatch at embedded demo report");
+      }
+      reconcile(demo, outputs.proofModule, "demo");
+    }
+    equal(demo.appearanceRow, appendedRow, "demo.appearanceRow");
+  }
+
   let runtimeFixtureContract: CanonicalM0RuntimeFixtureContract | undefined;
   if (status === "M0_MESHY_STATIC_RIGID_PACKAGE_MATERIALIZED") {
     const reportContract = runtimeFixtureContractParser(report.m0RuntimeFixtureContract, "report.m0RuntimeFixtureContract");
@@ -520,8 +801,12 @@ export function projectCanonicalResult(
     fail("m0RuntimeFixtureContract");
   }
 
-  const requiresTextureArtifact = productOnly || report.textureArtifactCleanup !== undefined;
-  const expectedArtifactCount = productOnly ? 6 : requiresTextureArtifact ? 7 : 6;
+  const requiresTextureArtifact = productOnly
+    || report.textureArtifactCleanup !== undefined
+    || (demo !== undefined && !productOnly);
+  const expectedArtifactCount = productOnly
+    ? (demo ? 8 : 6)
+    : (requiresTextureArtifact ? 7 : 6) + (demo ? 1 : 0);
   if (artifacts.length !== expectedArtifactCount || new Set(artifacts.map(({ artifactId }) => artifactId)).size !== artifacts.length) {
     throw new Error("Canonical result identity mismatch at artifact inventory");
   }
@@ -529,6 +814,7 @@ export function projectCanonicalResult(
     ["package-hak", "HAK", outputs.hak],
     ["model-mdl", "MODEL", outputs.model],
     ...(requiresTextureArtifact ? [["texture-tga", "TEXTURE", outputs.texture] as const] : []),
+    ...(demo && productOnly ? [["proof-module", "MODULE", demo] as const] : []),
     ["report-json", "JSON_REPORT", outputs.report],
     ...(!productOnly ? [["proof-module", "MODULE", outputs.proofModule] as const] : []),
   ] as const;
@@ -539,10 +825,23 @@ export function projectCanonicalResult(
     equal(artifact.byteLength, expected.byteLength, `artifacts.${artifactId}.byteLength`);
     equal(artifact.sha256, expected.sha256, `artifacts.${artifactId}.sha256`);
   }
+  if (demo) {
+    const moduleArtifact = artifacts.find((item) => item.artifactId === "proof-module")
+      ?? fail("artifacts.proof-module");
+    equal(moduleArtifact.fileName, `${demo.moduleResref}.mod`, "artifacts.proof-module.fileName");
+    if (!productOnly) {
+      const hakArtifact = artifacts.find((item) => item.artifactId === "package-hak")
+        ?? fail("artifacts.package-hak");
+      equal(hakArtifact.fileName, `${demo.hakResref}.hak`, "artifacts.package-hak.fileName");
+    }
+  }
   for (const [artifactId, exactJson] of [
     ["report-json", reportJson],
     ["manifest-json", manifestJson],
     ["summary-json", summaryJson],
+    ...(demoReportJson === undefined
+      ? []
+      : [["demo-report-json", demoReportJson] as const]),
   ] as const) {
     const artifact = artifacts.find((item) => item.artifactId === artifactId)
       ?? fail(`artifacts.${artifactId}`);
@@ -587,6 +886,9 @@ export function projectCanonicalResult(
     },
     runtimeAcceptance: resolveOwnerRuntimeProofV1(outputs),
     animationEventEvidence,
+    skinAccessoryStabilization,
+    materialFidelity,
+    demo,
     runtimeFixtureContract,
     artifacts: [...artifacts],
     reportJson,

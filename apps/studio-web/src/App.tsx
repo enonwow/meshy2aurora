@@ -55,12 +55,17 @@ import {
 } from "./features/results/projectTileResult";
 import { projectCanonicalReadback } from "./features/results/projectReadback";
 import {
+  creatureArtifactIdentityTokenV2,
+  sha256ArrayBufferHexV1,
+} from "./features/results/creatureArtifactIdentity";
+import {
   InputsPanel,
   type CreatureConversionProfileV1,
   type SkinAccessoryStabilizationModeV1,
   type TileAuthoringOptions,
 } from "./features/source/InputsPanel";
 import { SourceStep } from "./features/source/SourceStep";
+import { parseSkinAccessoryComponentBoneOverridesV2 } from "./features/source/skinAccessoryOverrides";
 import { hasFullNativeDirectCreatureProfileV1 } from "./features/source/directCreatureAnimationProfile";
 import { LocalMeshyBridgeClient, type MeshyArtifactProvenance, type MeshyBridgeClient } from "./features/meshy/bridge";
 import { isMeshyLabEnabled } from "./features/meshy/feature";
@@ -139,60 +144,71 @@ const STUDIO_PLACEABLE_IDENTITY = {
   objectTag: "m2a_s1_ritual_pedestal",
   displayName: "Meshy Ritual Pedestal",
 } as const;
-function studioCreatureProductIdentity(
+async function studioCreatureProductIdentity(
   sourceSha256: string,
+  appearanceSha256: string,
+  animationEventsSha256: string | undefined,
   textureArtifactCleanup: boolean,
+  skinAccessoryStabilizationMode: SkinAccessoryStabilizationModeV1,
+  skinAccessorySelectedBoneName: string,
+  skinAccessoryComponentBoneOverrides: string,
 ) {
-  if (!/^[0-9a-f]{64}$/.test(sourceSha256)) {
-    throw new Error("Inspected source has no canonical SHA-256 identity");
-  }
-  const suffix = sourceSha256.slice(0, 8);
-  const variant = textureArtifactCleanup ? "h" : "";
+  const token = await creatureArtifactIdentityTokenV2({
+    profile: "PRODUCT_300K",
+    sourceSha256,
+    appearanceSha256,
+    animationEventsSha256,
+    textureArtifactCleanup,
+    skinAccessoryStabilizationMode,
+    skinAccessorySelectedBoneName,
+    skinAccessoryComponentBoneOverrides,
+  });
   return {
-    modelResref: `m2c2${variant}m${suffix}`,
-    textureResref: `m2c2${variant}t${suffix}`,
-    hakResref: `m2c2${variant}h${suffix}`,
-    appearanceLabel: `M2A_CREATURE_V2_${textureArtifactCleanup ? "H_" : ""}${suffix.toUpperCase()}`,
+    modelResref: `cm${token}`,
+    textureResref: `ct${token}`,
+    hakResref: `ch${token}`,
+    appearanceLabel: `M2A_CREATURE_V3_${token.toUpperCase()}`,
   };
 }
-function studioCreatureP100kPackageIdentity(
-  sourceSha256: string,
-  textureArtifactCleanup: boolean,
-) {
-  if (!/^[0-9a-f]{64}$/.test(sourceSha256)) {
-    throw new Error("Inspected source has no canonical SHA-256 identity");
-  }
-  const suffix = sourceSha256.slice(0, 8);
-  const variant = textureArtifactCleanup ? "h" : "";
+function studioCreatureProductDemoIdentity(product: Awaited<ReturnType<typeof studioCreatureProductIdentity>>) {
+  const token = product.modelResref.slice(2);
   return {
-    modelResref: `m2p1${variant}m${suffix}`,
-    textureResref: `m2p1${variant}t${suffix}`,
     module: {
-      moduleResref: `m2p1${variant}d${suffix}`,
-      areaResref: `m2p1${variant}a${suffix}`,
-      hakResref: `m2p1${variant}h${suffix}`,
+      moduleResref: `cd${token}`,
+      areaResref: `ca${token}`,
+      hakResref: product.hakResref,
     },
-    creatureResref: `m2p1${variant}c${suffix}`,
+    creatureResref: `cc${token}`,
   };
 }
-function studioCreatureP300kPackageIdentity(
+async function studioCreatureExperimentPackageIdentity(
+  profile: "EXPERIMENTAL_P100K" | "EXPERIMENTAL_P300K",
   sourceSha256: string,
+  appearanceSha256: string,
   textureArtifactCleanup: boolean,
+  skinAccessoryStabilizationMode: SkinAccessoryStabilizationModeV1,
+  skinAccessorySelectedBoneName: string,
+  skinAccessoryComponentBoneOverrides: string,
 ) {
-  if (!/^[0-9a-f]{64}$/.test(sourceSha256)) {
-    throw new Error("Inspected source has no canonical SHA-256 identity");
-  }
-  const suffix = sourceSha256.slice(0, 8);
-  const variant = textureArtifactCleanup ? "h" : "";
+  const token = await creatureArtifactIdentityTokenV2({
+    profile,
+    sourceSha256,
+    appearanceSha256,
+    animationEventsSha256: undefined,
+    textureArtifactCleanup,
+    skinAccessoryStabilizationMode,
+    skinAccessorySelectedBoneName,
+    skinAccessoryComponentBoneOverrides,
+  });
   return {
-    modelResref: `m2p3${variant}m${suffix}`,
-    textureResref: `m2p3${variant}t${suffix}`,
+    modelResref: `pm${token}`,
+    textureResref: `pt${token}`,
     module: {
-      moduleResref: `m2p3${variant}d${suffix}`,
-      areaResref: `m2p3${variant}a${suffix}`,
-      hakResref: `m2p3${variant}h${suffix}`,
+      moduleResref: `pd${token}`,
+      areaResref: `pa${token}`,
+      hakResref: `ph${token}`,
     },
-    creatureResref: `m2p3${variant}c${suffix}`,
+    creatureResref: `pc${token}`,
   };
 }
 const STUDIO_PLACEABLE_PLACEMENT = { x: 10, y: 14.5, z: 0, bearing: 0 } as const;
@@ -328,6 +344,8 @@ export function App({
   const [skinAccessoryStabilizationMode, setSkinAccessoryStabilizationMode] =
     useState<SkinAccessoryStabilizationModeV1>("AUTO");
   const [skinAccessorySelectedBoneName, setSkinAccessorySelectedBoneName] =
+    useState("");
+  const [skinAccessoryComponentBoneOverrides, setSkinAccessoryComponentBoneOverrides] =
     useState("");
   const [placeableAuthoring, setPlaceableAuthoring] = useState<PlaceableAuthoringBootstrap>();
   const placeableAuthoringRef = useRef<PlaceableAuthoringBootstrap | undefined>(undefined);
@@ -542,6 +560,11 @@ export function App({
     setSkinAccessorySelectedBoneName(boneName);
     dispatch({ type: "AUTHORING_OPTIONS_CHANGED" });
   };
+  const updateSkinAccessoryComponentBoneOverrides = (overrides: string) => {
+    invalidateRunningBuild();
+    setSkinAccessoryComponentBoneOverrides(overrides);
+    dispatch({ type: "AUTHORING_OPTIONS_CHANGED" });
+  };
 
   const updateTileOptions = (options: TileAuthoringOptions) => {
     invalidateRunningBuild();
@@ -604,11 +627,12 @@ export function App({
     setTextureArtifactCleanup(false);
     setSkinAccessoryStabilizationMode("AUTO");
     setSkinAccessorySelectedBoneName("");
+    setSkinAccessoryComponentBoneOverrides("");
     setPlaceableAuthoring(undefined);
     dispatch({ type: "START_NEW_CONVERSION" });
   };
 
-  const startBuild = () => {
+  const startBuild = async () => {
     const current = sessionRef.current;
     const worker = workerRef.current;
     if (
@@ -672,31 +696,81 @@ export function App({
           ? "H1_SKINNED_FULL_42_EVENTS" as const
           : "H1_SKINNED_FULL_42" as const
         : "SKINNED_PROCEDURAL_HUMANOID_42" as const;
-    const creatureIdentityJson = JSON.stringify(
-      p300kLane
-        ? studioCreatureP300kPackageIdentity(
+    let creatureIdentityJson = "";
+    let animationEventsBytes: ArrayBuffer | undefined;
+    let eventAuthoringJson: string | undefined;
+    let productDemoIdentity = {
+      module: { moduleResref: "", areaResref: "", hakResref: "" },
+      creatureResref: "",
+    };
+    if (!tileLane && !placeableLane) {
+      const appearanceSha256 = current.appearanceInspection?.value.sourceSha256;
+      if (!appearanceSha256) {
+        setDebugDrawerMessage("The inspected appearance.2da has no canonical SHA-256 identity.");
+        return;
+      }
+      try {
+        if (animationEvents) {
+          [animationEventsBytes, eventAuthoringJson] = await Promise.all([
+            animationEvents.arrayBuffer(),
+            animationEvents.text(),
+          ]);
+        }
+        const animationEventsSha256 = animationEventsBytes
+          ? await sha256ArrayBufferHexV1(animationEventsBytes)
+          : undefined;
+        if (p300kLane || p100kLane) {
+          const identity = await studioCreatureExperimentPackageIdentity(
+            p300kLane ? "EXPERIMENTAL_P300K" : "EXPERIMENTAL_P100K",
             current.sourceInspection.value.source.sha256,
+            appearanceSha256,
             textureArtifactCleanup,
-          )
-        : p100kLane
-          ? studioCreatureP100kPackageIdentity(
-              current.sourceInspection.value.source.sha256,
-              textureArtifactCleanup,
-            )
-        : studioCreatureProductIdentity(
+            skinAccessoryStabilizationMode,
+            skinAccessorySelectedBoneName,
+            skinAccessoryComponentBoneOverrides,
+          );
+          creatureIdentityJson = JSON.stringify(identity);
+          productDemoIdentity = {
+            module: identity.module,
+            creatureResref: identity.creatureResref,
+          };
+        } else {
+          const identity = await studioCreatureProductIdentity(
             current.sourceInspection.value.source.sha256,
+            appearanceSha256,
+            animationEventsSha256,
             textureArtifactCleanup,
-          ),
-    );
+            skinAccessoryStabilizationMode,
+            skinAccessorySelectedBoneName,
+            skinAccessoryComponentBoneOverrides,
+          );
+          creatureIdentityJson = JSON.stringify(identity);
+          productDemoIdentity = studioCreatureProductDemoIdentity(identity);
+        }
+      } catch (error) {
+        setDebugDrawerMessage(error instanceof Error ? error.message : String(error));
+        return;
+      }
+    }
+    const currentAfterIdentity = sessionRef.current;
+    if (
+      workerRef.current !== worker
+      || currentAfterIdentity.revision !== buildRevision
+      || currentAfterIdentity.currentStep !== "BUILD"
+      || currentAfterIdentity.source?.file !== source
+      || currentAfterIdentity.appearance?.file !== appearance
+      || currentAfterIdentity.animationEvents?.file !== animationEvents
+    ) {
+      return;
+    }
     setDebugDrawerMessage(undefined);
     dispatch({ type: "BUILD_STARTED", requestId: buildRequestId, revision: buildRevision });
 
     void Promise.all([
       source.arrayBuffer(),
       appearance?.arrayBuffer(),
-      animationEvents?.text(),
     ])
-      .then(([sourceGlb, appearanceTwoDa, eventAuthoringJson]) => {
+      .then(([sourceGlb, appearanceTwoDa]) => {
         if (workerRef.current !== worker) return undefined;
         if (tileLane) {
           return worker.request(
@@ -739,9 +813,56 @@ export function App({
                   appearanceTwoDa,
                   packageLane,
                   eventAuthoringJson: eventAuthoringJson ?? "",
+                  identityJson: creatureIdentityJson,
+                  demoModuleIdentityJson: JSON.stringify(productDemoIdentity.module),
+                  demoCreatureResref: productDemoIdentity.creatureResref,
+                  textureArtifactCleanup,
+                  skinAccessoryStabilization: {
+                    mode: skinAccessoryStabilizationMode,
+                    ...(skinAccessoryStabilizationMode === "SELECT_BONE"
+                      ? {
+                          ...(skinAccessorySelectedBoneName.trim()
+                            ? { selectedBoneName: skinAccessorySelectedBoneName.trim() }
+                            : {}),
+                          componentBoneOverrides:
+                            parseSkinAccessoryComponentBoneOverridesV2(
+                              skinAccessoryComponentBoneOverrides,
+                            ),
+                        }
+                      : {}),
+                  },
                 },
                 [sourceGlb, appearanceTwoDa],
               )
+            : packageLane === "H1_SKINNED_FULL_42"
+              ? worker.request(
+                  {
+                    requestId: buildRequestId,
+                    type: "BUILD_MODEL_PACKAGE",
+                    sourceGlb,
+                    appearanceTwoDa,
+                    packageLane,
+                    identityJson: creatureIdentityJson,
+                    demoModuleIdentityJson: JSON.stringify(productDemoIdentity.module),
+                    demoCreatureResref: productDemoIdentity.creatureResref,
+                    textureArtifactCleanup,
+                    skinAccessoryStabilization: {
+                      mode: skinAccessoryStabilizationMode,
+                      ...(skinAccessoryStabilizationMode === "SELECT_BONE"
+                        ? {
+                            ...(skinAccessorySelectedBoneName.trim()
+                              ? { selectedBoneName: skinAccessorySelectedBoneName.trim() }
+                              : {}),
+                            componentBoneOverrides:
+                              parseSkinAccessoryComponentBoneOverridesV2(
+                                skinAccessoryComponentBoneOverrides,
+                              ),
+                          }
+                        : {}),
+                    },
+                  },
+                  [sourceGlb, appearanceTwoDa],
+                )
             : packageLane === "SKINNED_PROCEDURAL_HUMANOID_42"
               || packageLane === "SKINNED_PROCEDURAL_HUMANOID_P100K_EXPERIMENT"
               || packageLane === "SKINNED_PROCEDURAL_HUMANOID_P300K_EXPERIMENT"
@@ -753,11 +874,21 @@ export function App({
                     appearanceTwoDa,
                     packageLane,
                     identityJson: creatureIdentityJson,
+                    demoModuleIdentityJson: JSON.stringify(productDemoIdentity.module),
+                    demoCreatureResref: productDemoIdentity.creatureResref,
                     textureArtifactCleanup,
                     skinAccessoryStabilization: {
                       mode: skinAccessoryStabilizationMode,
                       ...(skinAccessoryStabilizationMode === "SELECT_BONE"
-                        ? { selectedBoneName: skinAccessorySelectedBoneName.trim() }
+                        ? {
+                            ...(skinAccessorySelectedBoneName.trim()
+                              ? { selectedBoneName: skinAccessorySelectedBoneName.trim() }
+                              : {}),
+                            componentBoneOverrides:
+                              parseSkinAccessoryComponentBoneOverridesV2(
+                                skinAccessoryComponentBoneOverrides,
+                              ),
+                          }
                         : {}),
                     },
                   },
@@ -824,6 +955,7 @@ export function App({
                   response.summaryJson,
                   response.manifestJson,
                   response.artifacts,
+                  response.demoReportJson,
                 ),
                 readback,
                 readbackJson: response.readbackJson,
@@ -944,6 +1076,7 @@ export function App({
       textureArtifactCleanup={textureArtifactCleanup}
       skinAccessoryStabilizationMode={skinAccessoryStabilizationMode}
       skinAccessorySelectedBoneName={skinAccessorySelectedBoneName}
+      skinAccessoryComponentBoneOverrides={skinAccessoryComponentBoneOverrides}
       source={session.source?.file}
       appearance={session.appearance?.file}
       animationEvents={session.animationEvents?.file}
@@ -959,6 +1092,7 @@ export function App({
       onTextureArtifactCleanupChange={updateTextureArtifactCleanup}
       onSkinAccessoryStabilizationModeChange={updateSkinAccessoryStabilizationMode}
       onSkinAccessorySelectedBoneNameChange={updateSkinAccessorySelectedBoneName}
+      onSkinAccessoryComponentBoneOverridesChange={updateSkinAccessoryComponentBoneOverrides}
       onRemoveSource={removeSource}
       onRemoveAppearance={removeAppearance}
       onRemoveAnimationEvents={removeAnimationEvents}
@@ -1035,6 +1169,7 @@ export function App({
           textureArtifactCleanup={textureArtifactCleanup}
           skinAccessoryStabilizationMode={skinAccessoryStabilizationMode}
           skinAccessorySelectedBoneName={skinAccessorySelectedBoneName}
+          skinAccessoryComponentBoneOverrides={skinAccessoryComponentBoneOverrides}
           source={session.source?.file}
           appearance={session.appearance?.file}
           animationEvents={session.animationEvents?.file}
@@ -1050,6 +1185,7 @@ export function App({
           onTextureArtifactCleanupChange={updateTextureArtifactCleanup}
           onSkinAccessoryStabilizationModeChange={updateSkinAccessoryStabilizationMode}
           onSkinAccessorySelectedBoneNameChange={updateSkinAccessorySelectedBoneName}
+          onSkinAccessoryComponentBoneOverridesChange={updateSkinAccessoryComponentBoneOverrides}
           onRemoveSource={removeSource}
           onRemoveAppearance={removeAppearance}
           onRemoveAnimationEvents={removeAnimationEvents}
