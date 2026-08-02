@@ -13,10 +13,11 @@ export type StudioWorkerRequest =
       requestId: string;
       type: "INSPECT_SOURCE";
       sourceGlb: ArrayBuffer;
-      target?: "CREATURE" | "PLACEABLE" | "TILE";
+      target?: "CREATURE" | "PLACEABLE" | "ITEM" | "TILE";
       creatureProfile?: "PRODUCT_300K" | "EXPERIMENTAL_P100K" | "EXPERIMENTAL_P300K";
     }
   | { requestId: string; type: "INSPECT_APPEARANCE"; appearanceTwoDa: ArrayBuffer }
+  | { requestId: string; type: "INSPECT_ITEM_BASEITEMS"; baseitemsTwoDa: ArrayBuffer }
   | {
       requestId: string;
       type: "BUILD_MODEL_PACKAGE";
@@ -78,6 +79,71 @@ export type StudioWorkerRequest =
       sourceGlb: ArrayBuffer;
       optionsJson: string;
     }
+  | {
+      requestId: string;
+      type: "BUILD_ITEM_PACKAGE";
+      baseitemsTwoDa: ArrayBuffer;
+      baseItem: number;
+      hakResref: string;
+      hakFileName: string;
+      moduleResref: string;
+      moduleFileName: string;
+      moduleName: string;
+      areaResref: string;
+      areaName: string;
+      blueprintResref: string;
+      blueprintJson: string;
+      occupiedResourceKeys: string[];
+      seamValidation: {
+        tolerance: number;
+      };
+      referenceTables: Array<{
+        tableName: string;
+        fileName: string;
+        bytes: ArrayBuffer;
+      }>;
+      referenceResources: Array<{
+        resourceType: 6 | 2002;
+        resref: string;
+        fileName: string;
+        bytes: ArrayBuffer;
+      }>;
+      referenceResourceManifest: {
+        fileName: string;
+        bytes: ArrayBuffer;
+      } | null;
+      capartContext: {
+        schemaVersion: 1;
+        modelPrefix: string;
+        genderCode: string | null;
+      } | null;
+      equippedProofContext: {
+        creatureResref: string;
+        appearanceRow: number;
+        race: number;
+        gender: number;
+        phenotype: number;
+      } | null;
+      parts: Array<{
+        field: string;
+        variant: number;
+        sourceKind: "MESHY_GLB" | "CAPART_SELECTION" | "CLOAK_MODEL_SELECTION";
+        modelResref: string;
+        iconResref: string;
+        textureResref: string;
+        sourceGlb?: ArrayBuffer;
+        transformJson: string;
+        sourceNode: string | null;
+        textureEncoding:
+          | "DIRECT_COLOR"
+          | "PLT_METAL1"
+          | "PLT_METAL2"
+          | "PLT_CLOTH1"
+          | "PLT_CLOTH2"
+          | "PLT_LEATHER1"
+          | "PLT_LEATHER2";
+      }>;
+    }
   | { requestId: string; type: "VALIDATE_M7_CORPUS"; manifestJson: string }
   | {
       requestId: string;
@@ -96,7 +162,7 @@ export type StudioWorkerRequest =
 
 export interface WorkerArtifact {
   artifactId: string;
-  kind: "HAK" | "MODEL" | "MODULE" | "WOK" | "SET" | "TEXTURE" | "JSON_REPORT";
+  kind: "HAK" | "MODEL" | "MODULE" | "WOK" | "SET" | "TEXTURE" | "ITEM_BLUEPRINT" | "JSON_REPORT";
   fileName: string;
   mediaType: string;
   byteLength: number;
@@ -115,6 +181,7 @@ export type StudioWorkerSuccess =
       placeableAuthoringJson?: string;
     }
   | { requestId: string; ok: true; type: "APPEARANCE_INSPECTED"; inspectionJson: string }
+  | { requestId: string; ok: true; type: "ITEM_BASEITEMS_INSPECTED"; catalogJson: string }
   | {
       requestId: string;
       ok: true;
@@ -142,6 +209,15 @@ export type StudioWorkerSuccess =
       modelReadbackJson: string;
       wokReadbackJson: string;
       setReadbackJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ITEM_PACKAGE_BUILT";
+      artifacts: WorkerArtifact[];
+      reportJson: string;
+      partReadbacksJson: string;
+      utiReportJson: string;
     }
   | {
       requestId: string;

@@ -5,24 +5,25 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $expectedRoot = "C:\Projects\meshy2aurora"
-$resolvedRoot = (Resolve-Path -LiteralPath $PSScriptRoot).Path.TrimEnd("\")
+$activeRoot = (Resolve-Path -LiteralPath $PSScriptRoot).Path.TrimEnd("\")
 
-if ($resolvedRoot -cne $expectedRoot) {
-    throw "meshy-asset-layout: repository root must be '$expectedRoot', got '$resolvedRoot'"
-}
+& (Join-Path $activeRoot "assert-canonical-workspace.ps1")
 
-& (Join-Path $resolvedRoot "assert-canonical-workspace.ps1")
-
-$sampleRoot = Join-Path $resolvedRoot "sample-3d"
-$retiredRoot = Join-Path $resolvedRoot "test-assets\meshy"
+$sampleRoot = Join-Path $expectedRoot "sample-3d"
+$retiredRoots = @(
+    (Join-Path $expectedRoot "test-assets\meshy"),
+    (Join-Path $activeRoot "test-assets\meshy")
+) | Select-Object -Unique
 $errors = [System.Collections.Generic.List[string]]::new()
 
 if (-not (Test-Path -LiteralPath $sampleRoot -PathType Container)) {
     $errors.Add("missing canonical Meshy asset root: $sampleRoot")
 }
 
-if (Test-Path -LiteralPath $retiredRoot) {
-    $errors.Add("retired competing asset root still exists: $retiredRoot")
+foreach ($retiredRoot in $retiredRoots) {
+    if (Test-Path -LiteralPath $retiredRoot) {
+        $errors.Add("retired competing asset root still exists: $retiredRoot")
+    }
 }
 
 if (Test-Path -LiteralPath $sampleRoot -PathType Container) {
@@ -77,8 +78,8 @@ if (Test-Path -LiteralPath $sampleRoot -PathType Container) {
                 $errors.Add("payload size is absent from manifest: $($payloadFile.FullName)")
             }
 
-            $relativePayload = $payloadFile.FullName.Substring($resolvedRoot.Length).TrimStart("\")
-            & git -C $resolvedRoot check-ignore --quiet -- $relativePayload
+            $relativePayload = $payloadFile.FullName.Substring($expectedRoot.Length).TrimStart("\")
+            & git -C $expectedRoot check-ignore --quiet -- $relativePayload
             if ($LASTEXITCODE -ne 0) {
                 $errors.Add("local Meshy payload is not ignored by Git: $relativePayload")
             }
@@ -97,7 +98,7 @@ if (Test-Path -LiteralPath $sampleRoot -PathType Container) {
 $productRoots = @("apps", "crates", "tools")
 $legacyPattern = "test-assets[\\/]meshy"
 foreach ($relativeProductRoot in $productRoots) {
-    $productRoot = Join-Path $resolvedRoot $relativeProductRoot
+    $productRoot = Join-Path $activeRoot $relativeProductRoot
     if (-not (Test-Path -LiteralPath $productRoot -PathType Container)) {
         continue
     }
@@ -116,13 +117,13 @@ foreach ($relativeProductRoot in $productRoots) {
     foreach ($sourceFile in $sourceFiles) {
         $match = Select-String -LiteralPath $sourceFile.FullName -Pattern $legacyPattern -AllMatches
         if ($match) {
-            $relativePath = $sourceFile.FullName.Substring($resolvedRoot.Length).TrimStart("\")
+            $relativePath = $sourceFile.FullName.Substring($activeRoot.Length).TrimStart("\")
             $errors.Add("product code references retired test-assets/meshy root: $relativePath")
         }
     }
 }
 
-$documentationRoot = Join-Path $resolvedRoot "documentation"
+$documentationRoot = Join-Path $activeRoot "documentation"
 $legacyDocumentationPayloadPattern =
     "test-assets[\\/]meshy[\\/].*\.(glb|gltf|fbx|zip)"
 if (Test-Path -LiteralPath $documentationRoot -PathType Container) {
@@ -135,7 +136,7 @@ if (Test-Path -LiteralPath $documentationRoot -PathType Container) {
         $match = Select-String -LiteralPath $documentationFile.FullName `
             -Pattern $legacyDocumentationPayloadPattern -AllMatches
         if ($match) {
-            $relativePath = $documentationFile.FullName.Substring($resolvedRoot.Length).TrimStart("\")
+            $relativePath = $documentationFile.FullName.Substring($activeRoot.Length).TrimStart("\")
             $errors.Add(
                 "documentation references a concrete payload under retired " +
                 "test-assets/meshy root: $relativePath"
@@ -149,4 +150,4 @@ if ($errors.Count -gt 0) {
     throw $message
 }
 
-Write-Output "meshy-asset-layout-ok: $sampleRoot"
+Write-Output "meshy-asset-layout-ok: $sampleRoot (workspace: $activeRoot)"

@@ -44,13 +44,14 @@ describe("SourceStep", () => {
       <SourceStep {...callbacks} onContinue={vi.fn()} />,
     );
     expect(hidden.querySelector('input[value="TILE"]')).toBeNull();
-    expect(hidden.textContent).toContain("choose Creature or Placeable");
+    expect(hidden.querySelector('input[value="ITEM"]')).not.toBeNull();
+    expect(hidden.textContent).toContain("choose Creature, Placeable, or Item");
 
     const enabled = await render(
       <SourceStep {...callbacks} tileTargetEnabled onContinue={vi.fn()} />,
     );
     expect(enabled.querySelector('input[value="TILE"]')).not.toBeNull();
-    expect(enabled.textContent).toContain("choose Creature, Placeable, or Tile");
+    expect(enabled.textContent).toContain("choose Creature, Placeable, Item, or Tile");
   });
 
   it("keeps Continue disabled for empty and partial selections and names the missing input", async () => {
@@ -252,6 +253,7 @@ describe("InputsPanel", () => {
     const callbacks = { ...handlers(), onTargetChange: vi.fn() };
     const hidden = await render(<InputsPanel {...callbacks} />);
     expect(hidden.querySelector('option[value="TILE"]')).toBeNull();
+    expect(hidden.querySelector('option[value="ITEM"]')).not.toBeNull();
 
     const enabled = await render(<InputsPanel {...callbacks} tileTargetEnabled />);
     expect(enabled.querySelector('option[value="TILE"]')).not.toBeNull();

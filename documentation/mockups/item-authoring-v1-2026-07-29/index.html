@@ -77,32 +77,60 @@
                   <h3>4 formal ModelTypes · 3 geometry schemas</h3>
                 </div>
                 <div class="geometry-family-pills" aria-label="Geometry part counts">
-                  <span>1 part</span><span>3 parts</span><span>19 parts</span>
+                  <span>1 GLB</span><span>3 GLBs</span><span>19 selectors</span>
                 </div>
               </header>
               <div class="profile-grid">
                 <article class="profile-card">
                   <span class="profile-index">0</span>
-                  <div><strong>Single MDL</strong><small>ModelPart1 · 0 color channels</small><em>Shield, ring</em></div>
+                  <div><strong>Single MDL</strong><small>ModelPart1 · 0 color channels</small><em>1 Meshy source</em></div>
                   <b>1 part</b>
                 </article>
                 <article class="profile-card">
                   <span class="profile-index">1</span>
-                  <div><strong>Single MDL + colors</strong><small>ModelPart1 · 6 material channels</small><em>Helmet, cloak</em></div>
+                  <div><strong>Single MDL + colors</strong><small>ModelPart1 · 6 material channels</small><em>1 Meshy source</em></div>
                   <b>1 part</b>
                 </article>
                 <article class="profile-card profile-card--selected">
                   <span class="profile-index">2</span>
-                  <div><strong>Bottom · Middle · Top</strong><small>ModelPart1/B · Part2/M · Part3/T</small><em>Longsword, potion</em></div>
+                  <div><strong>Bottom · Middle · Top</strong><small>ModelPart1/B · Part2/M · Part3/T</small><em>3 Meshy sources</em></div>
                   <b>3 parts</b>
                 </article>
                 <article class="profile-card">
                   <span class="profile-index">3</span>
-                  <div><strong>Body-part assembly</strong><small>19 model parts · 6 color channels</small><em>Armor</em></div>
-                  <b>19 parts</b>
+                  <div><strong>CAPART body assembly</strong><small>19 numeric UTI selectors · CAPART/PARTS_ROBE</small><em>Armor · 0 Meshy GLBs</em></div>
+                  <b>19 selectors</b>
                 </article>
               </div>
               <p class="profile-rule"><span>RULE</span> Product flow resolves <code>UTI.BaseItem → baseitems.2da.ModelType</code>. It never asks “weapon or shield?”.</p>
+            </section>
+
+            <section class="reference-composers" aria-label="Byte-backed reference composer cases">
+              <header>
+                <div><p class="eyebrow">Separate resolver cases</p><h3>CAPART and Cloak use existing Aurora parts</h3></div>
+                <span class="contract-chip">selected by BaseItem</span>
+              </header>
+              <div class="reference-composer-grid">
+                <article>
+                  <div class="reference-composer-title"><span>19</span><div><strong>CAPART armor assembly</strong><small>0 Meshy GLBs · 19 numeric UTI selectors</small></div><b>BYTE-BACKED</b></div>
+                  <ol>
+                    <li><code>ArmorPart_RFoot = 1</code><span>→</span><code>CAPART[0]</code></li>
+                    <li><code>MDLNAME FOOTR</code><span>+</span><code>NODENAME rfoot_g</code></li>
+                    <li><code>PARTS_FOOT[1]</code><span>→</span><code>pmh0_footr001.mdl</code></li>
+                  </ol>
+                  <p><strong>Proof fixture:</strong> one creature, <code>Appearance 6 · Race 6 · Gender 0 · Phenotype 0</code>, UTI equipped in <code>Equip_ItemList[2]</code>.</p>
+                </article>
+                <article>
+                  <div class="reference-composer-title"><span>1</span><div><strong>CloakModel resolution</strong><small>0 Meshy GLBs · model and icon from one row</small></div><b>BYTE-BACKED</b></div>
+                  <ol>
+                    <li><code>CloakModel = 1</code><span>→</span><code>CLOAKMODEL[1]</code></li>
+                    <li><code>pmh0_1_001.mdl</code><span>+</span><code>icloak_m_001.tga</code></li>
+                    <li><code>actual bytes</code><span>→</span><code>SHA-256 verified</code></li>
+                  </ol>
+                  <p><strong>Proof fixture:</strong> one creature, <code>Appearance 6 · Race 6 · Gender 0 · Phenotype 0</code>, UTI equipped in <code>Equip_ItemList[8192]</code>.</p>
+                </article>
+              </div>
+              <p class="reference-composer-rule"><span>NO CATEGORY SWITCH</span> These are contracts derived from the chosen <code>BaseItem</code>, not separate “armor”, “cloak”, “weapon” or “shield” authoring modes.</p>
             </section>
 
             <div class="contract-resolver">
@@ -300,7 +328,7 @@
             <footer class="viewport-status">
               <div><span>Preview</span><strong id="preview-label">Composed</strong></div>
               <div><span>Part slots</span><strong class="success">3 / 3 assigned</strong></div>
-              <div><span>Seams</span><strong class="success">B→M · M→T</strong></div>
+              <div><span>Seams</span><strong class="pending">AABB advisory</strong></div>
               <div><span>ModelType</span><strong>2 · three parts</strong></div>
               <div><span>Runtime proof</span><strong class="pending">OWNER PENDING</strong></div>
             </footer>
@@ -358,9 +386,9 @@
                   <legend>Part transform</legend>
                   <div class="vector-grid"><label>Pitch <input value="0" /><small>°</small></label><label>Yaw <input value="0" /><small>°</small></label><label>Roll <input value="0" /><small>°</small></label></div>
                   <label class="field"><span>Uniform part scale</span><div class="number-input"><button>−</button><input value="1.0000" /><button>+</button><em>×</em></div></label>
-                  <dl class="resource-list"><div><dt>Outgoing seam</dt><dd><strong class="success">B → M connected</strong></dd></div><div><dt>Gap</dt><dd><code>0.0004 m</code></dd></div></dl>
+                  <dl class="resource-list"><div><dt>Preview seam</dt><dd><strong class="pending">AABB advisory</strong></dd></div><div><dt>Build gate</dt><dd><code>triangle surfaces + hashes</code></dd></div></dl>
                 </fieldset>
-                <p class="proof-note">Part seams are offline geometry checks. The composed item still requires owner-run Toolset/NWN proof.</p>
+                <p class="proof-note">Preview bounds never block Build. Worker recomputes the authoritative seam from exact source bytes, transforms and generated triangles; the composed item still requires owner-run Toolset/NWN proof.</p>
               </section>
 
               <section class="inspector-panel" data-tab-content="icon">
@@ -385,7 +413,7 @@
                 <article class="diagnostic diagnostic--pass"><span>✓</span><div><strong>Required part slots</strong><small>B, M and T each resolve one source and one MDL</small></div><b>PASS</b></article>
                 <article class="diagnostic diagnostic--pass"><span>✓</span><div><strong>Combined geometry budget</strong><small>15,464 / 300,000 triangles across all parts</small></div><b>PASS</b></article>
                 <article class="diagnostic diagnostic--pass"><span>✓</span><div><strong>Per-stream binary boundary</strong><small>Every deterministic mesh segment ≤ 21,845 triangles</small></div><b>PASS</b></article>
-                <article class="diagnostic diagnostic--pass"><span>✓</span><div><strong>Part seams</strong><small>B→M and M→T gaps remain below 0.001 m</small></div><b>PASS</b></article>
+                <article class="diagnostic diagnostic--pass"><span>✓</span><div><strong>Authoritative part seams</strong><small>Triangle-surface BVH + containment · source/transform hashes persisted</small></div><b>PASS</b></article>
                 <article class="diagnostic diagnostic--warning"><span>!</span><div><strong>Composed runtime model</strong><small>Offline assembly complete; Toolset/NWN verdict required</small></div><b>PENDING</b></article>
                 <div class="proof-warning"><strong>Owner-run proof boundary</strong><p>The package may become <code>ready_for_owner_proof</code>; this screen cannot claim visual success.</p></div>
               </section>
@@ -394,7 +422,7 @@
         </section>
 
         <footer class="action-bar">
-          <div><span class="validation-pill">1 PENDING</span><p><strong>Part assembly ready to build</strong><small>All three part resources and both seams pass offline checks.</small></p></div>
+          <div><span class="validation-pill">WORKER GATE</span><p><strong>Part assembly ready to build</strong><small>Preview AABBs are advisory; Worker will run the authoritative triangle-surface seam gate.</small></p></div>
           <button class="button-secondary" data-screen-target="source" type="button">Back to Source</button>
           <button class="button-primary" data-screen-target="review" type="button">Build mock package <span>→</span></button>
         </footer>
@@ -414,9 +442,10 @@
           <section class="review-main">
             <article class="preview-comparison panel">
               <header><div><p class="eyebrow">Part coverage</p><h2>Parts first, composition second</h2></div><span class="contract-chip">B + M + T</span></header>
-              <div class="comparison-grid">
+              <div class="comparison-grid comparison-grid--four">
                 <div class="comparison-card"><div class="mini-scene mini-scene--parts"><span class="mini-part mini-part--b">B</span><span class="mini-part mini-part--m">M</span><span class="mini-part mini-part--t">T</span></div><strong>Part resources</strong><small>three independent binary MDLs</small><b class="pass">OFFLINE PASS</b></div>
-                <div class="comparison-card"><div class="mini-scene mini-scene--equipped"><i class="mini-human"></i><span class="mini-sword">†</span></div><strong>Composed item</strong><small>B→M→T · equipped right hand</small><b>OWNER PROOF</b></div>
+                <div class="comparison-card"><div class="mini-scene mini-scene--placed"><span class="mini-sword">†</span></div><strong>Standard fixture</strong><small>one exact UTI placed in front of entry</small><b>OWNER PROOF</b></div>
+                <div class="comparison-card"><div class="mini-scene mini-scene--equipped"><i class="mini-human"></i><span class="mini-cloak">C</span></div><strong>CAPART / Cloak fixture</strong><small>UTI equipped on one exact creature slot</small><b>OWNER PROOF</b></div>
                 <div class="comparison-card"><div class="mini-scene mini-scene--icon"><i></i><i></i><i></i><i></i><span class="mini-sword">†</span></div><strong>3 icon layers</strong><small>B + M + T · composed on 2D canvas</small><b class="pass">OFFLINE PASS</b></div>
               </div>
             </article>
@@ -435,7 +464,7 @@
                 <div class="tree-row tree-row--file tree-row--deep"><span>ICO</span><strong>iwswls_t_253.tga</strong><small>Top · 2D icon layer · alpha</small><b>20 KB</b></div>
                 <div class="tree-row tree-row--folder tree-row--nested"><span>⌄</span><strong>m2a_item_parts_v1.mod</strong><small>owner test module</small><b class="pass">HASHED</b></div>
                 <div class="tree-row tree-row--file tree-row--deep"><span>UTI</span><strong>m2a_lsword01.uti</strong><small>BaseItem 1 · parts 251 / 252 / 253</small><b>2 KB</b></div>
-                <div class="tree-row tree-row--file tree-row--deep"><span>UTC</span><strong>m2a_item_tester.utc</strong><small>composed item equipped in right hand</small><b>4 KB</b></div>
+                <div class="tree-row tree-row--file tree-row--deep"><span>GIT</span><strong>m2aia1.git</strong><small>standard fixture · one exact UTI placed in front of entry</small><b>READBACK</b></div>
                 <div class="tree-row tree-row--file tree-row--deep"><span>JSON</span><strong>item-build-report.json</strong><small>readback + hashes + gates</small><b>18 KB</b></div>
                 <div class="tree-row tree-row--file tree-row--deep"><span>MD</span><strong>OWNER-PROOF.md</strong><small>module · Area · object · expectations</small><b>3 KB</b></div>
               </div>
@@ -444,7 +473,7 @@
 
           <aside class="review-sidebar">
             <article class="panel validation-panel">
-              <header><p class="eyebrow">Validation</p><h2>Ready for owner proof</h2><span>✓</span></header>
+              <header><p class="eyebrow">Validation</p><h2>Offline package complete</h2><span>…</span></header>
               <dl>
                 <div><dt>Part schema B/M/T</dt><dd class="pass">PASS</dd></div>
                 <div><dt>Three MDL readbacks</dt><dd class="pass">PASS</dd></div>
@@ -454,6 +483,7 @@
                 <div><dt>UTI identity</dt><dd class="pass">PASS</dd></div>
                 <div><dt>Resource collisions</dt><dd class="pass">NONE</dd></div>
                 <div><dt>Combined geometry</dt><dd class="pass">15,464 / 300,000</dd></div>
+                <div><dt>Native MOD/HAK install</dt><dd class="pending">PENDING</dd></div>
                 <div><dt>Toolset visibility</dt><dd class="pending">NOT TESTED</dd></div>
                 <div><dt>NWN visibility</dt><dd class="pending">NOT TESTED</dd></div>
               </dl>
@@ -467,7 +497,7 @@
                 <li><span>2</span><p><strong>Meshy2Aurora Item Parts V1</strong><small>module name in Toolset</small></p></li>
                 <li><span>3</span><p><strong>M2A Item Proof Arena</strong><small>exact Area</small></p></li>
               </ol>
-              <div class="handoff-note"><span>!</span><p>Confirm that all three part resources compose correctly when equipped and rendered in NWN.</p></div>
+              <div class="handoff-note"><span>!</span><p>Install and byte-verify the exact MOD/HAK first. Standard items use a placed UTI; CAPART and Cloak use a separate creature with the UTI equipped in the native slot.</p></div>
             </article>
           </aside>
         </div>

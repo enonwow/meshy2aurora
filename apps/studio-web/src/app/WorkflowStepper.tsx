@@ -7,6 +7,7 @@ export interface WorkflowStepperProps {
   visitedSteps: readonly WorkflowStepId[];
   completedSteps: readonly WorkflowStepId[];
   blockedSteps?: readonly WorkflowStepId[];
+  itemMode?: boolean;
   onStepSelect: (step: WorkflowStepId) => void;
 }
 
@@ -38,6 +39,7 @@ export function WorkflowStepper({
   visitedSteps,
   completedSteps,
   blockedSteps = [],
+  itemMode = false,
   onStepSelect,
 }: WorkflowStepperProps) {
   const visited = new Set(visitedSteps);
@@ -47,7 +49,12 @@ export function WorkflowStepper({
   return (
     <nav className="workflow-stepper" aria-label="Conversion workflow">
       <ol className="workflow-stepper__list">
-        {WORKFLOW_STEPS.map((step, index) => {
+        {WORKFLOW_STEPS.map((definition, index) => {
+          const step = itemMode && definition.id === "INSPECT"
+            ? { ...definition, label: "Prepare Item", description: "Assemble parts" }
+            : itemMode && definition.id === "DOWNLOAD"
+              ? { ...definition, description: "Get item package" }
+              : definition;
           const isCurrent = step.id === currentStep;
           const isCompleted = completed.has(step.id);
           const isVisited = visited.has(step.id) || isCurrent || isCompleted;

@@ -30,6 +30,7 @@ import type { InspectValidationCheck } from "./features/inspect/ValidationPanel"
 import { AuroraReadbackViewport } from "./features/preview/AuroraReadbackViewport";
 import { SourceViewport } from "./features/preview/SourceViewport";
 import { PlaceableAuthoringEditor } from "./features/placeable-authoring/PlaceableAuthoringEditor";
+import { ItemWorkflow } from "./features/item/ItemWorkflow";
 import {
   parsePlaceableAuthoringBootstrap,
   type PlaceableAuthoringBootstrap,
@@ -865,6 +866,10 @@ export function App({
     });
     replaceWorker();
   };
+
+  if (session.target === "ITEM") {
+    return <ItemWorkflow onTargetChange={selectTarget} />;
+  }
 
   const unlockedSteps = getUnlockedWorkflowSteps(session);
   const completedSteps = WORKFLOW_STEPS.filter(

@@ -24,6 +24,26 @@ fn document(fields: Vec<GffFieldV1>) -> GffDocumentV1 {
 }
 
 #[test]
+fn uti_file_type_roundtrips_as_native_gff_signature() {
+    let input = GffDocumentV1 {
+        schema_version: GFF_SCHEMA_VERSION,
+        file_type: GffFileTypeV1::Uti,
+        root: GffStructV1 {
+            struct_id: u32::MAX,
+            fields: vec![field("BaseItem", GffValueV1::Dword(1))],
+        },
+    };
+
+    let artifact = write_gff_v32(&input, &GffWriterOptionsV1::default()).unwrap();
+
+    assert_eq!(&artifact.payload[..4], b"UTI ");
+    assert_eq!(
+        read_gff_v32(&artifact.payload, &GffLimitsV1::default()).unwrap(),
+        input
+    );
+}
+
+#[test]
 fn empty_root_has_exact_contiguous_layout_and_frozen_bytes() {
     let artifact = write_gff_v32(&document(vec![]), &GffWriterOptionsV1::default()).unwrap();
     let expected = [

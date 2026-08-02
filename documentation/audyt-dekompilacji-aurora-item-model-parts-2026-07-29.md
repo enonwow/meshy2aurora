@@ -59,13 +59,17 @@ instalacji gry. Nie skopiowano retailowych UTI, MDL ani tekstur do repo.
 |---|---|
 | `Aurora-decomp/export/decompiled_all.c` | `36bb8b1031afe2abf23f0e18180a5ad649401d9ea5e078e5170a31a96167c572` |
 | `Aurora-decomp/export/strings.tsv` | `864ae0139451d5333307cb2bbccce725bbd2d2c6056ac2d5f80f9b5ea50f190f` |
-| retail `baseitems.2da` | `1c1a56c8c3a6cce1728befa4638241174b373ce03618e909b1e4f990e9a1bf46` |
+| retail `baseitems.2da` | `3fbdcd012b55f0b869c6324cc7d4ece44ed63a78f00e7889e7acefac28c8fdf4` |
 | retail `nwscript.nss` | `c14098d0181f921618622f379ff5cb682b8656d5293f218392531eef7a8478ad` |
 | retail `nw_wswmls002.uti` | `b52257f4441e9edeb6018f57362f51ca018fd470129147a7fcfa626de55c9ac6` |
 | retail `nwn_base.key` | `09cdafb6dbfb9cdb544993154c514c65ef9fd5be4e0c1b8fd971ed05aff90935` |
 
 Dokładne hashe trzech odczytanych MDL oraz skrót raportów readera są w
 [P-REF dla partów `WSwLs`](evidence/p-ref-item-wswls-parts-2026-07-29.md).
+
+Amendment 2026-07-30: hash `baseitems.2da` został ponownie policzony
+bezpośrednio z dokładnego retailowego ekstraktu używanego przez test
+conformance. Poprzedni skrót w tej tabeli nie odpowiadał temu plikowi.
 
 ## 3. Łańcuch autorytetu
 

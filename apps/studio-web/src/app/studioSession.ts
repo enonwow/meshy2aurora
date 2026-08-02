@@ -1,7 +1,7 @@
 import { compareWorkflowSteps, type WorkflowStep } from "./workflow";
 
 export type StudioInputKind = "SOURCE" | "APPEARANCE" | "ANIMATION_EVENTS";
-export type StudioTarget = "CREATURE" | "PLACEABLE" | "TILE";
+export type StudioTarget = "CREATURE" | "PLACEABLE" | "ITEM" | "TILE";
 
 export type StudioInputParseState =
   | { kind: "NOT_STARTED" }
@@ -262,7 +262,11 @@ export function studioSessionReducer<TInspection, TResult, TAppearanceInspection
       });
       return {
         ...next,
-        target: event.file.name.toLowerCase() === "placeables.2da" ? "PLACEABLE" : "CREATURE",
+        target: event.file.name.toLowerCase() === "placeables.2da"
+          ? "PLACEABLE"
+          : event.file.name.toLowerCase() === "baseitems.2da"
+            ? "ITEM"
+            : "CREATURE",
       };
     }
     case "ANIMATION_EVENTS_SELECTED":

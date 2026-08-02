@@ -197,6 +197,7 @@ export function InputsPanel({
           >
             <option value="CREATURE">Creature</option>
             <option value="PLACEABLE">Placeable</option>
+            <option value="ITEM">Item</option>
             {tileTargetEnabled ? <option value="TILE">Tile</option> : null}
           </select>
         </label>

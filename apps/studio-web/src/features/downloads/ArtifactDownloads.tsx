@@ -8,6 +8,7 @@ function extension(kind: WorkerArtifact["kind"]) {
     case "WOK": return ".wok";
     case "SET": return ".set";
     case "TEXTURE": return ".tga";
+    case "ITEM_BLUEPRINT": return ".uti";
     case "JSON_REPORT": return ".json";
   }
 }

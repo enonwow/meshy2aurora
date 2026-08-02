@@ -35,6 +35,9 @@ pub enum MdlFormatProfileV1 {
     /// derives model bounds from caller-owned geometry instead of the
     /// historical direct-creature culling envelope.
     PlaceableStaticRigidNativeV1,
+    /// Static, unskinned item part. Item assembly remains UTI/baseitems.2da
+    /// driven while each resolved part is an independent binary MDL.
+    ItemPartStaticRigidNativeV1,
     /// Non-default, offline-only controlled experiment. It preserves the M0
     /// native mesh policy while allowing caller-bound source transform dummies.
     SourceTopologyPreservingRigidExperimentV1,

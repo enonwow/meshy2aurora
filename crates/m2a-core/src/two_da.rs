@@ -727,10 +727,10 @@ fn parse_columns(line: LineSpan<'_>, limits: &TwoDaLimitsV1) -> Result<ParsedCol
     let mut columns = Vec::new();
     let mut byte_offsets = Vec::new();
     for (index, token) in tokens.into_iter().enumerate() {
+        let column_body = token.bytes.strip_prefix(b"%").unwrap_or(token.bytes);
         if token.quoted
-            || token.bytes.is_empty()
-            || !token
-                .bytes
+            || column_body.is_empty()
+            || !column_body
                 .iter()
                 .all(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
         {
@@ -739,7 +739,7 @@ fn parse_columns(line: LineSpan<'_>, limits: &TwoDaLimitsV1) -> Result<ParsedCol
                 &format!("columns[{index}]"),
                 line,
                 token.byte_offset,
-                "column name must match [A-Za-z0-9_]+",
+                "column name must match %?[A-Za-z0-9_]+",
             ));
         }
 
@@ -1004,7 +1004,12 @@ fn inspect_scanned(
             "line 1 must be exactly 2DA V2.0",
         )
     })?;
-    if header.bytes != b"2DA V2.0" {
+    let mut header_end = header.bytes.len();
+    while header_end > 0 && matches!(header.bytes[header_end - 1], b' ' | b'\t') {
+        header_end -= 1;
+    }
+    let header_without_padding = &header.bytes[..header_end];
+    if header_without_padding != b"2DA V2.0" {
         return Err(line_error(
             HEADER_INVALID,
             "header",

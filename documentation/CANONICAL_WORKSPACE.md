@@ -4,12 +4,16 @@
 
 Status: `MANDATORY / HARD STOP`
 
-## One project location
+## One canonical repository
 
-The only canonical repository, implementation target, documentation root and
-place for project-local temporary work is:
+The only canonical repository and durable project root is:
 
 `C:\Projects\meshy2aurora`
+
+The primary checkout and owner-approved, Git-registered linked worktrees under
+`C:\Projects\meshy2aurora\.worktrees\<worktree-name>` are accepted writable
+views of that same repository. They are not mirrors or migration sources.
+Worktrees outside the canonical repository tree remain forbidden.
 
 The following path is explicitly forbidden:
 
@@ -24,14 +28,18 @@ canonical repository is outside the current sandbox.
 
 Before the first write, every root agent, subagent and local automation must:
 
-1. resolve the repository root;
-2. confirm it is exactly `C:\Projects\meshy2aurora`;
-3. stop without writing when the check fails;
-4. resume only in a task whose workspace root is the canonical repository.
+1. resolve the active Git worktree root and Git common directory;
+2. confirm the common directory belongs to `C:\Projects\meshy2aurora`;
+3. confirm the active root is either the primary checkout or a registered
+   worktree strictly under `C:\Projects\meshy2aurora\.worktrees`;
+4. stop without writing when the check fails;
+5. resume only in a task whose workspace root is an accepted project workspace.
 
 It is forbidden to prepare changes in another similarly named folder and copy
 them later. A missing permission to the canonical repository is a workspace
-configuration problem, not permission to create a second worktree.
+configuration problem, not permission to create an external worktree. A linked
+worktree inside the canonical `.worktrees` directory is accepted only when it
+is registered by the canonical repository and approved for the task.
 
 Read-only diagnosis may identify the mismatch, but it must not create project
 files, Git objects, tests, build outputs or notes outside the canonical repo.

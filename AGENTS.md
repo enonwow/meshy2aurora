@@ -2,9 +2,17 @@
 
 ## Canonical workspace — HARD STOP
 
-The only canonical repository and writable project workspace is:
+The only canonical repository is:
 
 `C:\Projects\meshy2aurora`
+
+Writable project workspaces are the primary checkout above and owner-approved,
+Git-registered linked worktrees located strictly under:
+
+`C:\Projects\meshy2aurora\.worktrees\<worktree-name>`
+
+Linked worktrees outside that directory, including Codex-managed worktrees
+under a user profile, are not project workspaces.
 
 The following path is forbidden for every project operation:
 
@@ -18,11 +26,12 @@ Before any implementation or documentation write, run:
 
 `powershell -NoProfile -ExecutionPolicy Bypass -File assert-canonical-workspace.ps1`
 
-The check must resolve the repository root.
-If it is not exactly `C:\Projects\meshy2aurora`, stop. Do not work around the
-problem by writing elsewhere and do not repeatedly request permissions for
-out-of-workspace writes. Reopen or resume the task with the canonical repository
-as its workspace root.
+The check must resolve the canonical Git common directory and accept only the
+primary checkout or a registered linked worktree under the canonical
+`.worktrees` directory. If it does not, stop. Do not work around the problem by
+writing elsewhere and do not repeatedly request permissions for
+out-of-workspace writes. Reopen or resume the task with an accepted project
+workspace as its root.
 
 All durable project documentation belongs in
 `C:\Projects\meshy2aurora\documentation`. Read

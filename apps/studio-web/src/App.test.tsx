@@ -512,7 +512,9 @@ describe("Studio workflow", () => {
     const container = await renderApp();
     expect(container.querySelector('input[name="conversion-target"][value="TILE"]')).toBeNull();
     expect(container.querySelector('option[value="TILE"]')).toBeNull();
-    expect(container.textContent).toContain("choose Creature or Placeable");
+    expect(container.querySelector('input[name="conversion-target"][value="ITEM"]')).not.toBeNull();
+    expect(container.querySelector('option[value="ITEM"]')).not.toBeNull();
+    expect(container.textContent).toContain("choose Creature, Placeable, or Item");
   });
 
   it("moves inspected local inputs through Build into a readback-verified review", async () => {

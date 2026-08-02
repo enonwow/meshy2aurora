@@ -1,0 +1,5874 @@
+//! Aurora-first item authoring contracts.
+//!
+//! Item assembly is selected by `UTI.BaseItem -> baseitems.2da.ModelType`.
+//! It is deliberately independent from user-facing equipment categories:
+//! the resolved model type determines one, three, or nineteen resource slots.
+
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+};
+
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+
+use crate::{
+    erf::{ErfArchive, ErfFileType},
+    gff::{
+        GFF_SCHEMA_VERSION, GffDocumentV1, GffFieldV1, GffFileTypeV1, GffLimitsV1, GffLocStringV1,
+        GffLocSubstringV1, GffStructV1, GffValueV1, GffWriterOptionsV1, read_gff_v32,
+        write_gff_v32,
+    },
+    glb::{EmbeddedImageDecodeLimitsV1, decode_embedded_image_to_tga_v1, ingest_glb},
+    hak::{HakResourceInputV1, HakWriterOptionsV1, write_erf_archive_v1},
+    mdl::{
+        InspectionReport, MdlFormatProfileV1, MdlMaterialTextureBindingV1,
+        MdlStateProjectionProfileV1, MdlWriterOptionsV1, inspect_binary_mdl, write_binary_mdl,
+    },
+    model_limits::{
+        AURORA_MODEL_TRIANGLE_BUDGET_V1, AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1,
+        validate_model_triangle_budget_v1,
+    },
+    model_pipeline::{
+        resolve_base_color_image_index_v1, sanitize_meshy_h1_degenerate_triangles_v1,
+    },
+    model_segmentation::segment_model_for_binary_mdl_v1,
+    placeable::{static_placeable_glb_limits_v1, static_placeable_profile_a_options_v1},
+    plt::{ItemPltLayerV1, PltWriterOptionsV1, write_item_plt_v1},
+    profile_a::{convert_profile_a, derive_meshy_m0_static_rigid_profile_v1},
+    proof_module::{
+        BinaryCreatureOwnedFixtureV1, M0_RUNTIME_ENTRY_DIR_X, M0_RUNTIME_ENTRY_DIR_Y,
+        M0_RUNTIME_ENTRY_X, M0_RUNTIME_ENTRY_Y, M0_RUNTIME_ENTRY_Z, M0RuntimeDirectionV1,
+        M0RuntimePositionV1, binary_creature_multi_fixture_gic, binary_creature_multi_fixture_git,
+        binary_m0_area_for, binary_m0_module_ifo_for, proof_factions,
+    },
+    tga::{TGA_SCHEMA_VERSION, TgaImageV1, TgaPixelFormatV1, TgaWriterOptionsV1, write_tga_v1},
+    two_da::{
+        TwoDaCellValueV1, TwoDaInspectionV1, TwoDaLimitsV1, inspect_two_da_v2, read_two_da_row_v2,
+    },
+};
+
+pub const ITEM_SCHEMA_VERSION_V1: u32 = 1;
+
+pub const ITEM_COLOR_FIELDS_V1: [&str; 6] = [
+    "Leather1Color",
+    "Leather2Color",
+    "Cloth1Color",
+    "Cloth2Color",
+    "Metal1Color",
+    "Metal2Color",
+];
+
+pub const ARMOR_PART_FIELDS_V1: [&str; 19] = [
+    "ArmorPart_RFoot",
+    "ArmorPart_LFoot",
+    "ArmorPart_RShin",
+    "ArmorPart_LShin",
+    "ArmorPart_LThigh",
+    "ArmorPart_RThigh",
+    "ArmorPart_Pelvis",
+    "ArmorPart_Torso",
+    "ArmorPart_Belt",
+    "ArmorPart_Neck",
+    "ArmorPart_RFArm",
+    "ArmorPart_LFArm",
+    "ArmorPart_RBicep",
+    "ArmorPart_LBicep",
+    "ArmorPart_RShoul",
+    "ArmorPart_LShoul",
+    "ArmorPart_RHand",
+    "ArmorPart_LHand",
+    "ArmorPart_Robe",
+];
+
+pub const ITEM_RETAIL_NWN_BASE_KEY_SHA256_V1: &str =
+    "09cdafb6dbfb9cdb544993154c514c65ef9fd5be4e0c1b8fd971ed05aff90935";
+
+pub const CAPART_REQUIRED_REFERENCE_TABLES_V1: [&str; 14] = [
+    "CAPART",
+    "PARTS_FOOT",
+    "PARTS_SHIN",
+    "PARTS_LEGS",
+    "PARTS_PELVIS",
+    "PARTS_CHEST",
+    "PARTS_BELT",
+    "PARTS_NECK",
+    "PARTS_FOREARM",
+    "PARTS_BICEP",
+    "PARTS_SHOULDER",
+    "PARTS_HAND",
+    "PARTS_ROBE",
+    "APPEARANCE",
+];
+
+const CAPART_PART_PROFILES_V1: [(&str, u32, &str, &str, &str); 19] = [
+    ("ArmorPart_RFoot", 0, "FOOTR", "rfoot_g", "PARTS_FOOT"),
+    ("ArmorPart_LFoot", 1, "FOOTL", "lfoot_g", "PARTS_FOOT"),
+    ("ArmorPart_RShin", 2, "SHINR", "rshin_g", "PARTS_SHIN"),
+    ("ArmorPart_LShin", 3, "SHINL", "lshin_g", "PARTS_SHIN"),
+    ("ArmorPart_LThigh", 4, "LEGL", "lthigh_g", "PARTS_LEGS"),
+    ("ArmorPart_RThigh", 5, "LEGR", "rthigh_g", "PARTS_LEGS"),
+    ("ArmorPart_Pelvis", 6, "PELVIS", "pelvis_g", "PARTS_PELVIS"),
+    ("ArmorPart_Torso", 7, "CHEST", "torso_g", "PARTS_CHEST"),
+    ("ArmorPart_Belt", 8, "BELT", "belt_g", "PARTS_BELT"),
+    ("ArmorPart_Neck", 9, "NECK", "neck_g", "PARTS_NECK"),
+    (
+        "ArmorPart_RFArm",
+        10,
+        "FORER",
+        "rforearm_g",
+        "PARTS_FOREARM",
+    ),
+    (
+        "ArmorPart_LFArm",
+        11,
+        "FOREL",
+        "lforearm_g",
+        "PARTS_FOREARM",
+    ),
+    ("ArmorPart_RBicep", 12, "BICEPR", "rbicep_g", "PARTS_BICEP"),
+    ("ArmorPart_LBicep", 13, "BICEPL", "lbicep_g", "PARTS_BICEP"),
+    (
+        "ArmorPart_RShoul",
+        14,
+        "SHOR",
+        "rshoulder_g",
+        "PARTS_SHOULDER",
+    ),
+    (
+        "ArmorPart_LShoul",
+        15,
+        "SHOL",
+        "lshoulder_g",
+        "PARTS_SHOULDER",
+    ),
+    ("ArmorPart_RHand", 16, "HANDR", "rhand_g", "PARTS_HAND"),
+    ("ArmorPart_LHand", 17, "HANDL", "lhand_g", "PARTS_HAND"),
+    ("ArmorPart_Robe", 18, "ROBE", "root", "PARTS_ROBE"),
+];
+
+const CAPART_ROBE_HIDE_COLUMNS_V1: [(&str, &str); 19] = [
+    ("HIDEFOOTR", "FOOTR"),
+    ("HIDEFOOTL", "FOOTL"),
+    ("HIDESHINR", "SHINR"),
+    ("HIDESHINL", "SHINL"),
+    ("HIDELEGR", "LEGR"),
+    ("HIDELEGL", "LEGL"),
+    ("HIDEPELVIS", "PELVIS"),
+    ("HIDECHEST", "CHEST"),
+    ("HIDEBELT", "BELT"),
+    ("HIDENECK", "NECK"),
+    ("HIDEFORER", "FORER"),
+    ("HIDEFOREL", "FOREL"),
+    ("HIDEBICEPR", "BICEPR"),
+    ("HIDEBICEPL", "BICEPL"),
+    ("HIDESHOR", "SHOR"),
+    ("HIDESHOL", "SHOL"),
+    ("HIDEHANDR", "HANDR"),
+    ("HIDEHANDL", "HANDL"),
+    ("HIDEHEAD", "HEAD"),
+];
+
+pub const ITEM_PROPERTY_CAST_SPELL_V1: u16 = 15;
+pub const ITEM_PROPERTY_ON_HIT_CAST_SPELL_V1: u16 = 48;
+pub const ITEM_BASEITEM_SPELL_SCROLL_DELETED_V1: u32 = 54;
+pub const ITEM_BASEITEM_SPELL_SCROLL_V1: u32 = 75;
+pub const ITEM_BASEITEM_CLOAK_V1: u32 = 80;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ItemCompositionProfileV1 {
+    SinglePart,
+    BottomMiddleTop,
+    CapartArmor,
+    CloakModel,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ItemTextureProfileV1 {
+    DirectColor,
+    PaletteLayers,
+    CapartPaletteLayers,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ItemIconProfileV1 {
+    Standard,
+    Layered,
+    IprpSpell,
+    CapartComposite,
+    CloakModel,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ItemPartSourceKindV1 {
+    MeshyGlb,
+    CapartSelection,
+    CloakModelSelection,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemCapabilityV1 {
+    pub schema_version: u32,
+    pub composition_profile: ItemCompositionProfileV1,
+    pub texture_profile: ItemTextureProfileV1,
+    pub icon_profile: ItemIconProfileV1,
+    /// Number of ordinary, independently built Meshy GLBs required by this
+    /// composer. CAPART armor selects contextual body-part resources instead.
+    pub meshy_source_count: u8,
+    pub required_reference_tables: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemPartSlotV1 {
+    pub index: u8,
+    pub field: String,
+    pub label: String,
+    pub token: Option<String>,
+    pub source_kind: ItemPartSourceKindV1,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reference_table: Option<String>,
+    pub requires_explicit_resource_resrefs: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemBaseItemV1 {
+    pub schema_version: u32,
+    pub base_item: u32,
+    pub label: String,
+    pub item_class: String,
+    pub model_type: u8,
+    pub gender_specific: bool,
+    pub default_model: Option<String>,
+    pub default_icon: Option<String>,
+    pub equipable_slots: u32,
+    pub inv_slot_width: u32,
+    pub inv_slot_height: u32,
+    pub capability: ItemCapabilityV1,
+    pub part_slots: Vec<ItemPartSlotV1>,
+    pub color_fields: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemBaseItemsCatalogV1 {
+    pub schema_version: u32,
+    pub source_sha256: String,
+    pub physical_row_count: u32,
+    pub inactive_row_count: u32,
+    pub rows: Vec<ItemBaseItemV1>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemResolvedResourceV1 {
+    pub schema_version: u32,
+    pub base_item: u32,
+    pub field: String,
+    pub variant: u8,
+    pub model_resref: String,
+    pub icon_resref: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemPartValueV1 {
+    pub field: String,
+    pub value: u8,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemPropertyV1 {
+    pub property_name: u16,
+    pub subtype: u16,
+    pub cost_table: u8,
+    pub cost_value: u16,
+    pub param1: u8,
+    pub param1_value: u8,
+    pub chance_appear: u8,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemCastSpellIconV1 {
+    pub schema_version: u32,
+    pub base_item: u32,
+    pub cast_spell_subtype: u16,
+    pub icon_resref: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemCloakResolutionV1 {
+    pub schema_version: u32,
+    pub cloak_model_row: u16,
+    pub model: u16,
+    pub texture: u16,
+    pub icon: u16,
+    pub model_resref: String,
+    pub texture_resref: String,
+    pub icon_resref: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemCloakResolutionV2 {
+    pub schema_version: u32,
+    pub cloak_model_row: u16,
+    pub model: u16,
+    pub texture: u16,
+    pub icon: u16,
+    pub model_resref: String,
+    pub texture_resref: String,
+    pub icon_resref: String,
+    pub resource_verification: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ItemReferenceResourceFormatV1 {
+    BinaryMdl,
+    AsciiMdl,
+    PltV1,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemResourceProvenanceV1 {
+    pub schema_version: u32,
+    pub source_kind: String,
+    pub source_container_file_name: String,
+    pub source_container_sha256: String,
+    pub resource_locator: String,
+    pub expected_sha256: String,
+    pub manifest_sha256: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemResourceInventoryEntryV2 {
+    pub schema_version: u32,
+    pub resource_type: u16,
+    pub resref: String,
+    pub byte_length: u64,
+    pub sha256: String,
+    pub format: ItemReferenceResourceFormatV1,
+    pub triangle_count: usize,
+    pub provenance: ItemResourceProvenanceV1,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemCloakResolutionV3 {
+    pub schema_version: u32,
+    pub cloak_model_row: u16,
+    pub model: u16,
+    pub texture: u16,
+    pub icon: u16,
+    pub model_resref: String,
+    pub texture_resref: String,
+    pub icon_resref: String,
+    pub model_resource: ItemResourceInventoryEntryV2,
+    pub texture_resource: ItemResourceInventoryEntryV2,
+    pub icon_resource: ItemResourceInventoryEntryV2,
+    pub inventory_sha256: String,
+    pub resource_verification: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemEquippedAppearanceBindingV1 {
+    pub schema_version: u32,
+    pub appearance_row: u16,
+    pub model_type: String,
+    pub race_token: String,
+    pub racial_type: u8,
+    pub gender: u8,
+    pub phenotype: u8,
+    pub model_prefix: String,
+    pub appearance_table_sha256: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemCapartPartResolutionV1 {
+    pub schema_version: u32,
+    pub field: String,
+    pub selector: u8,
+    pub capart_row: u32,
+    pub mdl_name: String,
+    pub node_name: String,
+    pub parts_table: String,
+    pub available_part_count: u32,
+    pub robe_hidden_mdl_names: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemCapartContextV1 {
+    pub schema_version: u32,
+    pub model_prefix: String,
+    pub gender_code: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemCapartPartResolutionV2 {
+    pub schema_version: u32,
+    pub field: String,
+    pub selector: u8,
+    pub capart_row: u32,
+    pub mdl_name: String,
+    pub node_name: String,
+    pub parts_table: String,
+    pub available_part_count: u32,
+    pub robe_hidden_mdl_names: Vec<String>,
+    pub hidden_by_robe: bool,
+    pub model_candidates: Vec<String>,
+    pub resolved_model_resref: Option<String>,
+    pub model_resource: Option<ItemResourceInventoryEntryV2>,
+    pub palette_resource: Option<ItemResourceInventoryEntryV2>,
+    pub context_sha256: String,
+    pub resource_verification: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemReferenceTableInspectionV1 {
+    pub schema_version: u32,
+    pub table_name: String,
+    pub source_sha256: String,
+    pub source_byte_length: u64,
+    pub normalized_byte_length: u64,
+    pub stripped_trailing_blank_row_count: u32,
+    pub inspection: TwoDaInspectionV1,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemColorValuesV1 {
+    pub leather1_color: Option<u8>,
+    pub leather2_color: Option<u8>,
+    pub cloth1_color: Option<u8>,
+    pub cloth2_color: Option<u8>,
+    pub metal1_color: Option<u8>,
+    pub metal2_color: Option<u8>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemBlueprintV1 {
+    pub schema_version: u32,
+    pub template_resref: String,
+    pub tag: String,
+    pub localized_name: String,
+    pub description: String,
+    pub identified_description: String,
+    pub comment: String,
+    pub parts: Vec<ItemPartValueV1>,
+    #[serde(default)]
+    pub properties: Vec<ItemPropertyV1>,
+    pub colors: ItemColorValuesV1,
+    pub cost: u32,
+    pub add_cost: u32,
+    pub charges: u8,
+    pub stack_size: u16,
+    pub palette_id: u8,
+    pub identified: bool,
+    pub stolen: bool,
+    pub cursed: bool,
+    pub plot: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemUtiReportV1 {
+    pub schema_version: u32,
+    pub template_resref: String,
+    pub base_item: u32,
+    pub model_type: u8,
+    pub part_count: u32,
+    pub color_field_count: u32,
+    pub byte_length: u64,
+    pub output_sha256: String,
+    pub semantic_readback_status: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ItemUtiArtifactV1 {
+    pub payload: Vec<u8>,
+    pub report: ItemUtiReportV1,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemPartTransformV1 {
+    pub translation: [f32; 3],
+    pub rotation_xyzw: [f32; 4],
+    pub uniform_scale: f32,
+    pub pivot: [f32; 3],
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ItemPartTextureEncodingV1 {
+    DirectColor,
+    PltMetal1,
+    PltMetal2,
+    PltCloth1,
+    PltCloth2,
+    PltLeather1,
+    PltLeather2,
+}
+
+impl ItemPartTextureEncodingV1 {
+    fn plt_layer(self) -> Option<ItemPltLayerV1> {
+        match self {
+            Self::DirectColor => None,
+            Self::PltMetal1 => Some(ItemPltLayerV1::Metal1),
+            Self::PltMetal2 => Some(ItemPltLayerV1::Metal2),
+            Self::PltCloth1 => Some(ItemPltLayerV1::Cloth1),
+            Self::PltCloth2 => Some(ItemPltLayerV1::Cloth2),
+            Self::PltLeather1 => Some(ItemPltLayerV1::Leather1),
+            Self::PltLeather2 => Some(ItemPltLayerV1::Leather2),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemPartBuildOptionsV1 {
+    pub schema_version: u32,
+    pub transform: ItemPartTransformV1,
+    pub source_node: Option<String>,
+    pub texture_encoding: ItemPartTextureEncodingV1,
+    pub icon_size: Option<[u32; 2]>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemIconProjectionBoundsV1 {
+    pub min: [f32; 2],
+    pub max: [f32; 2],
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemPartBuildOptionsV2 {
+    pub schema_version: u32,
+    pub transform: ItemPartTransformV1,
+    pub source_node: Option<String>,
+    pub texture_encoding: ItemPartTextureEncodingV1,
+    pub icon_size: Option<[u32; 2]>,
+    pub icon_projection_bounds: Option<ItemIconProjectionBoundsV1>,
+}
+
+impl Default for ItemPartBuildOptionsV1 {
+    fn default() -> Self {
+        Self {
+            schema_version: ITEM_SCHEMA_VERSION_V1,
+            transform: ItemPartTransformV1::default(),
+            source_node: None,
+            texture_encoding: ItemPartTextureEncodingV1::DirectColor,
+            icon_size: None,
+        }
+    }
+}
+
+impl Default for ItemPartBuildOptionsV2 {
+    fn default() -> Self {
+        Self {
+            schema_version: ITEM_SCHEMA_VERSION_V1,
+            transform: ItemPartTransformV1::default(),
+            source_node: None,
+            texture_encoding: ItemPartTextureEncodingV1::DirectColor,
+            icon_size: None,
+            icon_projection_bounds: None,
+        }
+    }
+}
+
+impl Default for ItemPartTransformV1 {
+    fn default() -> Self {
+        Self {
+            translation: [0.0; 3],
+            rotation_xyzw: [0.0, 0.0, 0.0, 1.0],
+            uniform_scale: 1.0,
+            pivot: [0.0; 3],
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemPartBuildReportV1 {
+    pub schema_version: u32,
+    pub profile: String,
+    pub model_resref: String,
+    pub texture_resref: String,
+    pub texture_format: String,
+    pub source_node: Option<String>,
+    pub source_sha256: String,
+    pub triangle_count: usize,
+    pub stream_count: usize,
+    pub transform: ItemPartTransformV1,
+    pub mdl_sha256: String,
+    pub texture_sha256: String,
+    pub icon_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_projection_bounds: Option<ItemIconProjectionBoundsV1>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_opaque_pixel_count: Option<u64>,
+    pub semantic_readback_status: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ItemPartArtifactV1 {
+    pub mdl_payload: Vec<u8>,
+    pub texture_payload: Vec<u8>,
+    pub icon_payload: Option<Vec<u8>>,
+    pub report: ItemPartBuildReportV1,
+    pub readback: InspectionReport,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemSeamMeasurementV1 {
+    pub schema_version: u32,
+    pub algorithm: String,
+    pub first_field: String,
+    pub second_field: String,
+    pub first_source_sha256: String,
+    pub second_source_sha256: String,
+    pub first_transform_sha256: String,
+    pub second_transform_sha256: String,
+    pub first_triangle_count: usize,
+    pub second_triangle_count: usize,
+    pub tolerance: f32,
+    pub status: String,
+    pub gap: f32,
+    pub overlap: bool,
+    pub measurement_sha256: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemProofModuleIdentityV1 {
+    pub schema_version: u32,
+    pub module_resref: String,
+    pub area_resref: String,
+    pub hak_resref: String,
+    pub blueprint_resref: String,
+    pub module_name: String,
+    pub area_name: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemProofPlacementV1 {
+    pub schema_version: u32,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub orientation_x: f32,
+    pub orientation_y: f32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ItemEquippedProofProfileV2 {
+    CapartArmor,
+    Cloak,
+}
+
+impl ItemEquippedProofProfileV2 {
+    fn equipment_slot(self) -> u32 {
+        match self {
+            Self::CapartArmor => 2,
+            Self::Cloak => 8_192,
+        }
+    }
+
+    fn report_name(self) -> &'static str {
+        match self {
+            Self::CapartArmor => "EQUIPPED_CAPART_ARMOR_V2",
+            Self::Cloak => "EQUIPPED_CLOAK_V2",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemEquippedProofIdentityV2 {
+    pub schema_version: u32,
+    pub module_resref: String,
+    pub area_resref: String,
+    pub hak_resref: String,
+    pub blueprint_resref: String,
+    pub module_name: String,
+    pub area_name: String,
+    pub creature_resref: String,
+    pub creature_display_name: String,
+    pub appearance_row: u16,
+    pub race: u8,
+    pub gender: u8,
+    pub phenotype: i32,
+    pub model_prefix: String,
+    pub appearance_table_sha256: String,
+    pub fixture_profile: ItemEquippedProofProfileV2,
+}
+
+impl Default for ItemProofPlacementV1 {
+    fn default() -> Self {
+        Self {
+            schema_version: ITEM_SCHEMA_VERSION_V1,
+            x: M0_RUNTIME_ENTRY_X,
+            y: M0_RUNTIME_ENTRY_Y + 4.5,
+            z: M0_RUNTIME_ENTRY_Z,
+            orientation_x: 0.0,
+            orientation_y: -1.0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemProofModuleReportV1 {
+    pub schema_version: u32,
+    pub module_resref: String,
+    pub module_name: String,
+    pub area_resref: String,
+    pub area_name: String,
+    pub hak_resref: String,
+    pub blueprint_resref: String,
+    pub item_position: [f32; 3],
+    pub entry_position: [f32; 3],
+    pub entry_direction: [f32; 2],
+    pub resource_count: u32,
+    pub byte_length: u64,
+    pub output_sha256: String,
+    pub semantic_readback_status: String,
+    pub model_visibility: String,
+    pub proof_completeness: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemEquippedProofModuleReportV2 {
+    pub schema_version: u32,
+    pub module_resref: String,
+    pub module_name: String,
+    pub area_resref: String,
+    pub area_name: String,
+    pub hak_resref: String,
+    pub blueprint_resref: String,
+    pub creature_resref: String,
+    pub appearance_row: u16,
+    pub race: u8,
+    pub gender: u8,
+    pub phenotype: i32,
+    pub model_prefix: String,
+    pub appearance_table_sha256: String,
+    pub fixture_profile: String,
+    pub equipment_slot: u32,
+    pub creature_position: [f32; 3],
+    pub entry_position: [f32; 3],
+    pub entry_direction: [f32; 2],
+    pub resource_count: u32,
+    pub byte_length: u64,
+    pub output_sha256: String,
+    pub semantic_readback_status: String,
+    pub model_visibility: String,
+    pub proof_completeness: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ItemProofModuleArtifactV1 {
+    pub payload: Vec<u8>,
+    pub report: ItemProofModuleReportV1,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ItemEquippedProofModuleArtifactV2 {
+    pub payload: Vec<u8>,
+    pub report: ItemEquippedProofModuleReportV2,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemTriangleBudgetReportV1 {
+    pub schema_version: u32,
+    pub triangle_count: usize,
+    pub triangle_budget: usize,
+    pub warning_above: usize,
+    pub warning: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemErrorV1 {
+    pub schema_version: u32,
+    pub code: String,
+    pub path: String,
+    pub message: String,
+}
+
+impl fmt::Display for ItemErrorV1 {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "{} at {}: {}",
+            self.code, self.path, self.message
+        )
+    }
+}
+
+impl std::error::Error for ItemErrorV1 {}
+
+fn error(code: &str, path: impl Into<String>, message: impl Into<String>) -> ItemErrorV1 {
+    ItemErrorV1 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        code: code.to_owned(),
+        path: path.into(),
+        message: message.into(),
+    }
+}
+
+fn required_column(columns: &[String], name: &str) -> Result<usize, ItemErrorV1> {
+    let matches = columns
+        .iter()
+        .enumerate()
+        .filter(|(_, value)| value.eq_ignore_ascii_case(name))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    match matches.as_slice() {
+        [index] => Ok(*index),
+        [] => Err(error(
+            "ITEM-BASEITEMS-COLUMN-MISSING",
+            format!("baseitems.2da.columns.{name}"),
+            format!("required baseitems.2da column {name} is missing"),
+        )),
+        _ => Err(error(
+            "ITEM-BASEITEMS-COLUMN-DUPLICATE",
+            format!("baseitems.2da.columns.{name}"),
+            format!("baseitems.2da column {name} is ambiguous"),
+        )),
+    }
+}
+
+fn cell_text<'a>(
+    cells: &'a [TwoDaCellValueV1],
+    index: usize,
+    row: u32,
+    name: &str,
+) -> Result<&'a str, ItemErrorV1> {
+    match cells.get(index) {
+        Some(TwoDaCellValueV1::Text { value }) if !value.trim().is_empty() => Ok(value.trim()),
+        _ => Err(error(
+            "ITEM-BASEITEMS-VALUE-MISSING",
+            format!("baseitems.2da.rows.{row}.{name}"),
+            format!("selected BaseItem row has no {name} value"),
+        )),
+    }
+}
+
+fn parse_u32(value: &str, row: u32, name: &str) -> Result<u32, ItemErrorV1> {
+    let parsed = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+        .map(|digits| u32::from_str_radix(digits, 16))
+        .unwrap_or_else(|| value.parse::<u32>());
+    parsed.map_err(|_| {
+        error(
+            "ITEM-BASEITEMS-NUMBER-INVALID",
+            format!("baseitems.2da.rows.{row}.{name}"),
+            format!("{name} must be an unsigned integer"),
+        )
+    })
+}
+
+fn parse_optional_text(
+    cells: &[TwoDaCellValueV1],
+    index: usize,
+) -> Result<Option<String>, ItemErrorV1> {
+    match cells.get(index) {
+        Some(TwoDaCellValueV1::Null) | None => Ok(None),
+        Some(TwoDaCellValueV1::Text { value }) if value.trim().is_empty() => Ok(None),
+        Some(TwoDaCellValueV1::Text { value }) => {
+            let value = value.trim();
+            if value == "*" || value == "****" {
+                Ok(None)
+            } else {
+                Ok(Some(value.to_owned()))
+            }
+        }
+    }
+}
+
+fn inactive_row(
+    cells: &[TwoDaCellValueV1],
+    item_class_index: usize,
+    model_type_index: usize,
+) -> bool {
+    let active_text = |index: usize| match cells.get(index) {
+        Some(TwoDaCellValueV1::Text { value }) => {
+            let value = value.trim();
+            !value.is_empty() && value != "*" && value != "****"
+        }
+        Some(TwoDaCellValueV1::Null) | None => false,
+    };
+    !active_text(item_class_index) || !active_text(model_type_index)
+}
+
+fn part_slots(base_item: u32, model_type: u8, explicit: bool) -> Vec<ItemPartSlotV1> {
+    let single_source_kind = if base_item == ITEM_BASEITEM_CLOAK_V1 {
+        ItemPartSourceKindV1::CloakModelSelection
+    } else {
+        ItemPartSourceKindV1::MeshyGlb
+    };
+    match model_type {
+        0 | 1 => vec![ItemPartSlotV1 {
+            index: 0,
+            field: "ModelPart1".to_owned(),
+            label: "Model".to_owned(),
+            token: None,
+            source_kind: single_source_kind,
+            reference_table: (base_item == ITEM_BASEITEM_CLOAK_V1).then(|| "CloakModel".to_owned()),
+            requires_explicit_resource_resrefs: explicit,
+        }],
+        2 => ["Bottom", "Middle", "Top"]
+            .into_iter()
+            .zip(["b", "m", "t"])
+            .enumerate()
+            .map(|(index, (label, token))| ItemPartSlotV1 {
+                index: index as u8,
+                field: format!("ModelPart{}", index + 1),
+                label: label.to_owned(),
+                token: Some(token.to_owned()),
+                source_kind: ItemPartSourceKindV1::MeshyGlb,
+                reference_table: None,
+                requires_explicit_resource_resrefs: explicit,
+            })
+            .collect(),
+        3 => ARMOR_PART_FIELDS_V1
+            .into_iter()
+            .enumerate()
+            .map(|(index, field)| ItemPartSlotV1 {
+                index: index as u8,
+                field: field.to_owned(),
+                label: field.trim_start_matches("ArmorPart_").to_owned(),
+                token: None,
+                source_kind: ItemPartSourceKindV1::CapartSelection,
+                reference_table: Some(CAPART_PART_PROFILES_V1[index].4.to_owned()),
+                requires_explicit_resource_resrefs: false,
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn item_capability_v1(base_item: u32, model_type: u8, part_count: usize) -> ItemCapabilityV1 {
+    let (composition_profile, texture_profile, icon_profile, meshy_source_count, tables) =
+        if base_item == ITEM_BASEITEM_CLOAK_V1 {
+            (
+                ItemCompositionProfileV1::CloakModel,
+                ItemTextureProfileV1::PaletteLayers,
+                ItemIconProfileV1::CloakModel,
+                0,
+                vec!["CloakModel".to_owned(), "Appearance".to_owned()],
+            )
+        } else if model_type == 3 {
+            (
+                ItemCompositionProfileV1::CapartArmor,
+                ItemTextureProfileV1::CapartPaletteLayers,
+                ItemIconProfileV1::CapartComposite,
+                0,
+                CAPART_REQUIRED_REFERENCE_TABLES_V1
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect(),
+            )
+        } else {
+            let composition = if model_type == 2 {
+                ItemCompositionProfileV1::BottomMiddleTop
+            } else {
+                ItemCompositionProfileV1::SinglePart
+            };
+            let texture = if model_type == 1 {
+                ItemTextureProfileV1::PaletteLayers
+            } else {
+                ItemTextureProfileV1::DirectColor
+            };
+            let icon = if matches!(
+                base_item,
+                ITEM_BASEITEM_SPELL_SCROLL_DELETED_V1 | ITEM_BASEITEM_SPELL_SCROLL_V1
+            ) {
+                ItemIconProfileV1::IprpSpell
+            } else if model_type == 1 {
+                ItemIconProfileV1::Layered
+            } else {
+                ItemIconProfileV1::Standard
+            };
+            let tables = if icon == ItemIconProfileV1::IprpSpell {
+                vec!["IPRP_SPELLS".to_owned()]
+            } else {
+                Vec::new()
+            };
+            (composition, texture, icon, part_count as u8, tables)
+        };
+    ItemCapabilityV1 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        composition_profile,
+        texture_profile,
+        icon_profile,
+        meshy_source_count,
+        required_reference_tables: tables,
+    }
+}
+
+pub fn resolve_item_capability_v1(base_item: &ItemBaseItemV1) -> ItemCapabilityV1 {
+    item_capability_v1(
+        base_item.base_item,
+        base_item.model_type,
+        base_item.part_slots.len(),
+    )
+}
+
+fn parse_row(
+    columns: &[String],
+    cells: &[TwoDaCellValueV1],
+    base_item: u32,
+) -> Result<ItemBaseItemV1, ItemErrorV1> {
+    let label_index = required_column(columns, "Label")?;
+    let item_class_index = required_column(columns, "ItemClass")?;
+    let model_type_index = required_column(columns, "ModelType")?;
+    let gender_index = required_column(columns, "GenderSpecific")?;
+    let default_model_index = required_column(columns, "DefaultModel")?;
+    let default_icon_index = required_column(columns, "DefaultIcon")?;
+    let equipable_slots_index = required_column(columns, "EquipableSlots")?;
+    let width_index = required_column(columns, "InvSlotWidth")?;
+    let height_index = required_column(columns, "InvSlotHeight")?;
+
+    let label = cell_text(cells, label_index, base_item, "Label")?.to_owned();
+    let item_class = cell_text(cells, item_class_index, base_item, "ItemClass")?.to_owned();
+    let model_type_value = parse_u32(
+        cell_text(cells, model_type_index, base_item, "ModelType")?,
+        base_item,
+        "ModelType",
+    )?;
+    let model_type = u8::try_from(model_type_value).map_err(|_| {
+        error(
+            "ITEM-MODEL-TYPE-UNSUPPORTED",
+            format!("baseitems.2da.rows.{base_item}.ModelType"),
+            "ModelType must be one of 0, 1, 2, or 3",
+        )
+    })?;
+    if model_type > 3 {
+        return Err(error(
+            "ITEM-MODEL-TYPE-UNSUPPORTED",
+            format!("baseitems.2da.rows.{base_item}.ModelType"),
+            "ModelType must be one of 0, 1, 2, or 3",
+        ));
+    }
+    let gender_specific = match parse_u32(
+        cell_text(cells, gender_index, base_item, "GenderSpecific")?,
+        base_item,
+        "GenderSpecific",
+    )? {
+        0 => false,
+        1 => true,
+        _ => {
+            return Err(error(
+                "ITEM-BASEITEMS-BOOLEAN-INVALID",
+                format!("baseitems.2da.rows.{base_item}.GenderSpecific"),
+                "GenderSpecific must be 0 or 1",
+            ));
+        }
+    };
+    let explicit = gender_specific || model_type == 3 || item_class.eq_ignore_ascii_case("cloak");
+
+    let slots = part_slots(base_item, model_type, explicit);
+    Ok(ItemBaseItemV1 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        base_item,
+        label,
+        item_class,
+        model_type,
+        gender_specific,
+        default_model: parse_optional_text(cells, default_model_index)?,
+        default_icon: parse_optional_text(cells, default_icon_index)?,
+        equipable_slots: parse_u32(
+            cell_text(cells, equipable_slots_index, base_item, "EquipableSlots")?,
+            base_item,
+            "EquipableSlots",
+        )?,
+        inv_slot_width: parse_u32(
+            cell_text(cells, width_index, base_item, "InvSlotWidth")?,
+            base_item,
+            "InvSlotWidth",
+        )?,
+        inv_slot_height: parse_u32(
+            cell_text(cells, height_index, base_item, "InvSlotHeight")?,
+            base_item,
+            "InvSlotHeight",
+        )?,
+        capability: item_capability_v1(base_item, model_type, slots.len()),
+        part_slots: slots,
+        color_fields: if matches!(model_type, 1 | 3) {
+            ITEM_COLOR_FIELDS_V1
+                .into_iter()
+                .map(str::to_owned)
+                .collect()
+        } else {
+            Vec::new()
+        },
+    })
+}
+
+pub fn inspect_item_baseitems_v1(bytes: &[u8]) -> Result<ItemBaseItemsCatalogV1, ItemErrorV1> {
+    let limits = TwoDaLimitsV1::default();
+    let inspection = inspect_two_da_v2(bytes, &limits).map_err(|source| {
+        error(
+            "ITEM-BASEITEMS-INVALID",
+            source.path,
+            format!("baseitems.2da inspection failed: {}", source.message),
+        )
+    })?;
+    let item_class_index = required_column(&inspection.columns, "ItemClass")?;
+    let model_type_index = required_column(&inspection.columns, "ModelType")?;
+    let mut rows = Vec::with_capacity(inspection.physical_row_count as usize);
+    let mut labels = BTreeSet::new();
+    let mut inactive_row_count = 0_u32;
+    for physical_row in 0..inspection.physical_row_count {
+        let readback = read_two_da_row_v2(bytes, physical_row, &limits).map_err(|source| {
+            error(
+                "ITEM-BASEITEMS-INVALID",
+                source.path,
+                format!("baseitems.2da row readback failed: {}", source.message),
+            )
+        })?;
+        if !labels.insert(readback.printed_row_label) {
+            return Err(error(
+                "ITEM-BASEITEMS-ROW-DUPLICATE",
+                format!("baseitems.2da.rows.{}", readback.printed_row_label),
+                "BaseItem printed row labels must be unique",
+            ));
+        }
+        if inactive_row(&readback.cells, item_class_index, model_type_index) {
+            inactive_row_count += 1;
+            continue;
+        }
+        rows.push(parse_row(
+            &inspection.columns,
+            &readback.cells,
+            readback.printed_row_label,
+        )?);
+    }
+    Ok(ItemBaseItemsCatalogV1 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        source_sha256: inspection.source_sha256,
+        physical_row_count: inspection.physical_row_count,
+        inactive_row_count,
+        rows,
+    })
+}
+
+pub fn resolve_item_baseitem_v1(
+    bytes: &[u8],
+    base_item: u32,
+) -> Result<ItemBaseItemV1, ItemErrorV1> {
+    let catalog = inspect_item_baseitems_v1(bytes)?;
+    let matches = catalog
+        .rows
+        .into_iter()
+        .filter(|row| row.base_item == base_item)
+        .collect::<Vec<_>>();
+    match matches.as_slice() {
+        [row] => Ok(row.clone()),
+        [] => Err(error(
+            "ITEM-BASEITEM-NOT-FOUND",
+            "baseItem",
+            format!("BaseItem {base_item} is not present in baseitems.2da"),
+        )),
+        _ => Err(error(
+            "ITEM-BASEITEM-AMBIGUOUS",
+            "baseItem",
+            format!("BaseItem {base_item} appears more than once in baseitems.2da"),
+        )),
+    }
+}
+
+fn two_da_cell_by_column_v1<'a>(
+    table_name: &str,
+    columns: &[String],
+    cells: &'a [TwoDaCellValueV1],
+    row: u32,
+    column: &str,
+) -> Result<&'a str, ItemErrorV1> {
+    let matches = columns
+        .iter()
+        .enumerate()
+        .filter(|(_, value)| value.eq_ignore_ascii_case(column))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let index = match matches.as_slice() {
+        [index] => *index,
+        [] => {
+            return Err(error(
+                "ITEM-REFERENCE-COLUMN-MISSING",
+                format!("{table_name}.columns.{column}"),
+                format!("{table_name} has no required {column} column"),
+            ));
+        }
+        _ => {
+            return Err(error(
+                "ITEM-REFERENCE-COLUMN-DUPLICATE",
+                format!("{table_name}.columns.{column}"),
+                format!("{table_name} has more than one {column} column"),
+            ));
+        }
+    };
+    match cells.get(index) {
+        Some(TwoDaCellValueV1::Text { value })
+            if !value.trim().is_empty() && value.trim() != "*" && value.trim() != "****" =>
+        {
+            Ok(value.trim())
+        }
+        _ => Err(error(
+            "ITEM-REFERENCE-VALUE-MISSING",
+            format!("{table_name}.rows.{row}.{column}"),
+            format!("{table_name} row {row} has no {column} value"),
+        )),
+    }
+}
+
+fn terminal_newline_v1(bytes: &[u8], end: usize) -> Option<(usize, usize)> {
+    if end >= 2 && bytes.get(end - 2..end) == Some(b"\r\n") {
+        Some((end - 2, 2))
+    } else if end >= 1 && bytes.get(end - 1) == Some(&b'\n') {
+        Some((end - 1, 1))
+    } else {
+        None
+    }
+}
+
+/// Retail item reference tables may contain one or more empty physical records
+/// after their final data row. Keep the generic 2DA parser strict and remove
+/// only those terminal, same-newline-style, empty-or-space-only records at the
+/// Item boundary.
+fn normalize_item_reference_two_da_v1(bytes: &[u8]) -> (&[u8], u32) {
+    let mut end = bytes.len();
+    let mut stripped = 0_u32;
+    while let Some((terminal_start, terminal_width)) = terminal_newline_v1(bytes, end) {
+        let Some(previous_lf) = bytes[..terminal_start]
+            .iter()
+            .rposition(|byte| *byte == b'\n')
+        else {
+            break;
+        };
+        let previous_end = previous_lf + 1;
+        let previous_width = if previous_lf > 0 && bytes[previous_lf - 1] == b'\r' {
+            2
+        } else {
+            1
+        };
+        if previous_width != terminal_width
+            || !bytes[previous_end..terminal_start]
+                .iter()
+                .all(|byte| *byte == b' ')
+        {
+            break;
+        }
+        end = previous_end;
+        stripped = stripped.saturating_add(1);
+    }
+    (&bytes[..end], stripped)
+}
+
+pub fn inspect_item_reference_two_da_v1(
+    table_name: &str,
+    bytes: &[u8],
+) -> Result<ItemReferenceTableInspectionV1, ItemErrorV1> {
+    let (normalized, stripped_trailing_blank_row_count) = normalize_item_reference_two_da_v1(bytes);
+    let limits = TwoDaLimitsV1::default();
+    let inspection = inspect_two_da_v2(normalized, &limits).map_err(|source| {
+        error(
+            "ITEM-REFERENCE-2DA-INVALID",
+            source.path,
+            format!("{table_name} inspection failed: {}", source.message),
+        )
+    })?;
+    Ok(ItemReferenceTableInspectionV1 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        table_name: table_name.to_owned(),
+        source_sha256: item_payload_sha256_v1(bytes),
+        source_byte_length: bytes.len() as u64,
+        normalized_byte_length: normalized.len() as u64,
+        stripped_trailing_blank_row_count,
+        inspection,
+    })
+}
+
+fn read_reference_row_v1(
+    table_name: &str,
+    bytes: &[u8],
+    physical_row: u32,
+) -> Result<(Vec<String>, Vec<TwoDaCellValueV1>), ItemErrorV1> {
+    let (normalized, _) = normalize_item_reference_two_da_v1(bytes);
+    let limits = TwoDaLimitsV1::default();
+    let inspection = inspect_item_reference_two_da_v1(table_name, bytes)?.inspection;
+    if physical_row >= inspection.physical_row_count {
+        return Err(error(
+            "ITEM-REFERENCE-ROW-MISSING",
+            format!("{table_name}.rows.{physical_row}"),
+            format!(
+                "{table_name} has {} physical rows; row {physical_row} is unavailable",
+                inspection.physical_row_count
+            ),
+        ));
+    }
+    let row = read_two_da_row_v2(normalized, physical_row, &limits).map_err(|source| {
+        error(
+            "ITEM-REFERENCE-2DA-INVALID",
+            source.path,
+            format!("{table_name} row readback failed: {}", source.message),
+        )
+    })?;
+    Ok((inspection.columns, row.cells))
+}
+
+fn columns_equal_v1(columns: &[String], expected: &[&str]) -> bool {
+    columns.len() == expected.len()
+        && columns
+            .iter()
+            .zip(expected)
+            .all(|(actual, expected)| actual.eq_ignore_ascii_case(expected))
+}
+
+pub fn resolve_item_capart_part_v1(
+    field: &str,
+    selector: u8,
+    capart_2da: &[u8],
+    parts_table_name: &str,
+    parts_2da: &[u8],
+) -> Result<ItemCapartPartResolutionV1, ItemErrorV1> {
+    let &(canonical_field, capart_row, expected_mdl_name, expected_node_name, expected_parts_table) =
+        CAPART_PART_PROFILES_V1
+            .iter()
+            .find(|(candidate, ..)| candidate.eq_ignore_ascii_case(field))
+            .ok_or_else(|| {
+                error(
+                    "ITEM-CAPART-FIELD-INVALID",
+                    "field",
+                    format!("{field} is not one of the 19 native ArmorPart_* fields"),
+                )
+            })?;
+    let normalized_parts_table = parts_table_name.trim().to_ascii_uppercase();
+    if normalized_parts_table != expected_parts_table {
+        return Err(error(
+            "ITEM-CAPART-PARTS-TABLE-MISMATCH",
+            format!("{canonical_field}.partsTable"),
+            format!(
+                "{canonical_field} is resolved by {expected_parts_table}.2da, not {parts_table_name}"
+            ),
+        ));
+    }
+
+    let capart_inspection = inspect_item_reference_two_da_v1("CAPART", capart_2da)?.inspection;
+    let expected_capart_columns = ["NAME", "MDLNAME", "NODENAME"];
+    if capart_inspection.physical_row_count != CAPART_PART_PROFILES_V1.len() as u32
+        || !columns_equal_v1(&capart_inspection.columns, &expected_capart_columns)
+    {
+        return Err(error(
+            "ITEM-CAPART-TABLE-SCHEMA-MISMATCH",
+            "CAPART",
+            "CAPART.2da must contain exactly 19 physical rows and the exact NAME/MDLNAME/NODENAME columns",
+        ));
+    }
+    let (capart_columns, capart_cells) = read_reference_row_v1("CAPART", capart_2da, capart_row)?;
+    let mdl_name = two_da_cell_by_column_v1(
+        "CAPART",
+        &capart_columns,
+        &capart_cells,
+        capart_row,
+        "MDLNAME",
+    )?;
+    let node_name = two_da_cell_by_column_v1(
+        "CAPART",
+        &capart_columns,
+        &capart_cells,
+        capart_row,
+        "NODENAME",
+    )?;
+    if !mdl_name.eq_ignore_ascii_case(expected_mdl_name) {
+        return Err(error(
+            "ITEM-CAPART-MAPPING-MISMATCH",
+            format!("CAPART.rows.{capart_row}.MDLNAME"),
+            format!(
+                "{canonical_field} requires CAPART MDLNAME {expected_mdl_name}, found {mdl_name}"
+            ),
+        ));
+    }
+    if !node_name.eq_ignore_ascii_case(expected_node_name) {
+        return Err(error(
+            "ITEM-CAPART-MAPPING-MISMATCH",
+            format!("CAPART.rows.{capart_row}.NODENAME"),
+            format!(
+                "{canonical_field} requires CAPART NODENAME {expected_node_name}, found {node_name}"
+            ),
+        ));
+    }
+
+    let parts_inspection =
+        inspect_item_reference_two_da_v1(expected_parts_table, parts_2da)?.inspection;
+    let mut expected_parts_columns = vec!["COSTMODIFIER", "ACBONUS"];
+    if expected_parts_table == "PARTS_ROBE" {
+        expected_parts_columns.extend(
+            CAPART_ROBE_HIDE_COLUMNS_V1
+                .iter()
+                .map(|(column, _)| *column),
+        );
+    }
+    if !columns_equal_v1(&parts_inspection.columns, &expected_parts_columns) {
+        return Err(error(
+            "ITEM-CAPART-PARTS-TABLE-SCHEMA-MISMATCH",
+            expected_parts_table,
+            format!(
+                "{expected_parts_table}.2da columns do not match its exact CAPART selector contract"
+            ),
+        ));
+    }
+    let available_part_count = parts_inspection.physical_row_count;
+    if u32::from(selector) >= available_part_count {
+        return Err(error(
+            "ITEM-CAPART-SELECTOR-OUT-OF-RANGE",
+            format!("{canonical_field}.selector"),
+            format!(
+                "{canonical_field} selector {selector} exceeds the {available_part_count} rows available in {expected_parts_table}.2da"
+            ),
+        ));
+    }
+    let (parts_columns, parts_cells) =
+        read_reference_row_v1(expected_parts_table, parts_2da, u32::from(selector))?;
+
+    let mut robe_hidden_mdl_names = Vec::new();
+    if expected_parts_table == "PARTS_ROBE" {
+        for &(column, hidden_mdl_name) in &CAPART_ROBE_HIDE_COLUMNS_V1 {
+            let value = two_da_cell_by_column_v1(
+                expected_parts_table,
+                &parts_columns,
+                &parts_cells,
+                u32::from(selector),
+                column,
+            )?;
+            match value {
+                "0" => {}
+                "1" => robe_hidden_mdl_names.push(hidden_mdl_name.to_owned()),
+                _ => {
+                    return Err(error(
+                        "ITEM-CAPART-ROBE-MASK-INVALID",
+                        format!("{expected_parts_table}.rows.{selector}.{column}"),
+                        format!("{column} must be the native binary flag 0 or 1"),
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(ItemCapartPartResolutionV1 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        field: canonical_field.to_owned(),
+        selector,
+        capart_row,
+        mdl_name: expected_mdl_name.to_owned(),
+        node_name: expected_node_name.to_owned(),
+        parts_table: expected_parts_table.to_owned(),
+        available_part_count,
+        robe_hidden_mdl_names,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn resolve_item_capart_part_v2(
+    field: &str,
+    selector: u8,
+    capart_2da: &[u8],
+    parts_table_name: &str,
+    parts_2da: &[u8],
+    context: &ItemCapartContextV1,
+    resource_inventory: &[ItemResourceInventoryEntryV2],
+    hidden_by_robe: bool,
+) -> Result<ItemCapartPartResolutionV2, ItemErrorV1> {
+    if context.schema_version != ITEM_SCHEMA_VERSION_V1 {
+        return Err(error(
+            "ITEM-CAPART-CONTEXT-SCHEMA-INVALID",
+            "context.schemaVersion",
+            "CAPART context schemaVersion must be 1",
+        ));
+    }
+    let model_prefix = validate_item_player_model_prefix_v1(&context.model_prefix)?;
+    let gender_code = context
+        .gender_code
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            if value.len() != 1 || !value.bytes().all(|byte| byte.is_ascii_alphanumeric()) {
+                Err(error(
+                    "ITEM-CAPART-GENDER-CODE-INVALID",
+                    "context.genderCode",
+                    "optional genderCode must be exactly one ASCII letter or digit",
+                ))
+            } else {
+                Ok(value.to_ascii_lowercase())
+            }
+        })
+        .transpose()?;
+    let base =
+        resolve_item_capart_part_v1(field, selector, capart_2da, parts_table_name, parts_2da)?;
+    let model_token = base.mdl_name.to_ascii_lowercase();
+    let mut model_candidates = Vec::new();
+    if let Some(gender_code) = &gender_code {
+        model_candidates.push(validate_resref(
+            &format!("{model_prefix}{gender_code}_{model_token}{selector:03}"),
+            "context.genderSpecificModelResref",
+        )?);
+    }
+    model_candidates.push(validate_resref(
+        &format!("{model_prefix}_{model_token}{selector:03}"),
+        "context.fallbackModelResref",
+    )?);
+    let inventory = validate_item_resource_inventory_v1(resource_inventory)?;
+    let (resolved_model_resref, model_resource, palette_resource, resource_verification) =
+        if hidden_by_robe {
+            (None, None, None, "SKIPPED_BY_ROBE_MASK".to_owned())
+        } else {
+            let resolved = model_candidates
+                .iter()
+                .find_map(|candidate| {
+                    let model = inventory.get(&(2002, candidate.clone())).cloned()?;
+                    let palette = inventory.get(&(6, candidate.clone())).cloned()?;
+                    Some((candidate.clone(), model, palette))
+                })
+                .ok_or_else(|| {
+                    error(
+                        "ITEM-CAPART-CONTEXT-RESOURCE-MISSING",
+                        format!("{}.resourceInventory", base.field),
+                        format!(
+                            "{} selector {} requires matching contextual MDL and PLT resources: {}",
+                            base.field,
+                            selector,
+                            model_candidates.join(" or ")
+                        ),
+                    )
+                })?;
+            (
+                Some(resolved.0),
+                Some(resolved.1),
+                Some(resolved.2),
+                "PINNED_MANIFEST_PAYLOAD_VALIDATED".to_owned(),
+            )
+        };
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ContextBinding<'a> {
+        context: &'a ItemCapartContextV1,
+        field: &'a str,
+        selector: u8,
+        model_candidates: &'a [String],
+        resolved_model_resref: &'a Option<String>,
+        model_resource: &'a Option<ItemResourceInventoryEntryV2>,
+        palette_resource: &'a Option<ItemResourceInventoryEntryV2>,
+        hidden_by_robe: bool,
+    }
+    let context_bytes = serde_json::to_vec(&ContextBinding {
+        context,
+        field: &base.field,
+        selector,
+        model_candidates: &model_candidates,
+        resolved_model_resref: &resolved_model_resref,
+        model_resource: &model_resource,
+        palette_resource: &palette_resource,
+        hidden_by_robe,
+    })
+    .map_err(|_| {
+        error(
+            "ITEM-CAPART-CONTEXT-SERIALIZE-FAILED",
+            "context",
+            "CAPART context binding could not be serialized",
+        )
+    })?;
+    Ok(ItemCapartPartResolutionV2 {
+        schema_version: 2,
+        field: base.field,
+        selector: base.selector,
+        capart_row: base.capart_row,
+        mdl_name: base.mdl_name,
+        node_name: base.node_name,
+        parts_table: base.parts_table,
+        available_part_count: base.available_part_count,
+        robe_hidden_mdl_names: base.robe_hidden_mdl_names,
+        hidden_by_robe,
+        model_candidates,
+        resolved_model_resref,
+        model_resource,
+        palette_resource,
+        context_sha256: item_payload_sha256_v1(&context_bytes),
+        resource_verification,
+    })
+}
+
+pub fn resolve_item_cast_spell_icon_v1(
+    base_item: u32,
+    properties: &[ItemPropertyV1],
+    iprp_spells_2da: &[u8],
+) -> Result<ItemCastSpellIconV1, ItemErrorV1> {
+    if !matches!(
+        base_item,
+        ITEM_BASEITEM_SPELL_SCROLL_DELETED_V1 | ITEM_BASEITEM_SPELL_SCROLL_V1
+    ) {
+        return Err(error(
+            "ITEM-IPRP-SPELL-BASEITEM-INVALID",
+            "baseItem",
+            "IPRP_SPELLS icon override is defined only for BaseItem 54 and 75",
+        ));
+    }
+    let matches = properties
+        .iter()
+        .filter(|property| property.property_name == ITEM_PROPERTY_CAST_SPELL_V1)
+        .collect::<Vec<_>>();
+    let property = match matches.as_slice() {
+        [property] => *property,
+        [] => {
+            return Err(error(
+                "ITEM-IPRP-SPELL-PROPERTY-MISSING",
+                "properties",
+                "this BaseItem needs exactly one Cast Spell property (PropertyName 15)",
+            ));
+        }
+        _ => {
+            return Err(error(
+                "ITEM-IPRP-SPELL-PROPERTY-AMBIGUOUS",
+                "properties",
+                "this BaseItem has more than one Cast Spell property",
+            ));
+        }
+    };
+    let row = u32::from(property.subtype);
+    let (columns, cells) = read_reference_row_v1("IPRP_SPELLS", iprp_spells_2da, row)?;
+    let icon = two_da_cell_by_column_v1("IPRP_SPELLS", &columns, &cells, row, "Icon")?;
+    Ok(ItemCastSpellIconV1 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        base_item,
+        cast_spell_subtype: property.subtype,
+        icon_resref: validate_resref(icon, "IPRP_SPELLS.Icon")?,
+    })
+}
+
+pub fn resolve_item_cloak_v1(
+    cloak_model_row: u16,
+    cloak_model_2da: &[u8],
+) -> Result<ItemCloakResolutionV1, ItemErrorV1> {
+    let row = u32::from(cloak_model_row);
+    let (columns, cells) = read_reference_row_v1("CloakModel", cloak_model_2da, row)?;
+    let model_text = two_da_cell_by_column_v1("CloakModel", &columns, &cells, row, "MODEL")?;
+    let texture_text = two_da_cell_by_column_v1("CloakModel", &columns, &cells, row, "TEXTURE")?;
+    let icon_text = two_da_cell_by_column_v1("CloakModel", &columns, &cells, row, "ICON")?;
+    let model = u16::try_from(parse_u32(model_text, row, "MODEL")?).map_err(|_| {
+        error(
+            "ITEM-CLOAK-MODEL-OVERFLOW",
+            format!("CloakModel.rows.{row}.MODEL"),
+            "CloakModel MODEL must fit an unsigned 16-bit value",
+        )
+    })?;
+    let texture = u16::try_from(parse_u32(texture_text, row, "TEXTURE")?).map_err(|_| {
+        error(
+            "ITEM-CLOAK-TEXTURE-OVERFLOW",
+            format!("CloakModel.rows.{row}.TEXTURE"),
+            "CloakModel TEXTURE must fit an unsigned 16-bit value",
+        )
+    })?;
+    let icon = u16::try_from(parse_u32(icon_text, row, "ICON")?).map_err(|_| {
+        error(
+            "ITEM-CLOAK-ICON-OVERFLOW",
+            format!("CloakModel.rows.{row}.ICON"),
+            "CloakModel ICON must fit an unsigned 16-bit value",
+        )
+    })?;
+    Ok(ItemCloakResolutionV1 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        cloak_model_row,
+        model,
+        texture,
+        icon,
+        model_resref: validate_resref(&format!("pmh0_cloak_{model:03}"), "CloakModel.modelResref")?,
+        texture_resref: validate_resref(
+            &format!("cloak_{texture:03}"),
+            "CloakModel.textureResref",
+        )?,
+        icon_resref: validate_resref(&format!("icloak_m_{icon:03}"), "CloakModel.iconResref")?,
+    })
+}
+
+pub fn resolve_item_cloak_v2(
+    cloak_model_row: u16,
+    cloak_model_2da: &[u8],
+    available_resource_keys: &[impl AsRef<str>],
+) -> Result<ItemCloakResolutionV2, ItemErrorV1> {
+    resolve_item_cloak_for_model_prefix_v2(
+        cloak_model_row,
+        "pmh0",
+        cloak_model_2da,
+        available_resource_keys,
+    )
+}
+
+fn resolve_item_cloak_for_model_prefix_v2(
+    cloak_model_row: u16,
+    model_prefix: &str,
+    cloak_model_2da: &[u8],
+    available_resource_keys: &[impl AsRef<str>],
+) -> Result<ItemCloakResolutionV2, ItemErrorV1> {
+    let model_prefix = validate_item_player_model_prefix_v1(model_prefix)?;
+    let icon_gender = model_prefix
+        .as_bytes()
+        .get(1)
+        .copied()
+        .map(char::from)
+        .expect("validated player model prefix has a gender token");
+    let row = u32::from(cloak_model_row);
+    let (columns, cells) = read_reference_row_v1("CloakModel", cloak_model_2da, row)?;
+    let model_text = two_da_cell_by_column_v1("CloakModel", &columns, &cells, row, "MODEL")?;
+    let texture_text = two_da_cell_by_column_v1("CloakModel", &columns, &cells, row, "TEXTURE")?;
+    let icon_text = two_da_cell_by_column_v1("CloakModel", &columns, &cells, row, "ICON")?;
+    let model = u16::try_from(parse_u32(model_text, row, "MODEL")?).map_err(|_| {
+        error(
+            "ITEM-CLOAK-MODEL-OVERFLOW",
+            format!("CloakModel.rows.{row}.MODEL"),
+            "CloakModel MODEL must fit an unsigned 16-bit value",
+        )
+    })?;
+    let texture = u16::try_from(parse_u32(texture_text, row, "TEXTURE")?).map_err(|_| {
+        error(
+            "ITEM-CLOAK-TEXTURE-OVERFLOW",
+            format!("CloakModel.rows.{row}.TEXTURE"),
+            "CloakModel TEXTURE must fit an unsigned 16-bit value",
+        )
+    })?;
+    let icon = u16::try_from(parse_u32(icon_text, row, "ICON")?).map_err(|_| {
+        error(
+            "ITEM-CLOAK-ICON-OVERFLOW",
+            format!("CloakModel.rows.{row}.ICON"),
+            "CloakModel ICON must fit an unsigned 16-bit value",
+        )
+    })?;
+    let model_resref = validate_resref(
+        &format!("{model_prefix}_cloak_{model:03}"),
+        "CloakModel.modelResref",
+    )?;
+    let texture_resref =
+        validate_resref(&format!("cloak_{texture:03}"), "CloakModel.textureResref")?;
+    let icon_resref = validate_resref(
+        &format!("icloak_{icon_gender}_{icon:03}"),
+        "CloakModel.iconResref",
+    )?;
+    let available = available_resource_keys
+        .iter()
+        .map(|value| value.as_ref().trim().to_ascii_lowercase())
+        .collect::<BTreeSet<_>>();
+    let required = [
+        format!("2002:{model_resref}"),
+        format!("6:{texture_resref}"),
+        format!("6:{icon_resref}"),
+    ];
+    let missing = required
+        .iter()
+        .filter(|key| !available.contains(*key))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        return Err(error(
+            "ITEM-CLOAK-RESOURCE-MISSING",
+            "availableResourceKeys",
+            format!(
+                "CloakModel row {cloak_model_row} resolves to resources that are absent from the caller-bound inventory: {}",
+                missing.join(", ")
+            ),
+        ));
+    }
+    Ok(ItemCloakResolutionV2 {
+        schema_version: 2,
+        cloak_model_row,
+        model,
+        texture,
+        icon,
+        model_resref,
+        texture_resref,
+        icon_resref,
+        resource_verification: "RESOURCE_KEYS_VERIFIED".to_owned(),
+    })
+}
+
+fn validate_item_resource_inventory_v1(
+    inventory: &[ItemResourceInventoryEntryV2],
+) -> Result<BTreeMap<(u16, String), ItemResourceInventoryEntryV2>, ItemErrorV1> {
+    let mut validated = BTreeMap::new();
+    for (index, entry) in inventory.iter().enumerate() {
+        let resref = validate_resref(&entry.resref, &format!("resourceInventory[{index}].resref"))?;
+        if entry.schema_version != 2
+            || !matches!(entry.resource_type, 6 | 2002)
+            || entry.byte_length == 0
+            || entry.sha256.len() != 64
+            || !entry
+                .sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            || entry.provenance.schema_version != ITEM_SCHEMA_VERSION_V1
+            || entry.provenance.source_kind != "NWN_BASE_KEY"
+            || !entry
+                .provenance
+                .source_container_file_name
+                .eq_ignore_ascii_case("nwn_base.key")
+            || entry.provenance.source_container_sha256 != ITEM_RETAIL_NWN_BASE_KEY_SHA256_V1
+            || entry.provenance.expected_sha256 != entry.sha256
+            || !valid_lowercase_sha256_v1(&entry.provenance.manifest_sha256)
+            || !valid_item_resource_locator_v1(&entry.provenance.resource_locator)
+            || !matches!(
+                (entry.resource_type, entry.format),
+                (2002, ItemReferenceResourceFormatV1::BinaryMdl)
+                    | (2002, ItemReferenceResourceFormatV1::AsciiMdl)
+                    | (6, ItemReferenceResourceFormatV1::PltV1)
+            )
+            || (entry.resource_type == 6 && entry.triangle_count != 0)
+        {
+            return Err(error(
+                "ITEM-RESOURCE-INVENTORY-ENTRY-INVALID",
+                format!("resourceInventory[{index}]"),
+                "inventory entries require schemaVersion 2, a validated MDL/PLT format, pinned nwn_base.key provenance, exact payload hash and locator",
+            ));
+        }
+        let normalized = ItemResourceInventoryEntryV2 {
+            resref: resref.clone(),
+            ..entry.clone()
+        };
+        if validated
+            .insert((entry.resource_type, resref), normalized)
+            .is_some()
+        {
+            return Err(error(
+                "ITEM-RESOURCE-INVENTORY-DUPLICATE",
+                format!("resourceInventory[{index}]"),
+                "inventory contains the same resource type/resref more than once",
+            ));
+        }
+    }
+    Ok(validated)
+}
+
+pub fn resolve_item_cloak_v3(
+    cloak_model_row: u16,
+    cloak_model_2da: &[u8],
+    resource_inventory: &[ItemResourceInventoryEntryV2],
+) -> Result<ItemCloakResolutionV3, ItemErrorV1> {
+    resolve_item_cloak_v4(cloak_model_row, "pmh0", cloak_model_2da, resource_inventory)
+}
+
+pub fn resolve_item_cloak_v4(
+    cloak_model_row: u16,
+    model_prefix: &str,
+    cloak_model_2da: &[u8],
+    resource_inventory: &[ItemResourceInventoryEntryV2],
+) -> Result<ItemCloakResolutionV3, ItemErrorV1> {
+    let inventory = validate_item_resource_inventory_v1(resource_inventory)?;
+    let resource_keys = inventory
+        .keys()
+        .map(|(resource_type, resref)| format!("{resource_type}:{resref}"))
+        .collect::<Vec<_>>();
+    let resolved = resolve_item_cloak_for_model_prefix_v2(
+        cloak_model_row,
+        model_prefix,
+        cloak_model_2da,
+        &resource_keys,
+    )?;
+    let model_resource = inventory
+        .get(&(2002, resolved.model_resref.clone()))
+        .cloned()
+        .ok_or_else(|| {
+            error(
+                "ITEM-CLOAK-RESOURCE-MISSING",
+                "resourceInventory",
+                format!("missing exact MDL bytes for {}", resolved.model_resref),
+            )
+        })?;
+    let texture_resource = inventory
+        .get(&(6, resolved.texture_resref.clone()))
+        .cloned()
+        .ok_or_else(|| {
+            error(
+                "ITEM-CLOAK-RESOURCE-MISSING",
+                "resourceInventory",
+                format!("missing exact PLT bytes for {}", resolved.texture_resref),
+            )
+        })?;
+    let icon_resource = inventory
+        .get(&(6, resolved.icon_resref.clone()))
+        .cloned()
+        .ok_or_else(|| {
+            error(
+                "ITEM-CLOAK-RESOURCE-MISSING",
+                "resourceInventory",
+                format!("missing exact PLT bytes for {}", resolved.icon_resref),
+            )
+        })?;
+    let inventory_bytes = serde_json::to_vec(&[&model_resource, &texture_resource, &icon_resource])
+        .map_err(|_| {
+            error(
+                "ITEM-RESOURCE-INVENTORY-SERIALIZE-FAILED",
+                "resourceInventory",
+                "verified cloak inventory could not be serialized",
+            )
+        })?;
+    Ok(ItemCloakResolutionV3 {
+        schema_version: 4,
+        cloak_model_row,
+        model: resolved.model,
+        texture: resolved.texture,
+        icon: resolved.icon,
+        model_resref: resolved.model_resref,
+        texture_resref: resolved.texture_resref,
+        icon_resref: resolved.icon_resref,
+        model_resource,
+        texture_resource,
+        icon_resource,
+        inventory_sha256: item_payload_sha256_v1(&inventory_bytes),
+        resource_verification: "PINNED_MANIFEST_PAYLOAD_VALIDATED".to_owned(),
+    })
+}
+
+fn valid_lowercase_sha256_v1(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn valid_item_resource_locator_v1(value: &str) -> bool {
+    let mut segments = value.split(':');
+    matches!(
+        (
+            segments.next(),
+            segments.next().and_then(|value| value.parse::<u32>().ok()),
+            segments.next(),
+            segments.next().and_then(|value| value.parse::<u32>().ok()),
+            segments.next(),
+        ),
+        (Some("bif"), Some(_), Some("resource"), Some(_), None)
+    )
+}
+
+fn validate_item_player_model_prefix_v1(value: &str) -> Result<String, ItemErrorV1> {
+    let normalized = value.trim().to_ascii_lowercase();
+    let bytes = normalized.as_bytes();
+    if bytes.len() != 4
+        || bytes[0] != b'p'
+        || !matches!(bytes[1], b'm' | b'f')
+        || !bytes[2].is_ascii_alphanumeric()
+        || !bytes[3].is_ascii_digit()
+    {
+        return Err(error(
+            "ITEM-PLAYER-MODEL-PREFIX-INVALID",
+            "modelPrefix",
+            "player model prefix must be p + m/f + one appearance RACE token + one phenotype digit",
+        ));
+    }
+    Ok(normalized)
+}
+
+fn reference_mdl_triangle_count_v1(report: &InspectionReport) -> Result<usize, ItemErrorV1> {
+    fn visit(node: &crate::mdl::NodeReport, total: &mut usize) -> Result<(), ItemErrorV1> {
+        if let Some(mesh) = &node.mesh {
+            if mesh
+                .index_counts
+                .iter()
+                .any(|count| *count > u16::MAX as u32)
+            {
+                return Err(error(
+                    "ITEM-RESOURCE-MDL-STREAM-BOUNDARY-EXCEEDED",
+                    format!("model.nodes.{}.mesh.indexCounts", node.name),
+                    "one retail MDL mesh stream exceeds the 65,535 index-entry binary boundary",
+                ));
+            }
+            if mesh.render != 0 {
+                *total = total.checked_add(mesh.faces.len()).ok_or_else(|| {
+                    error(
+                        "ITEM-TRIANGLE-COUNT-OVERFLOW",
+                        "referenceResource.model",
+                        "reference MDL render triangle count overflowed this platform",
+                    )
+                })?;
+            }
+        }
+        for child in &node.children {
+            visit(child, total)?;
+        }
+        Ok(())
+    }
+
+    let mut total = 0usize;
+    for root in &report.node_tree.roots {
+        visit(root, &mut total)?;
+    }
+    Ok(total)
+}
+
+fn inspect_reference_plt_v1(bytes: &[u8]) -> Result<(), ItemErrorV1> {
+    const HEADER_LENGTH: usize = 24;
+    if bytes.len() < HEADER_LENGTH || &bytes[..8] != b"PLT V1  " {
+        return Err(error(
+            "ITEM-RESOURCE-PLT-INVALID",
+            "referenceResource.bytes",
+            "retail PLT payload must start with the 24-byte PLT V1 header",
+        ));
+    }
+    let read_u32 = |offset: usize| {
+        u32::from_le_bytes(
+            bytes[offset..offset + 4]
+                .try_into()
+                .expect("validated PLT header"),
+        )
+    };
+    let palette_count = read_u32(8);
+    let width = read_u32(16);
+    let height = read_u32(20);
+    let expected_length = u64::from(width)
+        .checked_mul(u64::from(height))
+        .and_then(|pixels| pixels.checked_mul(2))
+        .and_then(|payload| payload.checked_add(HEADER_LENGTH as u64));
+    if !(1..=10).contains(&palette_count)
+        || read_u32(12) != 0
+        || width == 0
+        || height == 0
+        || expected_length != Some(bytes.len() as u64)
+        || bytes[HEADER_LENGTH..]
+            .chunks_exact(2)
+            .any(|pixel| u32::from(pixel[1]) >= palette_count)
+    {
+        return Err(error(
+            "ITEM-RESOURCE-PLT-INVALID",
+            "referenceResource.bytes",
+            "retail PLT payload has invalid dimensions, palette count, reserved field, palette index or byte length",
+        ));
+    }
+    Ok(())
+}
+
+#[derive(Default)]
+struct ItemAsciiMdlNodeV1 {
+    render: bool,
+    vertex_count: Option<usize>,
+    face_count: Option<usize>,
+    face_indices: Vec<[usize; 3]>,
+}
+
+fn reference_ascii_mdl_error_v1(message: impl Into<String>) -> ItemErrorV1 {
+    error(
+        "ITEM-RESOURCE-MDL-INVALID",
+        "referenceResource.bytes",
+        message,
+    )
+}
+
+fn inspect_reference_ascii_mdl_v1(
+    bytes: &[u8],
+    expected_resref: &str,
+) -> Result<usize, ItemErrorV1> {
+    if bytes.iter().any(|byte| *byte == 0 || !byte.is_ascii()) {
+        return Err(reference_ascii_mdl_error_v1(
+            "ASCII MDL must contain only non-NUL ASCII bytes",
+        ));
+    }
+    let text = std::str::from_utf8(bytes).map_err(|source| {
+        reference_ascii_mdl_error_v1(format!("ASCII MDL is not valid UTF-8/ASCII: {source}"))
+    })?;
+    let lines = text.lines().collect::<Vec<_>>();
+    let mut saw_header = false;
+    let mut declared_model: Option<String> = None;
+    let mut saw_begin_geometry = false;
+    let mut saw_end_geometry = false;
+    let mut node: Option<ItemAsciiMdlNodeV1> = None;
+    let mut node_count = 0usize;
+    let mut geometry_node_count = 0usize;
+    let mut triangle_count = 0usize;
+    let mut line_index = 0usize;
+
+    while line_index < lines.len() {
+        let line = lines[line_index].trim();
+        line_index += 1;
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with('#') {
+            if line.eq_ignore_ascii_case("#NWmax MODEL ASCII")
+                || line.eq_ignore_ascii_case("#MAXMODEL ASCII")
+            {
+                saw_header = true;
+            }
+            continue;
+        }
+        let tokens = line.split_whitespace().collect::<Vec<_>>();
+        let keyword = tokens[0].to_ascii_lowercase();
+        match keyword.as_str() {
+            "newmodel" => {
+                if node.is_some() || tokens.len() != 2 || declared_model.is_some() {
+                    return Err(reference_ascii_mdl_error_v1(format!(
+                        "line {line_index}: expected exactly one `newmodel <resref>` declaration"
+                    )));
+                }
+                declared_model = Some(tokens[1].to_ascii_lowercase());
+            }
+            "beginmodelgeom" => {
+                if node.is_some()
+                    || tokens.len() != 2
+                    || saw_begin_geometry
+                    || !tokens[1].eq_ignore_ascii_case(expected_resref)
+                {
+                    return Err(reference_ascii_mdl_error_v1(format!(
+                        "line {line_index}: invalid or duplicate beginmodelgeom identity"
+                    )));
+                }
+                saw_begin_geometry = true;
+            }
+            "endmodelgeom" => {
+                if node.is_some()
+                    || !saw_begin_geometry
+                    || saw_end_geometry
+                    || !matches!(tokens.len(), 1 | 2)
+                    || (tokens.len() == 2 && !tokens[1].eq_ignore_ascii_case(expected_resref))
+                {
+                    return Err(reference_ascii_mdl_error_v1(format!(
+                        "line {line_index}: invalid endmodelgeom boundary"
+                    )));
+                }
+                saw_end_geometry = true;
+            }
+            "node" => {
+                if node.is_some() || !saw_begin_geometry || saw_end_geometry || tokens.len() != 3 {
+                    return Err(reference_ascii_mdl_error_v1(format!(
+                        "line {line_index}: invalid or nested node declaration"
+                    )));
+                }
+                node_count = node_count.checked_add(1).ok_or_else(|| {
+                    reference_ascii_mdl_error_v1("ASCII MDL node count overflowed")
+                })?;
+                node = Some(ItemAsciiMdlNodeV1 {
+                    render: true,
+                    ..ItemAsciiMdlNodeV1::default()
+                });
+            }
+            "endnode" => {
+                if tokens.len() != 1 {
+                    return Err(reference_ascii_mdl_error_v1(format!(
+                        "line {line_index}: endnode must not have arguments"
+                    )));
+                }
+                let finished = node.take().ok_or_else(|| {
+                    reference_ascii_mdl_error_v1(format!(
+                        "line {line_index}: endnode has no matching node"
+                    ))
+                })?;
+                if let Some(face_count) = finished.face_count {
+                    let vertex_count = finished.vertex_count.ok_or_else(|| {
+                        reference_ascii_mdl_error_v1(format!(
+                            "line {line_index}: a node with faces has no verts section"
+                        ))
+                    })?;
+                    if finished
+                        .face_indices
+                        .iter()
+                        .flatten()
+                        .any(|index| *index >= vertex_count)
+                    {
+                        return Err(reference_ascii_mdl_error_v1(format!(
+                            "line {line_index}: face index exceeds the node vertex count"
+                        )));
+                    }
+                    geometry_node_count = geometry_node_count.checked_add(1).ok_or_else(|| {
+                        reference_ascii_mdl_error_v1("ASCII MDL geometry node count overflowed")
+                    })?;
+                    if finished.render {
+                        triangle_count =
+                            triangle_count.checked_add(face_count).ok_or_else(|| {
+                                reference_ascii_mdl_error_v1(
+                                    "ASCII MDL render triangle count overflowed",
+                                )
+                            })?;
+                    }
+                }
+            }
+            "render" => {
+                let current = node.as_mut().ok_or_else(|| {
+                    reference_ascii_mdl_error_v1(format!(
+                        "line {line_index}: render appears outside a node"
+                    ))
+                })?;
+                if tokens.len() != 2 || !matches!(tokens[1], "0" | "1") {
+                    return Err(reference_ascii_mdl_error_v1(format!(
+                        "line {line_index}: render must be 0 or 1"
+                    )));
+                }
+                current.render = tokens[1] == "1";
+            }
+            "verts" => {
+                let current = node.as_mut().ok_or_else(|| {
+                    reference_ascii_mdl_error_v1(format!(
+                        "line {line_index}: verts appears outside a node"
+                    ))
+                })?;
+                if tokens.len() != 2 || current.vertex_count.is_some() {
+                    return Err(reference_ascii_mdl_error_v1(format!(
+                        "line {line_index}: invalid or duplicate verts section"
+                    )));
+                }
+                let count = tokens[1].parse::<usize>().map_err(|_| {
+                    reference_ascii_mdl_error_v1(format!(
+                        "line {line_index}: verts count is not an unsigned integer"
+                    ))
+                })?;
+                if count == 0 || count > lines.len().saturating_sub(line_index) {
+                    return Err(reference_ascii_mdl_error_v1(format!(
+                        "line {line_index}: verts count exceeds the remaining payload"
+                    )));
+                }
+                for vertex_offset in 0..count {
+                    let vertex_line = lines[line_index + vertex_offset].trim();
+                    let values = vertex_line.split_whitespace().collect::<Vec<_>>();
+                    if values.len() < 3
+                        || values[..3].iter().any(|value| {
+                            value
+                                .parse::<f32>()
+                                .map(|value| !value.is_finite())
+                                .unwrap_or(true)
+                        })
+                    {
+                        return Err(reference_ascii_mdl_error_v1(format!(
+                            "line {}: vertex must start with three finite numbers",
+                            line_index + vertex_offset + 1
+                        )));
+                    }
+                }
+                line_index += count;
+                current.vertex_count = Some(count);
+            }
+            "faces" => {
+                let current = node.as_mut().ok_or_else(|| {
+                    reference_ascii_mdl_error_v1(format!(
+                        "line {line_index}: faces appears outside a node"
+                    ))
+                })?;
+                if tokens.len() != 2 || current.face_count.is_some() {
+                    return Err(reference_ascii_mdl_error_v1(format!(
+                        "line {line_index}: invalid or duplicate faces section"
+                    )));
+                }
+                let count = tokens[1].parse::<usize>().map_err(|_| {
+                    reference_ascii_mdl_error_v1(format!(
+                        "line {line_index}: faces count is not an unsigned integer"
+                    ))
+                })?;
+                if count == 0 || count > lines.len().saturating_sub(line_index) {
+                    return Err(reference_ascii_mdl_error_v1(format!(
+                        "line {line_index}: faces count exceeds the remaining payload"
+                    )));
+                }
+                let mut indices = Vec::with_capacity(count);
+                for face_offset in 0..count {
+                    let face_line = lines[line_index + face_offset].trim();
+                    let values = face_line.split_whitespace().collect::<Vec<_>>();
+                    if values.len() < 3 {
+                        return Err(reference_ascii_mdl_error_v1(format!(
+                            "line {}: face must start with three vertex indices",
+                            line_index + face_offset + 1
+                        )));
+                    }
+                    let mut face = [0usize; 3];
+                    for (target, value) in face.iter_mut().zip(&values[..3]) {
+                        *target = value.parse::<usize>().map_err(|_| {
+                            reference_ascii_mdl_error_v1(format!(
+                                "line {}: face vertex index is not an unsigned integer",
+                                line_index + face_offset + 1
+                            ))
+                        })?;
+                    }
+                    indices.push(face);
+                }
+                line_index += count;
+                current.face_count = Some(count);
+                current.face_indices = indices;
+            }
+            _ => {}
+        }
+    }
+
+    if node.is_some() {
+        return Err(reference_ascii_mdl_error_v1(
+            "ASCII MDL ended before the current node's endnode",
+        ));
+    }
+    let declared_model = declared_model.ok_or_else(|| {
+        reference_ascii_mdl_error_v1("ASCII MDL is missing its newmodel declaration")
+    })?;
+    if !declared_model.eq_ignore_ascii_case(expected_resref) {
+        return Err(error(
+            "ITEM-RESOURCE-MDL-IDENTITY-MISMATCH",
+            "referenceResource.resref",
+            format!(
+                "ASCII MDL declares model {declared_model:?}, not requested resref {expected_resref:?}"
+            ),
+        ));
+    }
+    if !saw_header
+        || !saw_begin_geometry
+        || !saw_end_geometry
+        || node_count == 0
+        || geometry_node_count == 0
+        || triangle_count == 0
+    {
+        return Err(reference_ascii_mdl_error_v1(
+            "ASCII MDL requires its format header, geometry envelope, nodes and non-empty render geometry",
+        ));
+    }
+    Ok(triangle_count)
+}
+
+pub fn inspect_item_reference_resource_v1(
+    resource_type: u16,
+    resref: &str,
+    bytes: &[u8],
+    provenance: &ItemResourceProvenanceV1,
+) -> Result<ItemResourceInventoryEntryV2, ItemErrorV1> {
+    let resref = validate_resref(resref, "referenceResource.resref")?;
+    if provenance.schema_version != ITEM_SCHEMA_VERSION_V1
+        || provenance.source_kind != "NWN_BASE_KEY"
+        || !provenance
+            .source_container_file_name
+            .eq_ignore_ascii_case("nwn_base.key")
+        || provenance.source_container_sha256 != ITEM_RETAIL_NWN_BASE_KEY_SHA256_V1
+        || !valid_lowercase_sha256_v1(&provenance.expected_sha256)
+        || !valid_lowercase_sha256_v1(&provenance.manifest_sha256)
+        || !valid_item_resource_locator_v1(&provenance.resource_locator)
+    {
+        return Err(error(
+            "ITEM-RESOURCE-PROVENANCE-INVALID",
+            "referenceResource.provenance",
+            "reference resources require a pinned nwn_base.key hash, exact payload hash and bif:<index>:resource:<index> locator",
+        ));
+    }
+    if bytes.is_empty() {
+        return Err(error(
+            "ITEM-RESOURCE-PAYLOAD-EMPTY",
+            "referenceResource.bytes",
+            "reference resource payload must not be empty",
+        ));
+    }
+    let actual_sha256 = item_payload_sha256_v1(bytes);
+    if actual_sha256 != provenance.expected_sha256 {
+        return Err(error(
+            "ITEM-RESOURCE-PAYLOAD-HASH-MISMATCH",
+            "referenceResource.bytes",
+            format!(
+                "payload SHA-256 {actual_sha256} differs from the authoritative manifest hash {}",
+                provenance.expected_sha256
+            ),
+        ));
+    }
+    let (format, triangle_count) = match resource_type {
+        2002 => {
+            if bytes.get(..4) == Some(&[0, 0, 0, 0]) {
+                let report = inspect_binary_mdl(bytes).map_err(|source| {
+                    error(
+                        "ITEM-RESOURCE-MDL-INVALID",
+                        "referenceResource.bytes",
+                        source.to_string(),
+                    )
+                })?;
+                if !report.model.name.eq_ignore_ascii_case(&resref) {
+                    return Err(error(
+                        "ITEM-RESOURCE-MDL-IDENTITY-MISMATCH",
+                        "referenceResource.resref",
+                        format!(
+                            "binary MDL declares model {:?}, not requested resref {resref:?}",
+                            report.model.name
+                        ),
+                    ));
+                }
+                (
+                    ItemReferenceResourceFormatV1::BinaryMdl,
+                    reference_mdl_triangle_count_v1(&report)?,
+                )
+            } else {
+                (
+                    ItemReferenceResourceFormatV1::AsciiMdl,
+                    inspect_reference_ascii_mdl_v1(bytes, &resref)?,
+                )
+            }
+        }
+        6 => {
+            inspect_reference_plt_v1(bytes)?;
+            (ItemReferenceResourceFormatV1::PltV1, 0)
+        }
+        _ => {
+            return Err(error(
+                "ITEM-RESOURCE-TYPE-UNSUPPORTED",
+                "referenceResource.resourceType",
+                "retail Item resource inventory accepts binary/ASCII MDL type 2002 and PLT type 6",
+            ));
+        }
+    };
+    Ok(ItemResourceInventoryEntryV2 {
+        schema_version: 2,
+        resource_type,
+        resref,
+        byte_length: bytes.len() as u64,
+        sha256: actual_sha256,
+        format,
+        triangle_count,
+        provenance: provenance.clone(),
+    })
+}
+
+pub fn resolve_item_equipped_appearance_v1(
+    appearance_2da: &[u8],
+    appearance_row: u16,
+    racial_type: u8,
+    gender: u8,
+    phenotype: u8,
+) -> Result<ItemEquippedAppearanceBindingV1, ItemErrorV1> {
+    let row = u32::from(appearance_row);
+    let (columns, cells) = read_reference_row_v1("APPEARANCE", appearance_2da, row)?;
+    let model_type = two_da_cell_by_column_v1("APPEARANCE", &columns, &cells, row, "MODELTYPE")?;
+    if model_type != "P" {
+        return Err(error(
+            "ITEM-EQUIPPED-APPEARANCE-MODELTYPE-INVALID",
+            format!("APPEARANCE.rows.{row}.MODELTYPE"),
+            "equipped CAPART/Cloak fixture requires a part-based MODELTYPE=P appearance",
+        ));
+    }
+    let race_token = two_da_cell_by_column_v1("APPEARANCE", &columns, &cells, row, "RACE")?;
+    if race_token.len() != 1 || !race_token.bytes().all(|byte| byte.is_ascii_alphanumeric()) {
+        return Err(error(
+            "ITEM-EQUIPPED-APPEARANCE-RACE-INVALID",
+            format!("APPEARANCE.rows.{row}.RACE"),
+            "part-based appearance RACE must be one ASCII model-prefix token",
+        ));
+    }
+    let table_racial_type = u8::try_from(parse_u32(
+        two_da_cell_by_column_v1("APPEARANCE", &columns, &cells, row, "RACIALTYPE")?,
+        row,
+        "RACIALTYPE",
+    )?)
+    .map_err(|_| {
+        error(
+            "ITEM-EQUIPPED-APPEARANCE-RACIALTYPE-INVALID",
+            format!("APPEARANCE.rows.{row}.RACIALTYPE"),
+            "appearance RACIALTYPE must fit a GFF BYTE",
+        )
+    })?;
+    if table_racial_type != racial_type {
+        return Err(error(
+            "ITEM-EQUIPPED-APPEARANCE-RACIALTYPE-MISMATCH",
+            format!("APPEARANCE.rows.{row}.RACIALTYPE"),
+            format!(
+                "fixture Race {racial_type} differs from appearance RACIALTYPE {table_racial_type}"
+            ),
+        ));
+    }
+    let gender_token = match gender {
+        0 => 'm',
+        1 => 'f',
+        _ => {
+            return Err(error(
+                "ITEM-EQUIPPED-APPEARANCE-GENDER-INVALID",
+                "equippedProofContext.gender",
+                "player-model fixture gender must be 0 (male) or 1 (female)",
+            ));
+        }
+    };
+    if phenotype > 9 {
+        return Err(error(
+            "ITEM-EQUIPPED-APPEARANCE-PHENOTYPE-INVALID",
+            "equippedProofContext.phenotype",
+            "player-model fixture phenotype must be a single decimal digit",
+        ));
+    }
+    let model_prefix = validate_item_player_model_prefix_v1(&format!(
+        "p{gender_token}{}{phenotype}",
+        race_token.to_ascii_lowercase()
+    ))?;
+    Ok(ItemEquippedAppearanceBindingV1 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        appearance_row,
+        model_type: model_type.to_owned(),
+        race_token: race_token.to_ascii_lowercase(),
+        racial_type,
+        gender,
+        phenotype,
+        model_prefix,
+        appearance_table_sha256: item_payload_sha256_v1(appearance_2da),
+    })
+}
+
+fn validate_resref(value: &str, path: &str) -> Result<String, ItemErrorV1> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.is_empty()
+        || normalized.len() > 16
+        || !normalized
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+    {
+        return Err(error(
+            "ITEM-RESREF-INVALID",
+            path,
+            "resref must contain 1..16 lowercase ASCII letters, digits, or underscores",
+        ));
+    }
+    Ok(normalized)
+}
+
+pub fn resolve_item_part_resource_v1(
+    base_item: &ItemBaseItemV1,
+    field: &str,
+    variant: u8,
+    explicit_model_resref: Option<&str>,
+    explicit_icon_resref: Option<&str>,
+) -> Result<ItemResolvedResourceV1, ItemErrorV1> {
+    let slot = base_item
+        .part_slots
+        .iter()
+        .find(|slot| slot.field.eq_ignore_ascii_case(field))
+        .ok_or_else(|| {
+            error(
+                "ITEM-PART-SLOT-INVALID",
+                "field",
+                format!("{field} is not part of ModelType {}", base_item.model_type),
+            )
+        })?;
+    if slot.source_kind != ItemPartSourceKindV1::MeshyGlb {
+        return Err(error(
+            "ITEM-REFERENCE-COMPOSER-REQUIRED",
+            format!("parts.{}", slot.field),
+            match slot.source_kind {
+                ItemPartSourceKindV1::CapartSelection => {
+                    "CAPART armor fields are numeric UTI selectors resolved through CAPART and their exact parts_* tables; they are not independent MDL/icon resrefs"
+                }
+                ItemPartSourceKindV1::CloakModelSelection => {
+                    "cloak ModelPart1 is a numeric CloakModel row selector; it is not an independent MDL/icon resref"
+                }
+                ItemPartSourceKindV1::MeshyGlb => unreachable!(),
+            },
+        ));
+    }
+    let (model_resref, icon_resref) = if slot.requires_explicit_resource_resrefs {
+        let model = explicit_model_resref.ok_or_else(|| {
+            error(
+                "ITEM-RESOURCE-CONTEXT-REQUIRED",
+                format!("parts.{}.modelResref", slot.field),
+                "this item profile needs a caller-provided, Aurora-validated model resref",
+            )
+        })?;
+        let icon = explicit_icon_resref.ok_or_else(|| {
+            error(
+                "ITEM-RESOURCE-CONTEXT-REQUIRED",
+                format!("parts.{}.iconResref", slot.field),
+                "this item profile needs a caller-provided, Aurora-validated icon resref",
+            )
+        })?;
+        (
+            validate_resref(model, "modelResref")?,
+            validate_resref(icon, "iconResref")?,
+        )
+    } else {
+        let item_class = base_item.item_class.to_ascii_lowercase();
+        let suffix = slot
+            .token
+            .as_deref()
+            .map(|token| format!("_{token}_{variant:03}"))
+            .unwrap_or_else(|| format!("_{variant:03}"));
+        (
+            validate_resref(&format!("{item_class}{suffix}"), "modelResref")?,
+            validate_resref(&format!("i{item_class}{suffix}"), "iconResref")?,
+        )
+    };
+    Ok(ItemResolvedResourceV1 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        base_item: base_item.base_item,
+        field: slot.field.clone(),
+        variant,
+        model_resref,
+        icon_resref,
+    })
+}
+
+fn field(label: &str, value: GffValueV1) -> GffFieldV1 {
+    GffFieldV1 {
+        label: label.to_owned(),
+        value,
+    }
+}
+
+fn loc_string(value: &str) -> GffValueV1 {
+    GffValueV1::LocString(GffLocStringV1 {
+        string_ref: u32::MAX,
+        substrings: if value.is_empty() {
+            Vec::new()
+        } else {
+            vec![GffLocSubstringV1 {
+                string_id: 0,
+                bytes: value.as_bytes().to_vec(),
+            }]
+        },
+    })
+}
+
+fn color_values(colors: &ItemColorValuesV1) -> [u8; 6] {
+    [
+        colors.leather1_color.unwrap_or(0),
+        colors.leather2_color.unwrap_or(0),
+        colors.cloth1_color.unwrap_or(0),
+        colors.cloth2_color.unwrap_or(0),
+        colors.metal1_color.unwrap_or(0),
+        colors.metal2_color.unwrap_or(0),
+    ]
+}
+
+fn item_property_struct_v1(
+    index: usize,
+    property: &ItemPropertyV1,
+) -> Result<GffStructV1, ItemErrorV1> {
+    if property.chance_appear > 100 {
+        return Err(error(
+            "ITEM-UTI-PROPERTY-CHANCE-INVALID",
+            format!("blueprint.properties[{index}].chanceAppear"),
+            "ChanceAppear must be in the range 0..100",
+        ));
+    }
+    let cost_table = if property.property_name == ITEM_PROPERTY_ON_HIT_CAST_SPELL_V1 {
+        // Aurora normalizes PropertyName 0x30 to CostTable 0x18 while reading
+        // the UTI. Emitting that canonical value prevents a write/read semantic
+        // drift and matches the native property contract.
+        0x18
+    } else {
+        property.cost_table
+    };
+    Ok(GffStructV1 {
+        struct_id: index as u32,
+        fields: vec![
+            field("PropertyName", GffValueV1::Word(property.property_name)),
+            field("Subtype", GffValueV1::Word(property.subtype)),
+            field("CostTable", GffValueV1::Byte(cost_table)),
+            field("CostValue", GffValueV1::Word(property.cost_value)),
+            field("Param1", GffValueV1::Byte(property.param1)),
+            field("Param1Value", GffValueV1::Byte(property.param1_value)),
+            field("ChanceAppear", GffValueV1::Byte(property.chance_appear)),
+        ],
+    })
+}
+
+pub fn write_item_uti_v1(
+    base_item: &ItemBaseItemV1,
+    blueprint: &ItemBlueprintV1,
+) -> Result<ItemUtiArtifactV1, ItemErrorV1> {
+    if blueprint.schema_version != ITEM_SCHEMA_VERSION_V1 {
+        return Err(error(
+            "ITEM-UTI-SCHEMA-INVALID",
+            "blueprint.schemaVersion",
+            "item blueprint schemaVersion must be 1",
+        ));
+    }
+    let template_resref = validate_resref(&blueprint.template_resref, "templateResref")?;
+    let expected = base_item
+        .part_slots
+        .iter()
+        .map(|slot| slot.field.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut values = BTreeMap::new();
+    for part in &blueprint.parts {
+        let expected_field = expected
+            .iter()
+            .find(|candidate| candidate.eq_ignore_ascii_case(&part.field))
+            .copied()
+            .ok_or_else(|| {
+                error(
+                    "ITEM-UTI-PART-UNEXPECTED",
+                    format!("blueprint.parts.{}", part.field),
+                    format!(
+                        "{} is not a part field for ModelType {}",
+                        part.field, base_item.model_type
+                    ),
+                )
+            })?;
+        if values.insert(expected_field, part.value).is_some() {
+            return Err(error(
+                "ITEM-UTI-PART-DUPLICATE",
+                format!("blueprint.parts.{}", part.field),
+                "each resolved part field must appear exactly once",
+            ));
+        }
+    }
+    if values.len() != expected.len() {
+        let missing = expected
+            .iter()
+            .filter(|field| !values.contains_key(**field))
+            .copied()
+            .collect::<Vec<_>>();
+        return Err(error(
+            "ITEM-UTI-PARTS-INCOMPLETE",
+            "blueprint.parts",
+            format!("missing required part fields: {}", missing.join(", ")),
+        ));
+    }
+    let colors = [
+        blueprint.colors.leather1_color,
+        blueprint.colors.leather2_color,
+        blueprint.colors.cloth1_color,
+        blueprint.colors.cloth2_color,
+        blueprint.colors.metal1_color,
+        blueprint.colors.metal2_color,
+    ];
+    if base_item.color_fields.is_empty() && colors.iter().any(Option::is_some) {
+        return Err(error(
+            "ITEM-UTI-COLORS-UNEXPECTED",
+            "blueprint.colors",
+            format!(
+                "ModelType {} does not serialize item color fields",
+                base_item.model_type
+            ),
+        ));
+    }
+    if !base_item.color_fields.is_empty() && colors.iter().any(Option::is_none) {
+        return Err(error(
+            "ITEM-UTI-COLORS-INCOMPLETE",
+            "blueprint.colors",
+            format!(
+                "ModelType {} requires all six numeric item color fields",
+                base_item.model_type
+            ),
+        ));
+    }
+
+    let mut fields = vec![
+        field(
+            "TemplateResRef",
+            GffValueV1::ResRef(template_resref.clone()),
+        ),
+        field("Tag", GffValueV1::String(blueprint.tag.as_bytes().to_vec())),
+        field("LocalizedName", loc_string(&blueprint.localized_name)),
+        field("Description", loc_string(&blueprint.description)),
+        field(
+            "DescIdentified",
+            loc_string(&blueprint.identified_description),
+        ),
+        field(
+            "Comment",
+            GffValueV1::String(blueprint.comment.as_bytes().to_vec()),
+        ),
+        field(
+            "BaseItem",
+            GffValueV1::Int(i32::try_from(base_item.base_item).map_err(|_| {
+                error(
+                    "ITEM-UTI-BASEITEM-OVERFLOW",
+                    "baseItem",
+                    "UTI BaseItem must fit the native signed INT field",
+                )
+            })?),
+        ),
+    ];
+    for slot in &base_item.part_slots {
+        fields.push(field(
+            &slot.field,
+            GffValueV1::Byte(values[slot.field.as_str()]),
+        ));
+    }
+    if !base_item.color_fields.is_empty() {
+        for (label, value) in ITEM_COLOR_FIELDS_V1
+            .into_iter()
+            .zip(color_values(&blueprint.colors))
+        {
+            fields.push(field(label, GffValueV1::Byte(value)));
+        }
+    }
+    let properties = blueprint
+        .properties
+        .iter()
+        .enumerate()
+        .map(|(index, property)| item_property_struct_v1(index, property))
+        .collect::<Result<Vec<_>, _>>()?;
+    fields.extend([
+        field("Cost", GffValueV1::Dword(blueprint.cost)),
+        field("AddCost", GffValueV1::Dword(blueprint.add_cost)),
+        field("Charges", GffValueV1::Byte(blueprint.charges)),
+        field("StackSize", GffValueV1::Word(blueprint.stack_size)),
+        field("PaletteID", GffValueV1::Byte(blueprint.palette_id)),
+        field(
+            "Identified",
+            GffValueV1::Byte(u8::from(blueprint.identified)),
+        ),
+        field("Stolen", GffValueV1::Byte(u8::from(blueprint.stolen))),
+        field("Cursed", GffValueV1::Byte(u8::from(blueprint.cursed))),
+        field("Plot", GffValueV1::Byte(u8::from(blueprint.plot))),
+        field("PropertiesList", GffValueV1::List(properties)),
+    ]);
+
+    let artifact = write_gff_v32(
+        &GffDocumentV1 {
+            schema_version: GFF_SCHEMA_VERSION,
+            file_type: GffFileTypeV1::Uti,
+            root: GffStructV1 {
+                struct_id: u32::MAX,
+                fields,
+            },
+        },
+        &GffWriterOptionsV1::default(),
+    )
+    .map_err(|source| error("ITEM-UTI-WRITE-FAILED", source.path, source.message))?;
+
+    Ok(ItemUtiArtifactV1 {
+        payload: artifact.payload,
+        report: ItemUtiReportV1 {
+            schema_version: ITEM_SCHEMA_VERSION_V1,
+            template_resref,
+            base_item: base_item.base_item,
+            model_type: base_item.model_type,
+            part_count: base_item.part_slots.len() as u32,
+            color_field_count: base_item.color_fields.len() as u32,
+            byte_length: artifact.report.byte_length,
+            output_sha256: artifact.report.output_sha256,
+            semantic_readback_status: artifact.report.semantic_readback_status,
+        },
+    })
+}
+
+pub fn item_payload_sha256_v1(bytes: &[u8]) -> String {
+    hex_lower(&Sha256::digest(bytes))
+}
+
+fn item_proof_map_error_v1(
+    code: &str,
+    path: &str,
+    source: crate::proof_module::ProofModuleErrorV1,
+) -> ItemErrorV1 {
+    error(code, format!("{path}.{}", source.path), source.message)
+}
+
+fn item_proof_resource_v1(
+    resref: &str,
+    resource_type: u16,
+    payload: Vec<u8>,
+) -> HakResourceInputV1 {
+    HakResourceInputV1 {
+        resref: resref.to_owned(),
+        resource_type,
+        payload,
+    }
+}
+
+fn replace_gff_list_v1(
+    document: &mut GffDocumentV1,
+    label: &str,
+    values: Vec<GffStructV1>,
+) -> Result<(), ItemErrorV1> {
+    let field = document
+        .root
+        .fields
+        .iter_mut()
+        .find(|field| field.label == label)
+        .ok_or_else(|| {
+            error(
+                "ITEM-PROOF-MODULE-BASE-INVALID",
+                format!("git.{label}"),
+                "shared proof Area base is missing the required instance list",
+            )
+        })?;
+    field.value = GffValueV1::List(values);
+    Ok(())
+}
+
+fn write_item_proof_gff_v1(document: &GffDocumentV1, path: &str) -> Result<Vec<u8>, ItemErrorV1> {
+    write_gff_v32(document, &GffWriterOptionsV1::default())
+        .map(|artifact| artifact.payload)
+        .map_err(|source| {
+            error(
+                "ITEM-PROOF-MODULE-GFF-WRITE-FAILED",
+                format!("{path}.{}", source.path),
+                source.message,
+            )
+        })
+}
+
+pub fn build_item_proof_module_v1(
+    uti_payload: &[u8],
+    identity: &ItemProofModuleIdentityV1,
+    placement: ItemProofPlacementV1,
+) -> Result<ItemProofModuleArtifactV1, ItemErrorV1> {
+    if identity.schema_version != ITEM_SCHEMA_VERSION_V1
+        || placement.schema_version != ITEM_SCHEMA_VERSION_V1
+    {
+        return Err(error(
+            "ITEM-PROOF-MODULE-SCHEMA-INVALID",
+            "identity.schemaVersion",
+            "item proof identity and placement schemaVersion must both be 1",
+        ));
+    }
+    let module_resref = validate_resref(&identity.module_resref, "identity.moduleResref")?;
+    let area_resref = validate_resref(&identity.area_resref, "identity.areaResref")?;
+    let hak_resref = validate_resref(&identity.hak_resref, "identity.hakResref")?;
+    let blueprint_resref = validate_resref(&identity.blueprint_resref, "identity.blueprintResref")?;
+    if identity.module_name.trim().is_empty() || identity.area_name.trim().is_empty() {
+        return Err(error(
+            "ITEM-PROOF-MODULE-NAME-INVALID",
+            "identity.moduleName",
+            "moduleName and areaName must be non-empty",
+        ));
+    }
+    if ![
+        placement.x,
+        placement.y,
+        placement.z,
+        placement.orientation_x,
+        placement.orientation_y,
+    ]
+    .into_iter()
+    .all(f32::is_finite)
+    {
+        return Err(error(
+            "ITEM-PROOF-PLACEMENT-NONFINITE",
+            "placement",
+            "item proof placement must contain only finite values",
+        ));
+    }
+
+    let uti = read_gff_v32(uti_payload, &GffLimitsV1::default())
+        .map_err(|source| error("ITEM-PROOF-UTI-READ-FAILED", source.path, source.message))?;
+    if uti.file_type != GffFileTypeV1::Uti {
+        return Err(error(
+            "ITEM-PROOF-UTI-TYPE-INVALID",
+            "uti.header",
+            "candidate item proof input must be a UTI V3.2 payload",
+        ));
+    }
+    let template_resref = uti
+        .root
+        .fields
+        .iter()
+        .find(|field| field.label == "TemplateResRef")
+        .and_then(|field| match &field.value {
+            GffValueV1::ResRef(value) => Some(value.as_str()),
+            _ => None,
+        });
+    if template_resref != Some(blueprint_resref.as_str()) {
+        return Err(error(
+            "ITEM-PROOF-UTI-IDENTITY-MISMATCH",
+            "uti.TemplateResRef",
+            "UTI TemplateResRef differs from the candidate proof blueprint resref",
+        ));
+    }
+
+    let ifo = binary_m0_module_ifo_for(
+        &module_resref,
+        &area_resref,
+        &[hak_resref.as_str()],
+        identity.module_name.trim(),
+        "Candidate-bound Meshy2Aurora Item proof module. Visual proof is owner-owned.",
+    )
+    .map_err(|source| item_proof_map_error_v1("ITEM-PROOF-IFO-BUILD-FAILED", "ifo", source))?;
+    let mut are = read_gff_v32(
+        &binary_m0_area_for(&area_resref).map_err(|source| {
+            item_proof_map_error_v1("ITEM-PROOF-ARE-BUILD-FAILED", "are", source)
+        })?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|source| error("ITEM-PROOF-ARE-READ-FAILED", source.path, source.message))?;
+    if let Some(name) = are
+        .root
+        .fields
+        .iter_mut()
+        .find(|field| field.label == "Name")
+    {
+        name.value = loc_string(identity.area_name.trim());
+    }
+    let are = write_item_proof_gff_v1(&are, "are")?;
+
+    let mut gic = read_gff_v32(
+        &binary_creature_multi_fixture_gic(&[]).map_err(|source| {
+            item_proof_map_error_v1("ITEM-PROOF-GIC-BUILD-FAILED", "gic", source)
+        })?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|source| error("ITEM-PROOF-GIC-READ-FAILED", source.path, source.message))?;
+    replace_gff_list_v1(
+        &mut gic,
+        "List",
+        vec![GffStructV1 {
+            struct_id: 0,
+            fields: vec![field(
+                "Comment",
+                GffValueV1::String(
+                    format!(
+                        "Candidate-bound item {} at ({}, {}, {})",
+                        blueprint_resref, placement.x, placement.y, placement.z
+                    )
+                    .into_bytes(),
+                ),
+            )],
+        }],
+    )?;
+    let gic = write_item_proof_gff_v1(&gic, "gic")?;
+
+    let mut git = read_gff_v32(
+        &binary_creature_multi_fixture_git(&[]).map_err(|source| {
+            item_proof_map_error_v1("ITEM-PROOF-GIT-BUILD-FAILED", "git", source)
+        })?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|source| error("ITEM-PROOF-GIT-READ-FAILED", source.path, source.message))?;
+    let mut instance_fields = uti.root.fields.clone();
+    instance_fields.extend([
+        field("XPosition", GffValueV1::Float(placement.x)),
+        field("YPosition", GffValueV1::Float(placement.y)),
+        field("ZPosition", GffValueV1::Float(placement.z)),
+        field("XOrientation", GffValueV1::Float(placement.orientation_x)),
+        field("YOrientation", GffValueV1::Float(placement.orientation_y)),
+    ]);
+    replace_gff_list_v1(
+        &mut git,
+        "List",
+        vec![GffStructV1 {
+            struct_id: 0,
+            fields: instance_fields,
+        }],
+    )?;
+    let git = write_item_proof_gff_v1(&git, "git")?;
+    let fac = proof_factions()
+        .map_err(|source| item_proof_map_error_v1("ITEM-PROOF-FAC-BUILD-FAILED", "fac", source))?;
+    let resources = vec![
+        item_proof_resource_v1("module", 2014, ifo),
+        item_proof_resource_v1("repute", 2038, fac),
+        item_proof_resource_v1(&area_resref, 2012, are),
+        item_proof_resource_v1(&area_resref, 2046, gic),
+        item_proof_resource_v1(&area_resref, 2023, git),
+        item_proof_resource_v1(&blueprint_resref, 2025, uti_payload.to_vec()),
+    ];
+    let archive = write_erf_archive_v1(
+        ErfFileType::Module,
+        &resources,
+        &HakWriterOptionsV1::default(),
+    )
+    .map_err(|source| {
+        error(
+            "ITEM-PROOF-MODULE-WRITE-FAILED",
+            "module",
+            source.to_string(),
+        )
+    })?;
+    let readback = ErfArchive::parse(&archive.payload).map_err(|source| {
+        error(
+            "ITEM-PROOF-MODULE-READBACK-FAILED",
+            "module",
+            source.to_string(),
+        )
+    })?;
+    if readback.file_type() != ErfFileType::Module
+        || readback.resources().len() != resources.len()
+        || readback.find(&blueprint_resref, 2025).ok() != Some(uti_payload)
+    {
+        return Err(error(
+            "ITEM-PROOF-MODULE-SEMANTIC-DIFF",
+            "module.resources",
+            "MOD readback does not contain the exact candidate UTI and expected resource count",
+        ));
+    }
+    let git_readback = read_gff_v32(
+        readback.find(&area_resref, 2023).map_err(|source| {
+            error(
+                "ITEM-PROOF-MODULE-SEMANTIC-DIFF",
+                "module.git",
+                source.to_string(),
+            )
+        })?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|source| {
+        error(
+            "ITEM-PROOF-GIT-READBACK-FAILED",
+            source.path,
+            source.message,
+        )
+    })?;
+    let item_list = git_readback
+        .root
+        .fields
+        .iter()
+        .find(|field| field.label == "List")
+        .and_then(|field| match &field.value {
+            GffValueV1::List(values) => Some(values),
+            _ => None,
+        });
+    if item_list.is_none_or(|items| items.len() != 1) {
+        return Err(error(
+            "ITEM-PROOF-MODULE-SEMANTIC-DIFF",
+            "git.List",
+            "candidate MOD must contain exactly one placed item instance",
+        ));
+    }
+
+    Ok(ItemProofModuleArtifactV1 {
+        report: ItemProofModuleReportV1 {
+            schema_version: ITEM_SCHEMA_VERSION_V1,
+            module_resref,
+            module_name: identity.module_name.trim().to_owned(),
+            area_resref,
+            area_name: identity.area_name.trim().to_owned(),
+            hak_resref,
+            blueprint_resref,
+            item_position: [placement.x, placement.y, placement.z],
+            entry_position: [M0_RUNTIME_ENTRY_X, M0_RUNTIME_ENTRY_Y, M0_RUNTIME_ENTRY_Z],
+            entry_direction: [M0_RUNTIME_ENTRY_DIR_X, M0_RUNTIME_ENTRY_DIR_Y],
+            resource_count: resources.len() as u32,
+            byte_length: archive.payload.len() as u64,
+            output_sha256: item_payload_sha256_v1(&archive.payload),
+            semantic_readback_status: "PASS".to_owned(),
+            model_visibility: "not_tested".to_owned(),
+            proof_completeness: "missing".to_owned(),
+        },
+        payload: archive.payload,
+    })
+}
+
+fn set_equipped_item_reference_v2(
+    fields: &mut [GffFieldV1],
+    equipment_slot: u32,
+    blueprint_resref: &str,
+    path: &str,
+) -> Result<(), ItemErrorV1> {
+    let equipment = fields
+        .iter_mut()
+        .find(|field| field.label == "Equip_ItemList")
+        .ok_or_else(|| {
+            error(
+                "ITEM-EQUIPPED-PROOF-CREATURE-INVALID",
+                format!("{path}.Equip_ItemList"),
+                "generated proof creature is missing Equip_ItemList",
+            )
+        })?;
+    equipment.value = GffValueV1::List(vec![GffStructV1 {
+        struct_id: equipment_slot,
+        fields: vec![field(
+            "EquippedRes",
+            GffValueV1::ResRef(blueprint_resref.to_owned()),
+        )],
+    }]);
+    Ok(())
+}
+
+fn verify_equipped_item_reference_v2(
+    fields: &[GffFieldV1],
+    equipment_slot: u32,
+    blueprint_resref: &str,
+    path: &str,
+) -> Result<(), ItemErrorV1> {
+    let values = fields
+        .iter()
+        .find(|field| field.label == "Equip_ItemList")
+        .and_then(|field| match &field.value {
+            GffValueV1::List(values) => Some(values),
+            _ => None,
+        })
+        .ok_or_else(|| {
+            error(
+                "ITEM-EQUIPPED-PROOF-SEMANTIC-DIFF",
+                format!("{path}.Equip_ItemList"),
+                "proof creature Equip_ItemList is missing or has the wrong field type",
+            )
+        })?;
+    let exact = matches!(
+        values.as_slice(),
+        [equipped]
+            if equipped.struct_id == equipment_slot
+                && matches!(
+                    equipped.fields.as_slice(),
+                    [GffFieldV1 {
+                        label,
+                        value: GffValueV1::ResRef(value),
+                    }] if label == "EquippedRes" && value == blueprint_resref
+                )
+    );
+    if !exact {
+        return Err(error(
+            "ITEM-EQUIPPED-PROOF-SEMANTIC-DIFF",
+            format!("{path}.Equip_ItemList"),
+            "proof creature must contain exactly one EquippedRes bound to the expected native equipment slot",
+        ));
+    }
+    Ok(())
+}
+
+fn set_equipped_creature_context_v2(
+    fields: &mut [GffFieldV1],
+    identity: &ItemEquippedProofIdentityV2,
+    path: &str,
+) -> Result<(), ItemErrorV1> {
+    for (label, value) in [
+        ("Race", GffValueV1::Byte(identity.race)),
+        ("Gender", GffValueV1::Byte(identity.gender)),
+        ("Phenotype", GffValueV1::Int(identity.phenotype)),
+    ] {
+        let field = fields
+            .iter_mut()
+            .find(|field| field.label == label)
+            .ok_or_else(|| {
+                error(
+                    "ITEM-EQUIPPED-PROOF-CREATURE-INVALID",
+                    format!("{path}.{label}"),
+                    format!("generated proof creature is missing {label}"),
+                )
+            })?;
+        field.value = value;
+    }
+    Ok(())
+}
+
+fn verify_equipped_creature_context_v2(
+    fields: &[GffFieldV1],
+    identity: &ItemEquippedProofIdentityV2,
+    path: &str,
+) -> Result<(), ItemErrorV1> {
+    let exact = [
+        ("Appearance_Type", GffValueV1::Word(identity.appearance_row)),
+        ("Race", GffValueV1::Byte(identity.race)),
+        ("Gender", GffValueV1::Byte(identity.gender)),
+        ("Phenotype", GffValueV1::Int(identity.phenotype)),
+    ]
+    .into_iter()
+    .all(|(label, expected)| {
+        fields
+            .iter()
+            .find(|field| field.label == label)
+            .is_some_and(|field| field.value == expected)
+    });
+    if !exact {
+        return Err(error(
+            "ITEM-EQUIPPED-PROOF-CONTEXT-DIFF",
+            path,
+            "proof creature Appearance_Type/Race/Gender/Phenotype differ from the exact requested model context",
+        ));
+    }
+    Ok(())
+}
+
+pub fn build_item_equipped_proof_module_v2(
+    uti_payload: &[u8],
+    identity: &ItemEquippedProofIdentityV2,
+    placement: ItemProofPlacementV1,
+) -> Result<ItemEquippedProofModuleArtifactV2, ItemErrorV1> {
+    if identity.schema_version != 2 || placement.schema_version != ITEM_SCHEMA_VERSION_V1 {
+        return Err(error(
+            "ITEM-EQUIPPED-PROOF-SCHEMA-INVALID",
+            "identity.schemaVersion",
+            "equipped proof identity schemaVersion must be 2 and placement schemaVersion must be 1",
+        ));
+    }
+    let module_resref = validate_resref(&identity.module_resref, "identity.moduleResref")?;
+    let area_resref = validate_resref(&identity.area_resref, "identity.areaResref")?;
+    let hak_resref = validate_resref(&identity.hak_resref, "identity.hakResref")?;
+    let blueprint_resref = validate_resref(&identity.blueprint_resref, "identity.blueprintResref")?;
+    let creature_resref = validate_resref(&identity.creature_resref, "identity.creatureResref")?;
+    let model_prefix = validate_item_player_model_prefix_v1(&identity.model_prefix)?;
+    if !valid_lowercase_sha256_v1(&identity.appearance_table_sha256) {
+        return Err(error(
+            "ITEM-EQUIPPED-PROOF-APPEARANCE-BINDING-INVALID",
+            "identity.appearanceTableSha256",
+            "equipped proof identity requires the exact lowercase SHA-256 of its validated appearance.2da",
+        ));
+    }
+    if identity.module_name.trim().is_empty()
+        || identity.area_name.trim().is_empty()
+        || identity.creature_display_name.trim().is_empty()
+    {
+        return Err(error(
+            "ITEM-EQUIPPED-PROOF-NAME-INVALID",
+            "identity",
+            "module, Area and creature display names must be non-empty",
+        ));
+    }
+    if !(0..=255).contains(&identity.phenotype) {
+        return Err(error(
+            "ITEM-EQUIPPED-PROOF-PHENOTYPE-INVALID",
+            "identity.phenotype",
+            "proof creature phenotype must be an integer in 0..255",
+        ));
+    }
+    let expected_gender_token = match identity.gender {
+        0 => b'm',
+        1 => b'f',
+        _ => {
+            return Err(error(
+                "ITEM-EQUIPPED-PROOF-GENDER-INVALID",
+                "identity.gender",
+                "part-based proof creature gender must be 0 (male) or 1 (female)",
+            ));
+        }
+    };
+    if model_prefix.as_bytes()[1] != expected_gender_token
+        || usize::from(model_prefix.as_bytes()[3] - b'0') != identity.phenotype as usize
+    {
+        return Err(error(
+            "ITEM-EQUIPPED-PROOF-MODEL-PREFIX-MISMATCH",
+            "identity.modelPrefix",
+            "equipped proof model prefix must encode the exact requested gender and phenotype",
+        ));
+    }
+    if ![
+        placement.x,
+        placement.y,
+        placement.z,
+        placement.orientation_x,
+        placement.orientation_y,
+    ]
+    .into_iter()
+    .all(f32::is_finite)
+    {
+        return Err(error(
+            "ITEM-PROOF-PLACEMENT-NONFINITE",
+            "placement",
+            "equipped proof placement must contain only finite values",
+        ));
+    }
+    let uti = read_gff_v32(uti_payload, &GffLimitsV1::default())
+        .map_err(|source| error("ITEM-PROOF-UTI-READ-FAILED", source.path, source.message))?;
+    if uti.file_type != GffFileTypeV1::Uti
+        || uti
+            .root
+            .fields
+            .iter()
+            .find(|field| field.label == "TemplateResRef")
+            .and_then(|field| match &field.value {
+                GffValueV1::ResRef(value) => Some(value.as_str()),
+                _ => None,
+            })
+            != Some(blueprint_resref.as_str())
+    {
+        return Err(error(
+            "ITEM-PROOF-UTI-IDENTITY-MISMATCH",
+            "uti.TemplateResRef",
+            "UTI type or TemplateResRef differs from the equipped proof identity",
+        ));
+    }
+
+    let ifo = binary_m0_module_ifo_for(
+        &module_resref,
+        &area_resref,
+        &[hak_resref.as_str()],
+        identity.module_name.trim(),
+        "Candidate-bound equipped Item proof module. Visual proof is owner-owned.",
+    )
+    .map_err(|source| item_proof_map_error_v1("ITEM-PROOF-IFO-BUILD-FAILED", "ifo", source))?;
+    let mut are = read_gff_v32(
+        &binary_m0_area_for(&area_resref).map_err(|source| {
+            item_proof_map_error_v1("ITEM-PROOF-ARE-BUILD-FAILED", "are", source)
+        })?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|source| error("ITEM-PROOF-ARE-READ-FAILED", source.path, source.message))?;
+    if let Some(name) = are
+        .root
+        .fields
+        .iter_mut()
+        .find(|field| field.label == "Name")
+    {
+        name.value = loc_string(identity.area_name.trim());
+    }
+    let are = write_item_proof_gff_v1(&are, "are")?;
+    let fixture = BinaryCreatureOwnedFixtureV1 {
+        id: creature_resref.clone(),
+        template_resref: creature_resref.clone(),
+        display_name: identity.creature_display_name.trim().to_owned(),
+        appearance_row: identity.appearance_row,
+        position: M0RuntimePositionV1 {
+            x: placement.x,
+            y: placement.y,
+            z: placement.z,
+        },
+        orientation: M0RuntimeDirectionV1 {
+            x: placement.orientation_x,
+            y: placement.orientation_y,
+        },
+    };
+    let gic = binary_creature_multi_fixture_gic(std::slice::from_ref(&fixture))
+        .map_err(|source| item_proof_map_error_v1("ITEM-PROOF-GIC-BUILD-FAILED", "gic", source))?;
+    let mut git = read_gff_v32(
+        &binary_creature_multi_fixture_git(std::slice::from_ref(&fixture)).map_err(|source| {
+            item_proof_map_error_v1("ITEM-PROOF-GIT-BUILD-FAILED", "git", source)
+        })?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|source| error("ITEM-PROOF-GIT-READ-FAILED", source.path, source.message))?;
+    let creatures = git
+        .root
+        .fields
+        .iter_mut()
+        .find(|field| field.label == "Creature List")
+        .and_then(|field| match &mut field.value {
+            GffValueV1::List(values) => Some(values),
+            _ => None,
+        })
+        .ok_or_else(|| {
+            error(
+                "ITEM-EQUIPPED-PROOF-CREATURE-INVALID",
+                "git.Creature List",
+                "generated proof GIT is missing Creature List",
+            )
+        })?;
+    let [creature] = creatures.as_mut_slice() else {
+        return Err(error(
+            "ITEM-EQUIPPED-PROOF-CREATURE-INVALID",
+            "git.Creature List",
+            "equipped proof GIT must contain exactly one creature",
+        ));
+    };
+    let equipment_slot = identity.fixture_profile.equipment_slot();
+    set_equipped_item_reference_v2(
+        &mut creature.fields,
+        equipment_slot,
+        &blueprint_resref,
+        "git.Creature List[0]",
+    )?;
+    set_equipped_creature_context_v2(&mut creature.fields, identity, "git.Creature List[0]")?;
+    let mut utc_fields = creature.fields.clone();
+    utc_fields.retain(|field| {
+        !matches!(
+            field.label.as_str(),
+            "XPosition" | "YPosition" | "ZPosition" | "XOrientation" | "YOrientation"
+        )
+    });
+    utc_fields.insert(0, field("PaletteID", GffValueV1::Byte(0)));
+    utc_fields.insert(
+        1,
+        field(
+            "Comment",
+            GffValueV1::String(
+                format!(
+                    "Equipped {} proof wearer generated by Meshy2Aurora.",
+                    identity.fixture_profile.report_name()
+                )
+                .into_bytes(),
+            ),
+        ),
+    );
+    let utc = write_item_proof_gff_v1(
+        &GffDocumentV1 {
+            schema_version: GFF_SCHEMA_VERSION,
+            file_type: GffFileTypeV1::Utc,
+            root: GffStructV1 {
+                struct_id: u32::MAX,
+                fields: utc_fields,
+            },
+        },
+        "utc",
+    )?;
+    let git = write_item_proof_gff_v1(&git, "git")?;
+    let fac = proof_factions()
+        .map_err(|source| item_proof_map_error_v1("ITEM-PROOF-FAC-BUILD-FAILED", "fac", source))?;
+    let resources = vec![
+        item_proof_resource_v1("module", 2014, ifo),
+        item_proof_resource_v1("repute", 2038, fac),
+        item_proof_resource_v1(&area_resref, 2012, are),
+        item_proof_resource_v1(&area_resref, 2046, gic),
+        item_proof_resource_v1(&area_resref, 2023, git),
+        item_proof_resource_v1(&blueprint_resref, 2025, uti_payload.to_vec()),
+        item_proof_resource_v1(&creature_resref, 2027, utc),
+    ];
+    let archive = write_erf_archive_v1(
+        ErfFileType::Module,
+        &resources,
+        &HakWriterOptionsV1::default(),
+    )
+    .map_err(|source| {
+        error(
+            "ITEM-PROOF-MODULE-WRITE-FAILED",
+            "module",
+            source.to_string(),
+        )
+    })?;
+    let readback = ErfArchive::parse(&archive.payload).map_err(|source| {
+        error(
+            "ITEM-PROOF-MODULE-READBACK-FAILED",
+            "module",
+            source.to_string(),
+        )
+    })?;
+    if readback.file_type() != ErfFileType::Module
+        || readback.resources().len() != resources.len()
+        || readback.find(&blueprint_resref, 2025).ok() != Some(uti_payload)
+    {
+        return Err(error(
+            "ITEM-EQUIPPED-PROOF-SEMANTIC-DIFF",
+            "module.resources",
+            "equipped proof MOD resource readback differs from the exact input set",
+        ));
+    }
+    let git_readback = read_gff_v32(
+        readback.find(&area_resref, 2023).map_err(|source| {
+            error(
+                "ITEM-EQUIPPED-PROOF-SEMANTIC-DIFF",
+                "module.git",
+                source.to_string(),
+            )
+        })?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|source| {
+        error(
+            "ITEM-PROOF-GIT-READBACK-FAILED",
+            source.path,
+            source.message,
+        )
+    })?;
+    let git_creatures = git_readback
+        .root
+        .fields
+        .iter()
+        .find(|field| field.label == "Creature List")
+        .and_then(|field| match &field.value {
+            GffValueV1::List(values) => Some(values),
+            _ => None,
+        })
+        .ok_or_else(|| {
+            error(
+                "ITEM-EQUIPPED-PROOF-SEMANTIC-DIFF",
+                "git.Creature List",
+                "equipped proof GIT has no Creature List",
+            )
+        })?;
+    let [git_creature] = git_creatures.as_slice() else {
+        return Err(error(
+            "ITEM-EQUIPPED-PROOF-SEMANTIC-DIFF",
+            "git.Creature List",
+            "equipped proof GIT must contain exactly one creature",
+        ));
+    };
+    verify_equipped_item_reference_v2(
+        &git_creature.fields,
+        equipment_slot,
+        &blueprint_resref,
+        "git.Creature List[0]",
+    )?;
+    verify_equipped_creature_context_v2(&git_creature.fields, identity, "git.Creature List[0]")?;
+    let utc_readback = read_gff_v32(
+        readback.find(&creature_resref, 2027).map_err(|source| {
+            error(
+                "ITEM-EQUIPPED-PROOF-SEMANTIC-DIFF",
+                "module.utc",
+                source.to_string(),
+            )
+        })?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|source| {
+        error(
+            "ITEM-PROOF-UTC-READBACK-FAILED",
+            source.path,
+            source.message,
+        )
+    })?;
+    verify_equipped_item_reference_v2(
+        &utc_readback.root.fields,
+        equipment_slot,
+        &blueprint_resref,
+        "utc",
+    )?;
+    verify_equipped_creature_context_v2(&utc_readback.root.fields, identity, "utc")?;
+
+    Ok(ItemEquippedProofModuleArtifactV2 {
+        report: ItemEquippedProofModuleReportV2 {
+            schema_version: 2,
+            module_resref,
+            module_name: identity.module_name.trim().to_owned(),
+            area_resref,
+            area_name: identity.area_name.trim().to_owned(),
+            hak_resref,
+            blueprint_resref,
+            creature_resref,
+            appearance_row: identity.appearance_row,
+            race: identity.race,
+            gender: identity.gender,
+            phenotype: identity.phenotype,
+            model_prefix,
+            appearance_table_sha256: identity.appearance_table_sha256.clone(),
+            fixture_profile: identity.fixture_profile.report_name().to_owned(),
+            equipment_slot,
+            creature_position: [placement.x, placement.y, placement.z],
+            entry_position: [M0_RUNTIME_ENTRY_X, M0_RUNTIME_ENTRY_Y, M0_RUNTIME_ENTRY_Z],
+            entry_direction: [M0_RUNTIME_ENTRY_DIR_X, M0_RUNTIME_ENTRY_DIR_Y],
+            resource_count: resources.len() as u32,
+            byte_length: archive.payload.len() as u64,
+            output_sha256: item_payload_sha256_v1(&archive.payload),
+            semantic_readback_status: "PASS".to_owned(),
+            model_visibility: "not_tested".to_owned(),
+            proof_completeness: "missing".to_owned(),
+        },
+        payload: archive.payload,
+    })
+}
+
+fn write_item_icon_layer_v1(
+    source: &TgaImageV1,
+    width: u32,
+    height: u32,
+) -> Result<Vec<u8>, ItemErrorV1> {
+    if width == 0 || height == 0 {
+        return Err(error(
+            "ITEM-ICON-DIMENSIONS-INVALID",
+            "options.iconSize",
+            "item icon dimensions must both be greater than zero",
+        ));
+    }
+    if source.width == 0 || source.height == 0 {
+        return Err(error(
+            "ITEM-ICON-SOURCE-DIMENSIONS-INVALID",
+            "source.image",
+            "embedded base-color image has zero width or height",
+        ));
+    }
+
+    let destination_len = u64::from(width)
+        .checked_mul(u64::from(height))
+        .and_then(|value| value.checked_mul(4))
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or_else(|| {
+            error(
+                "ITEM-ICON-SIZE-OVERFLOW",
+                "options.iconSize",
+                "item icon RGBA payload length exceeds the host address space",
+            )
+        })?;
+    let source_channels = match source.pixel_format {
+        TgaPixelFormatV1::Rgb8 => 3_usize,
+        TgaPixelFormatV1::Rgba8 => 4_usize,
+    };
+    let expected_source_len = u64::from(source.width)
+        .checked_mul(u64::from(source.height))
+        .and_then(|value| value.checked_mul(source_channels as u64))
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or_else(|| {
+            error(
+                "ITEM-ICON-SOURCE-SIZE-OVERFLOW",
+                "source.image.pixels",
+                "embedded base-color image dimensions overflow the host address space",
+            )
+        })?;
+    if source.pixels.len() != expected_source_len {
+        return Err(error(
+            "ITEM-ICON-SOURCE-PIXELS-INVALID",
+            "source.image.pixels",
+            format!(
+                "embedded base-color image has {} bytes; expected {expected_source_len}",
+                source.pixels.len()
+            ),
+        ));
+    }
+
+    let (destination_width, destination_height) = if u64::from(width) * u64::from(source.height)
+        <= u64::from(height) * u64::from(source.width)
+    {
+        (
+            width,
+            ((u64::from(source.height) * u64::from(width)) / u64::from(source.width)).max(1) as u32,
+        )
+    } else {
+        (
+            ((u64::from(source.width) * u64::from(height)) / u64::from(source.height)).max(1)
+                as u32,
+            height,
+        )
+    };
+    let left = (width - destination_width) / 2;
+    let top = (height - destination_height) / 2;
+    let mut pixels = vec![0_u8; destination_len];
+
+    for destination_y in 0..destination_height {
+        let source_y = (u64::from(destination_y) * u64::from(source.height)
+            / u64::from(destination_height)) as u32;
+        for destination_x in 0..destination_width {
+            let source_x = (u64::from(destination_x) * u64::from(source.width)
+                / u64::from(destination_width)) as u32;
+            let source_offset =
+                ((source_y as usize * source.width as usize) + source_x as usize) * source_channels;
+            let destination_offset = (((top + destination_y) as usize * width as usize)
+                + (left + destination_x) as usize)
+                * 4;
+            pixels[destination_offset..destination_offset + 3]
+                .copy_from_slice(&source.pixels[source_offset..source_offset + 3]);
+            pixels[destination_offset + 3] = if source_channels == 4 {
+                source.pixels[source_offset + 3]
+            } else {
+                u8::MAX
+            };
+        }
+    }
+
+    write_tga_v1(
+        &TgaImageV1 {
+            schema_version: TGA_SCHEMA_VERSION,
+            width,
+            height,
+            pixel_format: TgaPixelFormatV1::Rgba8,
+            pixels,
+        },
+        &TgaWriterOptionsV1::default(),
+    )
+    .map(|artifact| artifact.payload)
+    .map_err(|source| {
+        error(
+            &format!("ITEM-{}", source.code),
+            source.path,
+            source.message,
+        )
+    })
+}
+
+#[derive(Clone, Copy)]
+struct ItemIconVertexV1 {
+    projected: [f32; 3],
+    uv: [f32; 2],
+}
+
+fn item_node_world_matrices_v1(
+    model: &crate::model_ir::AuroraModelIrV1,
+) -> Result<BTreeMap<u32, [f32; 16]>, ItemErrorV1> {
+    let mut worlds = BTreeMap::new();
+    while worlds.len() < model.nodes.len() {
+        let mut progressed = false;
+        for node in &model.nodes {
+            if worlds.contains_key(&node.id) {
+                continue;
+            }
+            let world = match node.parent_id {
+                None => node.bind_local_matrix,
+                Some(parent_id) => {
+                    let Some(parent) = worlds.get(&parent_id).copied() else {
+                        continue;
+                    };
+                    multiply_matrix_v1(parent, node.bind_local_matrix)
+                }
+            };
+            worlds.insert(node.id, world);
+            progressed = true;
+        }
+        if !progressed {
+            return Err(error(
+                "ITEM-ICON-HIERARCHY-INVALID",
+                "model.nodes",
+                "geometry-derived icon cannot resolve the model node hierarchy",
+            ));
+        }
+    }
+    Ok(worlds)
+}
+
+fn project_item_icon_point_v1(point: [f32; 3]) -> [f32; 3] {
+    // A deterministic isometric authoring view. It is a Meshy2Aurora icon
+    // authoring contract; Aurora still performs the final native layer
+    // composition from the emitted TGA resources.
+    const INV_SQRT_2: f32 = 0.707_106_77;
+    const INV_SQRT_6: f32 = 0.408_248_3;
+    const TWO_INV_SQRT_6: f32 = 0.816_496_6;
+    const INV_SQRT_3: f32 = 0.577_350_26;
+    [
+        (point[0] - point[1]) * INV_SQRT_2,
+        -(point[0] + point[1]) * INV_SQRT_6 + point[2] * TWO_INV_SQRT_6,
+        (point[0] + point[1] + point[2]) * INV_SQRT_3,
+    ]
+}
+
+fn item_icon_geometry_v1(
+    model: &crate::model_ir::AuroraModelIrV1,
+) -> Result<Vec<Vec<ItemIconVertexV1>>, ItemErrorV1> {
+    let worlds = item_node_world_matrices_v1(model)?;
+    model
+        .segments
+        .iter()
+        .enumerate()
+        .map(|(segment_index, segment)| {
+            if segment.positions.len() != segment.uv0.len()
+                || !segment.indices.len().is_multiple_of(3)
+            {
+                return Err(error(
+                    "ITEM-ICON-GEOMETRY-INVALID",
+                    format!("model.segments[{segment_index}]"),
+                    "geometry-derived icon requires aligned positions/UVs and triangle indices",
+                ));
+            }
+            let world = worlds
+                .get(&segment.parent_node_id)
+                .copied()
+                .ok_or_else(|| {
+                    error(
+                        "ITEM-ICON-HIERARCHY-INVALID",
+                        format!("model.segments[{segment_index}].parentNodeId"),
+                        "icon segment parent node is absent from the resolved hierarchy",
+                    )
+                })?;
+            Ok(segment
+                .positions
+                .iter()
+                .zip(&segment.uv0)
+                .map(|(&position, &uv)| ItemIconVertexV1 {
+                    projected: project_item_icon_point_v1(transform_point_v1(world, position)),
+                    uv,
+                })
+                .collect())
+        })
+        .collect()
+}
+
+fn item_icon_projection_bounds_v1(
+    geometry: &[Vec<ItemIconVertexV1>],
+) -> Result<ItemIconProjectionBoundsV1, ItemErrorV1> {
+    let mut min = [f32::INFINITY; 2];
+    let mut max = [f32::NEG_INFINITY; 2];
+    for vertex in geometry.iter().flatten() {
+        for axis in 0..2 {
+            min[axis] = min[axis].min(vertex.projected[axis]);
+            max[axis] = max[axis].max(vertex.projected[axis]);
+        }
+    }
+    let bounds = ItemIconProjectionBoundsV1 { min, max };
+    validate_item_icon_projection_bounds_v1(bounds)?;
+    Ok(bounds)
+}
+
+fn validate_item_icon_projection_bounds_v1(
+    bounds: ItemIconProjectionBoundsV1,
+) -> Result<(), ItemErrorV1> {
+    if bounds
+        .min
+        .into_iter()
+        .chain(bounds.max)
+        .any(|value| !value.is_finite())
+        || bounds.max[0] <= bounds.min[0]
+        || bounds.max[1] <= bounds.min[1]
+    {
+        return Err(error(
+            "ITEM-ICON-PROJECTION-BOUNDS-INVALID",
+            "options.iconProjectionBounds",
+            "icon projection bounds must be finite and have positive width and height",
+        ));
+    }
+    Ok(())
+}
+
+fn item_icon_edge_v1(a: [f32; 2], b: [f32; 2], point: [f32; 2]) -> f32 {
+    (point[0] - a[0]) * (b[1] - a[1]) - (point[1] - a[1]) * (b[0] - a[0])
+}
+
+fn sample_item_icon_texture_v1(source: &TgaImageV1, uv: [f32; 2]) -> [u8; 4] {
+    let channels = match source.pixel_format {
+        TgaPixelFormatV1::Rgb8 => 3,
+        TgaPixelFormatV1::Rgba8 => 4,
+    };
+    let wrap = |value: f32| {
+        let wrapped = value.rem_euclid(1.0);
+        if wrapped >= 1.0 { 0.0 } else { wrapped }
+    };
+    let x = ((wrap(uv[0]) * source.width as f32).floor() as u32).min(source.width - 1);
+    let y = (((1.0 - wrap(uv[1])) * source.height as f32).floor() as u32).min(source.height - 1);
+    let offset = ((y * source.width + x) as usize) * channels;
+    [
+        source.pixels[offset],
+        source.pixels[offset + 1],
+        source.pixels[offset + 2],
+        if channels == 4 {
+            source.pixels[offset + 3]
+        } else {
+            u8::MAX
+        },
+    ]
+}
+
+fn write_item_icon_layer_v2(
+    source: &TgaImageV1,
+    model: &crate::model_ir::AuroraModelIrV1,
+    width: u32,
+    height: u32,
+    requested_bounds: Option<ItemIconProjectionBoundsV1>,
+) -> Result<(Vec<u8>, ItemIconProjectionBoundsV1, u64), ItemErrorV1> {
+    if width == 0 || height == 0 {
+        return Err(error(
+            "ITEM-ICON-DIMENSIONS-INVALID",
+            "options.iconSize",
+            "item icon dimensions must both be greater than zero",
+        ));
+    }
+    let geometry = item_icon_geometry_v1(model)?;
+    let own_bounds = item_icon_projection_bounds_v1(&geometry)?;
+    let bounds = requested_bounds.unwrap_or(own_bounds);
+    validate_item_icon_projection_bounds_v1(bounds)?;
+    let pixel_count = u64::from(width)
+        .checked_mul(u64::from(height))
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or_else(|| {
+            error(
+                "ITEM-ICON-SIZE-OVERFLOW",
+                "options.iconSize",
+                "item icon pixel count exceeds the host address space",
+            )
+        })?;
+    let mut pixels = vec![0_u8; pixel_count * 4];
+    let mut depth = vec![f32::NEG_INFINITY; pixel_count];
+    let margin = (width.min(height) as f32 * 0.06).max(1.0);
+    let drawable_width = (width as f32 - 2.0 * margin).max(1.0);
+    let drawable_height = (height as f32 - 2.0 * margin).max(1.0);
+    let center = [
+        (bounds.min[0] + bounds.max[0]) * 0.5,
+        (bounds.min[1] + bounds.max[1]) * 0.5,
+    ];
+    let scale = (drawable_width / (bounds.max[0] - bounds.min[0]))
+        .min(drawable_height / (bounds.max[1] - bounds.min[1]));
+    let to_screen = |vertex: ItemIconVertexV1| {
+        [
+            width as f32 * 0.5 + (vertex.projected[0] - center[0]) * scale,
+            height as f32 * 0.5 - (vertex.projected[1] - center[1]) * scale,
+            vertex.projected[2],
+        ]
+    };
+
+    for (segment_index, segment) in model.segments.iter().enumerate() {
+        let vertices = &geometry[segment_index];
+        for triangle in segment.indices.chunks_exact(3) {
+            let indices = [
+                triangle[0] as usize,
+                triangle[1] as usize,
+                triangle[2] as usize,
+            ];
+            if indices.iter().any(|&index| index >= vertices.len()) {
+                return Err(error(
+                    "ITEM-ICON-GEOMETRY-INVALID",
+                    format!("model.segments[{segment_index}].indices"),
+                    "icon triangle index exceeds the segment vertex array",
+                ));
+            }
+            let source_vertices = [
+                vertices[indices[0]],
+                vertices[indices[1]],
+                vertices[indices[2]],
+            ];
+            let screen = source_vertices.map(to_screen);
+            let screen_2d = [
+                [screen[0][0], screen[0][1]],
+                [screen[1][0], screen[1][1]],
+                [screen[2][0], screen[2][1]],
+            ];
+            let area = item_icon_edge_v1(screen_2d[0], screen_2d[1], screen_2d[2]);
+            if !area.is_finite() || area.abs() <= 1.0e-8 {
+                continue;
+            }
+            let min_x = screen
+                .iter()
+                .map(|vertex| vertex[0])
+                .fold(f32::INFINITY, f32::min)
+                .floor()
+                .max(0.0) as u32;
+            let max_x = screen
+                .iter()
+                .map(|vertex| vertex[0])
+                .fold(f32::NEG_INFINITY, f32::max)
+                .ceil()
+                .min(width.saturating_sub(1) as f32) as u32;
+            let min_y = screen
+                .iter()
+                .map(|vertex| vertex[1])
+                .fold(f32::INFINITY, f32::min)
+                .floor()
+                .max(0.0) as u32;
+            let max_y = screen
+                .iter()
+                .map(|vertex| vertex[1])
+                .fold(f32::NEG_INFINITY, f32::max)
+                .ceil()
+                .min(height.saturating_sub(1) as f32) as u32;
+            if min_x > max_x || min_y > max_y {
+                continue;
+            }
+            for y in min_y..=max_y {
+                for x in min_x..=max_x {
+                    let point = [x as f32 + 0.5, y as f32 + 0.5];
+                    let weights = [
+                        item_icon_edge_v1(screen_2d[1], screen_2d[2], point) / area,
+                        item_icon_edge_v1(screen_2d[2], screen_2d[0], point) / area,
+                        item_icon_edge_v1(screen_2d[0], screen_2d[1], point) / area,
+                    ];
+                    if weights.iter().any(|weight| *weight < -1.0e-5) {
+                        continue;
+                    }
+                    let candidate_depth = weights[0] * screen[0][2]
+                        + weights[1] * screen[1][2]
+                        + weights[2] * screen[2][2];
+                    let pixel_index = (y * width + x) as usize;
+                    if candidate_depth <= depth[pixel_index] {
+                        continue;
+                    }
+                    let uv = [
+                        weights[0] * source_vertices[0].uv[0]
+                            + weights[1] * source_vertices[1].uv[0]
+                            + weights[2] * source_vertices[2].uv[0],
+                        weights[0] * source_vertices[0].uv[1]
+                            + weights[1] * source_vertices[1].uv[1]
+                            + weights[2] * source_vertices[2].uv[1],
+                    ];
+                    let color = sample_item_icon_texture_v1(source, uv);
+                    if color[3] == 0 {
+                        continue;
+                    }
+                    depth[pixel_index] = candidate_depth;
+                    // The shared TGA writer emits descriptor 8 (bottom-left
+                    // origin), while raster-space y=0 is the top scanline.
+                    // Store rows bottom-up so native TGA readers recover the
+                    // same orientation shown by the authoring projection.
+                    let output_pixel_index = ((height - y - 1) * width + x) as usize;
+                    pixels[output_pixel_index * 4..output_pixel_index * 4 + 4]
+                        .copy_from_slice(&color);
+                }
+            }
+        }
+    }
+    let opaque_pixel_count = pixels.chunks_exact(4).filter(|pixel| pixel[3] != 0).count() as u64;
+    if opaque_pixel_count == 0 {
+        return Err(error(
+            "ITEM-ICON-SILHOUETTE-EMPTY",
+            "model.segments",
+            "geometry-derived icon rasterization produced no visible pixels",
+        ));
+    }
+    let payload = write_tga_v1(
+        &TgaImageV1 {
+            schema_version: TGA_SCHEMA_VERSION,
+            width,
+            height,
+            pixel_format: TgaPixelFormatV1::Rgba8,
+            pixels,
+        },
+        &TgaWriterOptionsV1::default(),
+    )
+    .map_err(|source| {
+        error(
+            &format!("ITEM-{}", source.code),
+            source.path,
+            source.message,
+        )
+    })?
+    .payload;
+    Ok((payload, bounds, opaque_pixel_count))
+}
+
+pub fn build_meshy_item_part_v1(
+    source_glb: &[u8],
+    model_resref: &str,
+    texture_resref: &str,
+    transform: ItemPartTransformV1,
+) -> Result<ItemPartArtifactV1, ItemErrorV1> {
+    build_meshy_item_part_with_options_v1(
+        source_glb,
+        model_resref,
+        texture_resref,
+        &ItemPartBuildOptionsV1 {
+            transform,
+            ..ItemPartBuildOptionsV1::default()
+        },
+    )
+}
+
+pub fn build_meshy_item_part_with_options_v1(
+    source_glb: &[u8],
+    model_resref: &str,
+    texture_resref: &str,
+    options: &ItemPartBuildOptionsV1,
+) -> Result<ItemPartArtifactV1, ItemErrorV1> {
+    build_meshy_item_part_with_internal_options_v1(
+        source_glb,
+        model_resref,
+        texture_resref,
+        &ItemPartBuildInternalOptionsV1 {
+            schema_version: options.schema_version,
+            transform: options.transform,
+            source_node: options.source_node.clone(),
+            texture_encoding: options.texture_encoding,
+            icon_size: options.icon_size,
+            icon_projection_bounds: None,
+            geometry_derived_icon: false,
+        },
+    )
+}
+
+pub fn build_meshy_item_part_with_options_v2(
+    source_glb: &[u8],
+    model_resref: &str,
+    texture_resref: &str,
+    options: &ItemPartBuildOptionsV2,
+) -> Result<ItemPartArtifactV1, ItemErrorV1> {
+    build_meshy_item_part_with_internal_options_v1(
+        source_glb,
+        model_resref,
+        texture_resref,
+        &ItemPartBuildInternalOptionsV1 {
+            schema_version: options.schema_version,
+            transform: options.transform,
+            source_node: options.source_node.clone(),
+            texture_encoding: options.texture_encoding,
+            icon_size: options.icon_size,
+            icon_projection_bounds: options.icon_projection_bounds,
+            geometry_derived_icon: true,
+        },
+    )
+}
+
+#[derive(Clone, Debug)]
+struct ItemPartBuildInternalOptionsV1 {
+    schema_version: u32,
+    transform: ItemPartTransformV1,
+    source_node: Option<String>,
+    texture_encoding: ItemPartTextureEncodingV1,
+    icon_size: Option<[u32; 2]>,
+    icon_projection_bounds: Option<ItemIconProjectionBoundsV1>,
+    geometry_derived_icon: bool,
+}
+
+struct PreparedItemPartV1 {
+    ingest: crate::glb::GlbIngestResult,
+    model: crate::model_ir::AuroraModelIrV1,
+    source_node: Option<String>,
+    triangle_count: usize,
+}
+
+fn selected_item_scene_material_ids_v1(
+    ingest: &crate::glb::GlbIngestResult,
+) -> Result<BTreeSet<Option<u32>>, ItemErrorV1> {
+    let scene_id = ingest.ir.default_scene_id.ok_or_else(|| {
+        error(
+            "ITEM-SOURCE-NODE-SCENE-MISSING",
+            "source.ir.defaultSceneId",
+            "Item material validation requires a default GLB scene",
+        )
+    })?;
+    let scene = ingest
+        .ir
+        .scenes
+        .iter()
+        .find(|scene| scene.id == scene_id)
+        .ok_or_else(|| {
+            error(
+                "ITEM-SOURCE-NODE-SCENE-MISSING",
+                "source.ir.defaultSceneId",
+                "default GLB scene does not exist",
+            )
+        })?;
+    let mut pending = scene.root_node_ids.clone();
+    let mut visited = BTreeSet::new();
+    let mut mesh_ids = BTreeSet::new();
+    while let Some(node_id) = pending.pop() {
+        if !visited.insert(node_id) {
+            continue;
+        }
+        let node = ingest
+            .ir
+            .nodes
+            .iter()
+            .find(|node| node.id == node_id)
+            .ok_or_else(|| {
+                error(
+                    "ITEM-SOURCE-NODE-HIERARCHY-INVALID",
+                    "source.ir.nodes",
+                    format!("selected scene references missing node {node_id}"),
+                )
+            })?;
+        pending.extend(node.child_ids.iter().copied());
+        if let Some(mesh_id) = node.mesh_id {
+            mesh_ids.insert(mesh_id);
+        }
+    }
+    Ok(ingest
+        .ir
+        .primitives
+        .iter()
+        .filter(|primitive| mesh_ids.contains(&primitive.source_mesh_id))
+        .map(|primitive| primitive.material_id)
+        .collect())
+}
+
+fn prepare_meshy_item_part_v1(
+    source_glb: &[u8],
+    model_resref: &str,
+    options: &ItemPartBuildInternalOptionsV1,
+) -> Result<PreparedItemPartV1, ItemErrorV1> {
+    let limits = static_placeable_glb_limits_v1();
+    let mut ingest = ingest_glb(source_glb, &limits).map_err(|source| {
+        error(
+            &format!("ITEM-{}", source.code),
+            source.json_path.unwrap_or_else(|| "sourceGlb".to_owned()),
+            source.message,
+        )
+    })?;
+    let source_node = select_item_source_node_v1(&mut ingest, options.source_node.as_deref())?;
+    let used_material_ids = selected_item_scene_material_ids_v1(&ingest)?;
+    if used_material_ids.len() > 1 {
+        return Err(error(
+            "ITEM-PART-MULTI-MATERIAL-UNSUPPORTED",
+            "model.materialSourceBindings",
+            format!(
+                "this Item part uses {} source materials, but the current artifact contract emits exactly one texture resource; split the source into one material per part",
+                used_material_ids.len()
+            ),
+        ));
+    }
+    sanitize_meshy_h1_degenerate_triangles_v1(&mut ingest).map_err(|source| {
+        error(
+            &format!("ITEM-{}", source.code),
+            source.path,
+            source.message,
+        )
+    })?;
+    let rig = derive_meshy_m0_static_rigid_profile_v1(&ingest).map_err(|source| {
+        error(
+            &format!("ITEM-{}", source.code),
+            source.path,
+            source.message,
+        )
+    })?;
+    let conversion = convert_profile_a(&ingest, &rig, &static_placeable_profile_a_options_v1())
+        .map_err(|source| {
+            error(
+                &format!("ITEM-{}", source.code),
+                source.path,
+                source.message,
+            )
+        })?;
+    if !conversion.report.conversion_eligible {
+        return Err(error(
+            "ITEM-PART-PROFILE-INELIGIBLE",
+            "conversion.report",
+            "static item part did not pass the shared Profile A gates",
+        ));
+    }
+    let mut model = conversion.creature.ok_or_else(|| {
+        error(
+            "ITEM-PART-PROFILE-INELIGIBLE",
+            "conversion.model",
+            "eligible static item part has no common model IR",
+        )
+    })?;
+    let root_indices = model
+        .nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| node.parent_id.is_none().then_some(index))
+        .collect::<Vec<_>>();
+    if root_indices.len() != 1 {
+        return Err(error(
+            "ITEM-PART-HIERARCHY-INVALID",
+            "model.nodes",
+            "an item part requires exactly one model root",
+        ));
+    }
+    let root_index = root_indices[0];
+    model.nodes[root_index]
+        .name
+        .clone_from(&model_resref.to_owned());
+    if options.geometry_derived_icon {
+        bake_uniform_scale_v2(
+            &mut model,
+            options.transform.uniform_scale,
+            options.transform.pivot,
+        );
+    } else {
+        bake_uniform_scale_v1(
+            &mut model,
+            options.transform.uniform_scale,
+            options.transform.pivot,
+        );
+    }
+    let authored = item_part_rigid_matrix_v1(options.transform)?;
+    model.nodes[root_index].bind_local_matrix =
+        multiply_matrix_v1(authored, model.nodes[root_index].bind_local_matrix);
+
+    let triangle_count = validate_model_triangle_budget_v1(&model).map_err(|source| {
+        error(
+            &format!("ITEM-{}", source.code),
+            source.path,
+            source.message,
+        )
+    })?;
+    Ok(PreparedItemPartV1 {
+        ingest,
+        model,
+        source_node,
+        triangle_count,
+    })
+}
+
+#[derive(Clone, Copy)]
+struct ItemSeamTriangleV1 {
+    vertices: [[f64; 3]; 3],
+    bounds: ItemSeamBoundsV1,
+    centroid: [f64; 3],
+}
+
+#[derive(Clone, Copy)]
+struct ItemSeamBoundsV1 {
+    min: [f64; 3],
+    max: [f64; 3],
+}
+
+enum ItemSeamBvhV1 {
+    Leaf {
+        bounds: ItemSeamBoundsV1,
+        triangles: Vec<usize>,
+    },
+    Branch {
+        bounds: ItemSeamBoundsV1,
+        left: Box<ItemSeamBvhV1>,
+        right: Box<ItemSeamBvhV1>,
+    },
+}
+
+impl ItemSeamBvhV1 {
+    fn bounds(&self) -> ItemSeamBoundsV1 {
+        match self {
+            Self::Leaf { bounds, .. } | Self::Branch { bounds, .. } => *bounds,
+        }
+    }
+}
+
+fn item_seam_bounds_union_v1(
+    first: ItemSeamBoundsV1,
+    second: ItemSeamBoundsV1,
+) -> ItemSeamBoundsV1 {
+    let mut output = first;
+    for axis in 0..3 {
+        output.min[axis] = output.min[axis].min(second.min[axis]);
+        output.max[axis] = output.max[axis].max(second.max[axis]);
+    }
+    output
+}
+
+fn item_seam_bounds_distance_squared_v1(first: ItemSeamBoundsV1, second: ItemSeamBoundsV1) -> f64 {
+    (0..3)
+        .map(|axis| {
+            let separation = (first.min[axis] - second.max[axis])
+                .max(second.min[axis] - first.max[axis])
+                .max(0.0);
+            separation * separation
+        })
+        .sum()
+}
+
+fn build_item_seam_bvh_v1(
+    triangles: &[ItemSeamTriangleV1],
+    mut indices: Vec<usize>,
+) -> ItemSeamBvhV1 {
+    let bounds = indices
+        .iter()
+        .map(|&index| triangles[index].bounds)
+        .reduce(item_seam_bounds_union_v1)
+        .expect("item seam BVH requires at least one triangle");
+    if indices.len() <= 8 {
+        return ItemSeamBvhV1::Leaf {
+            bounds,
+            triangles: indices,
+        };
+    }
+    let mut centroid_min = [f64::INFINITY; 3];
+    let mut centroid_max = [f64::NEG_INFINITY; 3];
+    for &index in &indices {
+        for axis in 0..3 {
+            centroid_min[axis] = centroid_min[axis].min(triangles[index].centroid[axis]);
+            centroid_max[axis] = centroid_max[axis].max(triangles[index].centroid[axis]);
+        }
+    }
+    let axis = (0..3)
+        .max_by(|&first, &second| {
+            (centroid_max[first] - centroid_min[first])
+                .total_cmp(&(centroid_max[second] - centroid_min[second]))
+        })
+        .unwrap_or(0);
+    indices.sort_by(|&first, &second| {
+        triangles[first].centroid[axis].total_cmp(&triangles[second].centroid[axis])
+    });
+    let right_indices = indices.split_off(indices.len() / 2);
+    let left = build_item_seam_bvh_v1(triangles, indices);
+    let right = build_item_seam_bvh_v1(triangles, right_indices);
+    ItemSeamBvhV1::Branch {
+        bounds,
+        left: Box::new(left),
+        right: Box::new(right),
+    }
+}
+
+fn item_seam_sub3_v1(first: [f64; 3], second: [f64; 3]) -> [f64; 3] {
+    [
+        first[0] - second[0],
+        first[1] - second[1],
+        first[2] - second[2],
+    ]
+}
+
+fn item_seam_add_scaled3_v1(origin: [f64; 3], delta: [f64; 3], scale: f64) -> [f64; 3] {
+    [
+        origin[0] + delta[0] * scale,
+        origin[1] + delta[1] * scale,
+        origin[2] + delta[2] * scale,
+    ]
+}
+
+fn item_seam_dot3_v1(first: [f64; 3], second: [f64; 3]) -> f64 {
+    first[0] * second[0] + first[1] * second[1] + first[2] * second[2]
+}
+
+fn item_seam_cross3_v1(first: [f64; 3], second: [f64; 3]) -> [f64; 3] {
+    [
+        first[1] * second[2] - first[2] * second[1],
+        first[2] * second[0] - first[0] * second[2],
+        first[0] * second[1] - first[1] * second[0],
+    ]
+}
+
+fn item_seam_length_squared_v1(value: [f64; 3]) -> f64 {
+    item_seam_dot3_v1(value, value)
+}
+
+fn item_seam_point_triangle_distance_squared_v1(point: [f64; 3], triangle: [[f64; 3]; 3]) -> f64 {
+    let a = triangle[0];
+    let b = triangle[1];
+    let c = triangle[2];
+    let ab = item_seam_sub3_v1(b, a);
+    let ac = item_seam_sub3_v1(c, a);
+    let ap = item_seam_sub3_v1(point, a);
+    let d1 = item_seam_dot3_v1(ab, ap);
+    let d2 = item_seam_dot3_v1(ac, ap);
+    if d1 <= 0.0 && d2 <= 0.0 {
+        return item_seam_length_squared_v1(ap);
+    }
+    let bp = item_seam_sub3_v1(point, b);
+    let d3 = item_seam_dot3_v1(ab, bp);
+    let d4 = item_seam_dot3_v1(ac, bp);
+    if d3 >= 0.0 && d4 <= d3 {
+        return item_seam_length_squared_v1(bp);
+    }
+    let vc = d1 * d4 - d3 * d2;
+    if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
+        let projection = item_seam_add_scaled3_v1(a, ab, d1 / (d1 - d3));
+        return item_seam_length_squared_v1(item_seam_sub3_v1(point, projection));
+    }
+    let cp = item_seam_sub3_v1(point, c);
+    let d5 = item_seam_dot3_v1(ab, cp);
+    let d6 = item_seam_dot3_v1(ac, cp);
+    if d6 >= 0.0 && d5 <= d6 {
+        return item_seam_length_squared_v1(cp);
+    }
+    let vb = d5 * d2 - d1 * d6;
+    if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
+        let projection = item_seam_add_scaled3_v1(a, ac, d2 / (d2 - d6));
+        return item_seam_length_squared_v1(item_seam_sub3_v1(point, projection));
+    }
+    let va = d3 * d6 - d5 * d4;
+    if va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0 {
+        let edge = item_seam_sub3_v1(c, b);
+        let projection = item_seam_add_scaled3_v1(b, edge, (d4 - d3) / ((d4 - d3) + (d5 - d6)));
+        return item_seam_length_squared_v1(item_seam_sub3_v1(point, projection));
+    }
+    let denominator = 1.0 / (va + vb + vc);
+    let v = vb * denominator;
+    let w = vc * denominator;
+    let projection = item_seam_add_scaled3_v1(item_seam_add_scaled3_v1(a, ab, v), ac, w);
+    item_seam_length_squared_v1(item_seam_sub3_v1(point, projection))
+}
+
+fn item_seam_segment_distance_squared_v1(
+    first_start: [f64; 3],
+    first_end: [f64; 3],
+    second_start: [f64; 3],
+    second_end: [f64; 3],
+) -> f64 {
+    const EPSILON: f64 = 1.0e-15;
+    let first_delta = item_seam_sub3_v1(first_end, first_start);
+    let second_delta = item_seam_sub3_v1(second_end, second_start);
+    let offset = item_seam_sub3_v1(first_start, second_start);
+    let a = item_seam_dot3_v1(first_delta, first_delta);
+    let e = item_seam_dot3_v1(second_delta, second_delta);
+    let f = item_seam_dot3_v1(second_delta, offset);
+    let (mut first_parameter, mut second_parameter);
+    if a <= EPSILON && e <= EPSILON {
+        return item_seam_length_squared_v1(offset);
+    }
+    if a <= EPSILON {
+        first_parameter = 0.0;
+        second_parameter = (f / e).clamp(0.0, 1.0);
+    } else {
+        let c = item_seam_dot3_v1(first_delta, offset);
+        if e <= EPSILON {
+            second_parameter = 0.0;
+            first_parameter = (-c / a).clamp(0.0, 1.0);
+        } else {
+            let b = item_seam_dot3_v1(first_delta, second_delta);
+            let denominator = a * e - b * b;
+            first_parameter = if denominator.abs() > EPSILON {
+                ((b * f - c * e) / denominator).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            second_parameter = (b * first_parameter + f) / e;
+            if second_parameter < 0.0 {
+                second_parameter = 0.0;
+                first_parameter = (-c / a).clamp(0.0, 1.0);
+            } else if second_parameter > 1.0 {
+                second_parameter = 1.0;
+                first_parameter = ((b - c) / a).clamp(0.0, 1.0);
+            }
+        }
+    }
+    let first_point = item_seam_add_scaled3_v1(first_start, first_delta, first_parameter);
+    let second_point = item_seam_add_scaled3_v1(second_start, second_delta, second_parameter);
+    item_seam_length_squared_v1(item_seam_sub3_v1(first_point, second_point))
+}
+
+fn item_seam_segment_triangle_strict_intersection_v1(
+    start: [f64; 3],
+    end: [f64; 3],
+    triangle: [[f64; 3]; 3],
+    epsilon: f64,
+) -> bool {
+    let direction = item_seam_sub3_v1(end, start);
+    let edge1 = item_seam_sub3_v1(triangle[1], triangle[0]);
+    let edge2 = item_seam_sub3_v1(triangle[2], triangle[0]);
+    let p = item_seam_cross3_v1(direction, edge2);
+    let determinant = item_seam_dot3_v1(edge1, p);
+    if determinant.abs() <= epsilon {
+        return false;
+    }
+    let inverse = 1.0 / determinant;
+    let offset = item_seam_sub3_v1(start, triangle[0]);
+    let u = item_seam_dot3_v1(offset, p) * inverse;
+    let q = item_seam_cross3_v1(offset, edge1);
+    let v = item_seam_dot3_v1(direction, q) * inverse;
+    let t = item_seam_dot3_v1(edge2, q) * inverse;
+    t > epsilon && t < 1.0 - epsilon && u > epsilon && v > epsilon && u + v < 1.0 - epsilon
+}
+
+fn item_seam_triangles_strictly_intersect_v1(
+    first: [[f64; 3]; 3],
+    second: [[f64; 3]; 3],
+    epsilon: f64,
+) -> bool {
+    let edges = [(0, 1), (1, 2), (2, 0)];
+    edges.iter().any(|&(start, end)| {
+        item_seam_segment_triangle_strict_intersection_v1(first[start], first[end], second, epsilon)
+            || item_seam_segment_triangle_strict_intersection_v1(
+                second[start],
+                second[end],
+                first,
+                epsilon,
+            )
+    })
+}
+
+fn item_seam_triangle_distance_squared_v1(first: [[f64; 3]; 3], second: [[f64; 3]; 3]) -> f64 {
+    let mut best = f64::INFINITY;
+    for vertex in first {
+        best = best.min(item_seam_point_triangle_distance_squared_v1(vertex, second));
+    }
+    for vertex in second {
+        best = best.min(item_seam_point_triangle_distance_squared_v1(vertex, first));
+    }
+    let edges = [(0, 1), (1, 2), (2, 0)];
+    for &(first_start, first_end) in &edges {
+        for &(second_start, second_end) in &edges {
+            best = best.min(item_seam_segment_distance_squared_v1(
+                first[first_start],
+                first[first_end],
+                second[second_start],
+                second[second_end],
+            ));
+        }
+    }
+    best
+}
+
+fn item_seam_point_bvh_distance_squared_v1(
+    point: [f64; 3],
+    bvh: &ItemSeamBvhV1,
+    triangles: &[ItemSeamTriangleV1],
+    best_distance_squared: &mut f64,
+) {
+    let point_bounds = ItemSeamBoundsV1 {
+        min: point,
+        max: point,
+    };
+    if item_seam_bounds_distance_squared_v1(point_bounds, bvh.bounds()) > *best_distance_squared {
+        return;
+    }
+    match bvh {
+        ItemSeamBvhV1::Leaf {
+            triangles: indices, ..
+        } => {
+            for &index in indices {
+                *best_distance_squared = (*best_distance_squared).min(
+                    item_seam_point_triangle_distance_squared_v1(point, triangles[index].vertices),
+                );
+            }
+        }
+        ItemSeamBvhV1::Branch { left, right, .. } => {
+            let mut children = [left.as_ref(), right.as_ref()];
+            children.sort_by(|first, second| {
+                item_seam_bounds_distance_squared_v1(point_bounds, first.bounds()).total_cmp(
+                    &item_seam_bounds_distance_squared_v1(point_bounds, second.bounds()),
+                )
+            });
+            for child in children {
+                item_seam_point_bvh_distance_squared_v1(
+                    point,
+                    child,
+                    triangles,
+                    best_distance_squared,
+                );
+            }
+        }
+    }
+}
+
+fn item_seam_ray_bounds_intersects_v1(
+    origin: [f64; 3],
+    direction: [f64; 3],
+    bounds: ItemSeamBoundsV1,
+    epsilon: f64,
+) -> bool {
+    let mut near = 0.0_f64;
+    let mut far = f64::INFINITY;
+    for axis in 0..3 {
+        if direction[axis].abs() <= epsilon {
+            if origin[axis] < bounds.min[axis] - epsilon
+                || origin[axis] > bounds.max[axis] + epsilon
+            {
+                return false;
+            }
+            continue;
+        }
+        let inverse = 1.0 / direction[axis];
+        let mut axis_near = (bounds.min[axis] - origin[axis]) * inverse;
+        let mut axis_far = (bounds.max[axis] - origin[axis]) * inverse;
+        if axis_near > axis_far {
+            std::mem::swap(&mut axis_near, &mut axis_far);
+        }
+        near = near.max(axis_near);
+        far = far.min(axis_far);
+        if far < near {
+            return false;
+        }
+    }
+    far > epsilon
+}
+
+fn item_seam_ray_triangle_hit_v1(
+    origin: [f64; 3],
+    direction: [f64; 3],
+    triangle: [[f64; 3]; 3],
+    epsilon: f64,
+) -> bool {
+    let edge1 = item_seam_sub3_v1(triangle[1], triangle[0]);
+    let edge2 = item_seam_sub3_v1(triangle[2], triangle[0]);
+    let p = item_seam_cross3_v1(direction, edge2);
+    let determinant = item_seam_dot3_v1(edge1, p);
+    if determinant.abs() <= epsilon {
+        return false;
+    }
+    let inverse = 1.0 / determinant;
+    let offset = item_seam_sub3_v1(origin, triangle[0]);
+    let u = item_seam_dot3_v1(offset, p) * inverse;
+    if u <= epsilon || u >= 1.0 - epsilon {
+        return false;
+    }
+    let q = item_seam_cross3_v1(offset, edge1);
+    let v = item_seam_dot3_v1(direction, q) * inverse;
+    if v <= epsilon || u + v >= 1.0 - epsilon {
+        return false;
+    }
+    item_seam_dot3_v1(edge2, q) * inverse > epsilon
+}
+
+fn item_seam_ray_bvh_hit_count_v1(
+    origin: [f64; 3],
+    direction: [f64; 3],
+    bvh: &ItemSeamBvhV1,
+    triangles: &[ItemSeamTriangleV1],
+    epsilon: f64,
+) -> usize {
+    if !item_seam_ray_bounds_intersects_v1(origin, direction, bvh.bounds(), epsilon) {
+        return 0;
+    }
+    match bvh {
+        ItemSeamBvhV1::Leaf {
+            triangles: indices, ..
+        } => indices
+            .iter()
+            .filter(|&&index| {
+                item_seam_ray_triangle_hit_v1(origin, direction, triangles[index].vertices, epsilon)
+            })
+            .count(),
+        ItemSeamBvhV1::Branch { left, right, .. } => {
+            item_seam_ray_bvh_hit_count_v1(origin, direction, left, triangles, epsilon)
+                + item_seam_ray_bvh_hit_count_v1(origin, direction, right, triangles, epsilon)
+        }
+    }
+}
+
+fn item_seam_vertex_key_v1(vertex: [f64; 3]) -> [u64; 3] {
+    vertex.map(|value| {
+        let canonical = if value == 0.0 { 0.0 } else { value };
+        canonical.to_bits()
+    })
+}
+
+fn item_seam_is_watertight_v1(triangles: &[ItemSeamTriangleV1]) -> bool {
+    let mut edges = BTreeMap::<([u64; 3], [u64; 3]), usize>::new();
+    for triangle in triangles {
+        let vertices = triangle.vertices.map(item_seam_vertex_key_v1);
+        for (first, second) in [(0, 1), (1, 2), (2, 0)] {
+            let edge = if vertices[first] <= vertices[second] {
+                (vertices[first], vertices[second])
+            } else {
+                (vertices[second], vertices[first])
+            };
+            *edges.entry(edge).or_default() += 1;
+        }
+    }
+    !edges.is_empty() && edges.values().all(|&count| count == 2)
+}
+
+fn item_seam_bounds_strictly_contains_point_v1(
+    bounds: ItemSeamBoundsV1,
+    point: [f64; 3],
+    epsilon: f64,
+) -> bool {
+    (0..3).all(|axis| {
+        point[axis] > bounds.min[axis] + epsilon && point[axis] < bounds.max[axis] - epsilon
+    })
+}
+
+fn item_seam_closed_mesh_contains_point_v1(
+    point: [f64; 3],
+    target_triangles: &[ItemSeamTriangleV1],
+    target_bvh: &ItemSeamBvhV1,
+    epsilon: f64,
+) -> bool {
+    if !item_seam_bounds_strictly_contains_point_v1(target_bvh.bounds(), point, epsilon) {
+        return false;
+    }
+    let mut surface_distance_squared = f64::INFINITY;
+    item_seam_point_bvh_distance_squared_v1(
+        point,
+        target_bvh,
+        target_triangles,
+        &mut surface_distance_squared,
+    );
+    if surface_distance_squared <= epsilon * epsilon {
+        return false;
+    }
+    const DIRECTIONS: [[f64; 3]; 3] = [
+        [1.0, 0.371_390_676_354_103_7, 0.218_217_890_235_992_4],
+        [0.312_347_523_777_212_1, 1.0, 0.517_638_090_205_041_5],
+        [0.618_033_988_749_894_8, 0.271_828_182_845_904_5, 1.0],
+    ];
+    DIRECTIONS
+        .iter()
+        .filter(|&&direction| {
+            item_seam_ray_bvh_hit_count_v1(point, direction, target_bvh, target_triangles, epsilon)
+                % 2
+                == 1
+        })
+        .count()
+        >= 2
+}
+
+fn item_seam_closed_mesh_contains_surface_point_v1(
+    source_triangles: &[ItemSeamTriangleV1],
+    target_triangles: &[ItemSeamTriangleV1],
+    target_bvh: &ItemSeamBvhV1,
+    epsilon: f64,
+) -> bool {
+    if !item_seam_is_watertight_v1(target_triangles) {
+        return false;
+    }
+    source_triangles.iter().any(|triangle| {
+        item_seam_closed_mesh_contains_point_v1(
+            triangle.centroid,
+            target_triangles,
+            target_bvh,
+            epsilon,
+        )
+    })
+}
+
+fn item_seam_closed_meshes_share_interior_v1(
+    first_triangles: &[ItemSeamTriangleV1],
+    first_bvh: &ItemSeamBvhV1,
+    second_triangles: &[ItemSeamTriangleV1],
+    second_bvh: &ItemSeamBvhV1,
+    epsilon: f64,
+) -> bool {
+    if !item_seam_is_watertight_v1(first_triangles) || !item_seam_is_watertight_v1(second_triangles)
+    {
+        return false;
+    }
+    let probe_offset = epsilon * 16.0;
+    first_triangles
+        .iter()
+        .chain(second_triangles)
+        .any(|triangle| {
+            let edge1 = item_seam_sub3_v1(triangle.vertices[1], triangle.vertices[0]);
+            let edge2 = item_seam_sub3_v1(triangle.vertices[2], triangle.vertices[0]);
+            let normal = item_seam_cross3_v1(edge1, edge2);
+            let length = item_seam_length_squared_v1(normal).sqrt();
+            if length <= epsilon {
+                return false;
+            }
+            let direction = normal.map(|value| value / length);
+            [probe_offset, -probe_offset].into_iter().any(|offset| {
+                let point = item_seam_add_scaled3_v1(triangle.centroid, direction, offset);
+                item_seam_closed_mesh_contains_point_v1(point, first_triangles, first_bvh, epsilon)
+                    && item_seam_closed_mesh_contains_point_v1(
+                        point,
+                        second_triangles,
+                        second_bvh,
+                        epsilon,
+                    )
+            })
+        })
+}
+
+fn visit_item_seam_bvh_pair_v1(
+    first_bvh: &ItemSeamBvhV1,
+    first_triangles: &[ItemSeamTriangleV1],
+    second_bvh: &ItemSeamBvhV1,
+    second_triangles: &[ItemSeamTriangleV1],
+    intersection_epsilon: f64,
+    best_distance_squared: &mut f64,
+    strict_intersection: &mut bool,
+) {
+    if *strict_intersection
+        || item_seam_bounds_distance_squared_v1(first_bvh.bounds(), second_bvh.bounds())
+            > *best_distance_squared
+    {
+        return;
+    }
+    match (first_bvh, second_bvh) {
+        (
+            ItemSeamBvhV1::Leaf {
+                triangles: first_indices,
+                ..
+            },
+            ItemSeamBvhV1::Leaf {
+                triangles: second_indices,
+                ..
+            },
+        ) => {
+            for &first_index in first_indices {
+                for &second_index in second_indices {
+                    let first = first_triangles[first_index];
+                    let second = second_triangles[second_index];
+                    if item_seam_bounds_distance_squared_v1(first.bounds, second.bounds)
+                        > *best_distance_squared
+                    {
+                        continue;
+                    }
+                    if item_seam_triangles_strictly_intersect_v1(
+                        first.vertices,
+                        second.vertices,
+                        intersection_epsilon,
+                    ) {
+                        *strict_intersection = true;
+                        *best_distance_squared = 0.0;
+                        return;
+                    }
+                    *best_distance_squared = (*best_distance_squared).min(
+                        item_seam_triangle_distance_squared_v1(first.vertices, second.vertices),
+                    );
+                }
+            }
+        }
+        (ItemSeamBvhV1::Branch { left, right, .. }, ItemSeamBvhV1::Leaf { .. }) => {
+            let mut children = [left.as_ref(), right.as_ref()];
+            children.sort_by(|first, second| {
+                item_seam_bounds_distance_squared_v1(first.bounds(), second_bvh.bounds()).total_cmp(
+                    &item_seam_bounds_distance_squared_v1(second.bounds(), second_bvh.bounds()),
+                )
+            });
+            for child in children {
+                visit_item_seam_bvh_pair_v1(
+                    child,
+                    first_triangles,
+                    second_bvh,
+                    second_triangles,
+                    intersection_epsilon,
+                    best_distance_squared,
+                    strict_intersection,
+                );
+            }
+        }
+        (ItemSeamBvhV1::Leaf { .. }, ItemSeamBvhV1::Branch { left, right, .. }) => {
+            let mut children = [left.as_ref(), right.as_ref()];
+            children.sort_by(|first, second| {
+                item_seam_bounds_distance_squared_v1(first_bvh.bounds(), first.bounds()).total_cmp(
+                    &item_seam_bounds_distance_squared_v1(first_bvh.bounds(), second.bounds()),
+                )
+            });
+            for child in children {
+                visit_item_seam_bvh_pair_v1(
+                    first_bvh,
+                    first_triangles,
+                    child,
+                    second_triangles,
+                    intersection_epsilon,
+                    best_distance_squared,
+                    strict_intersection,
+                );
+            }
+        }
+        (
+            ItemSeamBvhV1::Branch {
+                left: first_left,
+                right: first_right,
+                ..
+            },
+            ItemSeamBvhV1::Branch {
+                left: second_left,
+                right: second_right,
+                ..
+            },
+        ) => {
+            let mut pairs = [
+                (first_left.as_ref(), second_left.as_ref()),
+                (first_left.as_ref(), second_right.as_ref()),
+                (first_right.as_ref(), second_left.as_ref()),
+                (first_right.as_ref(), second_right.as_ref()),
+            ];
+            pairs.sort_by(|(first_a, second_a), (first_b, second_b)| {
+                item_seam_bounds_distance_squared_v1(first_a.bounds(), second_a.bounds()).total_cmp(
+                    &item_seam_bounds_distance_squared_v1(first_b.bounds(), second_b.bounds()),
+                )
+            });
+            for (first, second) in pairs {
+                visit_item_seam_bvh_pair_v1(
+                    first,
+                    first_triangles,
+                    second,
+                    second_triangles,
+                    intersection_epsilon,
+                    best_distance_squared,
+                    strict_intersection,
+                );
+            }
+        }
+    }
+}
+
+fn item_seam_model_triangles_v1(
+    model: &crate::model_ir::AuroraModelIrV1,
+) -> Result<Vec<ItemSeamTriangleV1>, ItemErrorV1> {
+    let worlds = item_node_world_matrices_v1(model)?;
+    let mut triangles = Vec::new();
+    for (segment_index, segment) in model.segments.iter().enumerate() {
+        let world = worlds
+            .get(&segment.parent_node_id)
+            .copied()
+            .ok_or_else(|| {
+                error(
+                    "ITEM-SEAM-HIERARCHY-INVALID",
+                    format!("model.segments[{segment_index}].parentNodeId"),
+                    "seam segment parent node is absent from the resolved hierarchy",
+                )
+            })?;
+        for (triangle_index, indices) in segment.indices.chunks_exact(3).enumerate() {
+            let mut vertices = [[0.0_f64; 3]; 3];
+            for corner in 0..3 {
+                let position = segment
+                    .positions
+                    .get(indices[corner] as usize)
+                    .copied()
+                    .ok_or_else(|| {
+                        error(
+                            "ITEM-SEAM-GEOMETRY-INVALID",
+                            format!(
+                                "model.segments[{segment_index}].triangles[{triangle_index}].indices[{corner}]"
+                            ),
+                            "seam triangle index exceeds the segment position array",
+                        )
+                    })?;
+                let transformed = transform_point_v1(world, position);
+                vertices[corner] = [
+                    f64::from(transformed[0]),
+                    f64::from(transformed[1]),
+                    f64::from(transformed[2]),
+                ];
+            }
+            let mut min = [f64::INFINITY; 3];
+            let mut max = [f64::NEG_INFINITY; 3];
+            let mut centroid = [0.0_f64; 3];
+            for vertex in vertices {
+                for axis in 0..3 {
+                    min[axis] = min[axis].min(vertex[axis]);
+                    max[axis] = max[axis].max(vertex[axis]);
+                    centroid[axis] += vertex[axis] / 3.0;
+                }
+            }
+            triangles.push(ItemSeamTriangleV1 {
+                vertices,
+                bounds: ItemSeamBoundsV1 { min, max },
+                centroid,
+            });
+        }
+    }
+    if triangles.is_empty() {
+        return Err(error(
+            "ITEM-SEAM-GEOMETRY-EMPTY",
+            "model.segments",
+            "authoritative seam measurement requires at least one triangle per part",
+        ));
+    }
+    Ok(triangles)
+}
+
+fn item_seam_transform_sha256_v1(options: &ItemPartBuildOptionsV2) -> Result<String, ItemErrorV1> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Binding<'a> {
+        transform: ItemPartTransformV1,
+        source_node: &'a Option<String>,
+    }
+    let bytes = serde_json::to_vec(&Binding {
+        transform: options.transform,
+        source_node: &options.source_node,
+    })
+    .map_err(|_| {
+        error(
+            "ITEM-SEAM-BINDING-SERIALIZE-FAILED",
+            "options",
+            "seam source-node and transform binding could not be serialized",
+        )
+    })?;
+    Ok(item_payload_sha256_v1(&bytes))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn measure_meshy_item_seam_v1(
+    first_field: &str,
+    first_source_glb: &[u8],
+    first_model_resref: &str,
+    first_options: &ItemPartBuildOptionsV2,
+    second_field: &str,
+    second_source_glb: &[u8],
+    second_model_resref: &str,
+    second_options: &ItemPartBuildOptionsV2,
+    tolerance: f32,
+) -> Result<ItemSeamMeasurementV1, ItemErrorV1> {
+    if first_field.trim().is_empty()
+        || second_field.trim().is_empty()
+        || first_field.eq_ignore_ascii_case(second_field)
+    {
+        return Err(error(
+            "ITEM-SEAM-FIELDS-INVALID",
+            "fields",
+            "authoritative seam measurement requires two distinct non-empty part fields",
+        ));
+    }
+    if !tolerance.is_finite() || tolerance < 0.0 {
+        return Err(error(
+            "ITEM-SEAM-TOLERANCE-INVALID",
+            "tolerance",
+            "seam tolerance must be finite and non-negative",
+        ));
+    }
+    if first_options.schema_version != ITEM_SCHEMA_VERSION_V1
+        || second_options.schema_version != ITEM_SCHEMA_VERSION_V1
+    {
+        return Err(error(
+            "ITEM-SEAM-OPTIONS-SCHEMA-INVALID",
+            "options.schemaVersion",
+            "seam part options schemaVersion must be 1",
+        ));
+    }
+    let first_model_resref = validate_resref(first_model_resref, "first.modelResref")?;
+    let second_model_resref = validate_resref(second_model_resref, "second.modelResref")?;
+    validate_item_part_transform_v1(first_options.transform)?;
+    validate_item_part_transform_v1(second_options.transform)?;
+    let internal = |options: &ItemPartBuildOptionsV2| ItemPartBuildInternalOptionsV1 {
+        schema_version: options.schema_version,
+        transform: options.transform,
+        source_node: options.source_node.clone(),
+        texture_encoding: options.texture_encoding,
+        icon_size: None,
+        icon_projection_bounds: None,
+        geometry_derived_icon: true,
+    };
+    let first = prepare_meshy_item_part_v1(
+        first_source_glb,
+        &first_model_resref,
+        &internal(first_options),
+    )?;
+    let second = prepare_meshy_item_part_v1(
+        second_source_glb,
+        &second_model_resref,
+        &internal(second_options),
+    )?;
+    let first_triangles = item_seam_model_triangles_v1(&first.model)?;
+    let second_triangles = item_seam_model_triangles_v1(&second.model)?;
+    let first_bvh = build_item_seam_bvh_v1(&first_triangles, (0..first_triangles.len()).collect());
+    let second_bvh =
+        build_item_seam_bvh_v1(&second_triangles, (0..second_triangles.len()).collect());
+    let extent = item_seam_bounds_union_v1(first_bvh.bounds(), second_bvh.bounds());
+    let scale = (0..3)
+        .map(|axis| extent.max[axis] - extent.min[axis])
+        .fold(1.0_f64, f64::max);
+    let intersection_epsilon = (scale * 1.0e-8).max(1.0e-9);
+    let mut best_distance_squared = f64::INFINITY;
+    let mut overlap = false;
+    visit_item_seam_bvh_pair_v1(
+        &first_bvh,
+        &first_triangles,
+        &second_bvh,
+        &second_triangles,
+        intersection_epsilon,
+        &mut best_distance_squared,
+        &mut overlap,
+    );
+    if !best_distance_squared.is_finite() {
+        return Err(error(
+            "ITEM-SEAM-MEASUREMENT-NONFINITE",
+            "geometry",
+            "authoritative triangle-surface seam measurement produced no finite distance",
+        ));
+    }
+    if !overlap {
+        overlap = item_seam_closed_mesh_contains_surface_point_v1(
+            &first_triangles,
+            &second_triangles,
+            &second_bvh,
+            intersection_epsilon,
+        ) || item_seam_closed_mesh_contains_surface_point_v1(
+            &second_triangles,
+            &first_triangles,
+            &first_bvh,
+            intersection_epsilon,
+        ) || item_seam_closed_meshes_share_interior_v1(
+            &first_triangles,
+            &first_bvh,
+            &second_triangles,
+            &second_bvh,
+            intersection_epsilon,
+        );
+    }
+    let gap = best_distance_squared.sqrt() as f32;
+    let status = if overlap {
+        "OVERLAP"
+    } else if gap <= tolerance {
+        "TOUCHING"
+    } else {
+        "GAP"
+    };
+    let mut report = ItemSeamMeasurementV1 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        algorithm: "TRIANGLE_SURFACE_BVH_CONTAINMENT_V1".to_owned(),
+        first_field: first_field.trim().to_owned(),
+        second_field: second_field.trim().to_owned(),
+        first_source_sha256: item_payload_sha256_v1(first_source_glb),
+        second_source_sha256: item_payload_sha256_v1(second_source_glb),
+        first_transform_sha256: item_seam_transform_sha256_v1(first_options)?,
+        second_transform_sha256: item_seam_transform_sha256_v1(second_options)?,
+        first_triangle_count: first.triangle_count,
+        second_triangle_count: second.triangle_count,
+        tolerance,
+        status: status.to_owned(),
+        gap,
+        overlap,
+        measurement_sha256: String::new(),
+    };
+    let measurement_bytes = serde_json::to_vec(&report).map_err(|_| {
+        error(
+            "ITEM-SEAM-REPORT-SERIALIZE-FAILED",
+            "report",
+            "authoritative seam report could not be serialized",
+        )
+    })?;
+    report.measurement_sha256 = item_payload_sha256_v1(&measurement_bytes);
+    Ok(report)
+}
+
+fn build_meshy_item_part_with_internal_options_v1(
+    source_glb: &[u8],
+    model_resref: &str,
+    texture_resref: &str,
+    options: &ItemPartBuildInternalOptionsV1,
+) -> Result<ItemPartArtifactV1, ItemErrorV1> {
+    if options.schema_version != ITEM_SCHEMA_VERSION_V1 {
+        return Err(error(
+            "ITEM-PART-OPTIONS-SCHEMA-INVALID",
+            "options.schemaVersion",
+            "item part build options schemaVersion must be 1",
+        ));
+    }
+    let model_resref = validate_resref(model_resref, "modelResref")?;
+    let texture_resref = validate_resref(texture_resref, "textureResref")?;
+    validate_item_part_transform_v1(options.transform)?;
+
+    let limits = static_placeable_glb_limits_v1();
+    let PreparedItemPartV1 {
+        ingest,
+        mut model,
+        source_node,
+        triangle_count,
+    } = prepare_meshy_item_part_v1(source_glb, &model_resref, options)?;
+    if model.material_source_bindings.len() > 1 {
+        return Err(error(
+            "ITEM-PART-MULTI-MATERIAL-UNSUPPORTED",
+            "model.materialSourceBindings",
+            "this Item part resolved more than one material binding, but the current artifact contract emits exactly one texture resource",
+        ));
+    }
+    let texture_selection =
+        resolve_base_color_image_index_v1(&ingest, &model).map_err(|source| {
+            error(
+                &format!("ITEM-{}", source.code),
+                source.path,
+                source.message,
+            )
+        })?;
+    let texture_image = decode_embedded_image_to_tga_v1(
+        source_glb,
+        texture_selection.source_image_index,
+        &limits,
+        &EmbeddedImageDecodeLimitsV1::default(),
+    )
+    .map_err(|source| {
+        error(
+            &format!("ITEM-{}", source.code),
+            source.json_path.unwrap_or_else(|| "images".to_owned()),
+            source.message,
+        )
+    })?;
+    let mut icon_projection_bounds = None;
+    let mut icon_opaque_pixel_count = None;
+    let icon_payload = if options.geometry_derived_icon {
+        match options.icon_size {
+            Some([width, height]) => {
+                let (payload, bounds, opaque_pixels) = write_item_icon_layer_v2(
+                    &texture_image,
+                    &model,
+                    width,
+                    height,
+                    options.icon_projection_bounds,
+                )?;
+                icon_projection_bounds = Some(bounds);
+                icon_opaque_pixel_count = Some(opaque_pixels);
+                Some(payload)
+            }
+            None => {
+                let geometry = item_icon_geometry_v1(&model)?;
+                icon_projection_bounds = Some(item_icon_projection_bounds_v1(&geometry)?);
+                None
+            }
+        }
+    } else {
+        options
+            .icon_size
+            .map(|[width, height]| write_item_icon_layer_v1(&texture_image, width, height))
+            .transpose()?
+    };
+    let icon_sha256 = icon_payload.as_deref().map(item_payload_sha256_v1);
+    let (texture_payload, texture_sha256, texture_format) =
+        if let Some(layer) = options.texture_encoding.plt_layer() {
+            let texture = write_item_plt_v1(
+                &texture_image,
+                &PltWriterOptionsV1 {
+                    layer,
+                    ..PltWriterOptionsV1::default()
+                },
+            )
+            .map_err(|source| error(&source.code, source.path, source.message))?;
+            (
+                texture.payload,
+                texture.report.output_sha256,
+                "PLT_V1".to_owned(),
+            )
+        } else {
+            let texture =
+                write_tga_v1(&texture_image, &TgaWriterOptionsV1::default()).map_err(|source| {
+                    error(
+                        &format!("ITEM-{}", source.code),
+                        source.path,
+                        source.message,
+                    )
+                })?;
+            (
+                texture.payload,
+                texture.report.output_sha256,
+                "TGA_V1".to_owned(),
+            )
+        };
+    let bindings = model
+        .material_source_bindings
+        .iter()
+        .map(|binding| MdlMaterialTextureBindingV1 {
+            material_slot: binding.slot,
+            resref: texture_resref.clone(),
+        })
+        .collect();
+    segment_model_for_binary_mdl_v1(&mut model)
+        .map_err(|source| error("ITEM-PART-SEGMENTATION-FAILED", source.path, source.message))?;
+    let stream_count = model.segments.len();
+    let mdl = write_binary_mdl(
+        &model,
+        &MdlWriterOptionsV1 {
+            schema_version: 1,
+            format_profile: MdlFormatProfileV1::ItemPartStaticRigidNativeV1,
+            state_projection_profile: MdlStateProjectionProfileV1::RetailDirectCreatureType5DummyV1,
+            state_projection_provenance: None,
+            model_resource_resref: model_resref.clone(),
+            diffuse_texture_resref_by_material_slot: bindings,
+        },
+    )
+    .map_err(|source| error("ITEM-PART-MDL-WRITE-FAILED", source.path, source.message))?;
+    let readback = inspect_binary_mdl(&mdl.payload).map_err(|source| {
+        error(
+            "ITEM-PART-MDL-READBACK-FAILED",
+            source.context,
+            format!("{} at byte {}", source.code, source.offset),
+        )
+    })?;
+    if readback.model.name != model_resref {
+        return Err(error(
+            "ITEM-PART-MDL-SEMANTIC-DIFF",
+            "readback.model.name",
+            "binary MDL readback model identity differs from the requested item part resref",
+        ));
+    }
+
+    Ok(ItemPartArtifactV1 {
+        mdl_payload: mdl.payload.clone(),
+        texture_payload,
+        icon_payload,
+        report: ItemPartBuildReportV1 {
+            schema_version: ITEM_SCHEMA_VERSION_V1,
+            profile: "ITEM_PART_STATIC_RIGID".to_owned(),
+            model_resref,
+            texture_resref,
+            texture_format,
+            source_node,
+            source_sha256: item_payload_sha256_v1(source_glb),
+            triangle_count,
+            stream_count,
+            transform: options.transform,
+            mdl_sha256: item_payload_sha256_v1(&mdl.payload),
+            texture_sha256,
+            icon_sha256,
+            icon_projection_bounds,
+            icon_opaque_pixel_count,
+            semantic_readback_status: "PASS".to_owned(),
+        },
+        readback,
+    })
+}
+
+fn select_item_source_node_v1(
+    ingest: &mut crate::glb::GlbIngestResult,
+    requested: Option<&str>,
+) -> Result<Option<String>, ItemErrorV1> {
+    let Some(requested) = requested.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    let matches = ingest
+        .ir
+        .nodes
+        .iter()
+        .filter(|node| node.name.as_deref() == Some(requested))
+        .collect::<Vec<_>>();
+    let selected = match matches.as_slice() {
+        [node] => *node,
+        [] => {
+            return Err(error(
+                "ITEM-SOURCE-NODE-NOT-FOUND",
+                "options.sourceNode",
+                format!("GLB has no node named {requested:?}"),
+            ));
+        }
+        _ => {
+            return Err(error(
+                "ITEM-SOURCE-NODE-AMBIGUOUS",
+                "options.sourceNode",
+                format!("GLB has more than one node named {requested:?}"),
+            ));
+        }
+    };
+    let scene_id = ingest.ir.default_scene_id.ok_or_else(|| {
+        error(
+            "ITEM-SOURCE-NODE-SCENE-MISSING",
+            "source.ir.defaultSceneId",
+            "source-node selection requires a default GLB scene",
+        )
+    })?;
+    let scene = ingest
+        .ir
+        .scenes
+        .get_mut(scene_id as usize)
+        .filter(|scene| scene.id == scene_id)
+        .ok_or_else(|| {
+            error(
+                "ITEM-SOURCE-NODE-SCENE-MISSING",
+                "source.ir.defaultSceneId",
+                "default GLB scene does not exist",
+            )
+        })?;
+    if !scene.root_node_ids.contains(&selected.id) {
+        return Err(error(
+            "ITEM-SOURCE-NODE-NOT-ROOT",
+            "options.sourceNode",
+            "sourceNode must be a top-level node of the default scene so its transform remains lossless",
+        ));
+    }
+    scene.root_node_ids = vec![selected.id];
+    let selected_root_id = selected.id;
+    let mut pending = vec![selected_root_id];
+    let mut selected_node_ids = BTreeSet::new();
+    while let Some(node_id) = pending.pop() {
+        if !selected_node_ids.insert(node_id) {
+            continue;
+        }
+        let node = ingest
+            .ir
+            .nodes
+            .iter()
+            .find(|node| node.id == node_id)
+            .ok_or_else(|| {
+                error(
+                    "ITEM-SOURCE-NODE-HIERARCHY-INVALID",
+                    "source.ir.nodes",
+                    format!("selected source hierarchy references missing node {node_id}"),
+                )
+            })?;
+        pending.extend(node.child_ids.iter().copied());
+    }
+    let selected_mesh_ids = ingest
+        .ir
+        .nodes
+        .iter()
+        .filter(|node| selected_node_ids.contains(&node.id))
+        .filter_map(|node| node.mesh_id)
+        .collect::<BTreeSet<_>>();
+    let node_id_map = ingest
+        .ir
+        .nodes
+        .iter()
+        .filter(|node| selected_node_ids.contains(&node.id))
+        .enumerate()
+        .map(|(index, node)| (node.id, index as u32))
+        .collect::<BTreeMap<_, _>>();
+    let mesh_id_map = ingest
+        .ir
+        .meshes
+        .iter()
+        .filter(|mesh| selected_mesh_ids.contains(&mesh.id))
+        .enumerate()
+        .map(|(index, mesh)| (mesh.id, index as u32))
+        .collect::<BTreeMap<_, _>>();
+    let selected_primitive_ids = ingest
+        .ir
+        .primitives
+        .iter()
+        .filter(|primitive| selected_mesh_ids.contains(&primitive.source_mesh_id))
+        .map(|primitive| primitive.id)
+        .collect::<BTreeSet<_>>();
+    let primitive_id_map = ingest
+        .ir
+        .primitives
+        .iter()
+        .filter(|primitive| selected_primitive_ids.contains(&primitive.id))
+        .enumerate()
+        .map(|(index, primitive)| (primitive.id, index as u32))
+        .collect::<BTreeMap<_, _>>();
+    ingest.ir.nodes.retain_mut(|node| {
+        if !selected_node_ids.contains(&node.id) {
+            return false;
+        }
+        node.id = node_id_map[&node.id];
+        node.child_ids = node
+            .child_ids
+            .iter()
+            .filter_map(|id| node_id_map.get(id).copied())
+            .collect();
+        node.parent_ids = node
+            .parent_ids
+            .iter()
+            .filter_map(|id| node_id_map.get(id).copied())
+            .collect();
+        node.mesh_id = node.mesh_id.and_then(|id| mesh_id_map.get(&id).copied());
+        true
+    });
+    ingest.ir.meshes.retain_mut(|mesh| {
+        if !selected_mesh_ids.contains(&mesh.id) {
+            return false;
+        }
+        mesh.id = mesh_id_map[&mesh.id];
+        mesh.primitive_ids = mesh
+            .primitive_ids
+            .iter()
+            .filter_map(|id| primitive_id_map.get(id).copied())
+            .collect();
+        true
+    });
+    ingest.ir.primitives.retain_mut(|primitive| {
+        if !selected_primitive_ids.contains(&primitive.id) {
+            return false;
+        }
+        primitive.id = primitive_id_map[&primitive.id];
+        primitive.source_mesh_id = mesh_id_map[&primitive.source_mesh_id];
+        true
+    });
+    scene.root_node_ids = vec![node_id_map[&selected_root_id]];
+    ingest.report.inventory.node_count = ingest.ir.nodes.len();
+    ingest.report.inventory.mesh_count = ingest.ir.meshes.len();
+    ingest.report.inventory.primitive_count = ingest.ir.primitives.len();
+    ingest.report.statistics.vertex_count = ingest
+        .ir
+        .primitives
+        .iter()
+        .map(|primitive| primitive.positions.len())
+        .sum();
+    ingest.report.statistics.index_count = ingest
+        .ir
+        .primitives
+        .iter()
+        .map(|primitive| primitive.indices.len())
+        .sum();
+    ingest.report.statistics.triangle_count = ingest
+        .ir
+        .primitives
+        .iter()
+        .filter(|primitive| primitive.topology == "TRIANGLES")
+        .map(|primitive| primitive.indices.len() / 3)
+        .sum();
+    ingest.report.statistics.primitives_missing_normals = ingest
+        .ir
+        .primitives
+        .iter()
+        .filter(|primitive| primitive.normals.is_empty())
+        .count();
+    ingest.report.statistics.primitives_missing_uv0 = ingest
+        .ir
+        .primitives
+        .iter()
+        .filter(|primitive| primitive.uv0.is_empty())
+        .count();
+    ingest.report.statistics.non_triangle_primitives = ingest
+        .ir
+        .primitives
+        .iter()
+        .filter(|primitive| primitive.topology != "TRIANGLES")
+        .count();
+    let mut positions = ingest
+        .ir
+        .primitives
+        .iter()
+        .flat_map(|primitive| primitive.positions.iter().copied());
+    if let Some(first) = positions.next() {
+        let (min, max) = positions.fold((first, first), |(mut min, mut max), position| {
+            for axis in 0..3 {
+                min[axis] = min[axis].min(position[axis]);
+                max[axis] = max[axis].max(position[axis]);
+            }
+            (min, max)
+        });
+        ingest.report.statistics.bounds_min = Some(min);
+        ingest.report.statistics.bounds_max = Some(max);
+    } else {
+        ingest.report.statistics.bounds_min = None;
+        ingest.report.statistics.bounds_max = None;
+    }
+    Ok(Some(requested.to_owned()))
+}
+
+pub fn validate_item_triangle_budget_v1(
+    part_triangle_counts: &[usize],
+) -> Result<ItemTriangleBudgetReportV1, ItemErrorV1> {
+    let triangle_count =
+        part_triangle_counts
+            .iter()
+            .enumerate()
+            .try_fold(0usize, |total, (index, count)| {
+                total.checked_add(*count).ok_or_else(|| {
+                    error(
+                        "ITEM-TRIANGLE-COUNT-OVERFLOW",
+                        format!("partTriangleCounts[{index}]"),
+                        "combined item triangle count overflowed this platform",
+                    )
+                })
+            })?;
+    if triangle_count > AURORA_MODEL_TRIANGLE_BUDGET_V1 {
+        return Err(ItemErrorV1 {
+            schema_version: ITEM_SCHEMA_VERSION_V1,
+            code: "ITEM-TRIANGLE-BUDGET-EXCEEDED".to_owned(),
+            path: "partTriangleCounts".to_owned(),
+            message: format!(
+                "item parts contain {triangle_count} triangles in total; shared product budget is {AURORA_MODEL_TRIANGLE_BUDGET_V1}"
+            ),
+        });
+    }
+    Ok(ItemTriangleBudgetReportV1 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        triangle_count,
+        triangle_budget: AURORA_MODEL_TRIANGLE_BUDGET_V1,
+        warning_above: AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1,
+        warning: triangle_count > AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1,
+    })
+}
+
+fn validate_item_part_transform_v1(transform: ItemPartTransformV1) -> Result<(), ItemErrorV1> {
+    if transform
+        .translation
+        .into_iter()
+        .chain(transform.rotation_xyzw)
+        .chain(transform.pivot)
+        .chain([transform.uniform_scale])
+        .any(|value| !value.is_finite())
+        || transform.uniform_scale <= 0.0
+    {
+        return Err(error(
+            "ITEM-PART-TRANSFORM-INVALID",
+            "transform",
+            "translation, quaternion, pivot, and positive uniform scale must be finite",
+        ));
+    }
+    let norm_squared = transform
+        .rotation_xyzw
+        .into_iter()
+        .map(|value| value * value)
+        .sum::<f32>();
+    if norm_squared <= 1.0e-12 {
+        return Err(error(
+            "ITEM-PART-TRANSFORM-INVALID",
+            "transform.rotationXyzw",
+            "rotation quaternion must have a non-zero norm",
+        ));
+    }
+    Ok(())
+}
+
+fn bake_uniform_scale_v1(
+    model: &mut crate::model_ir::AuroraModelIrV1,
+    scale: f32,
+    pivot: [f32; 3],
+) {
+    if (scale - 1.0).abs() <= f32::EPSILON {
+        return;
+    }
+    for segment in &mut model.segments {
+        for position in &mut segment.positions {
+            for axis in 0..3 {
+                position[axis] = pivot[axis] + (position[axis] - pivot[axis]) * scale;
+            }
+        }
+    }
+    for node in &mut model.nodes {
+        for axis in 0..3 {
+            let matrix_index = 12 + axis;
+            node.bind_local_matrix[matrix_index] *= scale;
+        }
+    }
+}
+
+fn bake_uniform_scale_v2(
+    model: &mut crate::model_ir::AuroraModelIrV1,
+    scale: f32,
+    pivot: [f32; 3],
+) {
+    if (scale - 1.0).abs() <= f32::EPSILON {
+        return;
+    }
+    // Uniform scale commutes with every rigid node rotation, so preserving the
+    // hierarchy losslessly requires scaling mesh-local positions around their
+    // own origins and scaling node-to-parent translations. Only root
+    // translations are moved around the caller's model-space pivot.
+    for segment in &mut model.segments {
+        for position in &mut segment.positions {
+            for value in position {
+                *value *= scale;
+            }
+        }
+    }
+    for node in &mut model.nodes {
+        for (axis, pivot_axis) in pivot.iter().copied().enumerate() {
+            let matrix_index = 12 + axis;
+            node.bind_local_matrix[matrix_index] = if node.parent_id.is_none() {
+                pivot_axis + (node.bind_local_matrix[matrix_index] - pivot_axis) * scale
+            } else {
+                node.bind_local_matrix[matrix_index] * scale
+            };
+        }
+    }
+}
+
+fn item_part_rigid_matrix_v1(transform: ItemPartTransformV1) -> Result<[f32; 16], ItemErrorV1> {
+    let norm = transform
+        .rotation_xyzw
+        .into_iter()
+        .map(|value| value * value)
+        .sum::<f32>()
+        .sqrt();
+    if !norm.is_finite() || norm <= 1.0e-6 {
+        return Err(error(
+            "ITEM-PART-TRANSFORM-INVALID",
+            "transform.rotationXyzw",
+            "rotation quaternion cannot be normalized",
+        ));
+    }
+    let [x, y, z, w] = transform.rotation_xyzw.map(|value| value / norm);
+    let xx = x * x;
+    let yy = y * y;
+    let zz = z * z;
+    let xy = x * y;
+    let xz = x * z;
+    let yz = y * z;
+    let wx = w * x;
+    let wy = w * y;
+    let wz = w * z;
+    let rotation = [
+        1.0 - 2.0 * (yy + zz),
+        2.0 * (xy + wz),
+        2.0 * (xz - wy),
+        0.0,
+        2.0 * (xy - wz),
+        1.0 - 2.0 * (xx + zz),
+        2.0 * (yz + wx),
+        0.0,
+        2.0 * (xz + wy),
+        2.0 * (yz - wx),
+        1.0 - 2.0 * (xx + yy),
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+    ];
+    let rotated_pivot = transform_point_v1(rotation, transform.pivot);
+    let mut output = rotation;
+    for axis in 0..3 {
+        output[12 + axis] =
+            transform.translation[axis] + transform.pivot[axis] - rotated_pivot[axis];
+    }
+    Ok(output)
+}
+
+fn transform_point_v1(matrix: [f32; 16], point: [f32; 3]) -> [f32; 3] {
+    [
+        matrix[0] * point[0] + matrix[4] * point[1] + matrix[8] * point[2] + matrix[12],
+        matrix[1] * point[0] + matrix[5] * point[1] + matrix[9] * point[2] + matrix[13],
+        matrix[2] * point[0] + matrix[6] * point[1] + matrix[10] * point[2] + matrix[14],
+    ]
+}
+
+fn multiply_matrix_v1(left: [f32; 16], right: [f32; 16]) -> [f32; 16] {
+    let mut output = [0.0; 16];
+    for column in 0..4 {
+        for row in 0..4 {
+            output[column * 4 + row] = (0..4)
+                .map(|index| left[index * 4 + row] * right[column * 4 + index])
+                .sum();
+        }
+    }
+    output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bake_uniform_scale_v2;
+    use crate::model_ir::{
+        AuroraModelIrV1, AuroraModelNodeV1, AuroraModelSegmentV1, AuroraSegmentDeformationV1,
+    };
+
+    #[test]
+    fn v2_scale_preserves_rotated_hierarchy_and_applies_pivot_only_at_roots() {
+        let root_matrix = [
+            0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 2.0, 3.0, 4.0, 1.0,
+        ];
+        let child_matrix = [
+            1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1.0, 2.0, 3.0, 1.0,
+        ];
+        let mut model = AuroraModelIrV1 {
+            schema_version: 1,
+            profile_id: "test".to_owned(),
+            source_sha256: "0".repeat(64),
+            basis_status: "test".to_owned(),
+            engine_facing_proof: "test".to_owned(),
+            uv_runtime_proof: "test".to_owned(),
+            nodes: vec![
+                AuroraModelNodeV1 {
+                    id: 0,
+                    name: "root".to_owned(),
+                    parent_id: None,
+                    bind_local_matrix: root_matrix,
+                },
+                AuroraModelNodeV1 {
+                    id: 1,
+                    name: "child".to_owned(),
+                    parent_id: Some(0),
+                    bind_local_matrix: child_matrix,
+                },
+            ],
+            material_source_bindings: Vec::new(),
+            segments: vec![AuroraModelSegmentV1 {
+                segment_id: 0,
+                material_slot: 0,
+                deformation: AuroraSegmentDeformationV1::Rigid,
+                parent_node_id: 1,
+                cast_shadow: true,
+                positions: vec![[4.0, 5.0, 6.0]],
+                normals: vec![[0.0, 0.0, 1.0]],
+                tangents: None,
+                uv0: vec![[0.0, 0.0]],
+                indices: Vec::new(),
+                face_surface_ids: Vec::new(),
+                weights: Vec::new(),
+            }],
+        };
+
+        bake_uniform_scale_v2(&mut model, 2.0, [10.0, 20.0, 30.0]);
+
+        assert_eq!(&model.nodes[0].bind_local_matrix[..12], &root_matrix[..12]);
+        assert_eq!(&model.nodes[1].bind_local_matrix[..12], &child_matrix[..12]);
+        assert_eq!(
+            &model.nodes[0].bind_local_matrix[12..15],
+            &[-6.0, -14.0, -22.0]
+        );
+        assert_eq!(&model.nodes[1].bind_local_matrix[12..15], &[2.0, 4.0, 6.0]);
+        assert_eq!(model.segments[0].positions, [[8.0, 10.0, 12.0]]);
+    }
+}
+
+fn hex_lower(bytes: &[u8]) -> String {
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use std::fmt::Write as _;
+        let _ = write!(&mut output, "{byte:02x}");
+    }
+    output
+}

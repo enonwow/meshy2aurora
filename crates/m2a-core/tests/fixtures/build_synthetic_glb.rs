@@ -19,6 +19,42 @@ pub fn minimal_indexed_triangle() -> Vec<u8> {
     )
 }
 
+pub fn unit_cube() -> Vec<u8> {
+    geometry_glb(
+        &[
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [0.0, 1.0, 1.0],
+        ],
+        Some(&[[0.0, 0.0, 1.0]; 8]),
+        Some(&[
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+        ]),
+        Some(&[
+            0, 2, 1, 0, 3, 2, // bottom
+            4, 5, 6, 4, 6, 7, // top
+            0, 1, 5, 0, 5, 4, // front
+            1, 2, 6, 1, 6, 5, // right
+            2, 3, 7, 2, 7, 6, // back
+            3, 0, 4, 3, 4, 7, // left
+        ]),
+        4,
+        default_nodes(),
+    )
+}
+
 pub fn axis_hierarchy_asymmetric() -> Vec<u8> {
     geometry_glb(
         &[[2.0, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 5.0]],
@@ -150,6 +186,13 @@ pub fn material_image_two_primitives() -> Vec<u8> {
         }
     ]);
     make_glb(root, bin)
+}
+
+pub fn material_image_two_primitives_3d() -> Vec<u8> {
+    let glb = mutate_accessor_f32(material_image_two_primitives(), 0, 8, 1.0);
+    mutate_json(glb, |root| {
+        root["accessors"][0]["max"] = json!([1.0, 1.0, 1.0]);
+    })
 }
 
 pub fn material_image_duplicate_image_reference() -> Vec<u8> {

@@ -515,6 +515,581 @@ pub fn inspect_two_da_v2_json(bytes: &[u8], limits_json: &str) -> Result<String,
     inspect_two_da_v2_json_inner(bytes, limits_json).map_err(|error| JsValue::from_str(&error))
 }
 
+/// Resolves every active BaseItem row into the exact Aurora item-part schema.
+#[wasm_bindgen(js_name = inspectItemBaseitemsV1Json)]
+pub fn inspect_item_baseitems_v1_json(bytes: &[u8]) -> Result<String, JsValue> {
+    m2a_core::item::inspect_item_baseitems_v1(bytes)
+        .map(|catalog| serialize_json(&catalog))
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+/// Inspects an exact retail Item reference table while preserving raw source
+/// identity and normalizing only terminal blank physical records.
+#[wasm_bindgen(js_name = inspectItemReferenceTwoDaV1Json)]
+pub fn inspect_item_reference_two_da_v1_json(
+    table_name: &str,
+    bytes: &[u8],
+) -> Result<String, JsValue> {
+    m2a_core::item::inspect_item_reference_two_da_v1(table_name, bytes)
+        .map(|report| serialize_json(&report))
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+/// Resolves one requested Item part through the core BaseItem contract. For
+/// generic item profiles caller-supplied names are ignored and the canonical
+/// ItemClass-derived names are returned; context-dependent profiles consume
+/// the explicit, previously validated resrefs.
+#[wasm_bindgen(js_name = resolveItemPartResourceV1Json)]
+pub fn resolve_item_part_resource_v1_json(
+    baseitems_two_da: &[u8],
+    base_item: u32,
+    field: &str,
+    variant: u8,
+    explicit_model_resref: &str,
+    explicit_icon_resref: &str,
+) -> Result<String, JsValue> {
+    let row = m2a_core::item::resolve_item_baseitem_v1(baseitems_two_da, base_item)
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+    m2a_core::item::resolve_item_part_resource_v1(
+        &row,
+        field,
+        variant,
+        (!explicit_model_resref.trim().is_empty()).then_some(explicit_model_resref),
+        (!explicit_icon_resref.trim().is_empty()).then_some(explicit_icon_resref),
+    )
+    .map(|resolved| serialize_json(&resolved))
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[wasm_bindgen(js_name = resolveItemCastSpellIconV1Json)]
+pub fn resolve_item_cast_spell_icon_v1_json(
+    base_item: u32,
+    properties_json: &str,
+    iprp_spells_two_da: &[u8],
+) -> Result<String, JsValue> {
+    let properties = serde_json::from_str::<Vec<m2a_core::item::ItemPropertyV1>>(properties_json)
+        .map_err(|_| {
+        JsValue::from_str(&m5_boundary_error(
+            "ITEM-PROPERTIES-JSON-INVALID",
+            "propertiesJson",
+            "properties JSON does not match ItemPropertyV1[]",
+        ))
+    })?;
+    m2a_core::item::resolve_item_cast_spell_icon_v1(base_item, &properties, iprp_spells_two_da)
+        .map(|resolved| serialize_json(&resolved))
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[wasm_bindgen(js_name = resolveItemCloakV1Json)]
+pub fn resolve_item_cloak_v1_json(
+    cloak_model_row: u16,
+    cloak_model_two_da: &[u8],
+) -> Result<String, JsValue> {
+    m2a_core::item::resolve_item_cloak_v1(cloak_model_row, cloak_model_two_da)
+        .map(|resolved| serialize_json(&resolved))
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[wasm_bindgen(js_name = resolveItemCloakV2Json)]
+pub fn resolve_item_cloak_v2_json(
+    cloak_model_row: u16,
+    cloak_model_two_da: &[u8],
+    available_resource_keys_json: &str,
+) -> Result<String, JsValue> {
+    let available_resource_keys = serde_json::from_str::<Vec<String>>(available_resource_keys_json)
+        .map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-CLOAK-RESOURCE-KEYS-JSON-INVALID",
+                "availableResourceKeysJson",
+                "cloak resource keys JSON must be an array of type:resref strings",
+            ))
+        })?;
+    m2a_core::item::resolve_item_cloak_v2(
+        cloak_model_row,
+        cloak_model_two_da,
+        &available_resource_keys,
+    )
+    .map(|resolved| serialize_json(&resolved))
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[wasm_bindgen(js_name = resolveItemCloakV3Json)]
+pub fn resolve_item_cloak_v3_json(
+    cloak_model_row: u16,
+    cloak_model_two_da: &[u8],
+    resource_inventory_json: &str,
+) -> Result<String, JsValue> {
+    let inventory = serde_json::from_str::<Vec<m2a_core::item::ItemResourceInventoryEntryV2>>(
+        resource_inventory_json,
+    )
+    .map_err(|_| {
+        JsValue::from_str(&m5_boundary_error(
+            "ITEM-RESOURCE-INVENTORY-JSON-INVALID",
+            "resourceInventoryJson",
+            "resource inventory JSON does not match ItemResourceInventoryEntryV2[]",
+        ))
+    })?;
+    m2a_core::item::resolve_item_cloak_v3(cloak_model_row, cloak_model_two_da, &inventory)
+        .map(|resolved| serialize_json(&resolved))
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[wasm_bindgen(js_name = resolveItemCloakV4Json)]
+pub fn resolve_item_cloak_v4_json(
+    cloak_model_row: u16,
+    model_prefix: &str,
+    cloak_model_two_da: &[u8],
+    resource_inventory_json: &str,
+) -> Result<String, JsValue> {
+    let inventory = serde_json::from_str::<Vec<m2a_core::item::ItemResourceInventoryEntryV2>>(
+        resource_inventory_json,
+    )
+    .map_err(|_| {
+        JsValue::from_str(&m5_boundary_error(
+            "ITEM-RESOURCE-INVENTORY-JSON-INVALID",
+            "resourceInventoryJson",
+            "resource inventory JSON does not match ItemResourceInventoryEntryV2[]",
+        ))
+    })?;
+    m2a_core::item::resolve_item_cloak_v4(
+        cloak_model_row,
+        model_prefix,
+        cloak_model_two_da,
+        &inventory,
+    )
+    .map(|resolved| serialize_json(&resolved))
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[wasm_bindgen(js_name = inspectItemReferenceResourceV1Json)]
+pub fn inspect_item_reference_resource_v1_json(
+    resource_type: u16,
+    resref: &str,
+    bytes: &[u8],
+    provenance_json: &str,
+) -> Result<String, JsValue> {
+    let provenance = serde_json::from_str::<m2a_core::item::ItemResourceProvenanceV1>(
+        provenance_json,
+    )
+    .map_err(|_| {
+        JsValue::from_str(&m5_boundary_error(
+            "ITEM-RESOURCE-PROVENANCE-JSON-INVALID",
+            "provenanceJson",
+            "resource provenance JSON does not match ItemResourceProvenanceV1",
+        ))
+    })?;
+    m2a_core::item::inspect_item_reference_resource_v1(resource_type, resref, bytes, &provenance)
+        .map(|inspection| serialize_json(&inspection))
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[wasm_bindgen(js_name = resolveItemEquippedAppearanceV1Json)]
+pub fn resolve_item_equipped_appearance_v1_json(
+    appearance_two_da: &[u8],
+    appearance_row: u16,
+    racial_type: u8,
+    gender: u8,
+    phenotype: u8,
+) -> Result<String, JsValue> {
+    m2a_core::item::resolve_item_equipped_appearance_v1(
+        appearance_two_da,
+        appearance_row,
+        racial_type,
+        gender,
+        phenotype,
+    )
+    .map(|binding| serialize_json(&binding))
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[wasm_bindgen(js_name = resolveItemCapartPartV1Json)]
+pub fn resolve_item_capart_part_v1_json(
+    field: &str,
+    selector: u8,
+    capart_two_da: &[u8],
+    parts_table_name: &str,
+    parts_two_da: &[u8],
+) -> Result<String, JsValue> {
+    m2a_core::item::resolve_item_capart_part_v1(
+        field,
+        selector,
+        capart_two_da,
+        parts_table_name,
+        parts_two_da,
+    )
+    .map(|resolved| serialize_json(&resolved))
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[wasm_bindgen(js_name = resolveItemCapartPartV2Json)]
+#[allow(clippy::too_many_arguments)]
+pub fn resolve_item_capart_part_v2_json(
+    field: &str,
+    selector: u8,
+    capart_two_da: &[u8],
+    parts_table_name: &str,
+    parts_two_da: &[u8],
+    context_json: &str,
+    resource_inventory_json: &str,
+    hidden_by_robe: bool,
+) -> Result<String, JsValue> {
+    let context = serde_json::from_str::<m2a_core::item::ItemCapartContextV1>(context_json)
+        .map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-CAPART-CONTEXT-JSON-INVALID",
+                "contextJson",
+                "CAPART context JSON does not match ItemCapartContextV1",
+            ))
+        })?;
+    let inventory = serde_json::from_str::<Vec<m2a_core::item::ItemResourceInventoryEntryV2>>(
+        resource_inventory_json,
+    )
+    .map_err(|_| {
+        JsValue::from_str(&m5_boundary_error(
+            "ITEM-RESOURCE-INVENTORY-JSON-INVALID",
+            "resourceInventoryJson",
+            "resource inventory JSON does not match ItemResourceInventoryEntryV2[]",
+        ))
+    })?;
+    m2a_core::item::resolve_item_capart_part_v2(
+        field,
+        selector,
+        capart_two_da,
+        parts_table_name,
+        parts_two_da,
+        &context,
+        &inventory,
+        hidden_by_robe,
+    )
+    .map(|resolved| serialize_json(&resolved))
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+/// Browser-transferable result for one independent item MDL part.
+#[wasm_bindgen]
+pub struct StudioItemPartArtifactV1 {
+    mdl_bytes: Vec<u8>,
+    texture_bytes: Vec<u8>,
+    icon_bytes: Vec<u8>,
+    report_json: String,
+    readback_json: String,
+}
+
+#[wasm_bindgen]
+impl StudioItemPartArtifactV1 {
+    #[wasm_bindgen(js_name = takeMdlBytes)]
+    pub fn take_mdl_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.mdl_bytes)
+    }
+
+    #[wasm_bindgen(js_name = takeTextureBytes)]
+    pub fn take_texture_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.texture_bytes)
+    }
+
+    #[wasm_bindgen(js_name = takeIconBytes)]
+    pub fn take_icon_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.icon_bytes)
+    }
+
+    #[wasm_bindgen(getter, js_name = reportJson)]
+    pub fn report_json(&self) -> String {
+        self.report_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = readbackJson)]
+    pub fn readback_json(&self) -> String {
+        self.readback_json.clone()
+    }
+}
+
+/// Converts one Meshy GLB into one Item-domain binary MDL resource. Translation
+/// and rotation are emitted through root node controllers; uniform scale is
+/// baked before deterministic stream segmentation.
+#[wasm_bindgen(js_name = buildMeshyItemPartV1)]
+pub fn build_meshy_item_part_v1(
+    source_glb: &[u8],
+    model_resref: &str,
+    texture_resref: &str,
+    transform_json: &str,
+) -> Result<StudioItemPartArtifactV1, JsValue> {
+    let transform = serde_json::from_str::<m2a_core::item::ItemPartTransformV1>(transform_json)
+        .map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-PART-TRANSFORM-JSON-INVALID",
+                "transformJson",
+                "item part transform JSON does not match ItemPartTransformV1",
+            ))
+        })?;
+    let artifact = m2a_core::item::build_meshy_item_part_v1(
+        source_glb,
+        model_resref,
+        texture_resref,
+        transform,
+    )
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+    Ok(StudioItemPartArtifactV1 {
+        mdl_bytes: artifact.mdl_payload,
+        texture_bytes: artifact.texture_payload,
+        icon_bytes: artifact.icon_payload.unwrap_or_default(),
+        report_json: serialize_json(&artifact.report),
+        readback_json: serialize_json(&artifact.readback),
+    })
+}
+
+/// Extended Item-part boundary used by the Item Studio. In addition to the
+/// rigid transform it accepts an exact top-level GLB source node, Aurora
+/// texture encoding, and the source-derived inventory icon dimensions.
+#[wasm_bindgen(js_name = buildMeshyItemPartWithOptionsV1)]
+pub fn build_meshy_item_part_with_options_v1(
+    source_glb: &[u8],
+    model_resref: &str,
+    texture_resref: &str,
+    options_json: &str,
+) -> Result<StudioItemPartArtifactV1, JsValue> {
+    let options = serde_json::from_str::<m2a_core::item::ItemPartBuildOptionsV1>(options_json)
+        .map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-PART-OPTIONS-JSON-INVALID",
+                "optionsJson",
+                "item part options JSON does not match ItemPartBuildOptionsV1",
+            ))
+        })?;
+    let artifact = m2a_core::item::build_meshy_item_part_with_options_v1(
+        source_glb,
+        model_resref,
+        texture_resref,
+        &options,
+    )
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+    Ok(StudioItemPartArtifactV1 {
+        mdl_bytes: artifact.mdl_payload,
+        texture_bytes: artifact.texture_payload,
+        icon_bytes: artifact.icon_payload.unwrap_or_default(),
+        report_json: serialize_json(&artifact.report),
+        readback_json: serialize_json(&artifact.readback),
+    })
+}
+
+/// Corrected Item authoring boundary. V2 preserves the frozen V1 lineage while
+/// using geometry-derived icon silhouettes and hierarchy-correct scale baking.
+#[wasm_bindgen(js_name = buildMeshyItemPartWithOptionsV2)]
+pub fn build_meshy_item_part_with_options_v2(
+    source_glb: &[u8],
+    model_resref: &str,
+    texture_resref: &str,
+    options_json: &str,
+) -> Result<StudioItemPartArtifactV1, JsValue> {
+    let options = serde_json::from_str::<m2a_core::item::ItemPartBuildOptionsV2>(options_json)
+        .map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-PART-OPTIONS-JSON-INVALID",
+                "optionsJson",
+                "item part options JSON does not match ItemPartBuildOptionsV2",
+            ))
+        })?;
+    let artifact = m2a_core::item::build_meshy_item_part_with_options_v2(
+        source_glb,
+        model_resref,
+        texture_resref,
+        &options,
+    )
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+    Ok(StudioItemPartArtifactV1 {
+        mdl_bytes: artifact.mdl_payload,
+        texture_bytes: artifact.texture_payload,
+        icon_bytes: artifact.icon_payload.unwrap_or_default(),
+        report_json: serialize_json(&artifact.report),
+        readback_json: serialize_json(&artifact.readback),
+    })
+}
+
+/// Measures one adjacent pair from the same source bytes, source-node
+/// selections, transforms and generated Aurora geometry used by the Item
+/// builder. The returned report binds every input by SHA-256.
+#[wasm_bindgen(js_name = measureMeshyItemSeamV1Json)]
+#[allow(clippy::too_many_arguments)]
+pub fn measure_meshy_item_seam_v1_json(
+    first_field: &str,
+    first_source_glb: &[u8],
+    first_model_resref: &str,
+    first_options_json: &str,
+    second_field: &str,
+    second_source_glb: &[u8],
+    second_model_resref: &str,
+    second_options_json: &str,
+    tolerance: f32,
+) -> Result<String, JsValue> {
+    let parse_options = |path: &str,
+                         options_json: &str|
+     -> Result<m2a_core::item::ItemPartBuildOptionsV2, JsValue> {
+        serde_json::from_str(options_json).map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-SEAM-OPTIONS-JSON-INVALID",
+                path,
+                "seam options JSON does not match ItemPartBuildOptionsV2",
+            ))
+        })
+    };
+    let first_options = parse_options("firstOptionsJson", first_options_json)?;
+    let second_options = parse_options("secondOptionsJson", second_options_json)?;
+    m2a_core::item::measure_meshy_item_seam_v1(
+        first_field,
+        first_source_glb,
+        first_model_resref,
+        &first_options,
+        second_field,
+        second_source_glb,
+        second_model_resref,
+        &second_options,
+        tolerance,
+    )
+    .map(|report| serialize_json(&report))
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+/// Browser-transferable result for a numeric UTI blueprint.
+#[wasm_bindgen]
+pub struct StudioItemUtiArtifactV1 {
+    uti_bytes: Vec<u8>,
+    report_json: String,
+}
+
+#[wasm_bindgen]
+impl StudioItemUtiArtifactV1 {
+    #[wasm_bindgen(js_name = takeUtiBytes)]
+    pub fn take_uti_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.uti_bytes)
+    }
+
+    #[wasm_bindgen(getter, js_name = reportJson)]
+    pub fn report_json(&self) -> String {
+        self.report_json.clone()
+    }
+}
+
+/// Writes a numeric UTI after resolving the selected printed BaseItem row.
+#[wasm_bindgen(js_name = writeItemUtiV1)]
+pub fn write_item_uti_v1(
+    baseitems_two_da: &[u8],
+    base_item: u32,
+    blueprint_json: &str,
+) -> Result<StudioItemUtiArtifactV1, JsValue> {
+    let blueprint = serde_json::from_str::<m2a_core::item::ItemBlueprintV1>(blueprint_json)
+        .map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-UTI-BLUEPRINT-JSON-INVALID",
+                "blueprintJson",
+                "item blueprint JSON does not match ItemBlueprintV1",
+            ))
+        })?;
+    let resolved = m2a_core::item::resolve_item_baseitem_v1(baseitems_two_da, base_item)
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+    let artifact = m2a_core::item::write_item_uti_v1(&resolved, &blueprint)
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+    Ok(StudioItemUtiArtifactV1 {
+        uti_bytes: artifact.payload,
+        report_json: serialize_json(&artifact.report),
+    })
+}
+
+#[wasm_bindgen]
+pub struct StudioItemProofModuleArtifactV1 {
+    module_bytes: Vec<u8>,
+    report_json: String,
+}
+
+#[wasm_bindgen]
+impl StudioItemProofModuleArtifactV1 {
+    #[wasm_bindgen(js_name = takeModuleBytes)]
+    pub fn take_module_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.module_bytes)
+    }
+
+    #[wasm_bindgen(getter, js_name = reportJson)]
+    pub fn report_json(&self) -> String {
+        self.report_json.clone()
+    }
+}
+
+#[wasm_bindgen(js_name = buildItemProofModuleV1)]
+pub fn build_item_proof_module_v1(
+    uti_payload: &[u8],
+    identity_json: &str,
+    placement_json: &str,
+) -> Result<StudioItemProofModuleArtifactV1, JsValue> {
+    let identity = serde_json::from_str::<m2a_core::item::ItemProofModuleIdentityV1>(identity_json)
+        .map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-PROOF-IDENTITY-JSON-INVALID",
+                "identityJson",
+                "identity JSON does not match ItemProofModuleIdentityV1",
+            ))
+        })?;
+    let placement = serde_json::from_str::<m2a_core::item::ItemProofPlacementV1>(placement_json)
+        .map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-PROOF-PLACEMENT-JSON-INVALID",
+                "placementJson",
+                "placement JSON does not match ItemProofPlacementV1",
+            ))
+        })?;
+    let artifact = m2a_core::item::build_item_proof_module_v1(uti_payload, &identity, placement)
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+    Ok(StudioItemProofModuleArtifactV1 {
+        module_bytes: artifact.payload,
+        report_json: serialize_json(&artifact.report),
+    })
+}
+
+#[wasm_bindgen(js_name = buildItemEquippedProofModuleV2)]
+pub fn build_item_equipped_proof_module_v2(
+    uti_payload: &[u8],
+    identity_json: &str,
+    placement_json: &str,
+) -> Result<StudioItemProofModuleArtifactV1, JsValue> {
+    let identity =
+        serde_json::from_str::<m2a_core::item::ItemEquippedProofIdentityV2>(identity_json)
+            .map_err(|_| {
+                JsValue::from_str(&m5_boundary_error(
+                    "ITEM-EQUIPPED-PROOF-IDENTITY-JSON-INVALID",
+                    "identityJson",
+                    "identity JSON does not match ItemEquippedProofIdentityV2",
+                ))
+            })?;
+    let placement = serde_json::from_str::<m2a_core::item::ItemProofPlacementV1>(placement_json)
+        .map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-PROOF-PLACEMENT-JSON-INVALID",
+                "placementJson",
+                "placement JSON does not match ItemProofPlacementV1",
+            ))
+        })?;
+    let artifact =
+        m2a_core::item::build_item_equipped_proof_module_v2(uti_payload, &identity, placement)
+            .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+    Ok(StudioItemProofModuleArtifactV1 {
+        module_bytes: artifact.payload,
+        report_json: serialize_json(&artifact.report),
+    })
+}
+
+/// Applies the shared 300,000-triangle product budget to the sum of all item
+/// parts, independently from the per-stream binary segmentation gate.
+#[wasm_bindgen(js_name = validateItemTriangleBudgetV1Json)]
+pub fn validate_item_triangle_budget_v1_json(counts_json: &str) -> Result<String, JsValue> {
+    let counts = serde_json::from_str::<Vec<usize>>(counts_json).map_err(|_| {
+        JsValue::from_str(&m5_boundary_error(
+            "ITEM-TRIANGLE-COUNTS-JSON-INVALID",
+            "countsJson",
+            "triangle counts JSON must be an array of non-negative integers",
+        ))
+    })?;
+    m2a_core::item::validate_item_triangle_budget_v1(&counts)
+        .map(|report| serialize_json(&report))
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
 fn parse_two_da_append_json(
     request_json: &str,
     limits_json: &str,
@@ -2792,10 +3367,10 @@ mod m5_native_tests {
         build_meshy_procedural_humanoid_product_with_options_v3_inner,
         build_meshy_static_placeable_package_v1_inner,
         build_meshy_static_placeable_package_v2_inner, build_meshy_static_tile_package_v1_inner,
-        ingest_glb_json, ingest_meshy_p100k_experiment_json, inspect_two_da_v2_json,
-        inspect_two_da_v2_json_inner, materialize_hak_resources, serialize_json,
-        write_hak_artifact_json, write_hak_v1, write_hak_v1_report_json, write_model_package_v1,
-        write_model_package_v1_inner, write_package_manifest_v1_json,
+        ingest_glb_json, ingest_meshy_p100k_experiment_json, inspect_item_reference_two_da_v1_json,
+        inspect_two_da_v2_json, inspect_two_da_v2_json_inner, materialize_hak_resources,
+        serialize_json, write_hak_artifact_json, write_hak_v1, write_hak_v1_report_json,
+        write_model_package_v1, write_model_package_v1_inner, write_package_manifest_v1_json,
         write_package_manifest_v1_json_inner, write_tga_artifact_json, write_tga_v1,
         write_tga_v1_report_json,
     };
@@ -3157,6 +3732,20 @@ mod m5_native_tests {
             serde_json::to_string(&core.report).unwrap()
         );
         assert_eq!((source, request_json, limits_json), before);
+    }
+
+    #[test]
+    fn item_reference_two_da_boundary_preserves_source_identity_and_trims_terminal_blank_row() {
+        let source = b"2DA V2.0\n\nLabel Icon\n0 Aid iss_Aid\n\n";
+        let core = m2a_core::item::inspect_item_reference_two_da_v1("IPRP_SPELLS", source)
+            .expect("core Item reference inspection");
+        let boundary = inspect_item_reference_two_da_v1_json("IPRP_SPELLS", source)
+            .expect("WASM Item reference inspection");
+
+        assert_eq!(boundary, serialize_json(&core));
+        assert_eq!(core.source_byte_length, source.len() as u64);
+        assert_eq!(core.stripped_trailing_blank_row_count, 1);
+        assert_eq!(core.inspection.physical_row_count, 1);
     }
 
     #[test]

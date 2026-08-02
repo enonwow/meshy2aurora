@@ -47,6 +47,42 @@ fn inspection_preserves_lexical_null_text_and_physical_row_identity() {
 }
 
 #[test]
+fn retail_percent_prefixed_column_names_are_preserved_without_broadening_other_punctuation() {
+    let source = b"2DA V2.0\n\nName %AnimSlashL %AnimSlashR %AnimSlashS\n0 item 35 35 65\n";
+    let report = inspect_two_da_v2(source, &TwoDaLimitsV1::default()).unwrap();
+
+    assert_eq!(
+        report.columns,
+        ["Name", "%AnimSlashL", "%AnimSlashR", "%AnimSlashS"]
+    );
+    let invalid = inspect_two_da_v2(
+        b"2DA V2.0\n\nName Anim-Slash\n0 item 35\n",
+        &TwoDaLimitsV1::default(),
+    )
+    .unwrap_err();
+    assert_eq!(invalid.code, COLUMN_INVALID);
+}
+
+#[test]
+fn retail_header_padding_is_ignored_without_relaxing_the_signature() {
+    let report = inspect_two_da_v2(
+        b"2DA V2.0       \n\nLabel\n0 row\n",
+        &TwoDaLimitsV1::default(),
+    )
+    .unwrap();
+    assert_eq!(report.physical_row_count, 1);
+    assert!(inspect_two_da_v2(b" 2DA V2.0\n\nLabel\n", &TwoDaLimitsV1::default()).is_err());
+}
+
+#[test]
+fn blank_physical_lines_remain_invalid_outside_item_reference_normalization() {
+    let source = b"2DA V2.0\n\nLabel\n0 first\n    \n1 second\n";
+    let error = inspect_two_da_v2(source, &TwoDaLimitsV1::default()).unwrap_err();
+    assert_eq!(error.code, ROW_ARITY_INVALID);
+    assert_eq!(error.path, "rows[1]");
+}
+
+#[test]
 fn append_is_exact_prefix_plus_deterministic_source_eol_suffix() {
     let source = b"2DA V2.0\n\nLABEL VALUE OPTIONAL\n0 old **** keep";
     let first_request = request(vec![("value", text("A B")), ("LABEL", text("****"))]);

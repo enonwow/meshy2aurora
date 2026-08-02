@@ -187,7 +187,7 @@ export function SourceStep({
         <h1 id={headingId}>Start a new conversion</h1>
         <p>
           Select a Meshy GLB model and choose {
-            tileTargetEnabled ? "Creature, Placeable, or Tile." : "Creature or Placeable."
+            tileTargetEnabled ? "Creature, Placeable, Item, or Tile." : "Creature, Placeable, or Item."
           }
         </p>
         <p className="source-step__privacy">All processing stays in your browser. Files are not uploaded.</p>
@@ -197,8 +197,8 @@ export function SourceStep({
         <fieldset className="source-step__target">
           <legend>Conversion target</legend>
           {(tileTargetEnabled
-            ? ["CREATURE", "PLACEABLE", "TILE"]
-            : ["CREATURE", "PLACEABLE"]
+            ? ["CREATURE", "PLACEABLE", "ITEM", "TILE"]
+            : ["CREATURE", "PLACEABLE", "ITEM"]
           ).map((value) => (
             <label key={value}>
               <input
@@ -208,7 +208,13 @@ export function SourceStep({
                 checked={target === value}
                 onChange={() => onTargetChange(value as StudioTarget)}
               />
-              {value === "CREATURE" ? "Creature" : value === "PLACEABLE" ? "Placeable" : "Tile"}
+              {value === "CREATURE"
+                ? "Creature"
+                : value === "PLACEABLE"
+                  ? "Placeable"
+                  : value === "ITEM"
+                    ? "Item"
+                    : "Tile"}
             </label>
           ))}
         </fieldset>

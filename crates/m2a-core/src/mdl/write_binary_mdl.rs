@@ -567,6 +567,7 @@ fn plan_with_face_plane_policy(
         | MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedControllerlessRootV3 => 3,
         MdlFormatProfileV1::M0StaticRigidNativeV1 => 3,
         MdlFormatProfileV1::PlaceableStaticRigidNativeV1 => 3,
+        MdlFormatProfileV1::ItemPartStaticRigidNativeV1 => 3,
         MdlFormatProfileV1::TileStaticV1 => 3,
         MdlFormatProfileV1::SourceTopologyPreservingRigidExperimentV1 => 3,
         MdlFormatProfileV1::SourceTopologyPreservingRigidCandidateV1 => 3,
@@ -576,6 +577,7 @@ fn plan_with_face_plane_policy(
         options.format_profile,
         MdlFormatProfileV1::M0StaticRigidNativeV1
             | MdlFormatProfileV1::PlaceableStaticRigidNativeV1
+            | MdlFormatProfileV1::ItemPartStaticRigidNativeV1
             | MdlFormatProfileV1::TileStaticV1
             | MdlFormatProfileV1::SourceTopologyPreservingRigidExperimentV1
             | MdlFormatProfileV1::SourceTopologyPreservingRigidCandidateV1
@@ -1245,7 +1247,9 @@ fn plan_with_face_plane_policy(
 
     let (model_bounds_min, model_bounds_max, model_radius) = if matches!(
         options.format_profile,
-        MdlFormatProfileV1::PlaceableStaticRigidNativeV1 | MdlFormatProfileV1::TileStaticV1
+        MdlFormatProfileV1::PlaceableStaticRigidNativeV1
+            | MdlFormatProfileV1::ItemPartStaticRigidNativeV1
+            | MdlFormatProfileV1::TileStaticV1
     ) {
         (model_min, model_max, model_radius)
     } else {
@@ -1821,6 +1825,7 @@ fn validate_public_contract(
             | MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedControllerlessRootV3
             | MdlFormatProfileV1::M0StaticRigidNativeV1
             | MdlFormatProfileV1::PlaceableStaticRigidNativeV1
+            | MdlFormatProfileV1::ItemPartStaticRigidNativeV1
             | MdlFormatProfileV1::TileStaticV1
             | MdlFormatProfileV1::SourceTopologyPreservingRigidExperimentV1
             | MdlFormatProfileV1::SourceTopologyPreservingRigidCandidateV1
@@ -1836,6 +1841,7 @@ fn validate_public_contract(
         options.format_profile,
         MdlFormatProfileV1::M0StaticRigidNativeV1
             | MdlFormatProfileV1::PlaceableStaticRigidNativeV1
+            | MdlFormatProfileV1::ItemPartStaticRigidNativeV1
             | MdlFormatProfileV1::TileStaticV1
             | MdlFormatProfileV1::SourceTopologyPreservingRigidExperimentV1
             | MdlFormatProfileV1::SourceTopologyPreservingRigidCandidateV1
@@ -4335,7 +4341,9 @@ fn face_adjacency_for_profile(
 ) -> Result<Vec<[i16; 3]>, MdlWriteError> {
     if matches!(
         profile,
-        MdlFormatProfileV1::PlaceableStaticRigidNativeV1 | MdlFormatProfileV1::TileStaticV1
+        MdlFormatProfileV1::PlaceableStaticRigidNativeV1
+            | MdlFormatProfileV1::ItemPartStaticRigidNativeV1
+            | MdlFormatProfileV1::TileStaticV1
     ) {
         checked_face_adjacency(positions, indices, path)
     } else {
