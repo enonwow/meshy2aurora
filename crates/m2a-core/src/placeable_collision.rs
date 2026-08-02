@@ -23,6 +23,8 @@ pub const PLACEABLE_PWK_MAX_LINE_BYTES_V1: usize = PLACEABLE_PWK_RUNTIME_LINE_BU
 const MIN_FOOTPRINT_EXTENT: f32 = 1.0e-4;
 const MAX_PWK_VERTEX_COUNT: usize = 65_535;
 const MAX_PWK_FACE_COUNT: usize = 65_535;
+pub const CUSTOM_PLACEABLE_PWK_MAX_VERTEX_COUNT_V1: usize = 64;
+const POLYGON_EPSILON_V1: f64 = 1.0e-8;
 
 /// Backward-compatible placeable-domain name for the shared ASCII walkmesh
 /// face grammar. PWK and WOK retain separate envelopes and validators.
@@ -182,6 +184,260 @@ pub fn derive_placeable_walkmesh_ir_v1(
             },
         ],
     })
+}
+
+/// Builds one deterministic, flat Nonwalk PWK from a caller-authored simple
+/// polygon in final Aurora XY metres. The input may use either winding; the
+/// returned IR is canonical and therefore produces byte-identical ASCII for
+/// geometrically identical ordered rings.
+pub fn custom_placeable_walkmesh_ir_v1(
+    model_resref: &str,
+    vertices_xy: &[[f32; 2]],
+) -> Result<PlaceableWalkmeshIrV1, PlaceableWalkmeshErrorV1> {
+    validate_resref(model_resref)?;
+    let vertices_xy = canonical_polygon_v1(vertices_xy)?;
+    let triangles = triangulate_simple_polygon_v1(&vertices_xy)?;
+    let mut bounds_min = [f32::INFINITY; 2];
+    let mut bounds_max = [f32::NEG_INFINITY; 2];
+    for vertex in &vertices_xy {
+        for axis in 0..2 {
+            bounds_min[axis] = bounds_min[axis].min(vertex[axis]);
+            bounds_max[axis] = bounds_max[axis].max(vertex[axis]);
+        }
+    }
+    let walkmesh = PlaceableWalkmeshIrV1 {
+        schema_version: PLACEABLE_PWK_SCHEMA_VERSION,
+        model_resref: model_resref.to_owned(),
+        root_node_name: format!("{model_resref}_pwk"),
+        mesh_node_name: format!("{model_resref}_wg"),
+        bounds_min,
+        bounds_max,
+        position: [0.0, 0.0, 0.0],
+        orientation: [1.0, 0.0, 0.0, 0.0],
+        vertices: vertices_xy
+            .into_iter()
+            .map(|vertex| [vertex[0], vertex[1], 0.0])
+            .collect(),
+        faces: triangles
+            .into_iter()
+            .map(|vertex_indices| PlaceableWalkmeshFaceV1 {
+                vertex_indices,
+                smoothing_group: 1,
+                adjacent_faces: [0, 0, 0],
+                surface_id: PLACEABLE_PWK_NONWALK_SURFACE_ID_V1,
+            })
+            .collect(),
+    };
+    validate_walkmesh_ir(&walkmesh)?;
+    Ok(walkmesh)
+}
+
+fn canonical_polygon_v1(input: &[[f32; 2]]) -> Result<Vec<[f32; 2]>, PlaceableWalkmeshErrorV1> {
+    let mut vertices = input.to_vec();
+    if vertices.len() >= 4 && same_point_v1(vertices[0], *vertices.last().unwrap()) {
+        vertices.pop();
+    }
+    if !(3..=CUSTOM_PLACEABLE_PWK_MAX_VERTEX_COUNT_V1).contains(&vertices.len()) {
+        return Err(error(
+            "PLACEABLE-PWK-POLYGON-VERTEX-COUNT",
+            "collision.vertices",
+            format!(
+                "custom polygon requires 3..={} vertices after optional closure removal",
+                CUSTOM_PLACEABLE_PWK_MAX_VERTEX_COUNT_V1
+            ),
+        ));
+    }
+    for (index, vertex) in vertices.iter().enumerate() {
+        if vertex.iter().any(|coordinate| !coordinate.is_finite()) {
+            return Err(error(
+                "PLACEABLE-PWK-POLYGON-NUMERIC-INVALID",
+                format!("collision.vertices[{index}]"),
+                "custom polygon coordinates must be finite",
+            ));
+        }
+        let next = vertices[(index + 1) % vertices.len()];
+        if same_point_v1(*vertex, next) {
+            return Err(error(
+                "PLACEABLE-PWK-POLYGON-VERTEX-DUPLICATE",
+                format!("collision.vertices[{index}]"),
+                "consecutive custom polygon vertices must be distinct",
+            ));
+        }
+    }
+    for left in 0..vertices.len() {
+        for right in left + 1..vertices.len() {
+            if same_point_v1(vertices[left], vertices[right]) {
+                return Err(error(
+                    "PLACEABLE-PWK-POLYGON-VERTEX-DUPLICATE",
+                    format!("collision.vertices[{right}]"),
+                    format!("custom polygon vertex duplicates vertex {left}"),
+                ));
+            }
+        }
+    }
+    if polygon_self_intersects_v1(&vertices) {
+        return Err(error(
+            "PLACEABLE-PWK-POLYGON-SELF-INTERSECTION",
+            "collision.vertices",
+            "custom polygon edges must not self-intersect",
+        ));
+    }
+    let area = signed_area_v1(&vertices);
+    if !area.is_finite() || area.abs() <= POLYGON_EPSILON_V1 {
+        return Err(error(
+            "PLACEABLE-PWK-POLYGON-AREA-DEGENERATE",
+            "collision.vertices",
+            "custom polygon must have a finite non-zero area",
+        ));
+    }
+    if area < 0.0 {
+        vertices.reverse();
+    }
+    let first = vertices
+        .iter()
+        .enumerate()
+        .min_by(|(_, left), (_, right)| {
+            left[0]
+                .total_cmp(&right[0])
+                .then_with(|| left[1].total_cmp(&right[1]))
+        })
+        .map(|(index, _)| index)
+        .expect("validated polygon is non-empty");
+    vertices.rotate_left(first);
+    Ok(vertices)
+}
+
+fn triangulate_simple_polygon_v1(
+    vertices: &[[f32; 2]],
+) -> Result<Vec<[u32; 3]>, PlaceableWalkmeshErrorV1> {
+    let mut ring = (0..vertices.len()).collect::<Vec<_>>();
+    let mut triangles = Vec::with_capacity(vertices.len() - 2);
+    while ring.len() > 3 {
+        let mut ear = None;
+        for cursor in 0..ring.len() {
+            let previous = ring[(cursor + ring.len() - 1) % ring.len()];
+            let current = ring[cursor];
+            let next = ring[(cursor + 1) % ring.len()];
+            if cross2_v1(vertices[previous], vertices[current], vertices[next])
+                <= POLYGON_EPSILON_V1
+            {
+                continue;
+            }
+            if ring.iter().copied().any(|candidate| {
+                candidate != previous
+                    && candidate != current
+                    && candidate != next
+                    && point_in_triangle_v1(
+                        vertices[candidate],
+                        vertices[previous],
+                        vertices[current],
+                        vertices[next],
+                    )
+            }) {
+                continue;
+            }
+            ear = Some((cursor, [previous as u32, current as u32, next as u32]));
+            break;
+        }
+        let Some((cursor, triangle)) = ear else {
+            return Err(error(
+                "PLACEABLE-PWK-POLYGON-TRIANGULATION-FAILED",
+                "collision.vertices",
+                "custom polygon could not be triangulated deterministically",
+            ));
+        };
+        triangles.push(triangle);
+        ring.remove(cursor);
+    }
+    triangles.push([ring[0] as u32, ring[1] as u32, ring[2] as u32]);
+    Ok(triangles)
+}
+
+fn same_point_v1(left: [f32; 2], right: [f32; 2]) -> bool {
+    left[0].to_bits() == right[0].to_bits() && left[1].to_bits() == right[1].to_bits()
+}
+
+fn signed_area_v1(vertices: &[[f32; 2]]) -> f64 {
+    vertices
+        .iter()
+        .enumerate()
+        .map(|(index, left)| {
+            let right = vertices[(index + 1) % vertices.len()];
+            f64::from(left[0]) * f64::from(right[1]) - f64::from(right[0]) * f64::from(left[1])
+        })
+        .sum::<f64>()
+        * 0.5
+}
+
+fn cross2_v1(a: [f32; 2], b: [f32; 2], c: [f32; 2]) -> f64 {
+    (f64::from(b[0]) - f64::from(a[0])) * (f64::from(c[1]) - f64::from(a[1]))
+        - (f64::from(b[1]) - f64::from(a[1])) * (f64::from(c[0]) - f64::from(a[0]))
+}
+
+fn orientation_v1(a: [f32; 2], b: [f32; 2], c: [f32; 2]) -> i8 {
+    let value = cross2_v1(a, b, c);
+    if value > POLYGON_EPSILON_V1 {
+        1
+    } else if value < -POLYGON_EPSILON_V1 {
+        -1
+    } else {
+        0
+    }
+}
+
+fn point_on_segment_v1(point: [f32; 2], a: [f32; 2], b: [f32; 2]) -> bool {
+    orientation_v1(a, b, point) == 0
+        && f64::from(point[0]) >= f64::from(a[0].min(b[0])) - POLYGON_EPSILON_V1
+        && f64::from(point[0]) <= f64::from(a[0].max(b[0])) + POLYGON_EPSILON_V1
+        && f64::from(point[1]) >= f64::from(a[1].min(b[1])) - POLYGON_EPSILON_V1
+        && f64::from(point[1]) <= f64::from(a[1].max(b[1])) + POLYGON_EPSILON_V1
+}
+
+fn segments_intersect_v1(a: [f32; 2], b: [f32; 2], c: [f32; 2], d: [f32; 2]) -> bool {
+    let ab_c = orientation_v1(a, b, c);
+    let ab_d = orientation_v1(a, b, d);
+    let cd_a = orientation_v1(c, d, a);
+    let cd_b = orientation_v1(c, d, b);
+    (ab_c != ab_d && cd_a != cd_b)
+        || (ab_c == 0 && point_on_segment_v1(c, a, b))
+        || (ab_d == 0 && point_on_segment_v1(d, a, b))
+        || (cd_a == 0 && point_on_segment_v1(a, c, d))
+        || (cd_b == 0 && point_on_segment_v1(b, c, d))
+}
+
+fn polygon_self_intersects_v1(vertices: &[[f32; 2]]) -> bool {
+    for left in 0..vertices.len() {
+        let left_next = (left + 1) % vertices.len();
+        for right in left + 1..vertices.len() {
+            let right_next = (right + 1) % vertices.len();
+            if left == right
+                || left_next == right
+                || right_next == left
+                || (left == 0 && right_next == 0)
+            {
+                continue;
+            }
+            if segments_intersect_v1(
+                vertices[left],
+                vertices[left_next],
+                vertices[right],
+                vertices[right_next],
+            ) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn point_in_triangle_v1(point: [f32; 2], a: [f32; 2], b: [f32; 2], c: [f32; 2]) -> bool {
+    cross2_v1(a, b, point) >= -POLYGON_EPSILON_V1
+        && cross2_v1(b, c, point) >= -POLYGON_EPSILON_V1
+        && cross2_v1(c, a, point) >= -POLYGON_EPSILON_V1
+}
+
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
 }
 
 /// Serializes a validated placeable walkmesh IR using the newline-delimited

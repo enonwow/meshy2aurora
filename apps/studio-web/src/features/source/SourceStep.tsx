@@ -4,6 +4,7 @@ import {
   shortSha256,
   type FileIdentityValue,
   type CreatureConversionProfileV1,
+  type CreatureSourceForwardV1,
   type SkinAccessoryStabilizationModeV1,
   type SourceInputProps,
   type TileSurface,
@@ -125,7 +126,9 @@ export function SourceStep({
   appearance,
   animationEvents,
   creatureProfile = "PRODUCT_300K",
+  creatureSourceForward = "POSITIVE_Z",
   textureArtifactCleanup = false,
+  experimentalAggressiveGeometryCleanup = false,
   skinAccessoryStabilizationMode = "AUTO",
   skinAccessorySelectedBoneName = "",
   skinAccessoryComponentBoneOverrides = "",
@@ -138,7 +141,9 @@ export function SourceStep({
   onSelectAppearance,
   onSelectAnimationEvents,
   onCreatureProfileChange,
+  onCreatureSourceForwardChange,
   onTextureArtifactCleanupChange,
+  onExperimentalAggressiveGeometryCleanupChange,
   onSkinAccessoryStabilizationModeChange,
   onSkinAccessorySelectedBoneNameChange,
   onSkinAccessoryComponentBoneOverridesChange,
@@ -295,6 +300,29 @@ export function SourceStep({
               <option value="EXPERIMENTAL_P300K">Legacy P300K compatibility</option>
             </select>
           </label>
+          {onCreatureSourceForwardChange ? (
+            <>
+              <label>
+                Model front in source GLB
+                <select
+                  aria-label="Model front in source GLB"
+                  value={creatureSourceForward}
+                  onChange={(event) => onCreatureSourceForwardChange(
+                    event.currentTarget.value as CreatureSourceForwardV1,
+                  )}
+                >
+                  <option value="POSITIVE_Z">+Z</option>
+                  <option value="NEGATIVE_Z">-Z</option>
+                  <option value="POSITIVE_X">+X</option>
+                  <option value="NEGATIVE_X">-X</option>
+                </select>
+              </label>
+              <p role="note">
+                Choose the axis the character faces in the source GLB. The pipeline rotates that
+                axis to Aurora/NWN forward (-Y) without mirroring the model.
+              </p>
+            </>
+          ) : null}
           {creatureProfile === "EXPERIMENTAL_P100K" ? (
             <p role="note">
               Historical P100K replay profile. New conversions should use the shared 300,000-triangle product profile.
@@ -377,6 +405,29 @@ export function SourceStep({
               </p>
             </>
           ) : null}
+        </fieldset>
+      ) : null}
+
+      {target === "PLACEABLE" && onExperimentalAggressiveGeometryCleanupChange ? (
+        <fieldset className="source-step__placeable-geometry-cleanup">
+          <legend>Placeable geometry</legend>
+          <label>
+            <input
+              type="checkbox"
+              aria-label="Experimental aggressive geometry cleanup"
+              checked={experimentalAggressiveGeometryCleanup}
+              onChange={(event) => onExperimentalAggressiveGeometryCleanupChange(
+                event.currentTarget.checked,
+              )}
+            />
+            Experimental aggressive geometry cleanup
+          </label>
+          <p role="note">
+            Trial option, disabled by default. It removes triangles below the legacy fixed-area
+            threshold and may create holes or erase dense detail. When disabled, the pipeline
+            preserves all finite non-collinear triangles and removes only faces that cannot form
+            a valid Aurora face plane.
+          </p>
         </fieldset>
       ) : null}
 

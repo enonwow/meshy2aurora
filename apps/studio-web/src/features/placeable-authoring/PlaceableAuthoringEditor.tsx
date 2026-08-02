@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import * as THREE from "three";
 import {
   diagnosePlaceableAuthoring,
@@ -6,6 +6,7 @@ import {
   measurePlaceableElements,
 } from "./diagnostics";
 import { PlaceableAuthoringViewport } from "./PlaceableAuthoringViewport";
+import { PlaceableTextureEditor } from "./PlaceableTextureEditor";
 import {
   createPlaceableAuthoringEditorState,
   placeableAuthoringReducer,
@@ -15,20 +16,34 @@ import type {
   PlaceableAuthoringDocument,
   PlaceableAuthoringElement,
   PlaceableElementTransform,
+  ResolvedPlaceableCollision,
   SnapMode,
   TransformTool,
 } from "./types";
+import type {
+  PlaceableTextureAuthoringBootstrap,
+  PlaceableTextureEditorSnapshot,
+  ResolvedPlaceableTextures,
+} from "./textureTypes";
 import "./placeable-authoring.css";
 
 interface Props {
   readonly file: File;
   readonly sourceSha256: string;
   readonly bootstrap: PlaceableAuthoringBootstrap;
+  readonly resolvedCollision?: ResolvedPlaceableCollision;
+  readonly textureBootstrap?: PlaceableTextureAuthoringBootstrap;
+  readonly resolvedTextures?: ResolvedPlaceableTextures;
   readonly onDocumentChange: (document: PlaceableAuthoringDocument) => void;
+  readonly onTextureSnapshotChange?: (snapshot: PlaceableTextureEditorSnapshot) => void;
   readonly onError?: (message: string) => void;
 }
 
 const axisNames = ["X", "Y", "Z"] as const;
+const OUTLINER_ROW_HEIGHT = 32;
+const OUTLINER_VISIBLE_ROWS = 20;
+const OUTLINER_OVERSCAN_ROWS = 6;
+export const PLACEABLE_SPLIT_CONFIRM_COMPONENTS = 512;
 const toolShortcuts: readonly { tool: TransformTool; key: string; label: string }[] = [
   { tool: "TRANSLATE", key: "W", label: "Move" },
   { tool: "ROTATE", key: "E", label: "Rotate" },
@@ -132,7 +147,11 @@ export function PlaceableAuthoringEditor({
   file,
   sourceSha256,
   bootstrap,
+  resolvedCollision,
+  textureBootstrap,
+  resolvedTextures,
   onDocumentChange,
+  onTextureSnapshotChange,
   onError,
 }: Props) {
   const [state, dispatch] = useReducer(
@@ -141,8 +160,17 @@ export function PlaceableAuthoringEditor({
     createPlaceableAuthoringEditorState,
   );
   const [alignMode, setAlignMode] = useState<"MIN" | "CENTER" | "MAX">("CENTER");
+  const [showCollision, setShowCollision] = useState(true);
+  const [collisionDrawing, setCollisionDrawing] = useState(false);
+  const [cameraMode, setCameraMode] = useState<"PERSPECTIVE" | "TOP">("PERSPECTIVE");
+  const [outlinerScrollTop, setOutlinerScrollTop] = useState(0);
+  const [textureSnapshot, setTextureSnapshot] = useState<PlaceableTextureEditorSnapshot>();
   const sectionRef = useRef<HTMLElement>(null);
   const lastPublishedRef = useRef(JSON.stringify(bootstrap.document));
+  const publishTextureSnapshot = useCallback((snapshot: PlaceableTextureEditorSnapshot) => {
+    setTextureSnapshot(snapshot);
+    onTextureSnapshotChange?.(snapshot);
+  }, [onTextureSnapshotChange]);
 
   useEffect(() => {
     const serialized = JSON.stringify(state.present);
@@ -154,6 +182,15 @@ export function PlaceableAuthoringEditor({
   const elements = state.present.elements.filter(live);
   const selected = elements.filter((element) => state.selectedIds.includes(element.id));
   const primary = elements.find((element) => element.id === state.primaryId);
+  const outlinerStart = Math.max(
+    0,
+    Math.floor(outlinerScrollTop / OUTLINER_ROW_HEIGHT) - OUTLINER_OVERSCAN_ROWS,
+  );
+  const outlinerEnd = Math.min(
+    elements.length,
+    outlinerStart + OUTLINER_VISIBLE_ROWS + OUTLINER_OVERSCAN_ROWS * 2,
+  );
+  const outlinerElements = elements.slice(outlinerStart, outlinerEnd);
   const measurements = useMemo(
     () => measurePlaceableElements(state.present, bootstrap.inspection),
     [bootstrap.inspection, state.present],
@@ -163,6 +200,16 @@ export function PlaceableAuthoringEditor({
     () => diagnosePlaceableAuthoring(state.present, bootstrap.inspection),
     [bootstrap.inspection, state.present],
   );
+  const collisionVertices = state.present.collision.mode === "CUSTOM_POLYGON"
+    ? state.present.collision.vertices
+    : resolvedCollision?.sourceVertices ?? [];
+  const activateCustomCollision = () => dispatch({
+    type: "SET_COLLISION_MODE",
+    mode: "CUSTOM_POLYGON",
+    seedVertices: state.present.collision.vertices.length
+      ? state.present.collision.vertices
+      : resolvedCollision?.sourceVertices,
+  });
 
   const updatePrimaryTransform = (transform: PlaceableElementTransform) => {
     if (!primary || primary.flags.locked) return;
@@ -179,10 +226,27 @@ export function PlaceableAuthoringEditor({
     updatePrimaryTransform({ ...primary.transform, [key]: vector });
   };
 
-  const splitAvailable = (element: PlaceableAuthoringElement) => {
-    if (element.kind !== "SOURCE_NODE" || !element.source) return false;
+  const splitComponentCount = (element: PlaceableAuthoringElement) => {
+    if (element.kind !== "SOURCE_NODE" || !element.source) return 0;
     const node = bootstrap.inspection.nodes.find((candidate) => candidate.nodeId === element.source?.nodeId);
-    return (node?.primitives.reduce((sum, primitive) => sum + primitive.components.length, 0) ?? 0) > 1;
+    return node?.primitives.reduce((sum, primitive) => sum + primitive.components.length, 0) ?? 0;
+  };
+  const splitAvailable = (element: PlaceableAuthoringElement) => {
+    const count = splitComponentCount(element);
+    return count > 1;
+  };
+  const splitNode = (element: PlaceableAuthoringElement) => {
+    const count = splitComponentCount(element);
+    if (count <= 1) return;
+    if (
+      count > PLACEABLE_SPLIT_CONFIRM_COMPONENTS
+      && !window.confirm(`Split ${count.toLocaleString("en-US")} connected components? The editor will keep the Outliner virtualized.`)
+    ) return;
+    dispatch({
+      type: "SPLIT_NODE_COMPONENTS",
+      id: element.id,
+      inspection: bootstrap.inspection,
+    });
   };
 
   const selectDiagnostic = (ids: readonly string[]) => {
@@ -193,8 +257,18 @@ export function PlaceableAuthoringEditor({
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     const target = event.target as HTMLElement;
-    if (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
     const key = event.key.toLowerCase();
+    if (key === "escape" && collisionDrawing) {
+      event.preventDefault();
+      setCollisionDrawing(false);
+      return;
+    }
+    if (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
+    if (key === "enter" && collisionDrawing && state.present.collision.vertices.length >= 3) {
+      event.preventDefault();
+      setCollisionDrawing(false);
+      return;
+    }
     if ((event.ctrlKey || event.metaKey) && key === "z") {
       event.preventDefault();
       dispatch({ type: event.shiftKey ? "REDO" : "UNDO" });
@@ -320,6 +394,33 @@ export function PlaceableAuthoringEditor({
             </button>
           ))}
         </div>
+        <div className="placeable-authoring__tool-group" aria-label="Collision viewport tools">
+          <label className="placeable-authoring__collision-toggle">
+            <input
+              type="checkbox"
+              checked={showCollision}
+              onChange={(event) => setShowCollision(event.target.checked)}
+            />
+            Show PWK
+          </label>
+          <ToolbarButton
+            label="Top"
+            title="Orthographic top view for collision editing"
+            active={cameraMode === "TOP"}
+            onClick={() => setCameraMode((mode) => mode === "TOP" ? "PERSPECTIVE" : "TOP")}
+          />
+          <ToolbarButton
+            label="Draw"
+            title="Draw custom collision polygon on the ground plane"
+            active={collisionDrawing}
+            onClick={() => {
+              if (state.present.collision.mode !== "CUSTOM_POLYGON") activateCustomCollision();
+              setCameraMode("TOP");
+              setShowCollision(true);
+              setCollisionDrawing((drawing) => !drawing);
+            }}
+          />
+        </div>
       </header>
 
       <div className="placeable-authoring__workspace">
@@ -330,8 +431,15 @@ export function PlaceableAuthoringEditor({
             <ToolbarButton label="Show" title="Show all elements" onClick={() => dispatch({ type: "SHOW_ALL" })} />
             <ToolbarButton label="Iso" title="Isolate selection (F)" disabled={!selected.length} onClick={() => dispatch({ type: "ISOLATE_SELECTION" })} />
           </div>
-          <ul className="placeable-authoring__tree">
-            {elements.map((element) => {
+          <ul
+            className="placeable-authoring__tree"
+            onScroll={(event) => setOutlinerScrollTop(event.currentTarget.scrollTop)}
+            style={{
+              paddingTop: `${5 + outlinerStart * OUTLINER_ROW_HEIGHT}px`,
+              paddingBottom: `${5 + (elements.length - outlinerEnd) * OUTLINER_ROW_HEIGHT}px`,
+            }}
+          >
+            {outlinerElements.map((element) => {
               const depth = (() => {
                 let value = 0;
                 let parentId = element.parentId;
@@ -382,11 +490,7 @@ export function PlaceableAuthoringEditor({
                     <button
                       type="button"
                       title="Split by connected components"
-                      onClick={() => dispatch({
-                        type: "SPLIT_NODE_COMPONENTS",
-                        id: element.id,
-                        inspection: bootstrap.inspection,
-                      })}
+                      onClick={() => splitNode(element)}
                     >
                       Split
                     </button>
@@ -408,12 +512,23 @@ export function PlaceableAuthoringEditor({
             space={state.space}
             snap={state.snap}
             editable={state.preview === "EDITED"}
+            cameraMode={cameraMode}
+            showCollision={showCollision}
+            collisionDrawing={collisionDrawing}
+            collisionVertices={collisionVertices}
+            resolvedCollisionVertices={resolvedCollision?.sourceVertices ?? []}
+            collisionTriangles={resolvedCollision?.triangles ?? []}
+            collisionEditable={state.preview === "EDITED" && state.present.collision.mode === "CUSTOM_POLYGON"}
+            onAddCollisionVertex={(vertex) => dispatch({ type: "ADD_COLLISION_VERTEX", vertex })}
+            onMoveCollisionVertex={(index, vertex) => dispatch({ type: "MOVE_COLLISION_VERTEX", index, vertex })}
             onSelect={(id, additive) => dispatch({ type: "SELECT", id, additive })}
             onClearSelection={() => dispatch({ type: "CLEAR_SELECTION" })}
             onGestureStart={() => dispatch({ type: "BEGIN_GESTURE" })}
             onTransformPreview={(patches) => dispatch({ type: "PREVIEW_TRANSFORMS", patches })}
             onGestureEnd={() => dispatch({ type: "END_GESTURE" })}
             onError={onError}
+            textureSnapshot={textureSnapshot}
+            textureInspection={textureBootstrap?.inspection.materials ?? []}
           />
           <div className="placeable-authoring__quick-actions" aria-label="Element operations">
             <ToolbarButton label="Duplicate" title="Duplicate selected elements (Ctrl+D)" disabled={!selected.length} onClick={() => dispatch({ type: "DUPLICATE" })} />
@@ -427,7 +542,114 @@ export function PlaceableAuthoringEditor({
         </div>
 
         <aside className="placeable-authoring__properties panel" aria-label="Element properties">
-          <header><strong>Transform</strong><span>{selected.length ? `${selected.length} selected` : "No selection"}</span></header>
+          <header><strong>Properties</strong><span>{selected.length ? `${selected.length} selected` : "Collision"}</span></header>
+          <section className="placeable-authoring__collision-editor" aria-label="Placeable collision editor">
+            <div className="placeable-authoring__collision-heading">
+              <strong>Blocking footprint (PWK)</strong>
+              <span>{resolvedCollision ? `${resolvedCollision.triangles.length} faces` : "resolving…"}</span>
+            </div>
+            <label>
+              Mode
+              <select
+                aria-label="Collision mode"
+                value={state.present.collision.mode}
+                onChange={(event) => {
+                  if (event.target.value === "CUSTOM_POLYGON") activateCustomCollision();
+                  else {
+                    setCollisionDrawing(false);
+                    dispatch({ type: "SET_COLLISION_MODE", mode: "AUTO_RECTANGLE" });
+                  }
+                }}
+              >
+                <option value="AUTO_RECTANGLE">Auto rectangle</option>
+                <option value="CUSTOM_POLYGON">Custom polygon</option>
+              </select>
+            </label>
+            {state.present.collision.mode === "AUTO_RECTANGLE" ? (
+              <label>
+                Padding (m)
+                <input
+                  aria-label="Collision padding metres"
+                  type="number"
+                  min="0"
+                  step="0.05"
+                  value={state.present.collision.paddingMeters}
+                  onChange={(event) => dispatch({
+                    type: "SET_COLLISION_PADDING",
+                    paddingMeters: finite(event.target.value, state.present.collision.paddingMeters),
+                  })}
+                />
+              </label>
+            ) : (
+              <>
+                <div className="placeable-authoring__collision-actions">
+                  <ToolbarButton
+                    label={collisionDrawing ? "Finish drawing" : "Draw points"}
+                    title="Add polygon vertices by clicking the top viewport"
+                    active={collisionDrawing}
+                    onClick={() => {
+                      setCameraMode("TOP");
+                      setShowCollision(true);
+                      setCollisionDrawing((drawing) => !drawing);
+                    }}
+                  />
+                  <ToolbarButton
+                    label="Clear"
+                    title="Clear custom polygon vertices"
+                    disabled={!state.present.collision.vertices.length}
+                    onClick={() => dispatch({ type: "SET_COLLISION_VERTICES", vertices: [] })}
+                  />
+                  <ToolbarButton
+                    label="Auto"
+                    title="Return to the automatic rectangle"
+                    onClick={() => {
+                      setCollisionDrawing(false);
+                      dispatch({ type: "SET_COLLISION_MODE", mode: "AUTO_RECTANGLE" });
+                    }}
+                  />
+                </div>
+                <ol className="placeable-authoring__collision-vertices">
+                  {state.present.collision.vertices.map((vertex, index) => (
+                    <li key={index}>
+                      <span>{index + 1}</span>
+                      <input
+                        aria-label={`Collision vertex ${index + 1} X`}
+                        type="number"
+                        step="0.05"
+                        value={Number(vertex[0].toFixed(4))}
+                        onChange={(event) => dispatch({
+                          type: "MOVE_COLLISION_VERTEX",
+                          index,
+                          vertex: [finite(event.target.value, vertex[0]), vertex[1]],
+                        })}
+                      />
+                      <input
+                        aria-label={`Collision vertex ${index + 1} Z`}
+                        type="number"
+                        step="0.05"
+                        value={Number(vertex[1].toFixed(4))}
+                        onChange={(event) => dispatch({
+                          type: "MOVE_COLLISION_VERTEX",
+                          index,
+                          vertex: [vertex[0], finite(event.target.value, vertex[1])],
+                        })}
+                      />
+                      <button
+                        type="button"
+                        aria-label={`Delete collision vertex ${index + 1}`}
+                        onClick={() => dispatch({ type: "DELETE_COLLISION_VERTEX", index })}
+                      >×</button>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            )}
+            <dl className="placeable-authoring__collision-status">
+              <div><dt>Space</dt><dd>GLTF X/Z → Aurora X/Y</dd></div>
+              <div><dt>Surface</dt><dd>{resolvedCollision?.surfaceId ?? 7} (non-walk)</dd></div>
+              <div><dt>Vertices</dt><dd>{collisionVertices.length} / 64</dd></div>
+            </dl>
+          </section>
           {primary ? (
             <div className="placeable-authoring__properties-body">
               <section>
@@ -565,6 +787,15 @@ export function PlaceableAuthoringEditor({
           )}
         </aside>
       </div>
+
+      {textureBootstrap ? (
+        <PlaceableTextureEditor
+          bootstrap={textureBootstrap}
+          resolved={resolvedTextures}
+          onSnapshotChange={publishTextureSnapshot}
+          onError={onError}
+        />
+      ) : null}
 
       <section className="placeable-authoring__diagnostics panel" aria-label="Placeable diagnostics">
         <header>

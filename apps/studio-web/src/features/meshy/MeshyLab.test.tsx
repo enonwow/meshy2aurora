@@ -55,6 +55,7 @@ function setSelectValue(element: HTMLSelectElement, value: string) {
 afterEach(async () => {
   await act(async () => roots.splice(0).forEach((root) => root.unmount()));
   document.body.replaceChildren();
+  window.sessionStorage.clear();
 });
 
 describe("MeshyLab", () => {
@@ -138,6 +139,33 @@ describe("MeshyLab", () => {
 
     expect(container.textContent).toContain("Generation queued");
     expect(onImport).not.toHaveBeenCalled();
+  });
+
+  it("recovers the newest Bridge run after the Studio component reloads", async () => {
+    const bridge = new InMemoryMeshyBridgeClient({
+      availableCredits: 120,
+      automaticPairingSupported: true,
+    });
+    const seededSession = await bridge.pairAutomatically();
+    const preview = await bridge.previewRun(seededSession.sessionToken, {
+      profileId: "S1-static-prop/v1",
+      prompt: "recovery proof prop",
+      geometryTarget: "BALANCED",
+    });
+    const seededRun = await bridge.createRun(seededSession.sessionToken, {
+      previewId: preview.previewId,
+      confirmationNonce: "recovery-proof-nonce",
+    });
+    window.sessionStorage.setItem("m2a.meshy.activeRun.v2", seededRun.id);
+
+    const container = await render(
+      <MeshyLab bridge={bridge} onBack={vi.fn()} onImport={vi.fn()} />,
+    );
+    await settle();
+    await act(async () => button(container, "Connect local bridge")?.click());
+    await settle();
+
+    expect(container.textContent).toContain("Generation queued");
   });
 
   it("configures up to ten explicit Meshy action to NWN clip mappings in the paid preview", async () => {

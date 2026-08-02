@@ -3,20 +3,31 @@
 import init, {
   buildM7CorpusBatchV1,
   buildMeshyProceduralHumanoidProductDemoWithOptionsV1,
+  buildMeshyProceduralHumanoidProductDemoWithMaterialsV2,
   buildMeshyFullNativeH1PackageWithOptionsV4,
+  buildMeshyFullNativeH1PackageWithMaterialsV5,
   buildMeshyProceduralHumanoidP100kExperimentWithOptionsV2,
   buildMeshyProceduralHumanoidP300kExperimentWithOptionsV2,
   buildMeshyM0StaticRigidPackageV1,
   buildMeshyStaticPlaceablePackageV1,
-  buildMeshyStaticPlaceablePackageV2,
+  buildMeshyStaticPlaceablePackageV4,
+  buildMeshyStaticPlaceablePackageV5,
+  buildMeshyStaticPlaceablePackageV6,
   buildMeshyStaticTilePackageV1,
+  buildMeshyStaticTilePackageV2,
   ingestGlbJson,
   ingestMeshyP100kExperimentJson,
   ingestMeshyP300kExperimentJson,
   ingestStaticRigidGlbJson,
   inspectTwoDaV2Json,
   inspectM7CorpusIntakeV1Json,
-  inspectMeshyStaticPlaceableAuthoringV1,
+  inspectMeshyStaticPlaceableAuthoringV3,
+  inspectMeshyStaticPlaceableTexturesV1,
+  inspectModelComponentsV1Json,
+  resolveMeshyStaticPlaceableCollisionV1,
+  resolveMeshyStaticPlaceableTexturesV1,
+  resolveModelMaterialsV1Json,
+  studioRuntimeCapabilitiesV1Json,
   validateM7CorpusManifestV1Json,
 } from "@m2a-wasm";
 import type {
@@ -27,6 +38,7 @@ import type {
 
 function proceduralBuildOptionsJson(
   textureArtifactCleanup: boolean,
+  sourceForward: "POSITIVE_Z" | "NEGATIVE_Z" | "POSITIVE_X" | "NEGATIVE_X",
   skinAccessoryStabilization?: {
     mode: "AUTO" | "KEEP_SOURCE_WEIGHTS" | "SELECT_BONE";
     selectedBoneName?: string;
@@ -40,6 +52,7 @@ function proceduralBuildOptionsJson(
   const stabilization = skinAccessoryStabilization ?? { mode: "AUTO" as const };
   return JSON.stringify({
     schemaVersion: 1,
+    sourceForward,
     textureArtifactCleanup,
     skinAccessoryStabilization: {
       schemaVersion: 2,
@@ -58,6 +71,22 @@ function proceduralBuildOptionsJson(
 
 let initialized: Promise<unknown> | undefined;
 const ensureInitialized = () => (initialized ??= init());
+const EXPECTED_RUNTIME_CAPABILITIES = {
+  schemaVersion: 1,
+  runtimeContract: "M2A_STUDIO_WASM_2026_07_31_V1",
+  creatureSourceForward: "CARDINAL_XZ_TO_AURORA_NEGATIVE_Y_V1",
+  creatureTriangleBudget: 300000,
+} as const;
+
+function requireRuntimeCapabilities() {
+  const actual = JSON.parse(studioRuntimeCapabilitiesV1Json()) as unknown;
+  if (JSON.stringify(actual) !== JSON.stringify(EXPECTED_RUNTIME_CAPABILITIES)) {
+    throw new Error(
+      `M2A-WASM-RUNTIME-CONTRACT-MISMATCH: expected ${JSON.stringify(EXPECTED_RUNTIME_CAPABILITIES)}, got ${JSON.stringify(actual)}`,
+    );
+  }
+  return EXPECTED_RUNTIME_CAPABILITIES;
+}
 const encoder = new TextEncoder();
 const twoDaInspectionLimitsJson = JSON.stringify({
   maxInputBytes: 16_777_216,
@@ -99,8 +128,40 @@ function exactBuffer(bytes: Uint8Array): ArrayBuffer {
 
 async function handle(request: StudioWorkerRequest): Promise<StudioWorkerResponse> {
   await ensureInitialized();
+  const runtimeCapabilities = requireRuntimeCapabilities();
   if (request.type === "INITIALIZE") {
-    return { requestId: request.requestId, ok: true, type: "INITIALIZED" };
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "INITIALIZED",
+      runtimeCapabilities,
+    };
+  }
+  if (request.type === "INSPECT_MODEL_COMPONENTS") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "MODEL_COMPONENTS_INSPECTED",
+      sourceStateId: request.sourceStateId,
+      inspectionJson: inspectModelComponentsV1Json(
+        new Uint8Array(request.sourceGlb),
+        request.target,
+      ),
+    };
+  }
+  if (request.type === "RESOLVE_MODEL_MATERIALS") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "MODEL_MATERIALS_RESOLVED",
+      sourceStateId: request.sourceStateId,
+      recipeStateId: request.recipeStateId,
+      resolutionJson: resolveModelMaterialsV1Json(
+        new Uint8Array(request.sourceGlb),
+        request.target,
+        request.documentJson,
+      ),
+    };
   }
   if (request.type === "INSPECT_SOURCE") {
     const ingestJson = request.target === "PLACEABLE" || request.target === "TILE"
@@ -110,14 +171,75 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
       : request.creatureProfile === "EXPERIMENTAL_P100K"
         ? ingestMeshyP100kExperimentJson(new Uint8Array(request.sourceGlb))
       : ingestGlbJson(new Uint8Array(request.sourceGlb));
+    const optionsJson = JSON.stringify({
+      schemaVersion: 1,
+      experimentalAggressiveGeometryCleanup:
+        request.experimentalAggressiveGeometryCleanup ?? false,
+    });
+    const placeableAuthoringJson = request.target === "PLACEABLE"
+      ? inspectMeshyStaticPlaceableAuthoringV3(
+          new Uint8Array(request.sourceGlb),
+          optionsJson,
+        )
+      : undefined;
+    const placeableTexturesJson = request.target === "PLACEABLE"
+      ? inspectMeshyStaticPlaceableTexturesV1(
+          new Uint8Array(request.sourceGlb),
+          optionsJson,
+        )
+      : undefined;
     return {
       requestId: request.requestId,
       ok: true,
       type: "SOURCE_INSPECTED",
       ingestJson,
-      placeableAuthoringJson: request.target === "PLACEABLE"
-        ? inspectMeshyStaticPlaceableAuthoringV1(new Uint8Array(request.sourceGlb))
+      placeableAuthoringJson,
+      placeableTexturesJson,
+      placeableCollisionJson: placeableAuthoringJson && request.modelResref
+        ? resolveMeshyStaticPlaceableCollisionV1(
+            new Uint8Array(request.sourceGlb),
+            request.modelResref,
+            JSON.stringify((JSON.parse(placeableAuthoringJson) as { document: unknown }).document),
+            optionsJson,
+          )
         : undefined,
+    };
+  }
+  if (request.type === "RESOLVE_PLACEABLE_COLLISION") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "PLACEABLE_COLLISION_RESOLVED",
+      collisionJson: resolveMeshyStaticPlaceableCollisionV1(
+        new Uint8Array(request.sourceGlb),
+        request.modelResref,
+        request.authoringJson,
+        JSON.stringify({
+          schemaVersion: 1,
+          experimentalAggressiveGeometryCleanup:
+            request.experimentalAggressiveGeometryCleanup ?? false,
+        }),
+      ),
+    };
+  }
+  if (request.type === "RESOLVE_PLACEABLE_TEXTURES") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "PLACEABLE_TEXTURES_RESOLVED",
+      texturesJson: resolveMeshyStaticPlaceableTexturesV1(
+        new Uint8Array(request.sourceGlb),
+        request.baseTextureResref,
+        request.geometryAuthoringJson,
+        request.textureAuthoringJson,
+        new Uint8Array(request.texturePayloadBlob),
+        request.texturePayloadDescriptorsJson,
+        JSON.stringify({
+          schemaVersion: 1,
+          experimentalAggressiveGeometryCleanup:
+            request.experimentalAggressiveGeometryCleanup ?? false,
+        }),
+      ),
     };
   }
   if (request.type === "INSPECT_APPEARANCE") {
@@ -188,14 +310,86 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
     };
   }
   if (request.type === "BUILD_PLACEABLE_PACKAGE") {
-    const result = request.authoringJson
-      ? buildMeshyStaticPlaceablePackageV2(
+    const textureInputsPresent = request.textureAuthoringJson !== undefined
+      || request.texturePayloadBlob !== undefined
+      || request.texturePayloadDescriptorsJson !== undefined;
+    if (textureInputsPresent && (
+      request.authoringJson === undefined
+      || request.textureAuthoringJson === undefined
+      || request.texturePayloadBlob === undefined
+      || request.texturePayloadDescriptorsJson === undefined
+    )) {
+      throw new Error("PLACEABLE-TEXTURE-BUILD-INPUT-INCOMPLETE");
+    }
+    const materialInputsPresent = request.materialSeparationJson !== undefined
+      || request.modelTextureAuthoringJson !== undefined
+      || request.modelTexturePayloadBlob !== undefined
+      || request.modelTexturePayloadDescriptorsJson !== undefined;
+    if (materialInputsPresent && (
+      request.authoringJson === undefined
+      || request.materialSeparationJson === undefined
+      || request.modelTextureAuthoringJson === undefined
+      || request.modelTexturePayloadBlob === undefined
+      || request.modelTexturePayloadDescriptorsJson === undefined
+    )) {
+      throw new Error("PLACEABLE-MATERIAL-SEPARATION-BUILD-INPUT-INCOMPLETE");
+    }
+    if (materialInputsPresent && request.textureAuthoringJson) {
+      const legacyTextureDocument = JSON.parse(request.textureAuthoringJson) as {
+        bindings?: { mode?: string }[];
+      };
+      if (legacyTextureDocument.bindings?.some((binding) => binding.mode === "OVERRIDE")) {
+        throw new Error("PLACEABLE-MATERIAL-SEPARATION-LEGACY-TEXTURE-OVERRIDE-CONFLICT");
+      }
+    }
+    const buildOptionsJson = JSON.stringify({
+      schemaVersion: 1,
+      experimentalAggressiveGeometryCleanup:
+        request.experimentalAggressiveGeometryCleanup ?? false,
+    });
+    const result = request.materialSeparationJson !== undefined
+      && request.modelTextureAuthoringJson !== undefined
+      && request.modelTexturePayloadBlob !== undefined
+      && request.modelTexturePayloadDescriptorsJson !== undefined
+      && request.authoringJson !== undefined
+      ? buildMeshyStaticPlaceablePackageV6(
           new Uint8Array(request.sourceGlb),
           new Uint8Array(request.placeablesTwoDa),
           request.identityJson,
           request.placementJson,
           request.paletteId,
           request.authoringJson,
+          request.materialSeparationJson,
+          request.modelTextureAuthoringJson,
+          new Uint8Array(request.modelTexturePayloadBlob),
+          request.modelTexturePayloadDescriptorsJson,
+          buildOptionsJson,
+        )
+      : request.textureAuthoringJson !== undefined
+      && request.texturePayloadBlob !== undefined
+      && request.texturePayloadDescriptorsJson !== undefined
+      && request.authoringJson !== undefined
+      ? buildMeshyStaticPlaceablePackageV5(
+          new Uint8Array(request.sourceGlb),
+          new Uint8Array(request.placeablesTwoDa),
+          request.identityJson,
+          request.placementJson,
+          request.paletteId,
+          request.authoringJson,
+          request.textureAuthoringJson,
+          new Uint8Array(request.texturePayloadBlob),
+          request.texturePayloadDescriptorsJson,
+          buildOptionsJson,
+        )
+      : request.authoringJson
+      ? buildMeshyStaticPlaceablePackageV4(
+          new Uint8Array(request.sourceGlb),
+          new Uint8Array(request.placeablesTwoDa),
+          request.identityJson,
+          request.placementJson,
+          request.paletteId,
+          request.authoringJson,
+          buildOptionsJson,
         )
       : buildMeshyStaticPlaceablePackageV1(
           new Uint8Array(request.sourceGlb),
@@ -210,13 +404,42 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         hakFileName: string;
         modelResref: string;
       };
+      const texturePayloadBlob = exactBuffer(result.takeTexturePayloadBlob());
+      const textureDescriptors = JSON.parse(result.textureDescriptorsJson) as {
+        schemaVersion: number;
+        resref: string;
+        resourceType: number;
+        byteOffset: number;
+        byteLength: number;
+        sha256: string;
+      }[];
       const hak = exactBuffer(result.takeHakBytes());
       const model = exactBuffer(result.takeModelBytes());
+      const pwk = exactBuffer(result.takePwkBytes());
       const module = exactBuffer(result.takeProofModuleBytes());
       const reportBytes = encoder.encode(result.reportJson).buffer;
+      const textureArtifacts = textureDescriptors.map((descriptor) => {
+        const bytes = texturePayloadBlob.slice(
+          descriptor.byteOffset,
+          descriptor.byteOffset + descriptor.byteLength,
+        );
+        return artifact(
+          `placeable-texture-${descriptor.resref}-tga`,
+          "TEXTURE",
+          `${descriptor.resref}.tga`,
+          "image/x-tga",
+          bytes,
+        ).then((item) => {
+          if (item.sha256 !== descriptor.sha256) {
+            throw new Error(`PLACEABLE-TEXTURE-ARTIFACT-HASH-MISMATCH: ${descriptor.resref}`);
+          }
+          return item;
+        });
+      });
       const artifacts = await Promise.all([
         artifact("placeable-package-hak", "HAK", report.hakFileName, "application/octet-stream", hak),
         artifact("placeable-model-mdl", "MODEL", `${report.modelResref}.mdl`, "application/octet-stream", model),
+        artifact("placeable-walkmesh-pwk", "PWK", `${report.modelResref}.pwk`, "text/plain", pwk),
         artifact("placeable-proof-module", "MODULE", report.moduleFileName, "application/octet-stream", module),
         artifact(
           "placeable-report-json",
@@ -225,6 +448,39 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
           "application/json",
           reportBytes,
         ),
+        ...(request.authoringJson ? [artifact(
+          "placeable-authoring-v2-json",
+          "JSON_REPORT",
+          "placeable-authoring-v2.json",
+          "application/json",
+          encoder.encode(request.authoringJson).buffer,
+        )] : []),
+        ...(request.authoringJson && request.textureAuthoringJson ? [artifact(
+          "placeable-authoring-v3-json",
+          "JSON_REPORT",
+          "placeable-authoring-v3.json",
+          "application/json",
+          encoder.encode(JSON.stringify({
+            schemaVersion: 3,
+            geometry: JSON.parse(request.authoringJson),
+            textures: JSON.parse(request.textureAuthoringJson),
+          }, null, 2)).buffer,
+        )] : []),
+        ...(request.materialSeparationJson ? [artifact(
+          "model-material-separation-v1-json",
+          "JSON_REPORT",
+          "model-material-separation-v1.json",
+          "application/json",
+          encoder.encode(request.materialSeparationJson).buffer,
+        )] : []),
+        ...(request.modelTextureAuthoringJson ? [artifact(
+          "model-texture-authoring-v1-json",
+          "JSON_REPORT",
+          "model-texture-authoring-v1.json",
+          "application/json",
+          encoder.encode(request.modelTextureAuthoringJson).buffer,
+        )] : []),
+        ...textureArtifacts,
       ]);
       return {
         requestId: request.requestId,
@@ -239,10 +495,29 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
     }
   }
   if (request.type === "BUILD_TILE_PACKAGE") {
-    const result = buildMeshyStaticTilePackageV1(
-      new Uint8Array(request.sourceGlb),
-      request.optionsJson,
-    );
+    const materialInputsPresent = request.materialSeparationJson !== undefined
+      || request.modelTextureAuthoringJson !== undefined
+      || request.modelTexturePayloadBlob !== undefined
+      || request.modelTexturePayloadDescriptorsJson !== undefined;
+    if (materialInputsPresent && (
+      request.materialSeparationJson === undefined
+      || request.modelTextureAuthoringJson === undefined
+      || request.modelTexturePayloadBlob === undefined
+      || request.modelTexturePayloadDescriptorsJson === undefined
+    )) throw new Error("TILE-MATERIAL-SEPARATION-BUILD-INPUT-INCOMPLETE");
+    const result = materialInputsPresent
+      ? buildMeshyStaticTilePackageV2(
+          new Uint8Array(request.sourceGlb),
+          request.optionsJson,
+          request.materialSeparationJson!,
+          request.modelTextureAuthoringJson!,
+          new Uint8Array(request.modelTexturePayloadBlob!),
+          request.modelTexturePayloadDescriptorsJson!,
+        )
+      : buildMeshyStaticTilePackageV1(
+          new Uint8Array(request.sourceGlb),
+          request.optionsJson,
+        );
     try {
       const report = JSON.parse(result.reportJson) as {
         moduleFileName: string;
@@ -253,6 +528,27 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         textureResref: string;
         imageMapResref: string;
       };
+      const texturePayloadBlob = exactBuffer(result.takeTexturePayloadBlob());
+      const textureDescriptors = JSON.parse(result.textureDescriptorsJson) as Array<{
+        resref: string;
+        byteOffset: number;
+        byteLength: number;
+      }>;
+      const textureArtifacts = textureDescriptors.map((descriptor, index) => {
+        const start = descriptor.byteOffset;
+        const end = start + descriptor.byteLength;
+        if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)
+          || start < 0 || end < start || end > texturePayloadBlob.byteLength) {
+          throw new Error(`TILE-TEXTURE-DESCRIPTOR-RANGE-INVALID: textures[${index}]`);
+        }
+        return artifact(
+          index === 0 ? "tile-texture-tga" : `tile-texture-${index}`,
+          "TEXTURE",
+          `${descriptor.resref}.tga`,
+          "image/x-tga",
+          texturePayloadBlob.slice(start, end),
+        );
+      });
       const artifacts = await Promise.all([
         artifact(
           "tile-package-hak",
@@ -289,13 +585,7 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
           "text/plain",
           exactBuffer(result.takeSetBytes()),
         ),
-        artifact(
-          "tile-texture-tga",
-          "TEXTURE",
-          `${report.textureResref}.tga`,
-          "image/x-tga",
-          exactBuffer(result.takeTextureBytes()),
-        ),
+        ...textureArtifacts,
         artifact(
           "tile-image-map-tga",
           "TEXTURE",
@@ -359,11 +649,40 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
     const appearanceTwoDa = new Uint8Array(request.appearanceTwoDa);
     const buildOptionsJson = proceduralBuildOptionsJson(
       request.textureArtifactCleanup,
+      request.sourceForward,
       request.skinAccessoryStabilization,
     );
+    const materialInputs = [
+      request.materialSeparationJson,
+      request.modelTextureAuthoringJson,
+      request.modelTexturePayloadBlob,
+      request.modelTexturePayloadDescriptorsJson,
+    ];
+    const materialInputCount = materialInputs.filter((value) => value !== undefined).length;
+    if (materialInputCount !== 0 && materialInputCount !== materialInputs.length) {
+      throw new Error("MODEL-MATERIAL-INPUTS-INCOMPLETE: Creature requires all material and texture inputs together");
+    }
+    const materialInputsPresent = materialInputCount === materialInputs.length;
+    const modelTexturePayload = new Uint8Array(request.modelTexturePayloadBlob ?? new ArrayBuffer(0));
     const result = request.packageLane === "H1_SKINNED_FULL_42"
       || request.packageLane === "H1_SKINNED_FULL_42_EVENTS"
-      ? buildMeshyFullNativeH1PackageWithOptionsV4(
+      ? materialInputsPresent
+        ? buildMeshyFullNativeH1PackageWithMaterialsV5(
+          sourceGlb,
+          appearanceTwoDa,
+          request.identityJson,
+          buildOptionsJson,
+          request.packageLane === "H1_SKINNED_FULL_42_EVENTS"
+            ? request.eventAuthoringJson
+            : "",
+          request.demoModuleIdentityJson,
+          request.demoCreatureResref,
+          request.materialSeparationJson!,
+          request.modelTextureAuthoringJson!,
+          modelTexturePayload,
+          request.modelTexturePayloadDescriptorsJson!,
+        )
+        : buildMeshyFullNativeH1PackageWithOptionsV4(
           sourceGlb,
           appearanceTwoDa,
           request.identityJson,
@@ -374,7 +693,20 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
           request.demoModuleIdentityJson,
           request.demoCreatureResref,
         )
-      : buildMeshyProceduralHumanoidProductDemoWithOptionsV1(
+      : materialInputsPresent
+        ? buildMeshyProceduralHumanoidProductDemoWithMaterialsV2(
+          sourceGlb,
+          appearanceTwoDa,
+          request.identityJson,
+          buildOptionsJson,
+          request.demoModuleIdentityJson,
+          request.demoCreatureResref,
+          request.materialSeparationJson!,
+          request.modelTextureAuthoringJson!,
+          modelTexturePayload,
+          request.modelTexturePayloadDescriptorsJson!,
+        )
+        : buildMeshyProceduralHumanoidProductDemoWithOptionsV1(
           sourceGlb,
           appearanceTwoDa,
           request.identityJson,
@@ -411,7 +743,14 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
       }
       const hak = exactBuffer(result.takeHakBytes());
       const model = exactBuffer(result.takeModelBytes());
-      const texture = exactBuffer(result.takeTextureBytes());
+      const texturePayloadBlob = exactBuffer(result.takeTexturePayloadBlob());
+      const textureDescriptors = JSON.parse(result.textureDescriptorsJson) as {
+        resref: string;
+        resourceType: number;
+        byteOffset: number;
+        byteLength: number;
+        sha256: string;
+      }[];
       const report = encoder.encode(result.reportJson).buffer;
       const manifest = encoder.encode(result.manifestJson).buffer;
       const summaryBytes = encoder.encode(result.summaryJson).buffer;
@@ -424,10 +763,25 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         throw new Error("Procedural demo report has no exact module/HAK identity");
       }
       const demoReportBytes = encoder.encode(result.demoReportJson).buffer;
+      const textureArtifacts = textureDescriptors.map((descriptor, index) => {
+        const start = descriptor.byteOffset;
+        const end = start + descriptor.byteLength;
+        if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)
+          || start < 0 || end < start || end > texturePayloadBlob.byteLength) {
+          throw new Error(`MODEL-TEXTURE-DESCRIPTOR-RANGE-INVALID: textures[${index}]`);
+        }
+        return artifact(
+          index === 0 ? "texture-tga" : `texture-${index}`,
+          "TEXTURE",
+          `${descriptor.resref}.tga`,
+          "image/x-tga",
+          texturePayloadBlob.slice(start, end),
+        );
+      });
       const artifacts = await Promise.all([
         artifact("package-hak", "HAK", `${hakResref}.hak`, "application/octet-stream", hak),
         artifact("model-mdl", "MODEL", `${modelResref}.mdl`, "application/octet-stream", model),
-        artifact("texture-tga", "TEXTURE", `${textureResref}.tga`, "image/x-tga", texture),
+        ...textureArtifacts,
         artifact(
           "proof-module",
           "MODULE",
@@ -445,6 +799,22 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
           "application/json",
           demoReportBytes,
         ),
+        ...(materialInputsPresent ? [
+          artifact(
+            "material-separation-json",
+            "JSON_REPORT",
+            "material-separation.json",
+            "application/json",
+            encoder.encode(request.materialSeparationJson!).buffer,
+          ),
+          artifact(
+            "model-texture-authoring-json",
+            "JSON_REPORT",
+            "model-texture-authoring.json",
+            "application/json",
+            encoder.encode(request.modelTextureAuthoringJson!).buffer,
+          ),
+        ] : []),
       ]);
       return {
         requestId: request.requestId,
@@ -501,6 +871,7 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
           request.identityJson,
           proceduralBuildOptionsJson(
             request.textureArtifactCleanup,
+            request.sourceForward,
             request.skinAccessoryStabilization,
           ),
         )
@@ -510,6 +881,7 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
           request.identityJson,
           proceduralBuildOptionsJson(
             request.textureArtifactCleanup,
+            request.sourceForward,
             request.skinAccessoryStabilization,
           ),
         );

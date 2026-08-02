@@ -8,12 +8,139 @@ pub const MINIMAL_PNG: [u8; 68] = [
     0xae, 0x42, 0x60, 0x82,
 ];
 
+#[allow(dead_code)]
+const OWNED_RED_RGBA_PNG: [u8; 70] = [
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+    0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x38, 0xe3, 0xa2, 0xf4,
+    0x1f, 0x00, 0x05, 0x44, 0x02, 0x32, 0x4a, 0x09, 0x09, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45,
+    0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+];
+
+#[allow(dead_code)]
+pub const OWNED_BLUE_RGBA_PNG: [u8; 70] = [
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+    0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x50, 0x4a, 0x3b, 0xf3,
+    0x1f, 0x00, 0x04, 0x56, 0x02, 0x54, 0x36, 0x99, 0x3c, 0x7d, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45,
+    0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+];
+
 pub fn minimal_indexed_triangle() -> Vec<u8> {
     geometry_glb(
         &[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
         Some(&[[0.0, 0.0, 1.0]; 3]),
         Some(&[[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]),
         Some(&[0, 1, 2]),
+        4,
+        default_nodes(),
+    )
+}
+
+pub fn one_primitive_two_disconnected_triangles() -> Vec<u8> {
+    geometry_glb(
+        &[
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [4.0, 0.0, 0.0],
+            [5.0, 0.0, 0.0],
+            [4.0, 1.0, 0.0],
+        ],
+        Some(&[[0.0, 0.0, 1.0]; 6]),
+        Some(&[
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [0.0, 1.0],
+        ]),
+        Some(&[0, 1, 2, 3, 4, 5]),
+        4,
+        default_nodes(),
+    )
+}
+
+pub fn one_primitive_two_disconnected_triangles_with_embedded_texture() -> Vec<u8> {
+    let (mut root, mut bin) = split_glb(one_primitive_two_disconnected_triangles());
+    let position_accessor = root["meshes"][0]["primitives"][0]["attributes"]["POSITION"]
+        .as_u64()
+        .expect("position accessor") as usize;
+    let position_view = root["accessors"][position_accessor]["bufferView"]
+        .as_u64()
+        .expect("position buffer view") as usize;
+    let view_offset = root["bufferViews"][position_view]["byteOffset"]
+        .as_u64()
+        .unwrap_or(0) as usize;
+    let accessor_offset = root["accessors"][position_accessor]["byteOffset"]
+        .as_u64()
+        .unwrap_or(0) as usize;
+    let third_vertex_z = view_offset + accessor_offset + (2 * 3 + 2) * size_of::<f32>();
+    bin[third_vertex_z..third_vertex_z + size_of::<f32>()].copy_from_slice(&1.0_f32.to_le_bytes());
+    root["accessors"][position_accessor]["max"] = json!([5.0, 1.0, 1.0]);
+    align4(&mut bin);
+    let image_offset = bin.len();
+    bin.extend_from_slice(&OWNED_RED_RGBA_PNG);
+    let image_view_index = root["bufferViews"]
+        .as_array()
+        .expect("synthetic buffer views")
+        .len();
+    root["bufferViews"]
+        .as_array_mut()
+        .expect("synthetic buffer views")
+        .push(view(image_offset, OWNED_RED_RGBA_PNG.len()));
+    root["buffers"][0]["byteLength"] = json!(bin.len());
+    root["images"] = json!([{
+        "name": "embedded-one-pixel",
+        "bufferView": image_view_index,
+        "mimeType": "image/png"
+    }]);
+    root["textures"] = json!([{
+        "name": "base-color",
+        "source": 0
+    }]);
+    root["materials"][0]["pbrMetallicRoughness"]["baseColorTexture"] =
+        json!({"index": 0, "texCoord": 0});
+    root["materials"][0]["alphaMode"] = json!("OPAQUE");
+    make_glb(root, bin)
+}
+
+pub fn one_primitive_four_disconnected_triangles() -> Vec<u8> {
+    let positions = [
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [4.0, 0.0, 0.0],
+        [5.0, 0.0, 0.0],
+        [4.0, 1.0, 0.0],
+        [8.0, 0.0, 0.0],
+        [9.0, 0.0, 0.0],
+        [8.0, 1.0, 0.0],
+        [12.0, 0.0, 0.0],
+        [13.0, 0.0, 0.0],
+        [12.0, 1.0, 0.0],
+    ];
+    let normals = [[0.0, 0.0, 1.0]; 12];
+    let uv0 = [
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [0.0, 1.0],
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [0.0, 1.0],
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [0.0, 1.0],
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [0.0, 1.0],
+    ];
+    geometry_glb(
+        &positions,
+        Some(&normals),
+        Some(&uv0),
+        Some(&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
         4,
         default_nodes(),
     )
@@ -149,6 +276,78 @@ pub fn material_image_two_primitives() -> Vec<u8> {
             "doubleSided": false
         }
     ]);
+    make_glb(root, bin)
+}
+
+#[allow(dead_code)]
+pub fn material_image_two_distinct_base_colors() -> Vec<u8> {
+    let (mut root, mut bin) = split_glb(material_image_two_primitives());
+    let position_accessor = root["meshes"][0]["primitives"][0]["attributes"]["POSITION"]
+        .as_u64()
+        .expect("position accessor") as usize;
+    let position_view = root["accessors"][position_accessor]["bufferView"]
+        .as_u64()
+        .expect("position buffer view") as usize;
+    let view_offset = root["bufferViews"][position_view]["byteOffset"]
+        .as_u64()
+        .unwrap_or(0) as usize;
+    let accessor_offset = root["accessors"][position_accessor]["byteOffset"]
+        .as_u64()
+        .unwrap_or(0) as usize;
+    let third_vertex_z = view_offset + accessor_offset + (2 * 3 + 2) * size_of::<f32>();
+    bin[third_vertex_z..third_vertex_z + size_of::<f32>()].copy_from_slice(&1.0_f32.to_le_bytes());
+    root["accessors"][position_accessor]["max"] = json!([1.0, 1.0, 1.0]);
+    align4(&mut bin);
+    let first_image_offset = bin.len();
+    bin.extend_from_slice(&OWNED_RED_RGBA_PNG);
+    let first_image_view_index = root["bufferViews"]
+        .as_array()
+        .expect("synthetic buffer views")
+        .len();
+    root["bufferViews"]
+        .as_array_mut()
+        .expect("synthetic buffer views")
+        .push(view(first_image_offset, OWNED_RED_RGBA_PNG.len()));
+
+    align4(&mut bin);
+    let second_image_offset = bin.len();
+    bin.extend_from_slice(&OWNED_BLUE_RGBA_PNG);
+    let second_image_view_index = root["bufferViews"]
+        .as_array()
+        .expect("synthetic buffer views")
+        .len();
+    root["bufferViews"]
+        .as_array_mut()
+        .expect("synthetic buffer views")
+        .push(view(second_image_offset, OWNED_BLUE_RGBA_PNG.len()));
+    root["buffers"][0]["byteLength"] = json!(bin.len());
+
+    root["images"] = json!([
+        {
+            "name": "embedded-red-pixel",
+            "bufferView": first_image_view_index,
+            "mimeType": "image/png"
+        },
+        {
+            "name": "embedded-blue-pixel",
+            "bufferView": second_image_view_index,
+            "mimeType": "image/png"
+        }
+    ]);
+    let second_texture_index = root["textures"]
+        .as_array()
+        .expect("synthetic textures")
+        .len();
+    root["textures"]
+        .as_array_mut()
+        .expect("synthetic textures")
+        .push(json!({
+            "name": "base-color-secondary",
+            "sampler": 0,
+            "source": 1
+        }));
+    root["materials"][1]["pbrMetallicRoughness"]["baseColorTexture"]["index"] =
+        json!(second_texture_index);
     make_glb(root, bin)
 }
 
@@ -460,11 +659,15 @@ pub fn nonfinite_node_transform() -> Vec<u8> {
 }
 
 pub fn skin_animation_without_inverse_bind_matrices() -> Vec<u8> {
-    skin_animation(false)
+    skin_animation(false, false)
 }
 
 pub fn skin_animation_with_inverse_bind_matrices() -> Vec<u8> {
-    skin_animation(true)
+    skin_animation(true, false)
+}
+
+pub fn skin_animation_two_disconnected_triangles() -> Vec<u8> {
+    skin_animation(true, true)
 }
 
 pub fn skin_animation_with_extra_inverse_bind_matrix() -> Vec<u8> {
@@ -506,14 +709,21 @@ pub fn secondary_skin_influence_set() -> Vec<u8> {
     })
 }
 
-fn skin_animation(include_inverse_bind_matrices: bool) -> Vec<u8> {
-    let (mut root, mut bin) = split_glb(minimal_indexed_triangle());
+fn skin_animation(include_inverse_bind_matrices: bool, disconnected: bool) -> Vec<u8> {
+    let (mut root, mut bin) = split_glb(if disconnected {
+        one_primitive_two_disconnected_triangles()
+    } else {
+        minimal_indexed_triangle()
+    });
 
-    let joints = [[0_u8, 1, 0, 0], [1, 0, 0, 0], [0, 1, 0, 0]];
+    let mut joints = vec![[0_u8, 1, 0, 0], [1, 0, 0, 0], [0, 1, 0, 0]];
+    if disconnected {
+        joints.extend([[1, 0, 0, 0], [0, 1, 0, 0], [1, 0, 0, 0]]);
+    }
     align4(&mut bin);
     let joints_offset = bin.len();
-    for row in joints {
-        bin.extend_from_slice(&row);
+    for row in &joints {
+        bin.extend_from_slice(row);
     }
     let joints_length = bin.len() - joints_offset;
     let joints_view = push_view(&mut root, joints_offset, joints_length);
@@ -522,16 +732,23 @@ fn skin_animation(include_inverse_bind_matrices: bool) -> Vec<u8> {
         json!({
             "bufferView": joints_view,
             "componentType": 5121,
-            "count": 3,
+            "count": joints.len(),
             "type": "VEC4"
         }),
     );
 
-    let weights = [
+    let mut weights = vec![
         [0.75_f32, 0.25, 0.0, 0.0],
         [0.0, 1.0, 0.0, 0.0],
         [0.4, 0.6, 0.0, 0.0],
     ];
+    if disconnected {
+        weights.extend([
+            [0.0, 1.0, 0.0, 0.0],
+            [0.4, 0.6, 0.0, 0.0],
+            [0.75, 0.25, 0.0, 0.0],
+        ]);
+    }
     let weights_range = append_f32x4(&mut bin, &weights);
     let weights_view = push_view(&mut root, weights_range.0, weights_range.1);
     let weights_accessor = push_accessor(
@@ -539,7 +756,7 @@ fn skin_animation(include_inverse_bind_matrices: bool) -> Vec<u8> {
         json!({
             "bufferView": weights_view,
             "componentType": 5126,
-            "count": 3,
+            "count": joints.len(),
             "type": "VEC4"
         }),
     );

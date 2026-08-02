@@ -222,6 +222,222 @@ afterEach(async () => {
 });
 
 describe("local file to canonical web-WASM Worker integration", () => {
+  it("inspects and resolves Material Separation in the Worker without returning a triangle map", async () => {
+    const client = new StudioWorkerClient();
+    clients.push(client);
+    const source = await fetchBytes(proceduralHumanoidSourceUrl);
+    const sourceStateId = `source:${await sha256(source.slice(0))}`;
+    const inspectionResponse = await client.request({
+      requestId: "material-components",
+      type: "INSPECT_MODEL_COMPONENTS",
+      sourceGlb: source,
+      target: "CREATURE",
+      sourceStateId,
+    }, [source]);
+    expect(source.byteLength).toBe(0);
+    expect(inspectionResponse).toMatchObject({
+      ok: true,
+      type: "MODEL_COMPONENTS_INSPECTED",
+      sourceStateId,
+    });
+    if (!inspectionResponse.ok || inspectionResponse.type !== "MODEL_COMPONENTS_INSPECTED") {
+      throw new Error("Material component inspection failed");
+    }
+    const inspection = JSON.parse(inspectionResponse.inspectionJson) as {
+      capabilities: { target: string; maxMaterialSlots: number };
+      inventory: { sourceSha256: string; components: unknown[] };
+      document: unknown;
+    };
+    expect(inspection.capabilities).toMatchObject({ target: "CREATURE", maxMaterialSlots: 256 });
+    expect(inspection.inventory.components.length).toBeGreaterThan(0);
+    expect(inspectionResponse.inspectionJson).not.toContain("triangleMaterialMap");
+
+    const resolveSource = await fetchBytes(proceduralHumanoidSourceUrl);
+    const recipeStateId = "recipe:identity";
+    const resolutionResponse = await client.request({
+      requestId: "material-resolution",
+      type: "RESOLVE_MODEL_MATERIALS",
+      sourceGlb: resolveSource,
+      target: "CREATURE",
+      documentJson: JSON.stringify(inspection.document),
+      sourceStateId,
+      recipeStateId,
+    }, [resolveSource]);
+    expect(resolveSource.byteLength).toBe(0);
+    expect(resolutionResponse).toMatchObject({
+      ok: true,
+      type: "MODEL_MATERIALS_RESOLVED",
+      sourceStateId,
+      recipeStateId,
+    });
+    if (!resolutionResponse.ok || resolutionResponse.type !== "MODEL_MATERIALS_RESOLVED") {
+      throw new Error("Material resolution failed");
+    }
+    const resolution = JSON.parse(resolutionResponse.resolutionJson) as {
+      report: { sourceSha256: string; sourceTriangleCount: number; outputTriangleCount: number };
+    };
+    expect(resolution.report.sourceSha256).toBe(inspection.inventory.sourceSha256);
+    expect(resolution.report.outputTriangleCount).toBe(resolution.report.sourceTriangleCount);
+    expect(resolutionResponse.resolutionJson).not.toContain("triangleMaterialMap");
+  });
+
+  it("materializes two authored Creature materials through the real Worker and WASM", async () => {
+    const client = new StudioWorkerClient();
+    clients.push(client);
+    const inspectionSource = await fetchBytes(proceduralHumanoidSourceUrl);
+    const inspected = await client.request({
+      requestId: "creature-material-inspection",
+      type: "INSPECT_MODEL_COMPONENTS",
+      sourceGlb: inspectionSource,
+      target: "CREATURE",
+      sourceStateId: "creature-material-source",
+    }, [inspectionSource]);
+    if (!inspected.ok || inspected.type !== "MODEL_COMPONENTS_INSPECTED") {
+      throw new Error("Creature material inspection failed");
+    }
+    const bootstrap = JSON.parse(inspected.inspectionJson) as {
+      inventory: { components: Array<{ key: unknown }> };
+      document: { schemaVersion: 1; sourceSha256: string };
+    };
+    expect(bootstrap.inventory.components.length).toBeGreaterThan(1);
+    const materialSeparation = {
+      ...bootstrap.document,
+      materials: [
+        {
+          authoredMaterialId: "material:hull",
+          displayName: "Hull",
+          previewColor: "#7a4f2a",
+          sourceFallbackMaterialId: null,
+          sourceFallbackImageSha256: null,
+        },
+        {
+          authoredMaterialId: "material:trim",
+          displayName: "Trim",
+          previewColor: "#5d7182",
+          sourceFallbackMaterialId: null,
+          sourceFallbackImageSha256: null,
+        },
+      ],
+      assignments: bootstrap.inventory.components.map((component, index) => ({
+        component: component.key,
+        authoredMaterialId: index % 2 === 0 ? "material:hull" : "material:trim",
+      })),
+    };
+    const resolveSource = await fetchBytes(proceduralHumanoidSourceUrl);
+    const resolved = await client.request({
+      requestId: "creature-material-resolution",
+      type: "RESOLVE_MODEL_MATERIALS",
+      sourceGlb: resolveSource,
+      target: "CREATURE",
+      documentJson: JSON.stringify(materialSeparation),
+      sourceStateId: "creature-material-source",
+      recipeStateId: "creature-material-recipe",
+    }, [resolveSource]);
+    if (!resolved.ok || resolved.type !== "MODEL_MATERIALS_RESOLVED") {
+      throw new Error("Creature material resolution failed");
+    }
+    const materialResolution = JSON.parse(resolved.resolutionJson) as {
+      report: {
+        materialSlots: unknown[];
+        predictedTextureCount: number;
+        sourceTriangleCount: number;
+        outputTriangleCount: number;
+      };
+      textureAuthoring: {
+        bindings: Array<Record<string, unknown>>;
+      };
+    };
+    expect(materialResolution.report.materialSlots).toHaveLength(2);
+    expect(materialResolution.report.predictedTextureCount).toBe(2);
+    expect(materialResolution.report.outputTriangleCount).toBe(materialResolution.report.sourceTriangleCount);
+
+    const textureChunks: ArrayBuffer[] = [];
+    for (const color of ["rgb(122, 79, 42)", "rgb(93, 113, 130)"]) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 2;
+      canvas.height = 2;
+      const context = canvas.getContext("2d")!;
+      context.fillStyle = color;
+      context.fillRect(0, 0, 2, 2);
+      const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(
+        (value) => value ? resolve(value) : reject(new Error("PNG encoding failed")),
+        "image/png",
+      ));
+      textureChunks.push(await blob.arrayBuffer());
+    }
+    const descriptors: Array<Record<string, unknown>> = [];
+    let payloadLength = 0;
+    for (let index = 0; index < textureChunks.length; index += 1) {
+      const bytes = textureChunks[index];
+      const digest = await sha256(bytes);
+      const assetId = `creature-material-${index}`;
+      materialResolution.textureAuthoring.bindings[index] = {
+        ...materialResolution.textureAuthoring.bindings[index],
+        mode: "OVERRIDE",
+        overrideAssetId: assetId,
+        overrideSha256: digest,
+        overrideMimeType: "image/png",
+        overrideByteLength: bytes.byteLength,
+      };
+      descriptors.push({
+        schemaVersion: 1,
+        assetId,
+        sha256: digest,
+        mimeType: "image/png",
+        byteOffset: payloadLength,
+        byteLength: bytes.byteLength,
+      });
+      payloadLength += bytes.byteLength;
+    }
+    const texturePayload = new Uint8Array(payloadLength);
+    let textureCursor = 0;
+    for (const chunk of textureChunks) {
+      texturePayload.set(new Uint8Array(chunk), textureCursor);
+      textureCursor += chunk.byteLength;
+    }
+    const sourceGlb = await fetchBytes(proceduralHumanoidSourceUrl);
+    const appearanceTwoDa = await fetchBytes(appearanceUrl);
+    const transferableTexturePayload = texturePayload.buffer;
+    const response = await client.request({
+      requestId: "creature-material-build",
+      type: "BUILD_MODEL_PACKAGE",
+      sourceGlb,
+      appearanceTwoDa,
+      packageLane: "SKINNED_PROCEDURAL_HUMANOID_42",
+      identityJson: JSON.stringify({
+        modelResref: "mscrmdl",
+        textureResref: "mscrtex",
+        hakResref: "mscrhak",
+        appearanceLabel: "M2A_MATERIAL_CREATURE",
+      }),
+      demoModuleIdentityJson: JSON.stringify({
+        moduleResref: "mscrmod",
+        areaResref: "mscrarea",
+        hakResref: "mscrhak",
+      }),
+      demoCreatureResref: "mscrutc",
+      textureArtifactCleanup: false,
+      sourceForward: "NEGATIVE_X",
+      skinAccessoryStabilization: { mode: "AUTO" },
+      materialSeparationJson: JSON.stringify(materialSeparation),
+      modelTextureAuthoringJson: JSON.stringify(materialResolution.textureAuthoring),
+      modelTexturePayloadBlob: transferableTexturePayload,
+      modelTexturePayloadDescriptorsJson: JSON.stringify(descriptors),
+    }, [sourceGlb, appearanceTwoDa, transferableTexturePayload]);
+    if (!response.ok || response.type !== "MODEL_PACKAGE_BUILT") {
+      throw new Error("Creature material build failed");
+    }
+    const report = JSON.parse(response.reportJson) as {
+      materialSeparation: { materialSlots: unknown[]; sourceTriangleCount: number; outputTriangleCount: number };
+      modelTextureAuthoring: { resources: unknown[] };
+    };
+    expect(report.materialSeparation.materialSlots).toHaveLength(2);
+    expect(report.materialSeparation.outputTriangleCount).toBe(report.materialSeparation.sourceTriangleCount);
+    expect(report.modelTextureAuthoring.resources).toHaveLength(2);
+    expect(response.artifacts.filter((artifact) => artifact.kind === "TEXTURE")).toHaveLength(2);
+    expect(response.artifacts.some((artifact) => artifact.fileName === "material-separation.json")).toBe(true);
+  }, 60_000);
+
   it("materializes the owned single-idle H2 through the procedural 42-state Worker lane", async () => {
     const source = await fixtureFile(
       proceduralHumanoidSourceUrl,
@@ -245,6 +461,7 @@ describe("local file to canonical web-WASM Worker integration", () => {
         appearanceTwoDa,
         packageLane: "SKINNED_PROCEDURAL_HUMANOID_42",
         textureArtifactCleanup: false,
+        sourceForward: "NEGATIVE_X",
         identityJson: JSON.stringify({
           modelResref: "m2a_stcrmdl2",
           textureResref: "m2a_stcrtex2",
@@ -287,6 +504,10 @@ describe("local file to canonical web-WASM Worker integration", () => {
         outputSegmentDeformation?: string;
       };
       texture?: { width?: number; height?: number };
+      conversion?: {
+        policies?: { assetForwardMapping?: string };
+        transform?: { determinant?: number };
+      };
       animationCompleteness?: {
         schemaVersion?: number;
         profile?: string;
@@ -311,12 +532,19 @@ describe("local file to canonical web-WASM Worker integration", () => {
       animationEventTimingPolicy?: string;
       skinAnimationConformance?: { requiredClipCount?: number; complete?: boolean };
     };
+    expect(report.conversion?.policies?.assetForwardMapping)
+      .toBe("GLTF_NEGATIVE_X_TO_AURORA_NEGATIVE_Y");
+    expect(report.conversion?.transform?.determinant).toBe(1);
     const summary = JSON.parse(response.summaryJson) as {
       status?: string;
       inputGlb?: { byteLength?: number };
+      creatureSourceForward?: string;
+      creatureForwardMapping?: string;
     };
     const manifest = JSON.parse(response.manifestJson) as {
       packageManifest?: { resources?: unknown[] };
+      creatureSourceForward?: string;
+      creatureForwardMapping?: string;
     };
     const readback = JSON.parse(response.readbackJson) as {
       nodeTree?: { roots?: Array<{ name?: string; controllers?: unknown[] }> };
@@ -360,6 +588,14 @@ describe("local file to canonical web-WASM Worker integration", () => {
     });
     expect(summary.status).toBe("PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED");
     expect(summary.inputGlb?.byteLength).toBe(source.size);
+    expect(summary).toMatchObject({
+      creatureSourceForward: "NEGATIVE_X",
+      creatureForwardMapping: "GLTF_NEGATIVE_X_TO_AURORA_NEGATIVE_Y",
+    });
+    expect(manifest).toMatchObject({
+      creatureSourceForward: "NEGATIVE_X",
+      creatureForwardMapping: "GLTF_NEGATIVE_X_TO_AURORA_NEGATIVE_Y",
+    });
     expect(manifest.packageManifest?.resources).toHaveLength(3);
     expect(readback.nodeTree?.roots).toHaveLength(1);
     expect(readback.nodeTree?.roots?.[0]).toMatchObject({
@@ -463,6 +699,7 @@ describe("local file to canonical web-WASM Worker integration", () => {
           appearanceTwoDa,
           packageLane: "SKINNED_PROCEDURAL_HUMANOID_P100K_EXPERIMENT",
           textureArtifactCleanup: false,
+          sourceForward: "POSITIVE_Z",
           identityJson: JSON.stringify({
             modelResref: "tlcveil100_m1",
             textureResref: "tlcveil100_t1",
@@ -561,6 +798,7 @@ describe("local file to canonical web-WASM Worker integration", () => {
           appearanceTwoDa,
           packageLane: "SKINNED_PROCEDURAL_HUMANOID_P300K_EXPERIMENT",
           textureArtifactCleanup: true,
+          sourceForward: "POSITIVE_Z",
           identityJson: JSON.stringify({
             modelResref: "m2p3jm0eeb135c",
             textureResref: "m2p3jt0eeb135c",
@@ -689,6 +927,7 @@ describe("local file to canonical web-WASM Worker integration", () => {
         demoModuleIdentityJson,
         demoCreatureResref: "m2a_evtutc_v2",
         textureArtifactCleanup: false,
+        sourceForward: "POSITIVE_Z",
       },
       [sourceGlb, appearanceTwoDa],
     );
@@ -752,6 +991,7 @@ describe("local file to canonical web-WASM Worker integration", () => {
         demoModuleIdentityJson,
         demoCreatureResref: "m2a_evtutc_v2",
         textureArtifactCleanup: false,
+        sourceForward: "POSITIVE_Z",
       },
       [malformedSource, malformedAppearance],
     )).rejects.toThrow("M6-ANIMATION-EVENT-AUTHORING-JSON");
@@ -766,6 +1006,7 @@ describe("local file to canonical web-WASM Worker integration", () => {
       type: "INSPECT_SOURCE",
       sourceGlb: inspectionSource,
       target: "PLACEABLE",
+      modelResref: "m2a_s1_plc_ped",
     }, [inspectionSource]);
     expect(inspectionResponse).toMatchObject({ ok: true, type: "SOURCE_INSPECTED" });
     if (!inspectionResponse.ok || inspectionResponse.type !== "SOURCE_INSPECTED") {
@@ -779,10 +1020,53 @@ describe("local file to canonical web-WASM Worker integration", () => {
             scale: [number, number, number];
           };
         }>;
+        collision: {
+          mode: "AUTO_RECTANGLE" | "CUSTOM_POLYGON";
+          vertices: [number, number][];
+        };
       };
     };
+    const textureBootstrap = JSON.parse(inspectionResponse.placeableTexturesJson!) as {
+      document: {
+        bindings: Array<{
+          mode: "SOURCE" | "OVERRIDE";
+          overrideAssetId: string | null;
+          overrideSha256: string | null;
+          overrideMimeType: string | null;
+          overrideByteLength: number | null;
+        }>;
+      };
+    };
+    expect(inspectionResponse.placeableCollisionJson).toBeDefined();
     authoring.document.elements[0].transform.translation = [0.25, 0, 0];
     authoring.document.elements[0].transform.scale = [1.2, 1.2, 1.2];
+    authoring.document.collision.mode = "CUSTOM_POLYGON";
+    authoring.document.collision.vertices = [
+      [-0.5, -0.5],
+      [0.5, -0.5],
+      [0.5, 0.5],
+      [0, 0],
+      [-0.5, 0.5],
+    ];
+
+    const resolveSource = asStaticPlaceable(await fetchBytes(sourceUrl));
+    const resolved = await client.request({
+      requestId: "placeable-collision-resolve",
+      type: "RESOLVE_PLACEABLE_COLLISION",
+      sourceGlb: resolveSource,
+      modelResref: "m2a_s1_plc_ped",
+      authoringJson: JSON.stringify(authoring.document),
+      experimentalAggressiveGeometryCleanup: false,
+    }, [resolveSource]);
+    expect(resolved).toMatchObject({ ok: true, type: "PLACEABLE_COLLISION_RESOLVED" });
+    if (!resolved.ok || resolved.type !== "PLACEABLE_COLLISION_RESOLVED") {
+      throw new Error("real Worker did not resolve custom placeable collision");
+    }
+    expect(JSON.parse(resolved.collisionJson)).toMatchObject({
+      mode: "CUSTOM_POLYGON",
+      surfaceId: 7,
+      triangles: expect.arrayContaining([[1, 2, 3]]),
+    });
 
     const sourceGlb = asStaticPlaceable(await fetchBytes(sourceUrl));
     const placeablesTwoDa = await fetchBytes(placeablesUrl);
@@ -800,6 +1084,47 @@ describe("local file to canonical web-WASM Worker integration", () => {
       objectTag: "m2a_s1_ritual_pedestal",
       displayName: "Meshy Ritual Pedestal",
     };
+    const overrideCanvas = document.createElement("canvas");
+    overrideCanvas.width = 2;
+    overrideCanvas.height = 2;
+    const overrideContext = overrideCanvas.getContext("2d")!;
+    overrideContext.fillStyle = "rgb(24, 96, 180)";
+    overrideContext.fillRect(0, 0, 2, 2);
+    const overrideBlob = await new Promise<Blob>((resolve, reject) => overrideCanvas.toBlob(
+      (blob) => blob ? resolve(blob) : reject(new Error("PNG encoding failed")),
+      "image/png",
+    ));
+    const overrideBytes = await overrideBlob.arrayBuffer();
+    const overrideSha256 = await sha256(overrideBytes);
+    textureBootstrap.document.bindings[0] = {
+      ...textureBootstrap.document.bindings[0],
+      mode: "OVERRIDE",
+      overrideAssetId: "worker-blue-override",
+      overrideSha256,
+      overrideMimeType: "image/png",
+      overrideByteLength: overrideBytes.byteLength,
+    };
+    const textureDescriptorsJson = JSON.stringify([{
+      schemaVersion: 1,
+      assetId: "worker-blue-override",
+      sha256: overrideSha256,
+      mimeType: "image/png",
+      byteOffset: 0,
+      byteLength: overrideBytes.byteLength,
+    }]);
+    const textureResolveSource = asStaticPlaceable(await fetchBytes(sourceUrl));
+    const textureResolvePayload = overrideBytes.slice(0);
+    const textureResolved = await client.request({
+      requestId: "placeable-texture-resolve",
+      type: "RESOLVE_PLACEABLE_TEXTURES",
+      sourceGlb: textureResolveSource,
+      baseTextureResref: identity.textureResref,
+      geometryAuthoringJson: JSON.stringify(authoring.document),
+      textureAuthoringJson: JSON.stringify(textureBootstrap.document),
+      texturePayloadBlob: textureResolvePayload,
+      texturePayloadDescriptorsJson: textureDescriptorsJson,
+    }, [textureResolveSource, textureResolvePayload]);
+    expect(textureResolved).toMatchObject({ ok: true, type: "PLACEABLE_TEXTURES_RESOLVED" });
     const response = await client.request({
       requestId: "placeable-build",
       type: "BUILD_PLACEABLE_PACKAGE",
@@ -809,7 +1134,11 @@ describe("local file to canonical web-WASM Worker integration", () => {
       placementJson: JSON.stringify({ x: 10, y: 14.5, z: 0, bearing: 0 }),
       paletteId: 7,
       authoringJson: JSON.stringify(authoring.document),
-    }, [sourceGlb, placeablesTwoDa]);
+      textureAuthoringJson: JSON.stringify(textureBootstrap.document),
+      texturePayloadBlob: overrideBytes,
+      texturePayloadDescriptorsJson: textureDescriptorsJson,
+      experimentalAggressiveGeometryCleanup: false,
+    }, [sourceGlb, placeablesTwoDa, overrideBytes]);
 
     expect(sourceGlb.byteLength).toBe(0);
     expect(placeablesTwoDa.byteLength).toBe(0);
@@ -818,6 +1147,7 @@ describe("local file to canonical web-WASM Worker integration", () => {
       throw new Error("real Worker did not return a placeable package");
     }
     const result = projectPlaceableResult(response.reportJson, response.artifacts);
+    expect(JSON.parse(response.reportJson).experimentalAggressiveGeometryCleanup).toBe(false);
     expect(result).toMatchObject({
       status: "OFFLINE_ADMISSION_PASSED",
       profile: "STATIC_PLACEABLE",
@@ -826,24 +1156,46 @@ describe("local file to canonical web-WASM Worker integration", () => {
       blueprintResref: "m2a_s1_plc_utp",
       modelVisibility: "not_tested",
       proofCompleteness: "missing",
+      componentStatuses: expect.objectContaining({ pwk: "passed" }),
+      collision: expect.objectContaining({
+        mode: "CUSTOM_POLYGON",
+        surfaceId: 7,
+      }),
       authoring: expect.objectContaining({
         renderableElementCount: 1,
         collisionElementCount: 1,
         shadowElementCount: 1,
       }),
+      textureAuthoring: expect.objectContaining({
+        alphaPolicy: "OPAQUE_ONLY",
+        bindings: [expect.objectContaining({ mode: "OVERRIDE" })],
+      }),
     });
     expect(result.resources).toEqual(expect.arrayContaining([
       expect.objectContaining({ role: "MODEL", resourceType: 2002 }),
+      expect.objectContaining({ role: "PLACEABLE_WALKMESH", resourceType: 2053 }),
       expect.objectContaining({ role: "PLACEABLES_2DA", resourceType: 2017 }),
       expect.objectContaining({ role: "PLACEABLE_BLUEPRINT", resourceType: 2044 }),
       expect.objectContaining({ role: "PLACEABLE_PALETTE", resourceType: 2030 }),
     ]));
     const hak = response.artifacts.find(({ kind }) => kind === "HAK");
     const module = response.artifacts.find(({ kind }) => kind === "MODULE");
+    const pwk = response.artifacts.find(({ kind }) => kind === "PWK");
+    const texture = response.artifacts.find(({ kind }) => kind === "TEXTURE");
     expect(new TextDecoder().decode(hak!.bytes.slice(0, 8))).toBe("HAK V1.0");
     expect(new TextDecoder().decode(module!.bytes.slice(0, 8))).toBe("MOD V1.0");
     expect(hak!.sha256).toBe(await sha256(hak!.bytes));
     expect(module!.sha256).toBe(await sha256(module!.bytes));
+    expect(new TextDecoder().decode(pwk!.bytes)).toContain("  faces 3");
+    expect(pwk!.sha256).toBe(await sha256(pwk!.bytes));
+    expect(texture?.fileName).toBe("m2a_s1_plc_tex.tga");
+    expect(texture!.sha256).toBe(await sha256(texture!.bytes));
+    await expectExactJsonArtifact(
+      response.artifacts,
+      "placeable-authoring-v2.json",
+      JSON.stringify(authoring.document),
+    );
+    expect(response.artifacts.some(({ fileName }) => fileName === "placeable-authoring-v3.json")).toBe(true);
     await expectExactJsonArtifact(
       response.artifacts,
       "placeable-materialization-report.json",

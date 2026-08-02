@@ -13,17 +13,32 @@ import type {
   TransformSpace,
   TransformTool,
 } from "./types";
+import type {
+  PlaceableMaterialTextureInspection,
+  PlaceableTextureEditorSnapshot,
+} from "./textureTypes";
 
 interface Props {
   readonly file: File;
   readonly dependency: string;
   readonly document: PlaceableAuthoringDocument;
   readonly inspection: PlaceableElementInspection;
+  readonly textureSnapshot?: PlaceableTextureEditorSnapshot;
+  readonly textureInspection: readonly PlaceableMaterialTextureInspection[];
   readonly selectedIds: readonly string[];
   readonly tool: TransformTool;
   readonly space: TransformSpace;
   readonly snap: PlaceableSnapSettings;
   readonly editable: boolean;
+  readonly cameraMode: "PERSPECTIVE" | "TOP";
+  readonly showCollision: boolean;
+  readonly collisionDrawing: boolean;
+  readonly collisionEditable: boolean;
+  readonly collisionVertices: readonly [number, number][];
+  readonly resolvedCollisionVertices: readonly [number, number][];
+  readonly collisionTriangles: readonly [number, number, number][];
+  readonly onAddCollisionVertex: (vertex: [number, number]) => void;
+  readonly onMoveCollisionVertex: (index: number, vertex: [number, number]) => void;
   readonly onSelect: (id: string, additive: boolean) => void;
   readonly onClearSelection: () => void;
   readonly onGestureStart: () => void;
@@ -34,6 +49,7 @@ interface Props {
 
 interface PrimitiveCatalogEntry {
   readonly primitiveId: number;
+  readonly materialId: number | null;
   readonly mesh: THREE.Mesh;
 }
 
@@ -63,11 +79,14 @@ function applyPatchesToRuntime(
 
 interface ViewportRuntime {
   readonly scene: THREE.Scene;
-  readonly camera: THREE.PerspectiveCamera;
+  camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
+  readonly perspectiveCamera: THREE.PerspectiveCamera;
+  readonly topCamera: THREE.OrthographicCamera;
   readonly renderer: THREE.WebGLRenderer;
   readonly orbit: OrbitControls;
   readonly gizmo: TransformControls;
   readonly authoredRoot: THREE.Group;
+  readonly collisionRoot: THREE.Group;
   readonly selectionProxy: THREE.Object3D;
   readonly raycaster: THREE.Raycaster;
   readonly pointer: THREE.Vector2;
@@ -75,10 +94,101 @@ interface ViewportRuntime {
   elements: Map<string, ElementRuntime>;
   highlights: THREE.BoxHelper[];
   dragging: boolean;
+  collisionDraggingIndex?: number;
+  collisionDragPoint?: [number, number];
   dragStart?: {
     proxyWorld: THREE.Matrix4;
     elementWorlds: Map<string, THREE.Matrix4>;
   };
+}
+
+function clearCollision(runtime: ViewportRuntime) {
+  for (const child of [...runtime.collisionRoot.children]) {
+    runtime.collisionRoot.remove(child);
+    if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
+      child.geometry.dispose();
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      materials.forEach((material) => material.dispose());
+    }
+  }
+}
+
+function rebuildCollision(
+  runtime: ViewportRuntime,
+  draftVertices: readonly [number, number][],
+  resolvedVertices: readonly [number, number][],
+  triangles: readonly [number, number, number][],
+  visible: boolean,
+  editable: boolean,
+) {
+  clearCollision(runtime);
+  runtime.collisionRoot.visible = visible;
+  if (!visible || (!draftVertices.length && !resolvedVertices.length)) return;
+  if (resolvedVertices.length >= 3 && triangles.length) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(resolvedVertices.flatMap(([x, z]) => [x, 0.025, z]), 3),
+    );
+    geometry.setIndex(triangles.flatMap((face) => face));
+    const fill = new THREE.Mesh(
+      geometry,
+      new THREE.MeshBasicMaterial({
+        color: 0xff7a36,
+        transparent: true,
+        opacity: 0.28,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    );
+    fill.renderOrder = 10;
+    runtime.collisionRoot.add(fill);
+    const edges = new Map<string, { count: number; edge: [number, number] }>();
+    triangles.forEach(([a, b, c]) => {
+      ([[a, b], [b, c], [c, a]] as [number, number][]).forEach((edge) => {
+        const key = [...edge].sort((left, right) => left - right).join(":");
+        const current = edges.get(key);
+        edges.set(key, current ? { ...current, count: current.count + 1 } : { count: 1, edge });
+      });
+    });
+    const boundary = [...edges.values()]
+      .filter(({ count }) => count === 1)
+      .flatMap(({ edge: [a, b] }) => [
+        new THREE.Vector3(resolvedVertices[a][0], 0.035, resolvedVertices[a][1]),
+        new THREE.Vector3(resolvedVertices[b][0], 0.035, resolvedVertices[b][1]),
+      ]);
+    const outline = new THREE.LineSegments(
+      new THREE.BufferGeometry().setFromPoints(boundary),
+      new THREE.LineBasicMaterial({ color: 0xffb067, depthTest: false }),
+    );
+    outline.renderOrder = 11;
+    runtime.collisionRoot.add(outline);
+  }
+  if (draftVertices.length >= 2 && (editable || !triangles.length)) {
+    const outline = new THREE.LineLoop(
+      new THREE.BufferGeometry().setFromPoints(
+        draftVertices.map(([x, z]) => new THREE.Vector3(x, 0.045, z)),
+      ),
+      new THREE.LineDashedMaterial({ color: 0xffd39b, dashSize: 0.12, gapSize: 0.06, depthTest: false }),
+    );
+    outline.computeLineDistances();
+    outline.renderOrder = 11;
+    runtime.collisionRoot.add(outline);
+  }
+  if (!editable) return;
+  draftVertices.forEach(([x, z], index) => {
+    const handle = new THREE.Mesh(
+      new THREE.SphereGeometry(0.055, 12, 8),
+      new THREE.MeshBasicMaterial({
+        color: editable ? 0xffd39b : 0xff8a4c,
+        depthTest: false,
+      }),
+    );
+    handle.position.set(x, 0.055, z);
+    handle.renderOrder = 12;
+    handle.userData.collisionVertexIndex = index;
+    runtime.collisionRoot.add(handle);
+  });
 }
 
 const toolMode = {
@@ -107,7 +217,11 @@ function disposeObject(root: THREE.Object3D, disposeTextures = false) {
   });
 }
 
+const connectedComponentCache = new WeakMap<THREE.BufferGeometry, readonly number[][]>();
+
 export function connectedTriangleComponents(geometry: THREE.BufferGeometry): readonly number[][] {
+  const cached = connectedComponentCache.get(geometry);
+  if (cached) return cached;
   const position = geometry.getAttribute("position");
   if (!position) return [];
   const sourceIndex = geometry.getIndex();
@@ -145,6 +259,7 @@ export function connectedTriangleComponents(geometry: THREE.BufferGeometry): rea
     component.sort((left, right) => left - right);
     output.push(component);
   }
+  connectedComponentCache.set(geometry, output);
   return output;
 }
 
@@ -159,8 +274,42 @@ export function componentGeometry(
     : Array.from({ length: position.count }, (_, index) => index);
   const component = connectedTriangleComponents(geometry)[componentIndex];
   if (!component) throw new Error(`PLACEABLE-VIEWPORT-COMPONENT-MISSING:${componentIndex}`);
-  const output = geometry.clone();
-  output.setIndex(component.flatMap((triangle) => indices.slice(triangle * 3, triangle * 3 + 3)));
+  const sourceVertices = component.flatMap((triangle) => indices.slice(triangle * 3, triangle * 3 + 3));
+  const vertexMap = new Map<number, number>();
+  const retainedVertices: number[] = [];
+  const retainedIndices = sourceVertices.map((sourceVertex) => {
+    const existing = vertexMap.get(sourceVertex);
+    if (existing !== undefined) return existing;
+    const targetVertex = retainedVertices.length;
+    vertexMap.set(sourceVertex, targetVertex);
+    retainedVertices.push(sourceVertex);
+    return targetVertex;
+  });
+  const output = new THREE.BufferGeometry();
+  output.name = geometry.name;
+  for (const [name, attribute] of Object.entries(geometry.attributes)) {
+    type AttributeArray = THREE.BufferAttribute["array"];
+    const AttributeArrayConstructor = attribute.array.constructor as {
+      new(length: number): AttributeArray;
+    };
+    const values = new AttributeArrayConstructor(retainedVertices.length * attribute.itemSize);
+    const interleaved = (attribute as THREE.InterleavedBufferAttribute).isInterleavedBufferAttribute
+      ? attribute as THREE.InterleavedBufferAttribute
+      : null;
+    for (const [targetVertex, sourceVertex] of retainedVertices.entries()) {
+      for (let componentIndex = 0; componentIndex < attribute.itemSize; componentIndex += 1) {
+        const sourceOffset = interleaved
+          ? sourceVertex * interleaved.data.stride + interleaved.offset + componentIndex
+          : sourceVertex * attribute.itemSize + componentIndex;
+        values[targetVertex * attribute.itemSize + componentIndex] = attribute.array[sourceOffset];
+      }
+    }
+    output.setAttribute(
+      name,
+      new THREE.BufferAttribute(values, attribute.itemSize, attribute.normalized),
+    );
+  }
+  output.setIndex(retainedIndices);
   output.computeBoundingBox();
   output.computeBoundingSphere();
   return output;
@@ -169,6 +318,7 @@ export function componentGeometry(
 function cloneMaterial(
   source: THREE.Material | readonly THREE.Material[],
   renderable: boolean,
+  highlighted: boolean,
 ) {
   const materials = (Array.isArray(source) ? source : [source]).map((material) => {
     const clone = material.clone();
@@ -176,6 +326,10 @@ function cloneMaterial(
       clone.transparent = true;
       clone.opacity = 0.28;
       if ("wireframe" in clone) (clone as THREE.MeshStandardMaterial).wireframe = true;
+    }
+    if (highlighted && clone instanceof THREE.MeshStandardMaterial) {
+      clone.emissive = new THREE.Color(0x135566);
+      clone.emissiveIntensity = 0.55;
     }
     return clone;
   });
@@ -186,12 +340,13 @@ function bakeSourceMesh(
   source: THREE.Mesh,
   componentIndex: number | null,
   renderable: boolean,
+  highlighted: boolean,
 ) {
   const geometry = componentIndex === null
     ? source.geometry.clone()
     : componentGeometry(source.geometry, componentIndex);
   geometry.applyMatrix4(source.matrixWorld);
-  const mesh = new THREE.Mesh(geometry, cloneMaterial(source.material, renderable));
+  const mesh = new THREE.Mesh(geometry, cloneMaterial(source.material, renderable, highlighted));
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   return mesh;
@@ -210,11 +365,76 @@ function sourceCatalog(root: THREE.Object3D, inspection: PlaceableElementInspect
     for (const primitive of node.primitives) {
       const mesh = meshes[cursor++];
       if (!mesh) throw new Error(`PLACEABLE-VIEWPORT-PRIMITIVE-MISSING:${primitive.primitiveId}`);
-      entries.push({ primitiveId: primitive.primitiveId, mesh });
+      entries.push({ primitiveId: primitive.primitiveId, materialId: primitive.materialId, mesh });
     }
     byNode.set(node.nodeId, entries);
   }
   return { byNode, sourceRoot: root };
+}
+
+function loadPreviewTexture(file: File): Promise<THREE.Texture> {
+  const url = URL.createObjectURL(file);
+  return new Promise((resolve, reject) => {
+    new THREE.TextureLoader().load(
+      url,
+      (texture) => {
+        URL.revokeObjectURL(url);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.flipY = false;
+        texture.needsUpdate = true;
+        resolve(texture);
+      },
+      undefined,
+      (error) => {
+        URL.revokeObjectURL(url);
+        reject(error);
+      },
+    );
+  });
+}
+
+async function applyTexturePreview(
+  catalog: SourceCatalog,
+  snapshot: PlaceableTextureEditorSnapshot | undefined,
+) {
+  if (!snapshot || snapshot.preview === "SOURCE") return;
+  for (const binding of snapshot.document.bindings) {
+    if (binding.mode !== "OVERRIDE" || !binding.overrideAssetId) continue;
+    const file = snapshot.files.get(binding.overrideAssetId);
+    if (!file) throw new Error(`PLACEABLE-TEXTURE-PREVIEW-PAYLOAD-MISSING:${binding.overrideAssetId}`);
+    const texture = await loadPreviewTexture(file);
+    let applied = false;
+    for (const entries of catalog.byNode.values()) {
+      for (const entry of entries) {
+        if (entry.materialId !== binding.sourceMaterialId) continue;
+        const materials = Array.isArray(entry.mesh.material)
+          ? entry.mesh.material
+          : [entry.mesh.material];
+        const replacements = materials.map((material) => {
+          const clone = material.clone();
+          if (clone instanceof THREE.MeshStandardMaterial) {
+            clone.map = applied ? texture.clone() : texture;
+            clone.map.colorSpace = THREE.SRGBColorSpace;
+            clone.map.flipY = false;
+            clone.color.set(0xffffff);
+            clone.opacity = 1;
+            clone.transparent = false;
+            clone.alphaTest = 0;
+            clone.normalMap = null;
+            clone.roughnessMap = null;
+            clone.metalnessMap = null;
+            clone.metalness = 0;
+            clone.roughness = 1;
+            clone.needsUpdate = true;
+          }
+          applied = true;
+          return clone;
+        });
+        entry.mesh.material = Array.isArray(entry.mesh.material) ? replacements : replacements[0];
+      }
+    }
+    if (!applied) texture.dispose();
+  }
 }
 
 function setAuthoredTransform(
@@ -252,6 +472,7 @@ function transformFromControl(
 function createElementRuntime(
   element: PlaceableAuthoringElement,
   catalog: SourceCatalog,
+  selectedSourceMaterialId: number | null,
 ): ElementRuntime {
   const control = new THREE.Group();
   control.name = `authoring:${element.id}`;
@@ -273,6 +494,7 @@ function createElementRuntime(
         primitive.mesh,
         element.source.componentIndex,
         element.flags.renderable,
+        primitive.materialId !== null && primitive.materialId === selectedSourceMaterialId,
       );
       mesh.userData.authoringElementId = element.id;
       mesh.castShadow = element.flags.castShadow;
@@ -302,13 +524,17 @@ function rebuildAuthored(
   document: PlaceableAuthoringDocument,
   selectedIds: readonly string[],
   editable: boolean,
+  selectedSourceMaterialId: number | null = null,
 ) {
   const catalog = runtime.catalog;
   if (!catalog) return;
   clearAuthored(runtime);
   const live = document.elements.filter((element) => !element.deleted);
   for (const element of live) {
-    runtime.elements.set(element.id, createElementRuntime(element, catalog));
+    runtime.elements.set(
+      element.id,
+      createElementRuntime(element, catalog, selectedSourceMaterialId),
+    );
   }
   for (const element of live) {
     const entry = runtime.elements.get(element.id)!;
@@ -475,14 +701,37 @@ function applyNonGridSnap(
   });
 }
 
-function fitCamera(runtime: ViewportRuntime) {
+function fitCamera(runtime: ViewportRuntime, mode: "PERSPECTIVE" | "TOP" = runtime.camera === runtime.topCamera ? "TOP" : "PERSPECTIVE") {
   const bounds = new THREE.Box3().setFromObject(runtime.authoredRoot);
   const center = bounds.isEmpty() ? new THREE.Vector3() : bounds.getCenter(new THREE.Vector3());
   const size = bounds.isEmpty() ? 1 : Math.max(bounds.getSize(new THREE.Vector3()).length(), 1);
-  runtime.camera.position.copy(center).add(new THREE.Vector3(size, size * 0.7, size));
-  runtime.camera.near = Math.max(size / 1000, 0.001);
-  runtime.camera.far = Math.max(size * 100, 100);
-  runtime.camera.updateProjectionMatrix();
+  const aspect = Math.max(runtime.renderer.domElement.clientWidth, 1)
+    / Math.max(runtime.renderer.domElement.clientHeight, 1);
+  if (mode === "TOP") {
+    const camera = runtime.topCamera;
+    const halfHeight = size * 0.62;
+    camera.left = -halfHeight * aspect;
+    camera.right = halfHeight * aspect;
+    camera.top = halfHeight;
+    camera.bottom = -halfHeight;
+    camera.near = 0.001;
+    camera.far = Math.max(size * 100, 100);
+    camera.position.copy(center).add(new THREE.Vector3(0, size * 2, 0));
+    camera.up.set(0, 0, -1);
+    camera.lookAt(center);
+    camera.updateProjectionMatrix();
+    runtime.camera = camera;
+  } else {
+    const camera = runtime.perspectiveCamera;
+    camera.position.copy(center).add(new THREE.Vector3(size, size * 0.7, size));
+    camera.near = Math.max(size / 1000, 0.001);
+    camera.far = Math.max(size * 100, 100);
+    camera.updateProjectionMatrix();
+    runtime.camera = camera;
+  }
+  runtime.orbit.object = runtime.camera;
+  runtime.orbit.enableRotate = mode !== "TOP";
+  runtime.gizmo.camera = runtime.camera;
   runtime.orbit.target.copy(center);
   runtime.orbit.update();
 }
@@ -492,11 +741,22 @@ export function PlaceableAuthoringViewport({
   dependency,
   document,
   inspection,
+  textureSnapshot,
+  textureInspection,
   selectedIds,
   tool,
   space,
   snap,
   editable,
+  cameraMode,
+  showCollision,
+  collisionDrawing,
+  collisionEditable,
+  collisionVertices,
+  resolvedCollisionVertices,
+  collisionTriangles,
+  onAddCollisionVertex,
+  onMoveCollisionVertex,
   onSelect,
   onClearSelection,
   onGestureStart,
@@ -506,6 +766,17 @@ export function PlaceableAuthoringViewport({
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const runtimeRef = useRef<ViewportRuntime | undefined>(undefined);
+  const texturePreviewKey = JSON.stringify({
+    preview: textureSnapshot?.preview ?? "SOURCE",
+    overrides: textureSnapshot?.document.bindings.map((binding) => [
+      binding.materialSlot,
+      binding.mode,
+      binding.overrideSha256,
+    ]) ?? [],
+  });
+  const selectedSourceMaterialId = textureInspection.find(
+    (material) => material.materialSlot === textureSnapshot?.selectedMaterialSlot,
+  )?.sourceMaterialId ?? null;
   const latestRef = useRef({
     document,
     selectedIds,
@@ -515,6 +786,10 @@ export function PlaceableAuthoringViewport({
     onGestureStart,
     onTransformPreview,
     onGestureEnd,
+    collisionDrawing,
+    collisionEditable,
+    onAddCollisionVertex,
+    onMoveCollisionVertex,
   });
   latestRef.current = {
     document,
@@ -525,6 +800,10 @@ export function PlaceableAuthoringViewport({
     onGestureStart,
     onTransformPreview,
     onGestureEnd,
+    collisionDrawing,
+    collisionEditable,
+    onAddCollisionVertex,
+    onMoveCollisionVertex,
   };
 
   useEffect(() => {
@@ -533,6 +812,7 @@ export function PlaceableAuthoringViewport({
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x091219);
     const camera = new THREE.PerspectiveCamera(45, 1, 0.001, 10_000);
+    const topCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.001, 10_000);
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -541,8 +821,10 @@ export function PlaceableAuthoringViewport({
     orbit.enableDamping = true;
     const gizmo = new TransformControls(camera, canvas);
     const authoredRoot = new THREE.Group();
+    const collisionRoot = new THREE.Group();
+    collisionRoot.name = "placeable-pwk-preview";
     const selectionProxy = new THREE.Object3D();
-    scene.add(authoredRoot, selectionProxy, gizmo.getHelper());
+    scene.add(authoredRoot, collisionRoot, selectionProxy, gizmo.getHelper());
     scene.add(new THREE.HemisphereLight(0xffffff, 0x213142, 2.2));
     const key = new THREE.DirectionalLight(0xffffff, 2.4);
     key.position.set(5, 8, 5);
@@ -556,10 +838,13 @@ export function PlaceableAuthoringViewport({
     const runtime: ViewportRuntime = {
       scene,
       camera,
+      perspectiveCamera: camera,
+      topCamera,
       renderer,
       orbit,
       gizmo,
       authoredRoot,
+      collisionRoot,
       selectionProxy,
       raycaster: new THREE.Raycaster(),
       pointer: new THREE.Vector2(),
@@ -575,6 +860,7 @@ export function PlaceableAuthoringViewport({
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
+      if (runtime.catalog) fitCamera(runtime, runtime.camera === topCamera ? "TOP" : "PERSPECTIVE");
     };
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
@@ -587,16 +873,68 @@ export function PlaceableAuthoringViewport({
         -((event.clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1,
       );
     };
+    const groundPoint = () => {
+      runtime.raycaster.setFromCamera(runtime.pointer, runtime.camera);
+      const point = new THREE.Vector3();
+      return runtime.raycaster.ray.intersectPlane(
+        new THREE.Plane(new THREE.Vector3(0, 1, 0), 0),
+        point,
+      ) ? point : undefined;
+    };
+    const move = (event: PointerEvent) => {
+      updatePointer(event);
+      if (runtime.collisionDraggingIndex === undefined) return;
+      const point = groundPoint();
+      if (!point) return;
+      runtime.collisionDragPoint = [point.x, point.z];
+      const handle = runtime.collisionRoot.children.find(
+        (child) => child.userData.collisionVertexIndex === runtime.collisionDraggingIndex,
+      );
+      handle?.position.set(point.x, 0.055, point.z);
+    };
     const select = (event: PointerEvent) => {
       updatePointer(event);
       if (runtime.dragging || gizmo.axis) return;
-      runtime.raycaster.setFromCamera(runtime.pointer, camera);
+      runtime.raycaster.setFromCamera(runtime.pointer, runtime.camera);
+      if (latestRef.current.collisionEditable) {
+        const collisionHit = runtime.raycaster.intersectObject(collisionRoot, true)
+          .find((hit) => Number.isInteger(hit.object.userData.collisionVertexIndex));
+        if (collisionHit) {
+          runtime.collisionDraggingIndex = collisionHit.object.userData.collisionVertexIndex as number;
+          runtime.collisionDragPoint = undefined;
+          runtime.dragging = true;
+          orbit.enabled = false;
+          canvas.setPointerCapture(event.pointerId);
+          return;
+        }
+      }
+      if (latestRef.current.collisionDrawing) {
+        const point = groundPoint();
+        if (point) latestRef.current.onAddCollisionVertex([point.x, point.z]);
+        return;
+      }
       const id = elementId(runtime.raycaster.intersectObject(authoredRoot, true)[0]?.object);
       if (id) latestRef.current.onSelect(id, event.ctrlKey || event.metaKey || event.shiftKey);
       else latestRef.current.onClearSelection();
     };
-    canvas.addEventListener("pointermove", updatePointer);
+    const finishCollisionDrag = (event: PointerEvent) => {
+      if (runtime.collisionDraggingIndex === undefined) return;
+      if (runtime.collisionDragPoint) {
+        latestRef.current.onMoveCollisionVertex(
+          runtime.collisionDraggingIndex,
+          runtime.collisionDragPoint,
+        );
+      }
+      runtime.collisionDraggingIndex = undefined;
+      runtime.collisionDragPoint = undefined;
+      runtime.dragging = false;
+      orbit.enabled = true;
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    };
+    canvas.addEventListener("pointermove", move);
     canvas.addEventListener("pointerdown", select);
+    canvas.addEventListener("pointerup", finishCollisionDrag);
+    canvas.addEventListener("pointercancel", finishCollisionDrag);
 
     const draggingChanged = (event: { value: unknown }) => {
       orbit.enabled = !event.value;
@@ -657,21 +995,24 @@ export function PlaceableAuthoringViewport({
     let frame = 0;
     const render = () => {
       orbit.update();
-      renderer.render(scene, camera);
+      renderer.render(scene, runtime.camera);
       frame = requestAnimationFrame(render);
     };
     render();
 
     return () => {
       cancelAnimationFrame(frame);
-      canvas.removeEventListener("pointermove", updatePointer);
+      canvas.removeEventListener("pointermove", move);
       canvas.removeEventListener("pointerdown", select);
+      canvas.removeEventListener("pointerup", finishCollisionDrag);
+      canvas.removeEventListener("pointercancel", finishCollisionDrag);
       observer.disconnect();
       gizmo.removeEventListener("dragging-changed", draggingChanged);
       gizmo.removeEventListener("mouseDown", mouseDown);
       gizmo.removeEventListener("objectChange", objectChange);
       gizmo.removeEventListener("mouseUp", mouseUp);
       clearAuthored(runtime);
+      clearCollision(runtime);
       if (runtime.catalog) disposeObject(runtime.catalog.sourceRoot, true);
       gizmo.dispose();
       orbit.dispose();
@@ -697,11 +1038,20 @@ export function PlaceableAuthoringViewport({
       .then((bytes) => new Promise<THREE.Object3D>((resolve, reject) => {
         new GLTFLoader(manager).parse(bytes, "", (gltf) => resolve(gltf.scene), reject);
       }))
-      .then((root) => {
+      .then(async (root) => {
         if (cancelled) return disposeObject(root, true);
         if (runtime.catalog) disposeObject(runtime.catalog.sourceRoot, true);
-        runtime.catalog = sourceCatalog(root, inspection);
-        rebuildAuthored(runtime, latestRef.current.document, latestRef.current.selectedIds, editable);
+        const catalog = sourceCatalog(root, inspection);
+        await applyTexturePreview(catalog, textureSnapshot);
+        if (cancelled) return disposeObject(root, true);
+        runtime.catalog = catalog;
+        rebuildAuthored(
+          runtime,
+          latestRef.current.document,
+          latestRef.current.selectedIds,
+          editable,
+          selectedSourceMaterialId,
+        );
         fitCamera(runtime);
       })
       .catch((error: unknown) => {
@@ -710,19 +1060,38 @@ export function PlaceableAuthoringViewport({
     return () => {
       cancelled = true;
     };
-  }, [dependency, editable, file, inspection, onError]);
+  }, [dependency, editable, file, inspection, onError, texturePreviewKey]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
     if (!runtime || !runtime.catalog || runtime.dragging) return;
-    rebuildAuthored(runtime, document, selectedIds, editable);
-  }, [document, editable]);
+    rebuildAuthored(runtime, document, selectedIds, editable, selectedSourceMaterialId);
+  }, [document, editable, selectedSourceMaterialId]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
     if (!runtime || !runtime.catalog || runtime.dragging) return;
     attachSelection(runtime, document, selectedIds, editable);
   }, [document, editable, selectedIds]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime) return;
+    fitCamera(runtime, cameraMode);
+  }, [cameraMode]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime || runtime.collisionDraggingIndex !== undefined) return;
+    rebuildCollision(
+      runtime,
+      collisionVertices,
+      resolvedCollisionVertices,
+      collisionTriangles,
+      showCollision,
+      collisionEditable,
+    );
+  }, [collisionEditable, collisionTriangles, collisionVertices, resolvedCollisionVertices, showCollision]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
@@ -739,8 +1108,8 @@ export function PlaceableAuthoringViewport({
   return (
     <section className="placeable-authoring-viewport" aria-label="Editable placeable 3D viewport">
       <header>
-        <strong>{editable ? "EDITED" : "ORIGINAL"}</strong>
-        <span>Three.js 3D · orbit, select and W/E/R gizmo</span>
+        <strong>{editable ? "EDITED" : "ORIGINAL"} · texture {textureSnapshot?.preview ?? "SOURCE"}</strong>
+        <span>{cameraMode === "TOP" ? "Top orthographic · X/Z collision plane" : "Three.js 3D · orbit, select and W/E/R gizmo"}</span>
       </header>
       <canvas ref={canvasRef} tabIndex={0} />
       <div className="placeable-authoring-viewport__legend" aria-hidden="true">

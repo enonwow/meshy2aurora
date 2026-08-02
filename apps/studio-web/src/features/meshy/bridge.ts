@@ -1,5 +1,13 @@
-export const MESHY_BRIDGE_PROTOCOL_VERSION = 1 as const;
+export const MESHY_BRIDGE_PROTOCOL_VERSION = 2 as const;
 export const AURORA_MODEL_TRIANGLE_BUDGET_V1 = 300_000 as const;
+export const MESHY_BRIDGE_CAPABILITIES_V2 = {
+  multiAnimationMerge: "NAMED_GLTF_CLIPS_V1",
+  maximumAnimationActions: 10,
+  animationCreditFormula: "40_PLUS_3_PER_ACTION_V1",
+  localRunRecovery: "LIST_RUNS_V1",
+  artifactRecovery: "RUN_BOUND_PROVENANCE_V1",
+  buildContract: "M2A_MESHY_BRIDGE_2026_07_31_V2",
+} as const;
 
 export type MeshyProfileId =
   | "H1-humanoid-animated/v1"
@@ -211,6 +219,7 @@ export interface MeshyBridgeHealth {
   readonly restartSupported: boolean;
   /** True only for the local Compose exact-origin handoff; no code or API key is returned. */
   readonly automaticPairingSupported: boolean;
+  readonly capabilities: typeof MESHY_BRIDGE_CAPABILITIES_V2;
 }
 
 export interface MeshyBridgePairing {
@@ -367,6 +376,7 @@ export interface MeshyBridgeClient {
     readonly previewId: string;
     readonly confirmationNonce: string;
   }): Promise<MeshyRun>;
+  listRuns(sessionToken: string): Promise<readonly MeshyRun[]>;
   getRun(sessionToken: string, runId: string): Promise<MeshyRun>;
   cancelRun(sessionToken: string, runId: string): Promise<MeshyRun>;
   provenance(sessionToken: string, runId: string): Promise<MeshyArtifactProvenance>;
@@ -443,7 +453,14 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
   }
 
   async health(): Promise<MeshyBridgeHealth> {
-    return { protocolVersion: MESHY_BRIDGE_PROTOCOL_VERSION, bridge: "LOCAL", status: "READY", restartSupported: false, automaticPairingSupported: this.automaticPairingSupported };
+    return {
+      protocolVersion: MESHY_BRIDGE_PROTOCOL_VERSION,
+      bridge: "LOCAL",
+      status: "READY",
+      restartSupported: false,
+      automaticPairingSupported: this.automaticPairingSupported,
+      capabilities: MESHY_BRIDGE_CAPABILITIES_V2,
+    };
   }
 
   async restart(): Promise<void> {
@@ -558,6 +575,12 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
   async getRun(sessionToken: string, runId: string): Promise<MeshyRun> {
     this.requireSession(sessionToken);
     return this.storedRun(runId).run;
+  }
+
+  async listRuns(sessionToken: string): Promise<readonly MeshyRun[]> {
+    this.requireSession(sessionToken);
+    return Array.from(this.runs.values(), ({ run }) => run)
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }
 
   async cancelRun(sessionToken: string, runId: string): Promise<MeshyRun> {
@@ -820,6 +843,10 @@ export class LocalMeshyBridgeClient implements MeshyBridgeClient {
 
   async createRun(sessionToken: string, input: { readonly previewId: string; readonly confirmationNonce: string }): Promise<MeshyRun> {
     return this.json("/v1/runs", { method: "POST", sessionToken, body: input }) as Promise<MeshyRun>;
+  }
+
+  async listRuns(sessionToken: string): Promise<readonly MeshyRun[]> {
+    return this.json("/v1/runs", { sessionToken }) as Promise<readonly MeshyRun[]>;
   }
 
   async getRun(sessionToken: string, runId: string): Promise<MeshyRun> {

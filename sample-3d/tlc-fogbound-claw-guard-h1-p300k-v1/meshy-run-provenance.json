@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "profileId": "H1-humanoid-animated/v1",
+  "recovery": {
+    "reason": "local_status_refresh_transport_failed_after_remote_tasks_succeeded",
+    "exactModelTaskId": "019fb8fe-4614-77e7-b22f-63eb5e460110",
+    "exactRemeshTaskId": "019fb901-cef6-79a2-be40-9533fd8fe4ff",
+    "exactRigTaskId": "019fb904-d98c-7d88-b4ea-be88f06c63e9",
+    "reusedExactLineage": true,
+    "generatedSecondModel": false
+  },
+  "credits": {
+    "ownerCap": 70,
+    "spentBeforeRecovery": 70,
+    "maximumAdditionalCredits": 0,
+    "expectedTotal": 70,
+    "balanceBeforeRecovery": 556
+  },
+  "canonicalSource": {
+    "file": "source-death-continuous.glb",
+    "sha256": "ae32c5028ece19dad24c121f9993767a7fdd87616401a94a3fb71f42427364af",
+    "byteLength": 21730520,
+    "triangleCount": 297190,
+    "clipNames": [
+      "cpause1",
+      "cwalk",
+      "crun",
+      "ctaunt",
+      "ca1slashl",
+      "ca1slashr",
+      "cdamagel",
+      "cguptokdb",
+      "cdead"
+    ],
+    "mergeValidation": "exact topology, indices, skin joints and weights matched across all nine routed action GLBs",
+    "deathRouting": "Meshy Dead is the sole moving death-family source under cdead; the pipeline moves it to ckdbck and derives terminal ckdbckps, ckdbckdie and cdead holds",
+    "excludedFromFinalRouting": [
+      {
+        "actionId": 187,
+        "file": "meshy-knockdown-action-187.glb",
+        "reason": "a separate Knock Down followed by Meshy Dead failed the mandatory ckdbck-to-ckdbckdie continuity gate; raw action remains preserved for audit"
+      }
+    ]
+  },
+  "animations": [
+    {
+      "actionId": 0,
+      "clipName": "cpause1",
+      "file": "meshy-idle-action-0.glb",
+      "taskId": "019fb906-9843-7515-b2e6-39496673a9eb",
+      "sourceFileName": "Animation_Idle_withSkin.glb",
+      "sha256": "349b789f224b08825c0a39c460be683a5a8f3608cb2b1b5b24271cd9b1b85732",
+      "byteLength": 21316228
+    },
+    {
+      "actionId": 30,
+      "clipName": "cwalk",
+      "file": "meshy-walk-action-30.glb",
+      "taskId": "019fb907-80b8-7aa6-a375-ccd9264c86f9",
+      "sourceFileName": "Animation_Casual_Walk_withSkin.glb",
+      "sha256": "a6a91c7e85a6e9d6e5982f92e94e8e59bba39adde65ddcfb6b583e53eb8b4125",
+      "byteLength": 21314612
+    },
+    {
+      "actionId": 16,
+      "clipName": "crun",
+      "file": "meshy-sprint-action-16.glb",
+      "taskId": "019fb908-6a83-799e-b321-cbd15809ca9d",
+      "sourceFileName": "Animation_RunFast_withSkin.glb",
+      "sha256": "5c636080efb01ea020aca123c170ec3bc7780503f9157913082fe5041b3f883b",
+      "byteLength": 21273312
+    },
+    {
+      "actionId": 2,
+      "clipName": "ctaunt",
+      "file": "meshy-alert-action-2.glb",
+      "taskId": "019fb908-e54b-7e8b-a849-dda38a5d97f1",
+      "sourceFileName": "Animation_Alert_withSkin.glb",
+      "sha256": "8e38b1eaa718c6b96ca0054f686f31e4b20a9f57592a43d37799f744fa872da8",
+      "byteLength": 21312388
+    },
+    {
+      "actionId": 198,
+      "clipName": "ca1slashl",
+      "file": "meshy-punch-combo-action-198.glb",
+      "taskId": "019fb909-f423-79e1-abfa-a043d30305df",
+      "sourceFileName": "Animation_Punch_Combo_withSkin.glb",
+      "sha256": "a306da40406145e8a9229608db3a20267ef01b68821ac83c56b0b8f5e67aac90",
+      "byteLength": 21297772
+    },
+    {
+      "actionId": 193,
+      "clipName": "ca1slashr",
+      "file": "meshy-left-hook-action-193.glb",
+      "taskId": "019fb90a-9f4d-7609-9333-a9836277b477",
+      "sourceFileName": "Animation_Left_Hook_from_Guard_withSkin.glb",
+      "sha256": "4e59e54fd0bdac5b55e85020502d500d48232fc025b36be0b4aa4ea7d552ea50",
+      "byteLength": 21279720
+    },
+    {
+      "actionId": 178,
+      "clipName": "cdamagel",
+      "file": "meshy-hit-action-178.glb",
+      "taskId": "019fb90b-24e9-7a25-b629-08bb02f90c6f",
+      "sourceFileName": "Animation_Hit_Reaction_withSkin.glb",
+      "sha256": "1e5a3e4ac5f4d246c942a9fae21a04c742dd18ba5b3cda3482672bc9f9dd826d",
+      "byteLength": 21287012
+    },
+    {
+      "actionId": 187,
+      "clipName": "ckdbck",
+      "file": "meshy-knockdown-action-187.glb",
+      "taskId": "019fb90b-b875-7661-b888-17a94213d638",
+      "sourceFileName": "Animation_Knock_Down_withSkin.glb",
+      "sha256": "de362b7ca8dd3687d6a5f2da0352183f086974f46cabc228dcd05fd11ab1818d",
+      "byteLength": 21310948
+    },
+    {
+      "actionId": 3,
+      "clipName": "cguptokdb",
+      "file": "meshy-arise-action-3.glb",
+      "taskId": "019fb90c-7059-767a-b00a-39604337303e",
+      "sourceFileName": "Animation_Arise_withSkin.glb",
+      "sha256": "af08e4e8c7d9bdd241bd3238908d64b346db4f231f068a412db1d021c734e32f",
+      "byteLength": 21290176
+    },
+    {
+      "actionId": 8,
+      "clipName": "ckdbckdie",
+      "file": "meshy-dead-action-8.glb",
+      "taskId": "019fb90d-0f13-76a1-94b2-7bf7401a7830",
+      "sourceFileName": "Animation_Dead_withSkin.glb",
+      "sha256": "0244ad5c2d8e5b9754a99a0c690fdd582ed4ec97c62261a818c55d75df6c3fc3",
+      "byteLength": 21303768
+    }
+  ]
+}

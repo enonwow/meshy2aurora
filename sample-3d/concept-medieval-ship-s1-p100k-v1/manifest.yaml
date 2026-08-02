@@ -1,0 +1,11 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: concept-medieval-ship-s1-p100k-v1
+provider: meshy
+local_only: true
+qualification: ready-for-owner-proof
+files:
+  - role: source
+    path: source.glb
+    size_bytes: 17880760
+    sha256: 9ed47edca7765888ca0e034455ba4302a88fa700a72004cbdbee29f311e58ced
+provenance_note: exact owner-provided concept sheet submitted without crop, enhancement, baked-light removal, auto-size or manual modification; reference PNG SHA-256 a04ea16b36ff098e276604e96b5d873be176f9c79ef0c9fb4ed4be68dbe2ea33; Meshy Image-to-3D run d6ffe618-e08b-4c41-ad25-a73b941efbe3; task 019fb8fb-896a-7219-bb1d-b566c1c8f1d7; target 100000 polygons; measured 99432 triangles

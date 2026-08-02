@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { createLocalBridge } from "./index.mjs";
 import { AURORA_MODEL_TRIANGLE_BUDGET_V1 } from "./remesh-rig-animation-recovery-options.mjs";
@@ -14,6 +15,14 @@ function required(name) {
 
 function terminal(status) {
   return status === "READY" || status === "FAILED" || status === "CANCELED";
+}
+
+function exactImageDataUrl(bytes) {
+  const png = bytes.length >= 8
+    && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  const jpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (!png && !jpeg) throw new Error("MESHY_REAL_E2E_IMAGE_PATH must point to an exact PNG or JPEG payload.");
+  return `data:image/${png ? "png" : "jpeg"};base64,${bytes.toString("base64")}`;
 }
 
 function glbTriangles(bytes) {
@@ -36,7 +45,8 @@ async function main() {
   const apiKey = required("MESHY_API_KEY");
   const maxCredits = Number(required("MESHY_MAX_CREDITS"));
   const profileId = required("MESHY_REAL_E2E_PROFILE");
-  const prompt = required("MESHY_REAL_E2E_PROMPT");
+  const imagePath = process.env.MESHY_REAL_E2E_IMAGE_PATH;
+  const prompt = imagePath ? (process.env.MESHY_REAL_E2E_PROMPT ?? "") : required("MESHY_REAL_E2E_PROMPT");
   const geometryTarget = process.env.MESHY_REAL_E2E_GEOMETRY_TARGET ?? "AURORA_PROOF";
   const outputPath = process.env.MESHY_REAL_E2E_OUTPUT_PATH;
   const targetPolycount = process.env.MESHY_REAL_E2E_TARGET_POLYCOUNT === undefined
@@ -57,6 +67,11 @@ async function main() {
       `MESHY_REAL_E2E_TARGET_POLYCOUNT must be an integer in 100..=${AURORA_MODEL_TRIANGLE_BUDGET_V1}.`,
     );
   }
+  const referenceImageBytes = imagePath ? await readFile(resolve(imagePath)) : undefined;
+  const referenceImageDataUrl = referenceImageBytes ? exactImageDataUrl(referenceImageBytes) : undefined;
+  const referenceImageSha256 = referenceImageBytes
+    ? createHash("sha256").update(referenceImageBytes).digest("hex")
+    : undefined;
   const apiOptions = targetPolycount === undefined ? undefined : {
     modelType: "standard",
     aiModel: "meshy-6",
@@ -67,15 +82,15 @@ async function main() {
     moderation: true,
     targetFormats: ["glb"],
     alphaThumbnail: false,
-    autoSize: true,
+    autoSize: !referenceImageBytes,
     originAt: "bottom",
     enablePbr: true,
     shouldTexture: true,
     hdTexture: false,
     texturePrompt: "",
     textureImageUrl: "",
-    removeLighting: true,
-    imageEnhancement: true,
+    removeLighting: !referenceImageBytes,
+    imageEnhancement: !referenceImageBytes,
     multiViewThumbnails: false,
     rigHumanoid: false,
     rigHeightMeters: 1.7,
@@ -110,7 +125,15 @@ async function main() {
       : {};
     const previewResponse = await request("/v1/runs/preview", {
       method: "POST", headers: sessionHeaders,
-      body: JSON.stringify({ profileId, prompt, geometryTarget, ...preflight, ...(apiOptions ? { apiOptions } : {}) }),
+      body: JSON.stringify({
+        profileId,
+        prompt,
+        source: referenceImageDataUrl ? "IMAGE" : "TEXT",
+        ...(referenceImageDataUrl ? { imageDataUrls: [referenceImageDataUrl] } : {}),
+        geometryTarget,
+        ...preflight,
+        ...(apiOptions ? { apiOptions } : {}),
+      }),
     });
     if (!previewResponse.ok) throw new Error("Local Bridge rejected the E2E preview request.");
     const preview = await previewResponse.json();
@@ -142,7 +165,21 @@ async function main() {
       await mkdir(dirname(absoluteOutputPath), { recursive: true });
       await writeFile(absoluteOutputPath, artifact, { flag: "wx" });
     }
-    process.stdout.write(`${JSON.stringify({ profileId, geometryTarget, ...(targetPolycount === undefined ? {} : { targetPolycount }), runId: run.id, taskIds: provenance.taskIds, sha256: provenance.sha256, byteLength: artifact.byteLength, triangles, ...(outputPath ? { savedTo: resolve(outputPath) } : {}) }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({
+      profileId,
+      source: referenceImageDataUrl ? "IMAGE" : "TEXT",
+      geometryTarget,
+      maximumCredits: preview.maximumCredits,
+      balanceBefore: balance.availableCredits,
+      ...(targetPolycount === undefined ? {} : { targetPolycount }),
+      ...(referenceImageSha256 ? { referenceImageSha256 } : {}),
+      runId: run.id,
+      taskIds: provenance.taskIds,
+      sha256: provenance.sha256,
+      byteLength: artifact.byteLength,
+      triangles,
+      ...(outputPath ? { savedTo: resolve(outputPath) } : {}),
+    }, null, 2)}\n`);
   } finally {
     await bridge.close();
   }

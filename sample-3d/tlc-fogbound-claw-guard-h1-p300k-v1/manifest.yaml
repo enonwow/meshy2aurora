@@ -1,0 +1,104 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: tlc-fogbound-claw-guard-h1-p300k-v1
+provider: meshy
+local_only: true
+qualification: ready-for-owner-proof
+files:
+  - role: owner-selected-concept-reference
+    path: concept.png
+    size_bytes: 905059
+    sha256: 96b784db771791391d5c57da5317762b5072448ac19382f1176e49dbf96a64f2
+  - role: preflight-failed-independent-knockdown-and-dead-source
+    path: source.glb
+    size_bytes: 21791140
+    sha256: a7357a83bcb768e5822e33dfbf92b1618ce462fad92be0b705b90471145d73f6
+  - role: canonical-merged-animated-source
+    path: source-death-continuous.glb
+    size_bytes: 21730520
+    sha256: ae32c5028ece19dad24c121f9993767a7fdd87616401a94a3fb71f42427364af
+  - role: meshy-animation-idle-action-0
+    path: meshy-idle-action-0.glb
+    size_bytes: 21316228
+    sha256: 349b789f224b08825c0a39c460be683a5a8f3608cb2b1b5b24271cd9b1b85732
+  - role: meshy-animation-walk-action-30
+    path: meshy-walk-action-30.glb
+    size_bytes: 21314612
+    sha256: a6a91c7e85a6e9d6e5982f92e94e8e59bba39adde65ddcfb6b583e53eb8b4125
+  - role: meshy-animation-sprint-action-16
+    path: meshy-sprint-action-16.glb
+    size_bytes: 21273312
+    sha256: 5c636080efb01ea020aca123c170ec3bc7780503f9157913082fe5041b3f883b
+  - role: meshy-animation-alert-action-2
+    path: meshy-alert-action-2.glb
+    size_bytes: 21312388
+    sha256: 8e38b1eaa718c6b96ca0054f686f31e4b20a9f57592a43d37799f744fa872da8
+  - role: meshy-animation-punch-combo-action-198
+    path: meshy-punch-combo-action-198.glb
+    size_bytes: 21297772
+    sha256: a306da40406145e8a9229608db3a20267ef01b68821ac83c56b0b8f5e67aac90
+  - role: meshy-animation-left-hook-action-193
+    path: meshy-left-hook-action-193.glb
+    size_bytes: 21279720
+    sha256: 4e59e54fd0bdac5b55e85020502d500d48232fc025b36be0b4aa4ea7d552ea50
+  - role: meshy-animation-hit-reaction-action-178
+    path: meshy-hit-action-178.glb
+    size_bytes: 21287012
+    sha256: 1e5a3e4ac5f4d246c942a9fae21a04c742dd18ba5b3cda3482672bc9f9dd826d
+  - role: meshy-animation-knockdown-action-187
+    path: meshy-knockdown-action-187.glb
+    size_bytes: 21310948
+    sha256: de362b7ca8dd3687d6a5f2da0352183f086974f46cabc228dcd05fd11ab1818d
+  - role: meshy-animation-arise-action-3
+    path: meshy-arise-action-3.glb
+    size_bytes: 21290176
+    sha256: af08e4e8c7d9bdd241bd3238908d64b346db4f231f068a412db1d021c734e32f
+  - role: meshy-animation-dead-action-8
+    path: meshy-dead-action-8.glb
+    size_bytes: 21303768
+    sha256: 0244ad5c2d8e5b9754a99a0c690fdd582ed4ec97c62261a818c55d75df6c3fc3
+  - role: meshy-task-and-credit-provenance
+    path: meshy-run-provenance.json
+    size_bytes: 4959
+    sha256: 335a706a33d6470c4395aa98f08aa5972d076ec4cf8f356c6402d7686106ceb9
+provenance_note: owner-authorized Meshy image-to-3D humanoid generation from the exact supplied concept sheet
+generation_result:
+  status: succeeded
+  exact_model_task_id: 019fb8fe-4614-77e7-b22f-63eb5e460110
+  exact_remesh_task_id: 019fb901-cef6-79a2-be40-9533fd8fe4ff
+  exact_rig_task_id: 019fb904-d98c-7d88-b4ea-be88f06c63e9
+  spent_credits: 70
+  generated_second_model: false
+  canonical_source_triangle_count: 297190
+  canonical_source_clip_count: 9
+  death_family_policy: MESHY_DEAD_CONTINUOUS_DEATH_FAMILY_V2
+owner_proof_candidate:
+  status: ready_for_owner_proof
+  module_file: cd4cx2if4gswhd4d.mod
+  hak_file: ch4cx2if4gswhd4d.hak
+  model_resref: cm4cx2if4gswhd4d
+  texture_resref: ct4cx2if4gswhd4d
+  creature_resref: cc4cx2if4gswhd4d
+  appearance_row: 15100
+  proof_output: proof-output/tlc-fogbound-claw-guard-h1-p300k-v1/studio-export
+  owner_visual_result: not_tested
+generation_plan:
+  date: 2026-07-31
+  source_mode: image-to-3d
+  ai_model: meshy-6
+  topology: triangle
+  target_polycount: 300000
+  pose_mode: t-pose
+  rig_height_meters: 1.95
+  moderation: true
+  owner_credit_cap: 70
+  animation_actions:
+    - { action_id: 0, name: Idle, nwn_clip: cpause1 }
+    - { action_id: 30, name: Casual_Walk, nwn_clip: cwalk }
+    - { action_id: 16, name: RunFast, nwn_clip: crun }
+    - { action_id: 2, name: Alert, nwn_clip: ctaunt }
+    - { action_id: 198, name: Punch_Combo, nwn_clip: ca1slashl }
+    - { action_id: 193, name: Left_Hook, nwn_clip: ca1slashr }
+    - { action_id: 178, name: Hit_Reaction, nwn_clip: cdamagel }
+    - { action_id: 187, name: Knock_Down, nwn_clip: ckdbck }
+    - { action_id: 3, name: Arise, nwn_clip: cguptokdb }
+    - { action_id: 8, name: Dead, nwn_clip: ckdbckdie }

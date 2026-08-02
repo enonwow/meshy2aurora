@@ -4,6 +4,27 @@
 
 Data audytu: `2026-07-25`
 
+## Amendment wykonawczy — 2026-07-31
+
+Aktywny kontrakt produktu używa jednego budżetu dla wszystkich tras modeli:
+`AURORA_MODEL_TRIANGLE_BUDGET_V1 = 300_000`, z ostrzeżeniem przy `150_000`.
+Granica binary MDL `65 535` indeksów / `21 845` trójkątów dotyczy jednego
+strumienia mesh i wymaga deterministycznego podziału; nie jest limitem produktu.
+Historyczne wzmianki niżej o profilu Placeable `10 000 / 21 845`, profilu
+Creature `5 000 / 10 000` oraz wyniku `19 passed / 4 failed` nie opisują już
+aktywnej implementacji ani aktualnego wyniku testów.
+
+Remediacja poaudytowa implementuje dokładną nazwę Area, mapowanie wielu
+materiałów i tekstur, blokadę pustej kolizji, kompletny komponent PWK w kontrakcie
+Studio/WASM oraz skalowanie edytora dla tysięcy komponentów. Wyniki i testy są w
+[raporcie remediacji](evidence/placeable-post-audit-remediation-2026-07-31.md).
+Nie zmienia to stanów wizualnego proof: brak świeżego werdyktu właściciela
+pozostaje `modelVisibility=not_tested` i `proofCompleteness=missing`.
+
+TLC Meshy P20K Placeables V1 ma dodatkowo fail-closed kolizję natywnego MOD-a;
+dokładne ścieżki i hashe zapisano w
+[amendmencie kolizji](evidence/tlc-meshy-p20k-placeables-v1-native-collision-amendment-2026-07-31.md).
+
 Status: `AUDIT_COMPLETE / STATIC_PLACEABLE_IMPLEMENTED /
 OWNER_VISUAL_PROOF_PASSED / P8_V1_OWNER_COLLISION_FAILED /
 P8_V2_OWNER_COLLISION_FAILED / P8_ROOT_CAUSE_CONFIRMED /

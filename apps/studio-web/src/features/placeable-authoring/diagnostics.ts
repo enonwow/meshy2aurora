@@ -11,11 +11,13 @@ export type PlaceableDiagnosticCode =
   | "ELEMENT_FLOATING"
   | "ELEMENT_DISTANT"
   | "GAP_BETWEEN_ELEMENTS"
+  | "GAP_ANALYSIS_SKIPPED"
+  | "COLLISION_EMPTY"
   | "SOURCE_DISCONNECTED_COMPONENTS";
 
 export interface PlaceableAuthoringDiagnostic {
   readonly code: PlaceableDiagnosticCode;
-  readonly severity: "INFO" | "WARNING";
+  readonly severity: "INFO" | "WARNING" | "ERROR";
   readonly elementIds: readonly string[];
   readonly message: string;
 }
@@ -28,6 +30,8 @@ export interface PlaceableElementMeasurement {
   readonly center: [number, number, number];
   readonly distanceFromOrigin: number;
 }
+
+export const MAX_PAIRWISE_GAP_DIAGNOSTIC_ELEMENTS = 512;
 
 const live = (element: PlaceableAuthoringElement) => !element.deleted && element.kind !== "GROUP";
 
@@ -63,30 +67,42 @@ function worldMatrix(
   return result;
 }
 
+function sourceKey(nodeId: number, primitiveId: number | null, componentIndex: number | null) {
+  return `${nodeId}:${primitiveId ?? "*"}:${componentIndex ?? "*"}`;
+}
+
+function sourceBoundsIndex(inspection: PlaceableElementInspection) {
+  const index = new Map<string, THREE.Box3>();
+  for (const node of inspection.nodes) {
+    const nodeBounds = new THREE.Box3();
+    for (const primitive of node.primitives) {
+      const primitiveBounds = new THREE.Box3();
+      for (const component of primitive.components) {
+        const bounds = new THREE.Box3(
+          new THREE.Vector3(...component.boundsMin),
+          new THREE.Vector3(...component.boundsMax),
+        );
+        index.set(sourceKey(node.nodeId, primitive.primitiveId, component.componentIndex), bounds);
+        primitiveBounds.union(bounds);
+        nodeBounds.union(bounds);
+      }
+      index.set(sourceKey(node.nodeId, primitive.primitiveId, null), primitiveBounds);
+    }
+    index.set(sourceKey(node.nodeId, null, null), nodeBounds);
+  }
+  return index;
+}
+
 function sourceBounds(
   element: PlaceableAuthoringElement,
-  inspection: PlaceableElementInspection,
+  index: ReadonlyMap<string, THREE.Box3>,
 ): THREE.Box3 | null {
   if (!element.source) return null;
-  const node = inspection.nodes.find((candidate) => candidate.nodeId === element.source?.nodeId);
-  if (!node) return null;
-  const components = node.primitives.flatMap((primitive) => {
-    if (
-      element.source?.primitiveId !== null
-      && primitive.primitiveId !== element.source?.primitiveId
-    ) return [];
-    return primitive.components.filter((component) => (
-      element.source?.componentIndex === null
-      || component.componentIndex === element.source?.componentIndex
-    ));
-  });
-  if (!components.length) return null;
-  const bounds = new THREE.Box3();
-  for (const component of components) {
-    bounds.expandByPoint(new THREE.Vector3(...component.boundsMin));
-    bounds.expandByPoint(new THREE.Vector3(...component.boundsMax));
-  }
-  return bounds;
+  return index.get(sourceKey(
+    element.source.nodeId,
+    element.source.primitiveId,
+    element.source.componentIndex,
+  )) ?? null;
 }
 
 function transformBounds(bounds: THREE.Box3, matrix: THREE.Matrix4) {
@@ -105,8 +121,9 @@ export function measurePlaceableElements(
   document: PlaceableAuthoringDocument,
   inspection: PlaceableElementInspection,
 ): readonly PlaceableElementMeasurement[] {
+  const boundsIndex = sourceBoundsIndex(inspection);
   return document.elements.filter(live).flatMap((element) => {
-    const source = sourceBounds(element, inspection);
+    const source = sourceBounds(element, boundsIndex);
     if (!source) return [];
     const bounds = transformBounds(source, worldMatrix(element, document));
     const size = bounds.getSize(new THREE.Vector3());
@@ -136,6 +153,27 @@ export function diagnosePlaceableAuthoring(
 ): readonly PlaceableAuthoringDiagnostic[] {
   const measurements = measurePlaceableElements(document, inspection);
   const diagnostics: PlaceableAuthoringDiagnostic[] = [];
+  if (
+    document.collision.mode === "AUTO_RECTANGLE"
+    && !document.elements.some((element) => (
+      live(element) && element.source !== null && element.flags.includeInCollision
+    ))
+  ) {
+    diagnostics.push({
+      code: "COLLISION_EMPTY",
+      severity: "ERROR",
+      elementIds: [],
+      message: "At least one non-deleted source element must be included in collision before build.",
+    });
+  }
+  if (document.collision.mode === "CUSTOM_POLYGON" && document.collision.vertices.length < 3) {
+    diagnostics.push({
+      code: "COLLISION_EMPTY",
+      severity: "ERROR",
+      elementIds: [],
+      message: "Custom collision requires at least three polygon vertices before build.",
+    });
+  }
   const typicalElementSize = Math.max(
     ...measurements.map((measurement) => Math.hypot(...measurement.size)),
     1,
@@ -168,7 +206,14 @@ export function diagnosePlaceableAuthoring(
     }
   }
 
-  if (measurements.length > 1) {
+  if (measurements.length > MAX_PAIRWISE_GAP_DIAGNOSTIC_ELEMENTS) {
+    diagnostics.push({
+      code: "GAP_ANALYSIS_SKIPPED",
+      severity: "INFO",
+      elementIds: [],
+      message: `Pairwise gap analysis is disabled above ${MAX_PAIRWISE_GAP_DIAGNOSTIC_ELEMENTS} elements to keep authoring responsive.`,
+    });
+  } else if (measurements.length > 1) {
     for (const measurement of measurements) {
       const nearest = measurements
         .filter((candidate) => candidate.id !== measurement.id)

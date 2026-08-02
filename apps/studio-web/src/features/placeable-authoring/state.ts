@@ -206,6 +206,63 @@ export function placeableAuthoringReducer(
       return { ...state, space: action.space };
     case "SET_PREVIEW":
       return { ...state, preview: action.preview };
+    case "SET_COLLISION_MODE": {
+      const vertices = action.mode === "CUSTOM_POLYGON"
+        ? clone(action.seedVertices ?? state.present.collision.vertices)
+        : [];
+      return commit(state, {
+        ...state.present,
+        collision: {
+          ...state.present.collision,
+          mode: action.mode,
+          paddingMeters: action.mode === "CUSTOM_POLYGON" ? 0 : state.present.collision.paddingMeters,
+          vertices,
+        },
+      });
+    }
+    case "SET_COLLISION_PADDING":
+      return commit(state, {
+        ...state.present,
+        collision: {
+          ...state.present.collision,
+          paddingMeters: Math.max(0, action.paddingMeters),
+        },
+      });
+    case "SET_COLLISION_VERTICES":
+      return commit(state, {
+        ...state.present,
+        collision: { ...state.present.collision, vertices: clone(action.vertices) },
+      });
+    case "MOVE_COLLISION_VERTEX": {
+      if (!state.present.collision.vertices[action.index]) return state;
+      const vertices = state.present.collision.vertices.map((vertex, index) => (
+        index === action.index ? action.vertex : vertex
+      ));
+      return commit(state, {
+        ...state.present,
+        collision: { ...state.present.collision, vertices },
+      });
+    }
+    case "ADD_COLLISION_VERTEX":
+      if (state.present.collision.vertices.length >= 64) return state;
+      return commit(state, {
+        ...state.present,
+        collision: {
+          ...state.present.collision,
+          mode: "CUSTOM_POLYGON",
+          paddingMeters: 0,
+          vertices: [...state.present.collision.vertices, action.vertex],
+        },
+      });
+    case "DELETE_COLLISION_VERTEX":
+      if (!state.present.collision.vertices[action.index]) return state;
+      return commit(state, {
+        ...state.present,
+        collision: {
+          ...state.present.collision,
+          vertices: state.present.collision.vertices.filter((_, index) => index !== action.index),
+        },
+      });
     case "SET_SNAP":
       return { ...state, snap: { ...state.snap, ...action.snap } };
     case "BEGIN_GESTURE":

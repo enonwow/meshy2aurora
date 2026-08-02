@@ -1,4 +1,7 @@
-import type { SkinAccessoryStabilizationModeV1 } from "../source/InputsPanel";
+import type {
+  CreatureSourceForwardV1,
+  SkinAccessoryStabilizationModeV1,
+} from "../source/InputsPanel";
 import { canonicalSkinAccessoryComponentBoneOverridesV2 } from "../source/skinAccessoryOverrides";
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -6,6 +9,7 @@ const BASE32_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
 
 export interface CreatureArtifactIdentityInputV2 {
   readonly profile: "PRODUCT_300K" | "EXPERIMENTAL_P100K" | "EXPERIMENTAL_P300K";
+  readonly sourceForward: CreatureSourceForwardV1;
   readonly sourceSha256: string;
   readonly appearanceSha256: string;
   readonly animationEventsSha256?: string;
@@ -13,6 +17,8 @@ export interface CreatureArtifactIdentityInputV2 {
   readonly skinAccessoryStabilizationMode: SkinAccessoryStabilizationModeV1;
   readonly skinAccessorySelectedBoneName: string;
   readonly skinAccessoryComponentBoneOverrides: string;
+  readonly materialSeparationSha256?: string;
+  readonly modelTextureAuthoringSha256?: string;
 }
 
 function requireSha256(value: string, field: string) {
@@ -60,6 +66,14 @@ export async function creatureArtifactIdentityTokenV2(
   if (input.animationEventsSha256 !== undefined) {
     requireSha256(input.animationEventsSha256, "Animation event sidecar");
   }
+  if ((input.materialSeparationSha256 === undefined)
+    !== (input.modelTextureAuthoringSha256 === undefined)) {
+    throw new Error("Creature material identity requires both recipe hashes");
+  }
+  if (input.materialSeparationSha256 !== undefined) {
+    requireSha256(input.materialSeparationSha256, "Material separation recipe");
+    requireSha256(input.modelTextureAuthoringSha256!, "Model texture recipe");
+  }
   const selectedBoneName = input.skinAccessoryStabilizationMode === "SELECT_BONE"
     ? input.skinAccessorySelectedBoneName.trim().toLowerCase()
     : "";
@@ -68,9 +82,11 @@ export async function creatureArtifactIdentityTokenV2(
         input.skinAccessoryComponentBoneOverrides,
       )
     : "";
+  const materialIdentityPresent = input.materialSeparationSha256 !== undefined;
   const seed = JSON.stringify({
-    schemaVersion: 3,
+    schemaVersion: materialIdentityPresent ? 5 : 4,
     profile: input.profile,
+    sourceForward: input.sourceForward,
     sourceSha256: input.sourceSha256,
     appearanceSha256: input.appearanceSha256,
     animationEventsSha256: input.animationEventsSha256 ?? null,
@@ -78,6 +94,10 @@ export async function creatureArtifactIdentityTokenV2(
     skinAccessoryStabilizationMode: input.skinAccessoryStabilizationMode,
     selectedBoneName,
     componentBoneOverrides,
+    ...(materialIdentityPresent ? {
+      materialSeparationSha256: input.materialSeparationSha256,
+      modelTextureAuthoringSha256: input.modelTextureAuthoringSha256,
+    } : {}),
   });
   const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(seed));
   return base32Prefix(new Uint8Array(digest), 14);

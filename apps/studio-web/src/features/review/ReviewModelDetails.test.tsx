@@ -26,7 +26,13 @@ function resultFixture(): CanonicalResultSnapshot {
     conversionEvidence: {
       schemaVersion: 1,
       conversionEligible: true,
-      policies: { engineFacingProof: "OPEN_M6", uvRuntimeProof: "OPEN_M6" },
+      policies: {
+        basisStatus: "CREATURE_BASIS_V2_RESOLVED",
+        assetForwardMapping: "GLTF_POSITIVE_Z_TO_AURORA_NEGATIVE_Y",
+        orientationParity: "POSITIVE_PROPER_ROTATION_COMPOSITE_DETERMINANT",
+        engineFacingProof: "OPEN_M6",
+        uvRuntimeProof: "OPEN_M6",
+      },
       gates: [],
       diagnostics: [],
     },

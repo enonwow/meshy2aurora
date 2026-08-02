@@ -132,12 +132,19 @@ function runtimeProof(result: CanonicalResultSnapshot): ReadinessItem {
   }
   const { engineFacingProof, uvRuntimeProof } = result.conversionEvidence.policies;
   const samePolicy = engineFacingProof === uvRuntimeProof;
-  const status = engineFacingProof.startsWith("OPEN_") || uvRuntimeProof.startsWith("OPEN_") ? "OPEN" : "NOT_CHECKED";
+  const unresolvedFacing = engineFacingProof.startsWith("OPEN_");
+  const status = unresolvedFacing
+    ? "FAIL"
+    : uvRuntimeProof.startsWith("OPEN_") || engineFacingProof === "OWNER_PROOF_REQUIRED"
+      ? "OPEN"
+      : "NOT_CHECKED";
   return {
     id: "RUNTIME_PROOF",
     label: "Runtime Proof",
     status,
-    statusLabel: samePolicy ? engineFacingProof : `${engineFacingProof} / ${uvRuntimeProof}`,
+    statusLabel: unresolvedFacing
+      ? "FACING_UNRESOLVED"
+      : samePolicy ? engineFacingProof : `${engineFacingProof} / ${uvRuntimeProof}`,
     checkCount: 0,
     detail: `Engine-facing: ${engineFacingProof}; UV runtime: ${uvRuntimeProof}`,
   };

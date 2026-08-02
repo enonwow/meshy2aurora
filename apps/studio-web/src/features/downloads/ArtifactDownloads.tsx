@@ -5,6 +5,7 @@ function extension(kind: WorkerArtifact["kind"]) {
     case "HAK": return ".hak";
     case "MODEL": return ".mdl";
     case "MODULE": return ".mod";
+    case "PWK": return ".pwk";
     case "WOK": return ".wok";
     case "SET": return ".set";
     case "TEXTURE": return ".tga";
@@ -38,11 +39,15 @@ async function sha256(bytes: ArrayBuffer) {
     .join("");
 }
 
-export async function downloadWorkerArtifact(artifact: WorkerArtifact) {
+export async function verifyWorkerArtifactV1(artifact: WorkerArtifact) {
   validate(artifact);
   if (await sha256(artifact.bytes) !== artifact.sha256) {
     throw new Error(`SHA-256 mismatch for ${artifact.fileName}`);
   }
+}
+
+export async function downloadWorkerArtifact(artifact: WorkerArtifact) {
+  await verifyWorkerArtifactV1(artifact);
   const url = URL.createObjectURL(new Blob([artifact.bytes], { type: artifact.mediaType }));
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -61,9 +66,10 @@ export async function downloadWorkerArtifact(artifact: WorkerArtifact) {
 interface Props {
   artifacts: WorkerArtifact[];
   onError: (message: string) => void;
+  recovered?: boolean;
 }
 
-export function ArtifactDownloads({ artifacts, onError }: Props) {
+export function ArtifactDownloads({ artifacts, onError, recovered = false }: Props) {
   const download = (artifact: WorkerArtifact) => {
     void downloadWorkerArtifact(artifact).catch((error: unknown) => {
       onError(error instanceof Error ? error.message : String(error));
@@ -72,8 +78,10 @@ export function ArtifactDownloads({ artifacts, onError }: Props) {
   return (
     <section className="panel" aria-label="Canonical Worker artifact downloads">
       <div className="status">
-        <strong>GENERATED ARTIFACTS</strong>
-        <span>Exact bytes returned by m2a-wasm Worker</span>
+        <strong>{recovered ? "RECOVERED ARTIFACTS" : "GENERATED ARTIFACTS"}</strong>
+        <span>{recovered
+          ? "Exact previously verified Worker bytes restored after reload"
+          : "Exact bytes returned by m2a-wasm Worker"}</span>
       </div>
       {artifacts.length === 0 ? <p>No canonical artifacts are available yet.</p> : (
         <ul>{artifacts.map((artifact) => (

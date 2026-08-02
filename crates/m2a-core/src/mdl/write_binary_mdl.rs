@@ -11,7 +11,6 @@ use crate::{
     walkmesh::{AabbTreeV1, TileNavigationIrV1, validate_tile_navigation_v1},
 };
 
-use super::inspect_binary_mdl;
 use super::semantic_readback::{
     ExpectedAabbEntry, ExpectedAabbTree, ExpectedAnimation, ExpectedAnimationController,
     ExpectedAnimationNode, ExpectedFace, ExpectedMesh, ExpectedNode, ExpectedReadback,
@@ -28,6 +27,7 @@ use super::writer_types::{
     MdlWriterReportV1, NWN_EE_BINARY_MDL_EPSILON_V1, NWN_EE_MAX_MESH_INDEX_COUNT_V1,
     is_well_formed_state_projection_provenance_v1,
 };
+use super::{inspect_binary_mdl, inspect_binary_mdl_with_limits};
 
 const FILE_HEADER_SIZE: usize = 0x0c;
 const MODEL_HEADER_SIZE: usize = 0xe8;
@@ -223,6 +223,35 @@ pub fn write_binary_mdl(
     write_binary_mdl_with_animations(creature, &MdlAnimationSetV1::empty(), options)
 }
 
+/// Emits static geometry while preserving every finite, non-collinear face,
+/// including valid microtriangles below the legacy absolute epsilon.
+pub(crate) fn write_binary_mdl_exact_face_planes_v1(
+    model: &AuroraModelIrV1,
+    options: &MdlWriterOptionsV1,
+) -> Result<BinaryMdlArtifactV1, MdlWriteError> {
+    write_binary_mdl_with_animations_exact_face_planes_v1(
+        model,
+        &MdlAnimationSetV1::empty(),
+        options,
+    )
+}
+
+pub(crate) fn write_binary_mdl_exact_face_planes_with_readback_limits_v1(
+    model: &AuroraModelIrV1,
+    options: &MdlWriterOptionsV1,
+    readback_limits: &ParserLimits,
+) -> Result<BinaryMdlArtifactV1, MdlWriteError> {
+    write_binary_mdl_internal(
+        model,
+        &MdlAnimationSetV1::empty(),
+        "NULL",
+        options,
+        None,
+        FacePlaneDegeneracyPolicyV1::ExactFiniteNonCollinear,
+        Some(readback_limits),
+    )
+}
+
 /// Emits a model that inherits animation state from an existing compatible
 /// supermodel. The caller remains responsible for providing an independently
 /// owned/user-provided rig whose ordered node topology matches that
@@ -239,6 +268,7 @@ pub fn write_binary_mdl_with_supermodel(
         options,
         None,
         FacePlaneDegeneracyPolicyV1::LegacyAbsoluteEpsilon,
+        None,
     )
 }
 
@@ -254,6 +284,7 @@ pub fn write_binary_mdl_with_animations(
         options,
         None,
         FacePlaneDegeneracyPolicyV1::LegacyAbsoluteEpsilon,
+        None,
     )
 }
 
@@ -269,6 +300,7 @@ pub(crate) fn write_binary_mdl_with_animations_exact_face_planes_v1(
         options,
         None,
         FacePlaneDegeneracyPolicyV1::ExactFiniteNonCollinear,
+        None,
     )
 }
 
@@ -285,6 +317,7 @@ pub fn write_binary_mdl_with_animations_and_supermodel(
         options,
         None,
         FacePlaneDegeneracyPolicyV1::LegacyAbsoluteEpsilon,
+        None,
     )
 }
 
@@ -310,6 +343,7 @@ pub fn write_binary_tile_mdl_v1(
         options,
         Some(navigation),
         FacePlaneDegeneracyPolicyV1::LegacyAbsoluteEpsilon,
+        None,
     )
 }
 
@@ -320,6 +354,7 @@ fn write_binary_mdl_internal(
     options: &MdlWriterOptionsV1,
     navigation: Option<&TileNavigationIrV1>,
     face_plane_degeneracy_policy: FacePlaneDegeneracyPolicyV1,
+    readback_limits: Option<&ParserLimits>,
 ) -> Result<BinaryMdlArtifactV1, MdlWriteError> {
     if supermodel_resref != "NULL" {
         validate_resref(supermodel_resref, "options.supermodelResref")?;
@@ -377,7 +412,11 @@ fn write_binary_mdl_internal(
         ));
     }
 
-    let inspection = inspect_binary_mdl(&payload).map_err(|source| {
+    let inspection = match readback_limits {
+        Some(limits) => inspect_binary_mdl_with_limits(&payload, limits),
+        None => inspect_binary_mdl(&payload),
+    }
+    .map_err(|source| {
         error(
             if animations.clips.is_empty() {
                 "M4-READBACK-FAILED"

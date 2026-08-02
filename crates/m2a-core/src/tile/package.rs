@@ -17,12 +17,24 @@ use crate::{
     },
     model_ir::{AuroraModelIrV1, AuroraSegmentDeformationV1},
     model_limits::validate_model_triangle_budget_v1,
+    model_material_capabilities::{ModelRenderTargetV1, validate_material_separation_counts_v1},
+    model_material_separation::{
+        ModelMaterialSeparationDocumentV1, ModelMaterialSeparationReportV1,
+        resolve_model_materials_v1,
+    },
     model_pipeline::{
         resolve_base_color_image_index_v1, sanitize_meshy_h1_degenerate_triangles_v1,
     },
     model_segmentation::segment_model_for_binary_mdl_v1,
+    model_texture_authoring::{
+        ModelTextureAuthoringDocumentV1, ModelTexturePayloadDescriptorV1,
+        ModelTextureResolutionReportV1, resolve_model_texture_authoring_v1,
+    },
     placeable::{static_placeable_glb_limits_v1, static_placeable_profile_a_options_v1},
-    profile_a::{convert_profile_a, derive_meshy_m0_static_rigid_profile_v1},
+    profile_a::{
+        convert_profile_a, convert_profile_a_with_material_separation_v1,
+        derive_meshy_m0_static_rigid_profile_v1,
+    },
     proof_module::{
         binary_creature_multi_fixture_gic, binary_creature_multi_fixture_git, binary_m0_area_for,
         binary_m0_module_ifo_for, proof_factions,
@@ -157,6 +169,10 @@ pub struct StaticTilePackageReportV1 {
     pub proof_completeness: String,
     pub navigation_spawn_walkable: String,
     pub navigation_seam_walkable: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub material_separation: Option<ModelMaterialSeparationReportV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_texture_authoring: Option<ModelTextureResolutionReportV1>,
     pub resources: Vec<TileResourceBindingReportV1>,
 }
 
@@ -309,8 +325,144 @@ pub fn build_meshy_static_tile_package_v1(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn build_meshy_static_tile_package_v2(
+    source_glb: &[u8],
+    identity: &StaticTileIdentityV1,
+    interior: bool,
+    terrain_name: &str,
+    surface: TileSurfaceV1,
+    material_separation: &ModelMaterialSeparationDocumentV1,
+    texture_authoring: &ModelTextureAuthoringDocumentV1,
+    texture_payload_blob: &[u8],
+    texture_payload_descriptors: &[ModelTexturePayloadDescriptorV1],
+) -> Result<StaticTilePackageArtifactV1, TilePackageErrorV1> {
+    validate_identity(identity)?;
+    let limits = static_placeable_glb_limits_v1();
+    let mut ingest = ingest_glb(source_glb, &limits).map_err(|source| {
+        error(
+            &format!("TILE-{}", source.code),
+            source.json_path.unwrap_or_else(|| "sourceGlb".to_owned()),
+            source.message,
+        )
+    })?;
+    sanitize_meshy_h1_degenerate_triangles_v1(&mut ingest).map_err(|source| {
+        error(
+            &format!("TILE-{}", source.code),
+            source.path,
+            source.message,
+        )
+    })?;
+    let resolved_materials =
+        resolve_model_materials_v1(&ingest.ir, material_separation).map_err(|source| {
+            error(
+                &format!("TILE-{}", source.code),
+                source.path,
+                source.message,
+            )
+        })?;
+    validate_material_separation_counts_v1(
+        ModelRenderTargetV1::Tile,
+        resolved_materials.report.material_slots.len(),
+        resolved_materials.report.output_section_count,
+    )
+    .map_err(|source| {
+        error(
+            &format!("TILE-{}", source.code),
+            source.path,
+            source.message,
+        )
+    })?;
+    let rig = derive_meshy_m0_static_rigid_profile_v1(&ingest).map_err(|source| {
+        error(
+            &format!("TILE-{}", source.code),
+            source.path,
+            source.message,
+        )
+    })?;
+    let conversion = convert_profile_a_with_material_separation_v1(
+        &ingest,
+        &rig,
+        &static_placeable_profile_a_options_v1(),
+        material_separation,
+    )
+    .map_err(|source| {
+        error(
+            &format!("TILE-{}", source.code),
+            source.path,
+            source.message,
+        )
+    })?;
+    if !conversion.report.conversion_eligible {
+        return Err(error(
+            "TILE-PROFILE-INELIGIBLE",
+            "conversion.report",
+            "material-separated GLB did not pass static rigid Profile A admission",
+        ));
+    }
+    let mut model = conversion.creature.ok_or_else(|| {
+        error(
+            "TILE-PROFILE-INELIGIBLE",
+            "conversion.model",
+            "eligible conversion produced no common model IR",
+        )
+    })?;
+    normalize_model_root(&mut model, &identity.model_resref)?;
+    let resolved_textures = resolve_model_texture_authoring_v1(
+        source_glb,
+        &limits,
+        &ingest,
+        &resolved_materials,
+        &identity.texture_resref,
+        texture_authoring,
+        texture_payload_blob,
+        texture_payload_descriptors,
+    )
+    .map_err(|source| {
+        error(
+            &format!("TILE-{}", source.code),
+            source.path,
+            source.message,
+        )
+    })?;
+    let navigation = flat_tile_navigation_v1(&identity.model_resref, surface)
+        .map_err(|source| map_error("TILE-WOK-DERIVE-FAILED", "navigation", source))?;
+    let texture_report = resolved_textures.report;
+    build_static_tile_package_inner_v1(
+        &StaticTileBuildRequestV1 {
+            schema_version: TILE_SCHEMA_VERSION,
+            identity: identity.clone(),
+            interior,
+            terrain_name: terrain_name.to_owned(),
+            surface,
+            model,
+            navigation,
+            material_textures: resolved_textures.material_textures,
+            textures: resolved_textures
+                .textures
+                .into_iter()
+                .map(|texture| TileTextureInputV1 {
+                    resref: texture.resref,
+                    resource_type: texture.resource_type,
+                    payload: texture.payload,
+                })
+                .collect(),
+        },
+        Some(resolved_materials.report),
+        Some(texture_report),
+    )
+}
+
 pub fn build_static_tile_package_v1(
     request: &StaticTileBuildRequestV1,
+) -> Result<StaticTilePackageArtifactV1, TilePackageErrorV1> {
+    build_static_tile_package_inner_v1(request, None, None)
+}
+
+fn build_static_tile_package_inner_v1(
+    request: &StaticTileBuildRequestV1,
+    material_separation_report: Option<ModelMaterialSeparationReportV1>,
+    model_texture_authoring_report: Option<ModelTextureResolutionReportV1>,
 ) -> Result<StaticTilePackageArtifactV1, TilePackageErrorV1> {
     validate_request(request)?;
     let mut render_model = request.model.clone();
@@ -495,6 +647,8 @@ pub fn build_static_tile_package_v1(
             proof_completeness: "missing".to_owned(),
             navigation_spawn_walkable: "offline_verified".to_owned(),
             navigation_seam_walkable: "offline_verified".to_owned(),
+            material_separation: material_separation_report,
+            model_texture_authoring: model_texture_authoring_report,
             resources,
         },
     })

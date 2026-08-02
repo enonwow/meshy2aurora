@@ -112,7 +112,21 @@ async function call(path, options = {}) {
 test("exposes only a paired loopback contract and never returns the API key", async () => {
   const health = await call("/v1/health");
   assert.equal(health.status, 200);
-  assert.deepEqual(await health.json(), { protocolVersion: 1, bridge: "LOCAL", status: "READY", restartSupported: false, automaticPairingSupported: false });
+  assert.deepEqual(await health.json(), {
+    protocolVersion: 2,
+    bridge: "LOCAL",
+    status: "READY",
+    restartSupported: false,
+    automaticPairingSupported: false,
+    capabilities: {
+      multiAnimationMerge: "NAMED_GLTF_CLIPS_V1",
+      maximumAnimationActions: 10,
+      animationCreditFormula: "40_PLUS_3_PER_ACTION_V1",
+      localRunRecovery: "LIST_RUNS_V1",
+      artifactRecovery: "RUN_BOUND_PROVENANCE_V1",
+      buildContract: "M2A_MESHY_BRIDGE_2026_07_31_V2",
+    },
+  });
 
   const pair = await call("/v1/pair", {
     method: "POST",
@@ -151,7 +165,21 @@ test("accepts a same-origin Bridge restart only when a local supervisor is confi
   });
   try {
     const health = await request("/v1/health");
-    assert.deepEqual(await health.json(), { protocolVersion: 1, bridge: "LOCAL", status: "READY", restartSupported: true, automaticPairingSupported: false });
+    assert.deepEqual(await health.json(), {
+      protocolVersion: 2,
+      bridge: "LOCAL",
+      status: "READY",
+      restartSupported: true,
+      automaticPairingSupported: false,
+      capabilities: {
+        multiAnimationMerge: "NAMED_GLTF_CLIPS_V1",
+        maximumAnimationActions: 10,
+        animationCreditFormula: "40_PLUS_3_PER_ACTION_V1",
+        localRunRecovery: "LIST_RUNS_V1",
+        artifactRecovery: "RUN_BOUND_PROVENANCE_V1",
+        buildContract: "M2A_MESHY_BRIDGE_2026_07_31_V2",
+      },
+    });
     const restart = await request("/v1/bridge/restart", { method: "POST" });
     assert.equal(restart.status, 202);
     assert.deepEqual(await restart.json(), { status: "RESTARTING" });
@@ -577,6 +605,9 @@ test("merges up to ten explicitly mapped H1 actions into the canonical import GL
     const preview = await previewResponse.json();
     assert.equal(preview.maximumCredits, 46);
     const created = await (await request("/v1/runs", { method: "POST", headers, body: JSON.stringify({ previewId: preview.previewId, confirmationNonce: "multi-animation-confirmation" }) })).json();
+    const recoverableRuns = await (await request("/v1/runs", { headers })).json();
+    assert.equal(recoverableRuns.some((candidate) => candidate.id === created.id), true);
+    assert.equal(JSON.stringify(recoverableRuns).includes("artifactBytes"), false);
     let status;
     for (let attempt = 0; attempt < 30; attempt += 1) {
       status = await (await request(`/v1/runs/${created.id}`, { headers: { "X-Meshy-Session": pairing.sessionToken } })).json();

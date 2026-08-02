@@ -5,7 +5,10 @@
 //! in the common `mdl` module and consumes the model-kind-neutral
 //! `AuroraModelIrV1`.
 
-use std::fmt;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -18,33 +21,63 @@ use crate::{
         write_gff_v32,
     },
     glb::{EmbeddedImageDecodeLimitsV1, GlbLimits, decode_embedded_image_to_tga_v1, ingest_glb},
-    hak::{HakResourceInputV1, HakWriterOptionsV1, write_erf_archive_v1, write_hak_v1},
+    hak::{
+        HAK_MAX_OUTPUT_BYTES, HakResourceInputV1, HakWriterLimitsV1, HakWriterOptionsV1,
+        write_erf_archive_v1, write_hak_v1,
+    },
     mdl::{
         MdlFormatProfileV1, MdlMaterialTextureBindingV1, MdlStateProjectionProfileV1,
-        MdlWriterOptionsV1, write_binary_mdl,
+        MdlWriterOptionsV1, ParserLimits, write_binary_mdl, write_binary_mdl_exact_face_planes_v1,
+        write_binary_mdl_exact_face_planes_with_readback_limits_v1,
     },
     model_ir::{AuroraModelIrV1, AuroraSegmentDeformationV1},
-    model_limits::validate_model_triangle_budget_v1,
+    model_limits::{AURORA_MODEL_TRIANGLE_BUDGET_V1, validate_model_triangle_budget_v1},
+    model_material_separation::{
+        ModelMaterialSeparationDocumentV1, ModelMaterialSeparationReportV1,
+        resolve_model_materials_v1,
+    },
     model_pipeline::{
-        resolve_base_color_image_index_v1, sanitize_meshy_h1_degenerate_triangles_v1,
+        resolve_base_color_image_indices_v1,
+        sanitize_static_model_degenerate_triangles_aggressive_v1,
+        sanitize_static_model_degenerate_triangles_v1,
     },
     model_segmentation::segment_model_for_binary_mdl_v1,
+    model_texture_authoring::{
+        ModelTextureAuthoringDocumentV1, ModelTexturePayloadDescriptorV1,
+        ModelTextureResolutionReportV1, resolve_model_texture_authoring_v1,
+    },
     placeable_authoring::{
+        PLACEABLE_AUTHORING_SCHEMA_VERSION_V2, PLACEABLE_COLLISION_SPEC_SCHEMA_VERSION_V1,
         PlaceableAuthoringApplyReportV1, PlaceableAuthoringDocumentV1,
-        PlaceableAuthoringProjectionV1, PlaceableElementInspectionV1,
-        SHADOWLESS_MATERIAL_SUFFIX_V1, apply_placeable_authoring_to_ingest_v1,
-        default_placeable_authoring_v1, inspect_placeable_elements_v1,
+        PlaceableAuthoringDocumentV2, PlaceableAuthoringProjectionV1,
+        PlaceableCollisionCoordinateSpaceV1, PlaceableCollisionModeV1, PlaceableCollisionSpecV1,
+        PlaceableElementInspectionV1, SHADOWLESS_MATERIAL_SUFFIX_V1,
+        apply_placeable_authoring_to_ingest_v1,
+        apply_placeable_authoring_with_material_separation_to_ingest_v1,
+        default_placeable_authoring_v1, inspect_placeable_elements_v1, placeable_authoring_hash_v2,
         project_placeable_authoring_v1,
     },
-    placeable_collision::{inspect_ascii_placeable_walkmesh_v1, write_placeable_walkmesh_v1},
+    placeable_collision::{
+        PLACEABLE_PWK_NONWALK_SURFACE_ID_V1, PlaceableWalkmeshIrV1,
+        custom_placeable_walkmesh_ir_v1, derive_placeable_walkmesh_ir_v1,
+        inspect_ascii_placeable_walkmesh_v1, sha256_hex, write_ascii_placeable_walkmesh_v1,
+        write_placeable_walkmesh_v1,
+    },
+    placeable_texture::{
+        PlaceableTextureAuthoringBootstrapV1, PlaceableTextureAuthoringDocumentV1,
+        PlaceableTextureErrorV1, PlaceableTexturePayloadDescriptorV1,
+        PlaceableTextureResolutionReportV1, inspect_placeable_material_textures_v1,
+        resolve_placeable_texture_overrides_v1,
+    },
     profile_a::{
-        ProfileALimitsV1, ProfileAMaterialPolicyV1, ProfileAOptionsV1, convert_profile_a,
+        ProfileALimitsV1, ProfileAMaterialPolicyV1, ProfileAOptionsV1, ProfileATransformReportV1,
+        convert_profile_a, convert_profile_a_owner_approved_oversized_v1,
         derive_meshy_m0_static_rigid_profile_v1,
     },
     proof_module::{
         M0_RUNTIME_FIXTURE_X, M0_RUNTIME_FIXTURE_Y, M0_RUNTIME_FIXTURE_Z,
-        binary_creature_multi_fixture_gic, binary_creature_multi_fixture_git, binary_m0_area_for,
-        binary_m0_module_ifo_for, proof_factions,
+        binary_creature_multi_fixture_gic, binary_creature_multi_fixture_git,
+        binary_m0_area_for_named, binary_m0_module_ifo_for, proof_factions,
     },
     tga::{TgaWriterOptionsV1, write_tga_v1},
     two_da::{
@@ -54,6 +87,8 @@ use crate::{
 };
 
 pub const PLACEABLE_SCHEMA_VERSION: u32 = 1;
+pub const STATIC_PLACEABLE_BUILD_OPTIONS_SCHEMA_VERSION: u32 = 1;
+pub const OWNER_APPROVED_OVERSIZED_PLACEABLE_SCHEMA_VERSION: u32 = 1;
 pub const IFO_RESOURCE_TYPE: u16 = 2014;
 pub const ARE_RESOURCE_TYPE: u16 = 2012;
 pub const GIT_RESOURCE_TYPE: u16 = 2023;
@@ -73,6 +108,26 @@ pub const PWK_RESOURCE_TYPE: u16 = 2053;
 /// placeable and future tile profiles must enter the same binary MDL pipeline.
 pub type AuroraPlaceableIrV1 = AuroraModelIrV1;
 
+/// User-selectable Placeable build behavior. The default preserves every
+/// finite, non-collinear face. The legacy absolute-epsilon cleanup is retained
+/// only as an explicit experiment because it can punch holes in dense meshes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StaticPlaceableBuildOptionsV1 {
+    pub schema_version: u32,
+    #[serde(default)]
+    pub experimental_aggressive_geometry_cleanup: bool,
+}
+
+impl Default for StaticPlaceableBuildOptionsV1 {
+    fn default() -> Self {
+        Self {
+            schema_version: STATIC_PLACEABLE_BUILD_OPTIONS_SCHEMA_VERSION,
+            experimental_aggressive_geometry_cleanup: false,
+        }
+    }
+}
+
 /// Profile A admission for static placeables. Geometry thresholds remain the
 /// shared render-model policy; only the material policy differs by target.
 pub fn static_placeable_profile_a_options_v1() -> ProfileAOptionsV1 {
@@ -90,6 +145,105 @@ pub fn static_placeable_profile_a_options_v1() -> ProfileAOptionsV1 {
 /// budget as Creature and every other render-model target.
 pub fn static_placeable_glb_limits_v1() -> GlbLimits {
     GlbLimits::default()
+}
+
+/// Explicit, source-bound exception for one owner-approved offline Placeable
+/// materialization. Product defaults remain unchanged; callers must bind the
+/// exception to the immutable source SHA-256 and record the authorization.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OwnerApprovedOversizedPlaceableV1 {
+    pub schema_version: u32,
+    pub exact_source_sha256: String,
+    pub authorization_note: String,
+    pub max_input_bytes: usize,
+    pub max_vertices: usize,
+    pub max_indices: usize,
+    pub max_decoded_geometry_bytes: usize,
+    pub max_triangles: usize,
+    pub max_profile_work_bytes: u64,
+    pub max_hak_output_bytes: u64,
+}
+
+fn oversized_placeable_glb_limits_v1(
+    source_glb: &[u8],
+    exception: &OwnerApprovedOversizedPlaceableV1,
+) -> Result<GlbLimits, PlaceableErrorV1> {
+    validate_oversized_placeable_exception_v1(source_glb, exception)?;
+    Ok(GlbLimits {
+        max_input_bytes: exception.max_input_bytes,
+        max_vertices: exception.max_vertices,
+        max_indices: exception.max_indices,
+        max_decoded_geometry_bytes: exception.max_decoded_geometry_bytes,
+        triangle_blocking_above: exception.max_triangles,
+        ..GlbLimits::default()
+    })
+}
+
+fn oversized_placeable_profile_a_options_v1(
+    exception: &OwnerApprovedOversizedPlaceableV1,
+) -> ProfileAOptionsV1 {
+    ProfileAOptionsV1 {
+        material_policy: ProfileAMaterialPolicyV1::BoundedSourceSlots,
+        limits: ProfileALimitsV1 {
+            max_reference_vertices: exception.max_vertices as u64,
+            max_reference_triangles: exception.max_triangles as u64,
+            max_output_vertices: exception.max_vertices as u64,
+            max_output_indices: exception.max_indices as u64,
+            max_work_bytes: exception.max_profile_work_bytes,
+            max_unique_materials: 256,
+            triangle_blocking_above: exception.max_triangles as u64,
+            ..ProfileALimitsV1::default()
+        },
+        ..ProfileAOptionsV1::default()
+    }
+}
+
+fn validate_oversized_placeable_exception_v1(
+    source_glb: &[u8],
+    exception: &OwnerApprovedOversizedPlaceableV1,
+) -> Result<(), PlaceableErrorV1> {
+    if exception.schema_version != OWNER_APPROVED_OVERSIZED_PLACEABLE_SCHEMA_VERSION {
+        return Err(error(
+            "PLACEABLE-OVERSIZED-EXCEPTION-SCHEMA",
+            "exception.schemaVersion",
+            "owner-approved oversized Placeable exception schemaVersion must be 1",
+        ));
+    }
+    if exception.authorization_note.trim().is_empty() {
+        return Err(error(
+            "PLACEABLE-OVERSIZED-EXCEPTION-AUTHORIZATION",
+            "exception.authorizationNote",
+            "owner-approved oversized Placeable exception requires a durable authorization note",
+        ));
+    }
+    let actual_sha256 = sha256(source_glb);
+    if exception.exact_source_sha256 != actual_sha256 {
+        return Err(error(
+            "PLACEABLE-OVERSIZED-EXCEPTION-SOURCE-MISMATCH",
+            "exception.exactSourceSha256",
+            format!(
+                "exception is bound to {}, but source SHA-256 is {actual_sha256}",
+                exception.exact_source_sha256
+            ),
+        ));
+    }
+    if source_glb.len() > exception.max_input_bytes
+        || exception.max_vertices == 0
+        || exception.max_indices == 0
+        || exception.max_decoded_geometry_bytes == 0
+        || exception.max_triangles <= AURORA_MODEL_TRIANGLE_BUDGET_V1
+        || exception.max_profile_work_bytes == 0
+        || exception.max_hak_output_bytes == 0
+        || exception.max_hak_output_bytes > HAK_MAX_OUTPUT_BYTES
+    {
+        return Err(error(
+            "PLACEABLE-OVERSIZED-EXCEPTION-LIMITS",
+            "exception",
+            "owner-approved oversized Placeable exception limits are incomplete or do not admit the exact source",
+        ));
+    }
+    Ok(())
 }
 
 const REQUIRED_PLACEABLES_COLUMNS: [&str; 13] = [
@@ -273,6 +427,14 @@ pub struct StaticPlaceablePackageReportV1 {
     pub mdl_sha256: String,
     pub pwk_sha256: String,
     pub texture_sha256: String,
+    #[serde(default)]
+    pub texture_resources: Vec<PlaceableTextureBindingReportV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub texture_authoring: Option<PlaceableTextureResolutionReportV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub material_separation: Option<ModelMaterialSeparationReportV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_texture_authoring: Option<ModelTextureResolutionReportV1>,
     pub placeables_2da_sha256: String,
     pub utp_sha256: String,
     pub itp_sha256: String,
@@ -286,9 +448,42 @@ pub struct StaticPlaceablePackageReportV1 {
     pub proof_completeness: String,
     pub palette_completeness: String,
     pub collision_completeness: String,
+    #[serde(default)]
+    pub experimental_aggressive_geometry_cleanup: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub authoring: Option<PlaceableAuthoringApplyReportV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collision: Option<ResolvedPlaceableCollisionV1>,
     pub resources: Vec<PlaceableResourceBindingReportV1>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedPlaceableCollisionV1 {
+    pub schema_version: u32,
+    pub mode: PlaceableCollisionModeV1,
+    pub source_coordinate_space: PlaceableCollisionCoordinateSpaceV1,
+    pub output_coordinate_space: String,
+    pub input_vertices: Vec<[f32; 2]>,
+    pub source_vertices: Vec<[f32; 2]>,
+    pub vertices: Vec<[f32; 2]>,
+    pub triangles: Vec<[u32; 3]>,
+    pub bounds_min: [f32; 2],
+    pub bounds_max: [f32; 2],
+    pub surface_id: i32,
+    pub authoring_sha256: String,
+    pub collision_sha256: String,
+    pub pwk_sha256: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaceableTextureBindingReportV1 {
+    pub resref: String,
+    pub resource_type: u16,
+    pub material_slots: Vec<u32>,
+    pub byte_length: u64,
+    pub sha256: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -297,6 +492,14 @@ pub struct StaticPlaceableAuthoringBootstrapV1 {
     pub schema_version: u32,
     pub inspection: PlaceableElementInspectionV1,
     pub document: PlaceableAuthoringDocumentV1,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaticPlaceableAuthoringBootstrapV2 {
+    pub schema_version: u32,
+    pub inspection: PlaceableElementInspectionV1,
+    pub document: PlaceableAuthoringDocumentV2,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -946,13 +1149,22 @@ pub fn build_meshy_static_placeable_package_v1(
     placement: PlaceablePlacementV1,
     palette_id: u8,
 ) -> Result<StaticPlaceablePackageArtifactV1, PlaceableErrorV1> {
+    let options = StaticPlaceableBuildOptionsV1::default();
     build_meshy_static_placeable_package_inner_v1(
         source_glb,
         base_placeables_2da,
         identity,
         placement,
         palette_id,
-        None,
+        MeshyStaticPlaceableBuildContextV1 {
+            authoring: None,
+            collision: None,
+            textures: None,
+            material_separation: None,
+            model_textures: None,
+            exception: None,
+            options: &options,
+        },
     )
 }
 
@@ -961,8 +1173,197 @@ pub fn build_meshy_static_placeable_package_v1(
 pub fn inspect_meshy_static_placeable_authoring_v1(
     source_glb: &[u8],
 ) -> Result<StaticPlaceableAuthoringBootstrapV1, PlaceableErrorV1> {
-    let mut ingest = ingest_static_placeable_source_v1(source_glb)?;
-    sanitize_meshy_h1_degenerate_triangles_v1(&mut ingest).map_err(|source| {
+    inspect_meshy_static_placeable_authoring_v2(
+        source_glb,
+        &StaticPlaceableBuildOptionsV1::default(),
+    )
+}
+
+pub fn inspect_meshy_static_placeable_authoring_v2(
+    source_glb: &[u8],
+    options: &StaticPlaceableBuildOptionsV1,
+) -> Result<StaticPlaceableAuthoringBootstrapV1, PlaceableErrorV1> {
+    inspect_meshy_static_placeable_authoring_inner_v1(source_glb, None, options)
+}
+
+pub fn inspect_meshy_static_placeable_authoring_v3(
+    source_glb: &[u8],
+    options: &StaticPlaceableBuildOptionsV1,
+) -> Result<StaticPlaceableAuthoringBootstrapV2, PlaceableErrorV1> {
+    let bootstrap = inspect_meshy_static_placeable_authoring_v2(source_glb, options)?;
+    Ok(StaticPlaceableAuthoringBootstrapV2 {
+        schema_version: PLACEABLE_AUTHORING_SCHEMA_VERSION_V2,
+        inspection: bootstrap.inspection,
+        document: PlaceableAuthoringDocumentV2 {
+            schema_version: PLACEABLE_AUTHORING_SCHEMA_VERSION_V2,
+            source_sha256: bootstrap.document.source_sha256,
+            elements: bootstrap.document.elements,
+            collision: PlaceableCollisionSpecV1::default(),
+        },
+    })
+}
+
+/// Returns the exact source material/image identities and the lossless default
+/// texture-authoring document used by Studio.
+pub fn inspect_meshy_static_placeable_textures_v1(
+    source_glb: &[u8],
+    options: &StaticPlaceableBuildOptionsV1,
+) -> Result<PlaceableTextureAuthoringBootstrapV1, PlaceableErrorV1> {
+    validate_static_placeable_build_options_v1(options)?;
+    let mut ingest =
+        ingest_static_placeable_source_v1(source_glb, &static_placeable_glb_limits_v1())?;
+    sanitize_static_placeable_ingest_v1(&mut ingest, options).map_err(|source| {
+        error(
+            &format!("PLACEABLE-{}", source.code),
+            source.path,
+            source.message,
+        )
+    })?;
+    let model = convert_static_placeable_model_v1(
+        &ingest,
+        "m2a_texinspect",
+        &static_placeable_profile_a_options_v1(),
+        false,
+    )?;
+    inspect_placeable_material_textures_v1(&ingest, &model).map_err(map_texture_error)
+}
+
+/// Resolves preview metadata through the same Core recipe used by V5 build.
+pub fn resolve_meshy_static_placeable_textures_v1(
+    source_glb: &[u8],
+    base_texture_resref: &str,
+    geometry_authoring: &PlaceableAuthoringDocumentV2,
+    texture_authoring: &PlaceableTextureAuthoringDocumentV1,
+    payload_blob: &[u8],
+    descriptors: &[PlaceableTexturePayloadDescriptorV1],
+    options: &StaticPlaceableBuildOptionsV1,
+) -> Result<PlaceableTextureResolutionReportV1, PlaceableErrorV1> {
+    validate_static_placeable_build_options_v1(options)?;
+    validate_placeable_authoring_v2(geometry_authoring)?;
+    let limits = static_placeable_glb_limits_v1();
+    let mut ingest = ingest_static_placeable_source_v1(source_glb, &limits)?;
+    sanitize_static_placeable_ingest_v1(&mut ingest, options).map_err(|source| {
+        error(
+            &format!("PLACEABLE-{}", source.code),
+            source.path,
+            source.message,
+        )
+    })?;
+    let elements = geometry_authoring.elements_document_v1();
+    let render_document =
+        project_placeable_authoring_v1(&elements, PlaceableAuthoringProjectionV1::Render);
+    apply_placeable_authoring_to_ingest_v1(&mut ingest, &render_document)
+        .map_err(map_authoring_error)?;
+    let model = convert_static_placeable_model_v1(
+        &ingest,
+        "m2a_texresolve",
+        &static_placeable_profile_a_options_v1(),
+        false,
+    )?;
+    resolve_placeable_texture_overrides_v1(
+        source_glb,
+        &limits,
+        &ingest,
+        &model,
+        base_texture_resref,
+        texture_authoring,
+        payload_blob,
+        descriptors,
+    )
+    .map(|resolved| resolved.report)
+    .map_err(map_texture_error)
+}
+
+pub fn resolve_meshy_static_placeable_collision_v1(
+    source_glb: &[u8],
+    model_resref: &str,
+    authoring: &PlaceableAuthoringDocumentV2,
+    options: &StaticPlaceableBuildOptionsV1,
+) -> Result<ResolvedPlaceableCollisionV1, PlaceableErrorV1> {
+    validate_static_placeable_build_options_v1(options)?;
+    validate_placeable_authoring_v2(authoring)?;
+    let mut render_ingest =
+        ingest_static_placeable_source_v1(source_glb, &static_placeable_glb_limits_v1())?;
+    sanitize_static_placeable_ingest_v1(&mut render_ingest, options).map_err(|source| {
+        error(
+            &format!("PLACEABLE-{}", source.code),
+            source.path,
+            source.message,
+        )
+    })?;
+    let source = render_ingest.clone();
+    let elements = authoring.elements_document_v1();
+    let render_document =
+        project_placeable_authoring_v1(&elements, PlaceableAuthoringProjectionV1::Render);
+    let mut authoring_report =
+        apply_placeable_authoring_to_ingest_v1(&mut render_ingest, &render_document)
+            .map_err(map_authoring_error)?;
+    authoring_report.authoring_sha256 =
+        placeable_authoring_hash_v2(authoring).map_err(map_authoring_error)?;
+    if authoring.collision.mode == PlaceableCollisionModeV1::AutoRectangle
+        && authoring_report.collision_element_count == 0
+    {
+        return Err(error(
+            "PLACEABLE-COLLISION-EMPTY",
+            "authoring.elements",
+            "AUTO_RECTANGLE requires at least one collision element",
+        ));
+    }
+    let profile_options = static_placeable_profile_a_options_v1();
+    let (render_model, render_transform) = convert_static_placeable_model_with_transform_v1(
+        &render_ingest,
+        model_resref,
+        &profile_options,
+        false,
+    )?;
+    let collision_model = if authoring.collision.mode == PlaceableCollisionModeV1::AutoRectangle {
+        let mut collision_ingest = source;
+        let collision_document =
+            project_placeable_authoring_v1(&elements, PlaceableAuthoringProjectionV1::Collision);
+        apply_placeable_authoring_to_ingest_v1(&mut collision_ingest, &collision_document)
+            .map_err(map_authoring_error)?;
+        convert_static_placeable_model_v1(&collision_ingest, model_resref, &profile_options, false)?
+    } else {
+        render_model
+    };
+    let (walkmesh, mut resolved) = resolve_placeable_collision_v1(
+        &authoring.collision,
+        model_resref,
+        &authoring_report,
+        &render_transform,
+        &collision_model,
+    )?;
+    let artifact = write_ascii_placeable_walkmesh_v1(&walkmesh)
+        .map_err(|source| map_error("PLACEABLE-PWK-WRITE-FAILED", "walkmesh", source))?;
+    resolved.pwk_sha256 = artifact.report.payload_sha256;
+    Ok(resolved)
+}
+
+/// Inspects one exact oversized source under a durable owner-approved
+/// exception without changing the normal browser/product intake limits.
+pub fn inspect_meshy_static_placeable_authoring_with_oversized_exception_v1(
+    source_glb: &[u8],
+    exception: &OwnerApprovedOversizedPlaceableV1,
+) -> Result<StaticPlaceableAuthoringBootstrapV1, PlaceableErrorV1> {
+    inspect_meshy_static_placeable_authoring_inner_v1(
+        source_glb,
+        Some(exception),
+        &StaticPlaceableBuildOptionsV1::default(),
+    )
+}
+
+fn inspect_meshy_static_placeable_authoring_inner_v1(
+    source_glb: &[u8],
+    exception: Option<&OwnerApprovedOversizedPlaceableV1>,
+    options: &StaticPlaceableBuildOptionsV1,
+) -> Result<StaticPlaceableAuthoringBootstrapV1, PlaceableErrorV1> {
+    validate_static_placeable_build_options_v1(options)?;
+    let limits = exception
+        .map(|exception| oversized_placeable_glb_limits_v1(source_glb, exception))
+        .transpose()?
+        .unwrap_or_else(static_placeable_glb_limits_v1);
+    let mut ingest = ingest_static_placeable_source_v1(source_glb, &limits)?;
+    sanitize_static_placeable_ingest_v1(&mut ingest, options).map_err(|source| {
         error(
             &format!("PLACEABLE-{}", source.code),
             source.path,
@@ -989,20 +1390,446 @@ pub fn build_meshy_static_placeable_package_v2(
     palette_id: u8,
     authoring: &PlaceableAuthoringDocumentV1,
 ) -> Result<StaticPlaceablePackageArtifactV1, PlaceableErrorV1> {
+    build_meshy_static_placeable_package_v3(
+        source_glb,
+        base_placeables_2da,
+        identity,
+        placement,
+        palette_id,
+        authoring,
+        &StaticPlaceableBuildOptionsV1::default(),
+    )
+}
+
+pub fn build_meshy_static_placeable_package_v3(
+    source_glb: &[u8],
+    base_placeables_2da: &[u8],
+    identity: &StaticPlaceableIdentityV1,
+    placement: PlaceablePlacementV1,
+    palette_id: u8,
+    authoring: &PlaceableAuthoringDocumentV1,
+    options: &StaticPlaceableBuildOptionsV1,
+) -> Result<StaticPlaceablePackageArtifactV1, PlaceableErrorV1> {
     build_meshy_static_placeable_package_inner_v1(
         source_glb,
         base_placeables_2da,
         identity,
         placement,
         palette_id,
-        Some(authoring),
+        MeshyStaticPlaceableBuildContextV1 {
+            authoring: Some(authoring),
+            collision: None,
+            textures: None,
+            material_separation: None,
+            model_textures: None,
+            exception: None,
+            options,
+        },
+    )
+}
+
+pub fn build_meshy_static_placeable_package_v4(
+    source_glb: &[u8],
+    base_placeables_2da: &[u8],
+    identity: &StaticPlaceableIdentityV1,
+    placement: PlaceablePlacementV1,
+    palette_id: u8,
+    authoring: &PlaceableAuthoringDocumentV2,
+    options: &StaticPlaceableBuildOptionsV1,
+) -> Result<StaticPlaceablePackageArtifactV1, PlaceableErrorV1> {
+    validate_placeable_authoring_v2(authoring)?;
+    let elements = authoring.elements_document_v1();
+    build_meshy_static_placeable_package_inner_v1(
+        source_glb,
+        base_placeables_2da,
+        identity,
+        placement,
+        palette_id,
+        MeshyStaticPlaceableBuildContextV1 {
+            authoring: Some(&elements),
+            collision: Some(&authoring.collision),
+            textures: None,
+            material_separation: None,
+            model_textures: None,
+            exception: None,
+            options,
+        },
+    )
+}
+
+/// Builds an authored static placeable with exact, source-bound per-material
+/// texture overrides. V4 and older routes remain byte-identical SOURCE paths.
+#[allow(clippy::too_many_arguments)]
+pub fn build_meshy_static_placeable_package_v5(
+    source_glb: &[u8],
+    base_placeables_2da: &[u8],
+    identity: &StaticPlaceableIdentityV1,
+    placement: PlaceablePlacementV1,
+    palette_id: u8,
+    authoring: &PlaceableAuthoringDocumentV2,
+    texture_authoring: &PlaceableTextureAuthoringDocumentV1,
+    texture_payload_blob: &[u8],
+    texture_payload_descriptors: &[PlaceableTexturePayloadDescriptorV1],
+    options: &StaticPlaceableBuildOptionsV1,
+) -> Result<StaticPlaceablePackageArtifactV1, PlaceableErrorV1> {
+    validate_placeable_authoring_v2(authoring)?;
+    let elements = authoring.elements_document_v1();
+    build_meshy_static_placeable_package_inner_v1(
+        source_glb,
+        base_placeables_2da,
+        identity,
+        placement,
+        palette_id,
+        MeshyStaticPlaceableBuildContextV1 {
+            authoring: Some(&elements),
+            collision: Some(&authoring.collision),
+            textures: Some(MeshyStaticPlaceableTextureContextV1 {
+                authoring: texture_authoring,
+                payload_blob: texture_payload_blob,
+                descriptors: texture_payload_descriptors,
+            }),
+            material_separation: None,
+            model_textures: None,
+            exception: None,
+            options,
+        },
+    )
+}
+
+#[derive(Clone, Copy)]
+struct MeshyStaticModelTextureContextV1<'a> {
+    authoring: &'a ModelTextureAuthoringDocumentV1,
+    payload_blob: &'a [u8],
+    descriptors: &'a [ModelTexturePayloadDescriptorV1],
+}
+
+/// Material Separation vertical slice for static Placeables. Render geometry
+/// receives authored material slots; collision authoring stays on the exact
+/// geometry-only projection and therefore cannot be changed by the recipe.
+#[allow(clippy::too_many_arguments)]
+pub fn build_meshy_static_placeable_package_v6(
+    source_glb: &[u8],
+    base_placeables_2da: &[u8],
+    identity: &StaticPlaceableIdentityV1,
+    placement: PlaceablePlacementV1,
+    palette_id: u8,
+    authoring: &PlaceableAuthoringDocumentV2,
+    material_separation: &ModelMaterialSeparationDocumentV1,
+    texture_authoring: &ModelTextureAuthoringDocumentV1,
+    texture_payload_blob: &[u8],
+    texture_payload_descriptors: &[ModelTexturePayloadDescriptorV1],
+    options: &StaticPlaceableBuildOptionsV1,
+) -> Result<StaticPlaceablePackageArtifactV1, PlaceableErrorV1> {
+    validate_placeable_authoring_v2(authoring)?;
+    let elements = authoring.elements_document_v1();
+    build_meshy_static_placeable_package_inner_v1(
+        source_glb,
+        base_placeables_2da,
+        identity,
+        placement,
+        palette_id,
+        MeshyStaticPlaceableBuildContextV1 {
+            authoring: Some(&elements),
+            collision: Some(&authoring.collision),
+            textures: None,
+            material_separation: Some(material_separation),
+            model_textures: Some(MeshyStaticModelTextureContextV1 {
+                authoring: texture_authoring,
+                payload_blob: texture_payload_blob,
+                descriptors: texture_payload_descriptors,
+            }),
+            exception: None,
+            options,
+        },
+    )
+}
+
+fn validate_placeable_authoring_v2(
+    authoring: &PlaceableAuthoringDocumentV2,
+) -> Result<(), PlaceableErrorV1> {
+    if authoring.schema_version != PLACEABLE_AUTHORING_SCHEMA_VERSION_V2 {
+        return Err(error(
+            "PLACEABLE-AUTHORING-SCHEMA-UNSUPPORTED",
+            "authoring.schemaVersion",
+            format!(
+                "custom collision authoring requires schema version {}",
+                PLACEABLE_AUTHORING_SCHEMA_VERSION_V2
+            ),
+        ));
+    }
+    let collision = &authoring.collision;
+    if collision.schema_version != PLACEABLE_COLLISION_SPEC_SCHEMA_VERSION_V1 {
+        return Err(error(
+            "PLACEABLE-COLLISION-SCHEMA-UNSUPPORTED",
+            "authoring.collision.schemaVersion",
+            format!(
+                "expected collision schema version {}",
+                PLACEABLE_COLLISION_SPEC_SCHEMA_VERSION_V1
+            ),
+        ));
+    }
+    if !collision.padding_meters.is_finite() || collision.padding_meters < 0.0 {
+        return Err(error(
+            "PLACEABLE-COLLISION-PADDING-INVALID",
+            "authoring.collision.paddingMeters",
+            "collision padding must be a finite non-negative number of metres",
+        ));
+    }
+    match collision.mode {
+        PlaceableCollisionModeV1::AutoRectangle if !collision.vertices.is_empty() => Err(error(
+            "PLACEABLE-COLLISION-AUTO-VERTICES-NOT-EMPTY",
+            "authoring.collision.vertices",
+            "AUTO_RECTANGLE derives its vertices and requires an empty custom vertex list",
+        )),
+        PlaceableCollisionModeV1::CustomPolygon if collision.padding_meters != 0.0 => Err(error(
+            "PLACEABLE-COLLISION-CUSTOM-PADDING-UNSUPPORTED",
+            "authoring.collision.paddingMeters",
+            "CUSTOM_POLYGON V1 requires exact authored vertices and zero padding",
+        )),
+        _ => Ok(()),
+    }
+}
+
+fn resolve_placeable_collision_v1(
+    spec: &PlaceableCollisionSpecV1,
+    model_resref: &str,
+    authoring: &PlaceableAuthoringApplyReportV1,
+    render_transform: &ProfileATransformReportV1,
+    collision_model: &AuroraModelIrV1,
+) -> Result<(PlaceableWalkmeshIrV1, ResolvedPlaceableCollisionV1), PlaceableErrorV1> {
+    let input_vertices = match spec.mode {
+        PlaceableCollisionModeV1::AutoRectangle => {
+            let min = authoring.collision_bounds_min.ok_or_else(|| {
+                error(
+                    "PLACEABLE-COLLISION-EMPTY",
+                    "authoring.elements",
+                    "AUTO_RECTANGLE requires finite collision element bounds",
+                )
+            })?;
+            let max = authoring.collision_bounds_max.ok_or_else(|| {
+                error(
+                    "PLACEABLE-COLLISION-EMPTY",
+                    "authoring.elements",
+                    "AUTO_RECTANGLE requires finite collision element bounds",
+                )
+            })?;
+            let source_padding = if spec.padding_meters == 0.0 {
+                0.0
+            } else {
+                let scale = render_transform.scale.ok_or_else(|| {
+                    error(
+                        "PLACEABLE-COLLISION-TRANSFORM-MISSING",
+                        "conversion.report.transform.scale",
+                        "AUTO_RECTANGLE padding requires the resolved uniform output scale",
+                    )
+                })?;
+                spec.padding_meters / scale.abs()
+            };
+            vec![
+                [min[0] - source_padding, min[2] - source_padding],
+                [max[0] + source_padding, min[2] - source_padding],
+                [max[0] + source_padding, max[2] + source_padding],
+                [min[0] - source_padding, max[2] + source_padding],
+            ]
+        }
+        PlaceableCollisionModeV1::CustomPolygon => spec.vertices.clone(),
+    };
+
+    let walkmesh = match spec.mode {
+        PlaceableCollisionModeV1::AutoRectangle => {
+            let mut walkmesh = derive_placeable_walkmesh_ir_v1(collision_model, model_resref)
+                .map_err(|source| map_error("PLACEABLE-PWK-RESOLVE-FAILED", "collision", source))?;
+            if spec.padding_meters > 0.0 {
+                walkmesh.bounds_min[0] -= spec.padding_meters;
+                walkmesh.bounds_min[1] -= spec.padding_meters;
+                walkmesh.bounds_max[0] += spec.padding_meters;
+                walkmesh.bounds_max[1] += spec.padding_meters;
+                walkmesh.vertices = vec![
+                    [walkmesh.bounds_min[0], walkmesh.bounds_min[1], 0.0],
+                    [walkmesh.bounds_max[0], walkmesh.bounds_min[1], 0.0],
+                    [walkmesh.bounds_min[0], walkmesh.bounds_max[1], 0.0],
+                    [walkmesh.bounds_max[0], walkmesh.bounds_max[1], 0.0],
+                ];
+            }
+            walkmesh
+        }
+        PlaceableCollisionModeV1::CustomPolygon => {
+            let output_vertices = spec
+                .vertices
+                .iter()
+                .copied()
+                .map(|vertex| source_xz_to_aurora_xy_v1(vertex, render_transform))
+                .collect::<Result<Vec<_>, _>>()?;
+            custom_placeable_walkmesh_ir_v1(model_resref, &output_vertices).map_err(|source| {
+                map_error("PLACEABLE-PWK-CUSTOM-POLYGON-INVALID", "collision", source)
+            })?
+        }
+    };
+    let vertices = walkmesh
+        .vertices
+        .iter()
+        .map(|vertex| [vertex[0], vertex[1]])
+        .collect::<Vec<_>>();
+    let source_vertices = vertices
+        .iter()
+        .copied()
+        .map(|vertex| aurora_xy_to_source_xz_v1(vertex, render_transform))
+        .collect::<Result<Vec<_>, _>>()?;
+    let triangles = walkmesh
+        .faces
+        .iter()
+        .map(|face| face.vertex_indices)
+        .collect::<Vec<_>>();
+    let collision_bytes = serde_json::to_vec(&(
+        spec.mode,
+        &vertices,
+        &triangles,
+        PLACEABLE_PWK_NONWALK_SURFACE_ID_V1,
+    ))
+    .map_err(|source| {
+        error(
+            "PLACEABLE-COLLISION-SERIALIZE",
+            "collision",
+            source.to_string(),
+        )
+    })?;
+    let report = ResolvedPlaceableCollisionV1 {
+        schema_version: 1,
+        mode: spec.mode,
+        source_coordinate_space: spec.coordinate_space,
+        output_coordinate_space: "AURORA_XY_METERS".to_owned(),
+        input_vertices,
+        source_vertices,
+        vertices,
+        triangles,
+        bounds_min: walkmesh.bounds_min,
+        bounds_max: walkmesh.bounds_max,
+        surface_id: PLACEABLE_PWK_NONWALK_SURFACE_ID_V1,
+        authoring_sha256: authoring.authoring_sha256.clone(),
+        collision_sha256: sha256_hex(&collision_bytes),
+        pwk_sha256: String::new(),
+    };
+    Ok((walkmesh, report))
+}
+
+fn source_xz_to_aurora_xy_v1(
+    vertex: [f32; 2],
+    transform: &ProfileATransformReportV1,
+) -> Result<[f32; 2], PlaceableErrorV1> {
+    let scale = transform.scale.ok_or_else(|| {
+        error(
+            "PLACEABLE-COLLISION-TRANSFORM-MISSING",
+            "conversion.report.transform.scale",
+            "eligible Placeable conversion must resolve one uniform scale",
+        )
+    })?;
+    let translation = transform.translation.ok_or_else(|| {
+        error(
+            "PLACEABLE-COLLISION-TRANSFORM-MISSING",
+            "conversion.report.transform.translation",
+            "eligible Placeable conversion must resolve one translation",
+        )
+    })?;
+    let matrix = transform.basis_matrix;
+    let source = [vertex[0], 0.0, vertex[1]];
+    let output = [
+        scale * (matrix[0] * source[0] + matrix[4] * source[1] + matrix[8] * source[2])
+            + translation[0],
+        scale * (matrix[1] * source[0] + matrix[5] * source[1] + matrix[9] * source[2])
+            + translation[1],
+    ];
+    if output.iter().any(|coordinate| !coordinate.is_finite()) {
+        return Err(error(
+            "PLACEABLE-COLLISION-TRANSFORM-INVALID",
+            "authoring.collision.vertices",
+            "source XZ to Aurora XY transform produced a non-finite coordinate",
+        ));
+    }
+    Ok(output)
+}
+
+fn aurora_xy_to_source_xz_v1(
+    vertex: [f32; 2],
+    transform: &ProfileATransformReportV1,
+) -> Result<[f32; 2], PlaceableErrorV1> {
+    let scale = transform.scale.ok_or_else(|| {
+        error(
+            "PLACEABLE-COLLISION-TRANSFORM-MISSING",
+            "conversion.report.transform.scale",
+            "eligible Placeable conversion must resolve one uniform scale",
+        )
+    })?;
+    let translation = transform.translation.ok_or_else(|| {
+        error(
+            "PLACEABLE-COLLISION-TRANSFORM-MISSING",
+            "conversion.report.transform.translation",
+            "eligible Placeable conversion must resolve one translation",
+        )
+    })?;
+    let matrix = transform.basis_matrix;
+    let a = matrix[0];
+    let b = matrix[8];
+    let c = matrix[1];
+    let d = matrix[9];
+    let determinant = a * d - b * c;
+    if !scale.is_finite() || scale.abs() <= f32::EPSILON || determinant.abs() <= f32::EPSILON {
+        return Err(error(
+            "PLACEABLE-COLLISION-TRANSFORM-INVALID",
+            "conversion.report.transform",
+            "collision ground-plane transform must be finite and invertible",
+        ));
+    }
+    let output_x = (vertex[0] - translation[0]) / scale;
+    let output_y = (vertex[1] - translation[1]) / scale;
+    let source = [
+        (d * output_x - b * output_y) / determinant,
+        (-c * output_x + a * output_y) / determinant,
+    ];
+    if source.iter().any(|coordinate| !coordinate.is_finite()) {
+        return Err(error(
+            "PLACEABLE-COLLISION-TRANSFORM-INVALID",
+            "collision.vertices",
+            "inverse Profile A transform produced a non-finite source coordinate",
+        ));
+    }
+    Ok(source)
+}
+
+/// Builds one exact oversized Placeable under an explicit owner-approved,
+/// source-bound exception. The default V1/V2 product routes remain unchanged.
+pub fn build_meshy_static_placeable_package_with_oversized_exception_v3(
+    source_glb: &[u8],
+    base_placeables_2da: &[u8],
+    identity: &StaticPlaceableIdentityV1,
+    placement: PlaceablePlacementV1,
+    palette_id: u8,
+    authoring: &PlaceableAuthoringDocumentV1,
+    exception: &OwnerApprovedOversizedPlaceableV1,
+) -> Result<StaticPlaceablePackageArtifactV1, PlaceableErrorV1> {
+    let options = StaticPlaceableBuildOptionsV1::default();
+    build_meshy_static_placeable_package_inner_v1(
+        source_glb,
+        base_placeables_2da,
+        identity,
+        placement,
+        palette_id,
+        MeshyStaticPlaceableBuildContextV1 {
+            authoring: Some(authoring),
+            collision: None,
+            textures: None,
+            material_separation: None,
+            model_textures: None,
+            exception: Some(exception),
+            options: &options,
+        },
     )
 }
 
 fn ingest_static_placeable_source_v1(
     source_glb: &[u8],
+    limits: &GlbLimits,
 ) -> Result<crate::glb::GlbIngestResult, PlaceableErrorV1> {
-    ingest_glb(source_glb, &static_placeable_glb_limits_v1()).map_err(|source| {
+    ingest_glb(source_glb, limits).map_err(|source| {
         error(
             &format!("PLACEABLE-{}", source.code),
             source.json_path.unwrap_or_else(|| "sourceGlb".to_owned()),
@@ -1011,10 +1838,58 @@ fn ingest_static_placeable_source_v1(
     })
 }
 
+fn validate_static_placeable_build_options_v1(
+    options: &StaticPlaceableBuildOptionsV1,
+) -> Result<(), PlaceableErrorV1> {
+    if options.schema_version != STATIC_PLACEABLE_BUILD_OPTIONS_SCHEMA_VERSION {
+        return Err(error(
+            "PLACEABLE-BUILD-OPTIONS-SCHEMA-INVALID",
+            "options.schemaVersion",
+            format!(
+                "expected Placeable build-options schema {}, got {}",
+                STATIC_PLACEABLE_BUILD_OPTIONS_SCHEMA_VERSION, options.schema_version
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn sanitize_static_placeable_ingest_v1(
+    ingest: &mut crate::glb::GlbIngestResult,
+    options: &StaticPlaceableBuildOptionsV1,
+) -> Result<(), crate::model_pipeline::M6PipelineErrorV1> {
+    if options.experimental_aggressive_geometry_cleanup {
+        sanitize_static_model_degenerate_triangles_aggressive_v1(ingest)
+    } else {
+        sanitize_static_model_degenerate_triangles_v1(ingest)
+    }
+}
+
 fn map_authoring_error(
     source: crate::placeable_authoring::PlaceableAuthoringErrorV1,
 ) -> PlaceableErrorV1 {
     error(&source.code, source.path, source.message)
+}
+
+fn map_texture_error(source: PlaceableTextureErrorV1) -> PlaceableErrorV1 {
+    error(&source.code, source.path, source.message)
+}
+
+#[derive(Clone, Copy)]
+struct MeshyStaticPlaceableTextureContextV1<'a> {
+    authoring: &'a PlaceableTextureAuthoringDocumentV1,
+    payload_blob: &'a [u8],
+    descriptors: &'a [PlaceableTexturePayloadDescriptorV1],
+}
+
+struct MeshyStaticPlaceableBuildContextV1<'a> {
+    authoring: Option<&'a PlaceableAuthoringDocumentV1>,
+    collision: Option<&'a PlaceableCollisionSpecV1>,
+    textures: Option<MeshyStaticPlaceableTextureContextV1<'a>>,
+    material_separation: Option<&'a ModelMaterialSeparationDocumentV1>,
+    model_textures: Option<MeshyStaticModelTextureContextV1<'a>>,
+    exception: Option<&'a OwnerApprovedOversizedPlaceableV1>,
+    options: &'a StaticPlaceableBuildOptionsV1,
 }
 
 fn build_meshy_static_placeable_package_inner_v1(
@@ -1023,29 +1898,84 @@ fn build_meshy_static_placeable_package_inner_v1(
     identity: &StaticPlaceableIdentityV1,
     placement: PlaceablePlacementV1,
     palette_id: u8,
-    authoring: Option<&PlaceableAuthoringDocumentV1>,
+    context: MeshyStaticPlaceableBuildContextV1<'_>,
 ) -> Result<StaticPlaceablePackageArtifactV1, PlaceableErrorV1> {
+    let MeshyStaticPlaceableBuildContextV1 {
+        authoring,
+        collision,
+        textures: texture_context,
+        material_separation,
+        model_textures,
+        exception,
+        options,
+    } = context;
+    validate_static_placeable_build_options_v1(options)?;
     validate_resref(&identity.model_resref, "identity.modelResref")?;
     validate_resref(&identity.texture_resref, "identity.textureResref")?;
 
-    let glb_limits = static_placeable_glb_limits_v1();
-    let mut ingest = ingest_static_placeable_source_v1(source_glb)?;
-    sanitize_meshy_h1_degenerate_triangles_v1(&mut ingest).map_err(|source| {
+    let glb_limits = exception
+        .map(|exception| oversized_placeable_glb_limits_v1(source_glb, exception))
+        .transpose()?
+        .unwrap_or_else(static_placeable_glb_limits_v1);
+    let mut ingest = ingest_static_placeable_source_v1(source_glb, &glb_limits)?;
+    sanitize_static_placeable_ingest_v1(&mut ingest, options).map_err(|source| {
         error(
             &format!("PLACEABLE-{}", source.code),
             source.path,
             source.message,
         )
     })?;
+    let source_ingest = ingest.clone();
+    let resolved_materials = material_separation
+        .map(|document| {
+            resolve_model_materials_v1(&source_ingest.ir, document).map_err(|source| {
+                error(
+                    &source.code.replacen(
+                        "MATERIAL-SEPARATION",
+                        "PLACEABLE-MATERIAL-SEPARATION",
+                        1,
+                    ),
+                    source.path,
+                    source.message,
+                )
+            })
+        })
+        .transpose()?;
     let mut authoring_report = None;
     let collision_ingest = if let Some(document) = authoring {
         let source = ingest.clone();
         let render_document =
             project_placeable_authoring_v1(document, PlaceableAuthoringProjectionV1::Render);
-        authoring_report = Some(
+        let mut report = if let Some(separation) = material_separation {
+            apply_placeable_authoring_with_material_separation_to_ingest_v1(
+                &mut ingest,
+                &render_document,
+                separation,
+            )
+        } else {
             apply_placeable_authoring_to_ingest_v1(&mut ingest, &render_document)
-                .map_err(map_authoring_error)?,
-        );
+        }
+        .map_err(map_authoring_error)?;
+        let custom_polygon =
+            collision.is_some_and(|spec| spec.mode == PlaceableCollisionModeV1::CustomPolygon);
+        if report.collision_element_count == 0 && !custom_polygon {
+            return Err(error(
+                "PLACEABLE-COLLISION-EMPTY",
+                "authoring.elements",
+                "static placeable requires at least one non-deleted source element included in collision",
+            ));
+        }
+        if let Some(spec) = collision {
+            let v2 = PlaceableAuthoringDocumentV2 {
+                schema_version: PLACEABLE_AUTHORING_SCHEMA_VERSION_V2,
+                source_sha256: document.source_sha256.clone(),
+                elements: document.elements.clone(),
+                collision: spec.clone(),
+            };
+            report.authoring_sha256 =
+                placeable_authoring_hash_v2(&v2).map_err(map_authoring_error)?;
+        }
+        authoring_report = Some(report);
         let mut collision = source;
         let collision_document =
             project_placeable_authoring_v1(document, PlaceableAuthoringProjectionV1::Collision);
@@ -1056,71 +1986,287 @@ fn build_meshy_static_placeable_package_inner_v1(
         None
     };
 
-    let model = convert_static_placeable_model_v1(&ingest, &identity.model_resref)?;
+    let profile_options = exception
+        .map(oversized_placeable_profile_a_options_v1)
+        .unwrap_or_else(static_placeable_profile_a_options_v1);
+    let (model, render_transform) = convert_static_placeable_model_with_transform_v1(
+        &ingest,
+        &identity.model_resref,
+        &profile_options,
+        exception.is_some(),
+    )?;
     let collision_model = collision_ingest
         .as_ref()
-        .map(|source| convert_static_placeable_model_v1(source, &identity.model_resref))
+        .map(|source| {
+            convert_static_placeable_model_v1(
+                source,
+                &identity.model_resref,
+                &profile_options,
+                exception.is_some(),
+            )
+        })
+        .transpose()?;
+    let resolved_collision = collision
+        .map(|spec| {
+            resolve_placeable_collision_v1(
+                spec,
+                &identity.model_resref,
+                authoring_report.as_ref().ok_or_else(|| {
+                    error(
+                        "PLACEABLE-COLLISION-AUTHORING-MISSING",
+                        "authoring",
+                        "versioned collision requires an authoring report",
+                    )
+                })?,
+                &render_transform,
+                collision_model.as_ref().unwrap_or(&model),
+            )
+        })
         .transpose()?;
 
-    let texture_selection =
-        resolve_base_color_image_index_v1(&ingest, &model).map_err(|source| {
-            error(
-                &format!("PLACEABLE-{}", source.code),
-                source.path,
-                source.message,
+    let (material_textures, textures, texture_authoring_report, model_texture_report) =
+        if let Some(texture_context) = model_textures {
+            let resolved_materials = resolved_materials.as_ref().ok_or_else(|| {
+                error(
+                    "PLACEABLE-MATERIAL-SEPARATION-MISSING",
+                    "materialSeparation",
+                    "neutral model texture authoring requires Material Separation",
+                )
+            })?;
+            let resolved = resolve_model_texture_authoring_v1(
+                source_glb,
+                &glb_limits,
+                &source_ingest,
+                resolved_materials,
+                &identity.texture_resref,
+                texture_context.authoring,
+                texture_context.payload_blob,
+                texture_context.descriptors,
             )
-        })?;
-    let texture_image = decode_embedded_image_to_tga_v1(
-        source_glb,
-        texture_selection.source_image_index,
-        &glb_limits,
-        &EmbeddedImageDecodeLimitsV1::default(),
-    )
-    .map_err(|source| {
-        error(
-            &format!("PLACEABLE-{}", source.code),
-            source.json_path.unwrap_or_else(|| "images".to_owned()),
-            source.message,
-        )
-    })?;
-    let tga = write_tga_v1(&texture_image, &TgaWriterOptionsV1::default()).map_err(|source| {
-        error(
-            &format!("PLACEABLE-{}", source.code),
-            source.path,
-            source.message,
-        )
-    })?;
-    let material_textures = model
-        .material_source_bindings
-        .iter()
-        .map(|binding| MdlMaterialTextureBindingV1 {
-            material_slot: binding.slot,
-            resref: identity.texture_resref.clone(),
-        })
-        .collect();
+            .map_err(|source| error(&source.code, source.path, source.message))?;
+            let mut resref_by_material_name = BTreeMap::<String, String>::new();
+            for binding in &resolved.report.bindings {
+                resref_by_material_name.insert(
+                    binding.authored_material_id.clone(),
+                    binding.output_resref.clone(),
+                );
+            }
+            for slot in &resolved_materials.report.material_slots {
+                if slot.system_source_material
+                    && let Some(name) = &slot.source_material_name
+                    && let Some(resref) = resref_by_material_name
+                        .get(&slot.authored_material_id)
+                        .cloned()
+                {
+                    resref_by_material_name.insert(name.clone(), resref);
+                }
+            }
+            let material_textures = model
+            .material_source_bindings
+            .iter()
+            .map(|binding| {
+                let name = binding
+                    .source_material_id
+                    .and_then(|source_id| {
+                        ingest
+                            .ir
+                            .materials
+                            .iter()
+                            .find(|material| material.id == source_id)
+                    })
+                    .and_then(|material| material.name.as_deref())
+                    .or(binding.source_material_name.as_deref())
+                    .ok_or_else(|| {
+                        error(
+                            "PLACEABLE-MATERIAL-SEPARATION-BINDING-MISSING",
+                            "model.materialSourceBindings.sourceMaterialName",
+                            format!(
+                                "material-separated Placeable output slot {} (source material {:?}) has an unnamed material",
+                                binding.slot, binding.source_material_id
+                            ),
+                        )
+                    })?;
+                    let base_name = name
+                        .strip_suffix(SHADOWLESS_MATERIAL_SUFFIX_V1)
+                        .unwrap_or(name);
+                    let resref = resref_by_material_name.get(base_name).ok_or_else(|| {
+                        error(
+                            "PLACEABLE-MATERIAL-SEPARATION-BINDING-MISSING",
+                            "model.materialSourceBindings",
+                            format!("output material {name} has no authored texture binding"),
+                        )
+                    })?;
+                    Ok(MdlMaterialTextureBindingV1 {
+                        material_slot: binding.slot,
+                        resref: resref.clone(),
+                    })
+                })
+                .collect::<Result<Vec<_>, PlaceableErrorV1>>()?;
+            let report = resolved.report;
+            let textures = resolved
+                .textures
+                .into_iter()
+                .map(|texture| PlaceableTextureInputV1 {
+                    resref: texture.resref,
+                    resource_type: texture.resource_type,
+                    payload: texture.payload,
+                })
+                .collect();
+            (material_textures, textures, None, Some(report))
+        } else if let Some(texture_context) = texture_context {
+            let resolved = resolve_placeable_texture_overrides_v1(
+                source_glb,
+                &glb_limits,
+                &ingest,
+                &model,
+                &identity.texture_resref,
+                texture_context.authoring,
+                texture_context.payload_blob,
+                texture_context.descriptors,
+            )
+            .map_err(map_texture_error)?;
+            let report = resolved.report;
+            let textures = resolved
+                .textures
+                .into_iter()
+                .map(|texture| PlaceableTextureInputV1 {
+                    resref: texture.resref,
+                    resource_type: texture.resource_type,
+                    payload: texture.payload,
+                })
+                .collect();
+            (resolved.material_textures, textures, Some(report), None)
+        } else {
+            let texture_selections =
+                resolve_base_color_image_indices_v1(&ingest, &model).map_err(|source| {
+                    error(
+                        &format!("PLACEABLE-{}", source.code),
+                        source.path,
+                        source.message,
+                    )
+                })?;
+            let mut resref_by_image_sha256 = BTreeMap::<String, String>::new();
+            let mut material_textures = Vec::with_capacity(texture_selections.len());
+            let mut textures = Vec::new();
+            for selection in texture_selections {
+                let resref = if let Some(resref) =
+                    resref_by_image_sha256.get(&selection.source_image_sha256)
+                {
+                    resref.clone()
+                } else {
+                    let resref = derive_material_texture_resref_v1(
+                        &identity.texture_resref,
+                        textures.len(),
+                    )?;
+                    let texture_image = decode_embedded_image_to_tga_v1(
+                        source_glb,
+                        selection.source_image_index,
+                        &glb_limits,
+                        &EmbeddedImageDecodeLimitsV1::default(),
+                    )
+                    .map_err(|source| {
+                        error(
+                            &format!("PLACEABLE-{}", source.code),
+                            source.json_path.unwrap_or_else(|| "images".to_owned()),
+                            source.message,
+                        )
+                    })?;
+                    let tga = write_tga_v1(&texture_image, &TgaWriterOptionsV1::default())
+                        .map_err(|source| {
+                            error(
+                                &format!("PLACEABLE-{}", source.code),
+                                source.path,
+                                source.message,
+                            )
+                        })?;
+                    textures.push(PlaceableTextureInputV1 {
+                        resref: resref.clone(),
+                        resource_type: TGA_RESOURCE_TYPE,
+                        payload: tga.payload,
+                    });
+                    resref_by_image_sha256.insert(selection.source_image_sha256, resref.clone());
+                    resref
+                };
+                material_textures.push(MdlMaterialTextureBindingV1 {
+                    material_slot: selection.material_slot,
+                    resref,
+                });
+            }
+            (material_textures, textures, None, None)
+        };
 
-    build_static_placeable_package_v1(&StaticPlaceableBuildRequestV1 {
-        schema_version: PLACEABLE_SCHEMA_VERSION,
-        identity: identity.clone(),
-        placement,
-        palette_id,
-        base_placeables_2da: base_placeables_2da.to_vec(),
-        model,
-        collision_model,
-        authoring_report,
-        material_textures,
-        textures: vec![PlaceableTextureInputV1 {
-            resref: identity.texture_resref.clone(),
-            resource_type: TGA_RESOURCE_TYPE,
-            payload: tga.payload,
-        }],
-    })
+    build_static_placeable_package_inner_v1(
+        &StaticPlaceableBuildRequestV1 {
+            schema_version: PLACEABLE_SCHEMA_VERSION,
+            identity: identity.clone(),
+            placement,
+            palette_id,
+            base_placeables_2da: base_placeables_2da.to_vec(),
+            model,
+            collision_model,
+            authoring_report,
+            material_textures,
+            textures,
+        },
+        exception,
+        options,
+        resolved_collision,
+        texture_authoring_report,
+        resolved_materials.map(|materials| materials.report),
+        model_texture_report,
+    )
+}
+
+fn derive_material_texture_resref_v1(
+    base_resref: &str,
+    unique_image_index: usize,
+) -> Result<String, PlaceableErrorV1> {
+    if unique_image_index == 0 {
+        return Ok(base_resref.to_owned());
+    }
+    let suffix = format!("_m{unique_image_index}");
+    let prefix_len = 16usize.checked_sub(suffix.len()).ok_or_else(|| {
+        error(
+            "PLACEABLE-TEXTURE-RESREF-EXHAUSTED",
+            "identity.textureResref",
+            "material texture suffix cannot fit the Aurora resref limit",
+        )
+    })?;
+    if prefix_len == 0 {
+        return Err(error(
+            "PLACEABLE-TEXTURE-RESREF-EXHAUSTED",
+            "identity.textureResref",
+            "material texture suffix leaves no base resref bytes",
+        ));
+    }
+    Ok(format!(
+        "{}{}",
+        &base_resref[..base_resref.len().min(prefix_len)],
+        suffix
+    ))
 }
 
 fn convert_static_placeable_model_v1(
     ingest: &crate::glb::GlbIngestResult,
     model_resref: &str,
+    profile_options: &ProfileAOptionsV1,
+    owner_approved_oversized: bool,
 ) -> Result<AuroraModelIrV1, PlaceableErrorV1> {
+    convert_static_placeable_model_with_transform_v1(
+        ingest,
+        model_resref,
+        profile_options,
+        owner_approved_oversized,
+    )
+    .map(|(model, _)| model)
+}
+
+fn convert_static_placeable_model_with_transform_v1(
+    ingest: &crate::glb::GlbIngestResult,
+    model_resref: &str,
+    profile_options: &ProfileAOptionsV1,
+    owner_approved_oversized: bool,
+) -> Result<(AuroraModelIrV1, ProfileATransformReportV1), PlaceableErrorV1> {
     let rig = derive_meshy_m0_static_rigid_profile_v1(ingest).map_err(|source| {
         error(
             &format!("PLACEABLE-{}", source.code),
@@ -1128,14 +2274,18 @@ fn convert_static_placeable_model_v1(
             source.message,
         )
     })?;
-    let conversion = convert_profile_a(ingest, &rig, &static_placeable_profile_a_options_v1())
-        .map_err(|source| {
-            error(
-                &format!("PLACEABLE-{}", source.code),
-                source.path,
-                source.message,
-            )
-        })?;
+    let conversion = if owner_approved_oversized {
+        convert_profile_a_owner_approved_oversized_v1(ingest, &rig, profile_options)
+    } else {
+        convert_profile_a(ingest, &rig, profile_options)
+    }
+    .map_err(|source| {
+        error(
+            &format!("PLACEABLE-{}", source.code),
+            source.path,
+            source.message,
+        )
+    })?;
     if !conversion.report.conversion_eligible {
         let blocking_gates = conversion
             .report
@@ -1153,6 +2303,7 @@ fn convert_static_placeable_model_v1(
             ),
         ));
     }
+    let transform = conversion.report.transform.clone();
     let mut model = conversion.creature.ok_or_else(|| {
         error(
             "PLACEABLE-PROFILE-INELIGIBLE",
@@ -1175,7 +2326,7 @@ fn convert_static_placeable_model_v1(
         segment.cast_shadow = !shadowless_slots.contains(&segment.material_slot);
     }
     normalize_static_model_root(&mut model, model_resref)?;
-    Ok(model)
+    Ok((model, transform))
 }
 
 fn normalize_static_model_root(
@@ -1202,7 +2353,28 @@ fn normalize_static_model_root(
 pub fn build_static_placeable_package_v1(
     request: &StaticPlaceableBuildRequestV1,
 ) -> Result<StaticPlaceablePackageArtifactV1, PlaceableErrorV1> {
-    validate_request(request)?;
+    build_static_placeable_package_inner_v1(
+        request,
+        None,
+        &StaticPlaceableBuildOptionsV1::default(),
+        None,
+        None,
+        None,
+        None,
+    )
+}
+
+fn build_static_placeable_package_inner_v1(
+    request: &StaticPlaceableBuildRequestV1,
+    exception: Option<&OwnerApprovedOversizedPlaceableV1>,
+    options: &StaticPlaceableBuildOptionsV1,
+    resolved_collision: Option<(PlaceableWalkmeshIrV1, ResolvedPlaceableCollisionV1)>,
+    texture_authoring_report: Option<PlaceableTextureResolutionReportV1>,
+    material_separation_report: Option<ModelMaterialSeparationReportV1>,
+    model_texture_authoring_report: Option<ModelTextureResolutionReportV1>,
+) -> Result<StaticPlaceablePackageArtifactV1, PlaceableErrorV1> {
+    validate_static_placeable_build_options_v1(options)?;
+    validate_request(request, exception)?;
     let mut render_model = request.model.clone();
     segment_model_for_binary_mdl_v1(&mut render_model)
         .map_err(|source| map_error("PLACEABLE-MODEL-SEGMENTATION-FAILED", "model", source))?;
@@ -1238,24 +2410,57 @@ pub fn build_static_placeable_package_v1(
     let itp = write_placeable_palette_itp_v1(&blueprint)?;
     let git = build_static_placeable_git(&blueprint, request.placement)?;
     let gic = build_static_placeable_gic(&blueprint, request.placement)?;
-    let mdl = write_binary_mdl(
-        &render_model,
-        &MdlWriterOptionsV1 {
-            schema_version: 1,
-            format_profile: MdlFormatProfileV1::PlaceableStaticRigidNativeV1,
-            // The profile is inert because static placeables emit no local
-            // animations. Keeping the existing enum avoids a second model
-            // writer or a fake placeable-only animation pipeline.
-            state_projection_profile: MdlStateProjectionProfileV1::RetailDirectCreatureType5DummyV1,
-            state_projection_provenance: None,
-            model_resource_resref: request.identity.model_resref.clone(),
-            diffuse_texture_resref_by_material_slot: request.material_textures.clone(),
-        },
-    )
+    let mdl_options = MdlWriterOptionsV1 {
+        schema_version: 1,
+        format_profile: MdlFormatProfileV1::PlaceableStaticRigidNativeV1,
+        // The profile is inert because static placeables emit no local
+        // animations. Keeping the existing enum avoids a second model
+        // writer or a fake placeable-only animation pipeline.
+        state_projection_profile: MdlStateProjectionProfileV1::RetailDirectCreatureType5DummyV1,
+        state_projection_provenance: None,
+        model_resource_resref: request.identity.model_resref.clone(),
+        diffuse_texture_resref_by_material_slot: request.material_textures.clone(),
+    };
+    let mdl = if options.experimental_aggressive_geometry_cleanup {
+        write_binary_mdl(&render_model, &mdl_options)
+    } else if let Some(exception) = exception {
+        let max_input_bytes = usize::try_from(exception.max_hak_output_bytes).map_err(|_| {
+            error(
+                "PLACEABLE-OVERSIZED-MDL-READBACK-LIMIT-INVALID",
+                "exception.maxHakOutputBytes",
+                "owner-approved HAK byte limit does not fit the host parser",
+            )
+        })?;
+        write_binary_mdl_exact_face_planes_with_readback_limits_v1(
+            &render_model,
+            &mdl_options,
+            &ParserLimits {
+                max_input_bytes,
+                ..ParserLimits::default()
+            },
+        )
+    } else {
+        write_binary_mdl_exact_face_planes_v1(&render_model, &mdl_options)
+    }
     .map_err(|source| map_error("PLACEABLE-MDL-WRITE-FAILED", "model", source))?;
-    let collision_model = request.collision_model.as_ref().unwrap_or(&request.model);
-    let pwk = write_placeable_walkmesh_v1(collision_model, &request.identity.model_resref)
-        .map_err(|source| map_error("PLACEABLE-PWK-WRITE-FAILED", "walkmesh", source))?;
+    let (pwk, mut resolved_collision_report) = if let Some((walkmesh, report)) = resolved_collision
+    {
+        (
+            write_ascii_placeable_walkmesh_v1(&walkmesh)
+                .map_err(|source| map_error("PLACEABLE-PWK-WRITE-FAILED", "walkmesh", source))?,
+            Some(report),
+        )
+    } else {
+        let collision_model = request.collision_model.as_ref().unwrap_or(&request.model);
+        (
+            write_placeable_walkmesh_v1(collision_model, &request.identity.model_resref)
+                .map_err(|source| map_error("PLACEABLE-PWK-WRITE-FAILED", "walkmesh", source))?,
+            None,
+        )
+    };
+    if let Some(report) = &mut resolved_collision_report {
+        report.pwk_sha256 = pwk.report.payload_sha256.clone();
+    }
 
     let mut hak_resources = Vec::with_capacity(3 + request.textures.len());
     hak_resources.push(resource(
@@ -1280,7 +2485,16 @@ pub fn build_static_placeable_package_v1(
             texture.payload.clone(),
         )
     }));
-    let hak = write_hak_v1(&hak_resources, &HakWriterOptionsV1::default())
+    let hak_options = exception.map_or_else(HakWriterOptionsV1::default, |exception| {
+        HakWriterOptionsV1 {
+            schema_version: 1,
+            limits: HakWriterLimitsV1 {
+                max_entry_count: HakWriterLimitsV1::default().max_entry_count,
+                max_output_bytes: exception.max_hak_output_bytes,
+            },
+        }
+    });
+    let hak = write_hak_v1(&hak_resources, &hak_options)
         .map_err(|source| map_error("PLACEABLE-HAK-WRITE-FAILED", "hak", source))?;
 
     let ifo = binary_m0_module_ifo_for(
@@ -1291,7 +2505,7 @@ pub fn build_static_placeable_package_v1(
         "Generated by Meshy2Aurora for owner-run static placeable proof.",
     )
     .map_err(|source| map_error("PLACEABLE-IFO-WRITE-FAILED", "module.ifo", source))?;
-    let are = binary_m0_area_for(&request.identity.area_resref)
+    let are = binary_m0_area_for_named(&request.identity.area_resref, &request.identity.area_name)
         .map_err(|source| map_error("PLACEABLE-ARE-WRITE-FAILED", "area.are", source))?;
     let fac = proof_factions()
         .map_err(|source| map_error("PLACEABLE-FAC-WRITE-FAILED", "repute.fac", source))?;
@@ -1372,6 +2586,7 @@ pub fn build_static_placeable_package_v1(
             mdl_sha256: sha256(&mdl.payload),
             pwk_sha256: sha256(&pwk.payload),
             texture_sha256: sha256(&identity_texture.payload),
+            texture_resources: texture_binding_reports(request),
             placeables_2da_sha256: sha256(&two_da.append.payload),
             utp_sha256: sha256(&utp.payload),
             itp_sha256: sha256(&itp.payload),
@@ -1384,8 +2599,14 @@ pub fn build_static_placeable_package_v1(
             model_visibility: "not_tested".to_owned(),
             proof_completeness: "missing".to_owned(),
             palette_completeness: "custom_itp_emitted".to_owned(),
-            collision_completeness: "ascii_pwk_emitted_runtime_readback_passed".to_owned(),
+            collision_completeness: "ascii_pwk_emitted_offline_readback_passed".to_owned(),
+            experimental_aggressive_geometry_cleanup: options
+                .experimental_aggressive_geometry_cleanup,
             authoring: request.authoring_report.clone(),
+            collision: resolved_collision_report,
+            texture_authoring: texture_authoring_report,
+            material_separation: material_separation_report,
+            model_texture_authoring: model_texture_authoring_report,
             resources,
         },
         hak_payload: hak.payload,
@@ -1393,7 +2614,10 @@ pub fn build_static_placeable_package_v1(
     })
 }
 
-fn validate_request(request: &StaticPlaceableBuildRequestV1) -> Result<(), PlaceableErrorV1> {
+fn validate_request(
+    request: &StaticPlaceableBuildRequestV1,
+    exception: Option<&OwnerApprovedOversizedPlaceableV1>,
+) -> Result<(), PlaceableErrorV1> {
     if request.schema_version != PLACEABLE_SCHEMA_VERSION {
         return Err(error(
             "PLACEABLE-SCHEMA-INVALID",
@@ -1428,13 +2652,46 @@ fn validate_request(request: &StaticPlaceableBuildRequestV1) -> Result<(), Place
         &request.identity.model_resref,
         "request.model",
     )?;
-    validate_model_triangle_budget_v1(&request.model).map_err(|source| {
-        error(
-            &format!("PLACEABLE-{}", source.code),
-            source.path,
-            source.message,
-        )
-    })?;
+    if let Some(exception) = exception {
+        if request.model.source_sha256 != exception.exact_source_sha256 {
+            return Err(error(
+                "PLACEABLE-OVERSIZED-EXCEPTION-MODEL-MISMATCH",
+                "request.model.sourceSha256",
+                "owner-approved oversized exception does not match the converted model source",
+            ));
+        }
+        let triangle_count = request
+            .model
+            .segments
+            .iter()
+            .try_fold(0usize, |sum, segment| {
+                sum.checked_add(segment.indices.len() / 3).ok_or_else(|| {
+                    error(
+                        "PLACEABLE-OVERSIZED-TRIANGLE-COUNT-OVERFLOW",
+                        "request.model.segments",
+                        "oversized Placeable triangle count overflow",
+                    )
+                })
+            })?;
+        if triangle_count > exception.max_triangles {
+            return Err(error(
+                "PLACEABLE-OVERSIZED-TRIANGLE-LIMIT-EXCEEDED",
+                "request.model.segments",
+                format!(
+                    "model has {triangle_count} triangles; owner-approved exact-source limit is {}",
+                    exception.max_triangles
+                ),
+            ));
+        }
+    } else {
+        validate_model_triangle_budget_v1(&request.model).map_err(|source| {
+            error(
+                &format!("PLACEABLE-{}", source.code),
+                source.path,
+                source.message,
+            )
+        })?;
+    }
     if let Some(collision_model) = &request.collision_model {
         validate_static_placeable_model(
             collision_model,
@@ -1494,7 +2751,28 @@ fn validate_request(request: &StaticPlaceableBuildRequestV1) -> Result<(), Place
             ));
         }
     }
+    let mut texture_keys = BTreeSet::new();
+    for (index, texture) in request.textures.iter().enumerate() {
+        if !texture_keys.insert((texture.resref.to_ascii_lowercase(), texture.resource_type)) {
+            return Err(error(
+                "PLACEABLE-TEXTURE-RESREF-DUPLICATE",
+                format!("request.textures[{index}].resref"),
+                "texture resref and resource type must be unique inside the HAK",
+            ));
+        }
+    }
+    let mut bound_slots = BTreeSet::new();
     for binding in &request.material_textures {
+        if !bound_slots.insert(binding.material_slot) {
+            return Err(error(
+                "PLACEABLE-TEXTURE-BINDING-DUPLICATE",
+                "request.materialTextures",
+                format!(
+                    "material slot {} is bound more than once",
+                    binding.material_slot
+                ),
+            ));
+        }
         if !request
             .textures
             .iter()
@@ -1504,6 +2782,20 @@ fn validate_request(request: &StaticPlaceableBuildRequestV1) -> Result<(), Place
                 "PLACEABLE-TEXTURE-BINDING-MISSING",
                 "request.materialTextures",
                 format!("binding {} has no matching texture payload", binding.resref),
+            ));
+        }
+    }
+    for material_slot in request
+        .model
+        .segments
+        .iter()
+        .map(|segment| segment.material_slot)
+    {
+        if !bound_slots.contains(&material_slot) {
+            return Err(error(
+                "PLACEABLE-TEXTURE-BINDING-MISSING",
+                "request.materialTextures",
+                format!("render material slot {material_slot} has no texture binding"),
             ));
         }
     }
@@ -1818,7 +3110,7 @@ fn validate_package_readback(
         .find(&request.identity.model_resref, PWK_RESOURCE_TYPE)
         .map_err(|source| map_error("PLACEABLE-PWK-MISSING", "hak.pwk", source))?;
     inspect_ascii_placeable_walkmesh_v1(pwk)
-        .map_err(|source| map_error("PLACEABLE-PWK-RUNTIME-READBACK-FAILED", "hak.pwk", source))?;
+        .map_err(|source| map_error("PLACEABLE-PWK-OFFLINE-READBACK-FAILED", "hak.pwk", source))?;
 
     let module = ErfArchive::parse(module_bytes)
         .map_err(|source| map_error("PLACEABLE-MOD-READBACK-FAILED", "module", source))?;
@@ -1842,6 +3134,19 @@ fn validate_package_readback(
             "module must reference exactly the requested singleton HAK",
         ));
     }
+    let are = read_gff_v32(
+        module
+            .find(&request.identity.area_resref, ARE_RESOURCE_TYPE)
+            .map_err(|source| map_error("PLACEABLE-ARE-MISSING", "module.are", source))?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|source| map_error("PLACEABLE-ARE-READBACK-FAILED", "module.are", source))?;
+    require_value(
+        &are.root,
+        "Name",
+        &loc(&request.identity.area_name),
+        "module.are",
+    )?;
     let utp = module
         .find(&request.identity.blueprint_resref, UTP_RESOURCE_TYPE)
         .map_err(|source| map_error("PLACEABLE-UTP-MISSING", "module.utp", source))?;
@@ -1984,6 +3289,31 @@ fn resource_report(
         byte_length: resource.payload.len() as u64,
         sha256: sha256(&resource.payload),
     }
+}
+
+fn texture_binding_reports(
+    request: &StaticPlaceableBuildRequestV1,
+) -> Vec<PlaceableTextureBindingReportV1> {
+    request
+        .textures
+        .iter()
+        .map(|texture| {
+            let mut material_slots = request
+                .material_textures
+                .iter()
+                .filter(|binding| binding.resref.eq_ignore_ascii_case(&texture.resref))
+                .map(|binding| binding.material_slot)
+                .collect::<Vec<_>>();
+            material_slots.sort_unstable();
+            PlaceableTextureBindingReportV1 {
+                resref: texture.resref.clone(),
+                resource_type: texture.resource_type,
+                material_slots,
+                byte_length: texture.payload.len() as u64,
+                sha256: sha256(&texture.payload),
+            }
+        })
+        .collect()
 }
 
 fn sha256(bytes: &[u8]) -> String {

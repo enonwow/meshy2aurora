@@ -63,6 +63,18 @@ export function inspectGlbTriangleCount(bytes, label = "GLB") {
   return triangleCount;
 }
 
+export function inspectGlbAnimationNames(bytes, label = "GLB") {
+  const parsed = parseGlb(bytes, label);
+  const animations = parsed.json.animations ?? [];
+  if (!Array.isArray(animations)) fail(`${label} animations must be an array`);
+  return animations.map((animation, index) => {
+    if (typeof animation?.name !== "string" || !animation.name.trim()) {
+      fail(`${label} animations[${index}] has no explicit clip name`);
+    }
+    return animation.name;
+  });
+}
+
 function nodeSignature(node) {
   return JSON.stringify({
     name: node.name ?? null,

@@ -37,9 +37,37 @@ export interface PlaceableAuthoringElement {
 }
 
 export interface PlaceableAuthoringDocument {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly sourceSha256: string;
   readonly elements: readonly PlaceableAuthoringElement[];
+  readonly collision: PlaceableCollisionSpec;
+}
+
+export type PlaceableCollisionMode = "AUTO_RECTANGLE" | "CUSTOM_POLYGON";
+
+export interface PlaceableCollisionSpec {
+  readonly schemaVersion: 1;
+  readonly mode: PlaceableCollisionMode;
+  readonly coordinateSpace: "GLTF_SOURCE_XZ_METERS";
+  readonly paddingMeters: number;
+  readonly vertices: readonly [number, number][];
+}
+
+export interface ResolvedPlaceableCollision {
+  readonly schemaVersion: 1;
+  readonly mode: PlaceableCollisionMode;
+  readonly sourceCoordinateSpace: "GLTF_SOURCE_XZ_METERS";
+  readonly outputCoordinateSpace: "AURORA_XY_METERS";
+  readonly inputVertices: readonly [number, number][];
+  readonly sourceVertices: readonly [number, number][];
+  readonly vertices: readonly [number, number][];
+  readonly triangles: readonly [number, number, number][];
+  readonly boundsMin: [number, number];
+  readonly boundsMax: [number, number];
+  readonly surfaceId: number;
+  readonly authoringSha256: string;
+  readonly collisionSha256: string;
+  readonly pwkSha256: string;
 }
 
 export interface PlaceableComponentInspection {
@@ -76,7 +104,7 @@ export interface PlaceableElementInspection {
 }
 
 export interface PlaceableAuthoringBootstrap {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly inspection: PlaceableElementInspection;
   readonly document: PlaceableAuthoringDocument;
 }
@@ -120,6 +148,12 @@ export type PlaceableAuthoringAction =
   | { readonly type: "SET_TOOL"; readonly tool: TransformTool }
   | { readonly type: "SET_SPACE"; readonly space: TransformSpace }
   | { readonly type: "SET_PREVIEW"; readonly preview: PreviewMode }
+  | { readonly type: "SET_COLLISION_MODE"; readonly mode: PlaceableCollisionMode; readonly seedVertices?: readonly [number, number][] }
+  | { readonly type: "SET_COLLISION_PADDING"; readonly paddingMeters: number }
+  | { readonly type: "SET_COLLISION_VERTICES"; readonly vertices: readonly [number, number][] }
+  | { readonly type: "MOVE_COLLISION_VERTEX"; readonly index: number; readonly vertex: [number, number] }
+  | { readonly type: "ADD_COLLISION_VERTEX"; readonly vertex: [number, number] }
+  | { readonly type: "DELETE_COLLISION_VERTEX"; readonly index: number }
   | { readonly type: "SET_SNAP"; readonly snap: Partial<PlaceableSnapSettings> }
   | { readonly type: "BEGIN_GESTURE" }
   | { readonly type: "PREVIEW_TRANSFORMS"; readonly patches: readonly ElementTransformPatch[] }
@@ -155,14 +189,34 @@ export type PlaceableAuthoringAction =
 export function parsePlaceableAuthoringBootstrap(json: string): PlaceableAuthoringBootstrap {
   const value = JSON.parse(json) as PlaceableAuthoringBootstrap;
   if (
-    value.schemaVersion !== 1
-    || value.document?.schemaVersion !== 1
+    value.schemaVersion !== 2
+    || value.document?.schemaVersion !== 2
     || value.inspection?.schemaVersion !== 1
     || value.document.sourceSha256 !== value.inspection.sourceSha256
     || !Array.isArray(value.document.elements)
+    || value.document.collision?.schemaVersion !== 1
+    || !["AUTO_RECTANGLE", "CUSTOM_POLYGON"].includes(value.document.collision.mode)
+    || value.document.collision.coordinateSpace !== "GLTF_SOURCE_XZ_METERS"
+    || !Array.isArray(value.document.collision.vertices)
     || !Array.isArray(value.inspection.nodes)
   ) {
     throw new Error("PLACEABLE-AUTHORING-BOOTSTRAP-INVALID");
   }
+  return value;
+}
+
+export function parseResolvedPlaceableCollision(json: string): ResolvedPlaceableCollision {
+  const value = JSON.parse(json) as ResolvedPlaceableCollision;
+  if (
+    value.schemaVersion !== 1
+    || !["AUTO_RECTANGLE", "CUSTOM_POLYGON"].includes(value.mode)
+    || value.sourceCoordinateSpace !== "GLTF_SOURCE_XZ_METERS"
+    || value.outputCoordinateSpace !== "AURORA_XY_METERS"
+    || !Array.isArray(value.inputVertices)
+    || !Array.isArray(value.sourceVertices)
+    || !Array.isArray(value.vertices)
+    || !Array.isArray(value.triangles)
+    || !Number.isInteger(value.surfaceId)
+  ) throw new Error("PLACEABLE-COLLISION-RESOLUTION-INVALID");
   return value;
 }

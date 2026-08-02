@@ -1,22 +1,46 @@
+use image::{ColorType, ImageEncoder, codecs::png::PngEncoder};
 use m2a_core::{
     AURORA_MODEL_TRIANGLE_BUDGET_V1, AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1,
     AuroraMaterialSourceBindingV1, AuroraModelIrV1, AuroraModelNodeV1, AuroraModelSegmentV1,
     AuroraSegmentDeformationV1,
     erf::ErfArchive,
     gff::{GffLimitsV1, GffValueV1, read_gff_v32},
+    glb::{GlbLimits, ingest_glb},
     mdl::MdlMaterialTextureBindingV1,
+    model_components::SourceComponentKeyV1,
+    model_material_separation::{
+        AuthoredMaterialV1, ModelMaterialAssignmentV1, ModelMaterialSeparationDocumentV1,
+        resolve_model_materials_v1,
+    },
+    model_texture_authoring::{
+        ModelTextureBindingModeV1, ModelTexturePayloadDescriptorV1,
+        default_model_texture_authoring_v1,
+    },
     owned_fixture::synthetic_owned_m6_glb_v1,
     placeable::{
-        GIC_RESOURCE_TYPE, GIT_RESOURCE_TYPE, IFO_RESOURCE_TYPE, ITP_RESOURCE_TYPE,
-        MDL_RESOURCE_TYPE, PLACEABLES_2DA_RESOURCE_TYPE, PWK_RESOURCE_TYPE, PlaceablePlacementV1,
+        ARE_RESOURCE_TYPE, GIC_RESOURCE_TYPE, GIT_RESOURCE_TYPE, IFO_RESOURCE_TYPE,
+        ITP_RESOURCE_TYPE, MDL_RESOURCE_TYPE, OwnerApprovedOversizedPlaceableV1,
+        PLACEABLES_2DA_RESOURCE_TYPE, PWK_RESOURCE_TYPE, PlaceablePlacementV1,
         PlaceableTextureInputV1, StaticPlaceableBlueprintV1, StaticPlaceableBuildRequestV1,
         StaticPlaceableIdentityV1, UTP_RESOURCE_TYPE, append_static_placeable_2da_v1,
         build_meshy_static_placeable_package_v1, build_meshy_static_placeable_package_v2,
-        build_static_placeable_package_v1, inspect_meshy_static_placeable_authoring_v1,
-        static_placeable_glb_limits_v1, static_placeable_profile_a_options_v1,
-        write_placeable_palette_itp_v1, write_static_placeable_utp_v1,
+        build_meshy_static_placeable_package_v4, build_meshy_static_placeable_package_v5,
+        build_meshy_static_placeable_package_v6, build_static_placeable_package_v1,
+        inspect_meshy_static_placeable_authoring_v1, inspect_meshy_static_placeable_authoring_v3,
+        inspect_meshy_static_placeable_authoring_with_oversized_exception_v1,
+        inspect_meshy_static_placeable_textures_v1, resolve_meshy_static_placeable_collision_v1,
+        resolve_meshy_static_placeable_textures_v1, static_placeable_glb_limits_v1,
+        static_placeable_profile_a_options_v1, write_placeable_palette_itp_v1,
+        write_static_placeable_utp_v1,
     },
-    placeable_authoring::PlaceableElementKindV1,
+    placeable_authoring::{
+        PlaceableAuthoringDocumentV2, PlaceableCollisionCoordinateSpaceV1,
+        PlaceableCollisionModeV1, PlaceableCollisionSpecV1, PlaceableElementKindV1,
+    },
+    placeable_texture::{
+        PlaceableTextureAlphaPolicyV1, PlaceableTextureBindingModeV1,
+        PlaceableTexturePayloadDescriptorV1,
+    },
     two_da::{TwoDaCellValueV1, TwoDaLimitsV1, read_two_da_row_v2},
 };
 use std::{env, fs};
@@ -163,6 +187,41 @@ fn static_source_glb() -> Vec<u8> {
     )
 }
 
+fn multi_material_static_source_glb() -> Vec<u8> {
+    build_synthetic_glb::mutate_json(
+        build_synthetic_glb::material_image_two_distinct_base_colors(),
+        |root| {
+            for material in root["materials"].as_array_mut().expect("fixture materials") {
+                material["alphaMode"] = serde_json::json!("OPAQUE");
+                material.as_object_mut().unwrap().remove("alphaCutoff");
+            }
+        },
+    )
+}
+
+fn multi_material_shared_image_static_source_glb() -> Vec<u8> {
+    build_synthetic_glb::mutate_json(multi_material_static_source_glb(), |root| {
+        root["materials"][1]["pbrMetallicRoughness"]["baseColorTexture"]["index"] =
+            serde_json::json!(0);
+    })
+}
+
+fn owned_rgb_png(rgb: [u8; 3]) -> Vec<u8> {
+    let mut payload = Vec::new();
+    PngEncoder::new(&mut payload)
+        .write_image(&rgb, 1, 1, ColorType::Rgb8.into())
+        .expect("encode owned RGB PNG");
+    payload
+}
+
+fn owned_rgba_png(rgba: [u8; 4]) -> Vec<u8> {
+    let mut payload = Vec::new();
+    PngEncoder::new(&mut payload)
+        .write_image(&rgba, 1, 1, ColorType::Rgba8.into())
+        .expect("encode owned RGBA PNG");
+    payload
+}
+
 #[test]
 fn meshy_glb_uses_the_shared_ingest_profile_and_model_pipeline() {
     let source = static_source_glb();
@@ -192,6 +251,342 @@ fn meshy_glb_uses_the_shared_ingest_profile_and_model_pipeline() {
     assert_eq!(mdl.node_tree.roots[0].name, "m2a_plc_ped");
     assert!(mdl.node_tree.node_count >= 1);
     assert_eq!(mdl.animations.len(), 0);
+}
+
+#[test]
+fn meshy_glb_preserves_distinct_base_color_textures_per_material_slot() {
+    let source = multi_material_static_source_glb();
+    let artifact = build_meshy_static_placeable_package_v1(
+        &source,
+        &base_placeables_2da(),
+        &identity(),
+        PlaceablePlacementV1 {
+            x: 10.0,
+            y: 14.5,
+            z: 0.0,
+            bearing: 0.0,
+        },
+        7,
+    )
+    .expect("build two-material placeable");
+
+    let hak = ErfArchive::parse(&artifact.hak_payload).expect("read HAK");
+    assert!(hak.find("m2a_plc_tex", 3).is_ok());
+    assert!(hak.find("m2a_plc_tex_m1", 3).is_ok());
+    assert_eq!(artifact.report.texture_resources.len(), 2);
+    assert_eq!(artifact.report.texture_resources[0].material_slots, vec![0]);
+    assert_eq!(artifact.report.texture_resources[1].material_slots, vec![1]);
+    assert_ne!(
+        artifact.report.texture_resources[0].sha256,
+        artifact.report.texture_resources[1].sha256
+    );
+
+    let mdl = m2a_core::mdl::inspect_binary_mdl(
+        hak.find("m2a_plc_ped", MDL_RESOURCE_TYPE)
+            .expect("read model"),
+    )
+    .expect("inspect model");
+    let mut diffuse = mdl.node_tree.roots[0]
+        .children
+        .iter()
+        .filter_map(|node| node.mesh.as_ref())
+        .map(|mesh| mesh.textures[0].clone())
+        .collect::<Vec<_>>();
+    diffuse.sort();
+    diffuse.dedup();
+    assert_eq!(diffuse, vec!["m2a_plc_tex", "m2a_plc_tex_m1"]);
+}
+
+#[test]
+fn meshy_glb_deduplicates_a_shared_base_color_image_across_material_slots() {
+    let source = multi_material_shared_image_static_source_glb();
+    let artifact = build_meshy_static_placeable_package_v1(
+        &source,
+        &base_placeables_2da(),
+        &identity(),
+        PlaceablePlacementV1 {
+            x: 10.0,
+            y: 14.5,
+            z: 0.0,
+            bearing: 0.0,
+        },
+        7,
+    )
+    .expect("build shared-image placeable");
+
+    assert_eq!(artifact.report.texture_resources.len(), 1);
+    assert_eq!(
+        artifact.report.texture_resources[0].material_slots,
+        vec![0, 1]
+    );
+    assert_eq!(artifact.report.hak_resource_count, 4);
+    let hak = ErfArchive::parse(&artifact.hak_payload).expect("read HAK");
+    assert!(hak.find("m2a_plc_tex", 3).is_ok());
+    assert!(hak.find("m2a_plc_tex_m1", 3).is_err());
+}
+
+#[test]
+fn placeable_texture_override_resolves_per_material_and_builds_the_exact_hak_tga() {
+    let source = multi_material_static_source_glb();
+    let options = m2a_core::placeable::StaticPlaceableBuildOptionsV1::default();
+    let bootstrap = inspect_meshy_static_placeable_textures_v1(&source, &options)
+        .expect("inspect placeable materials");
+    assert_eq!(bootstrap.inspection.materials.len(), 2);
+    assert_eq!(bootstrap.document.bindings.len(), 2);
+    assert_eq!(bootstrap.inspection.materials[0].material_slot, 0);
+    assert_eq!(bootstrap.inspection.materials[1].material_slot, 1);
+    assert!(
+        bootstrap
+            .inspection
+            .materials
+            .iter()
+            .all(|material| material.has_uv0)
+    );
+
+    let override_png = owned_rgb_png([17, 91, 203]);
+    let override_sha256 = hex_sha256(&override_png);
+    let mut texture_authoring = bootstrap.document;
+    let binding = &mut texture_authoring.bindings[1];
+    binding.mode = PlaceableTextureBindingModeV1::Override;
+    binding.override_asset_id = Some("slot-1-blue".to_owned());
+    binding.override_sha256 = Some(override_sha256.clone());
+    binding.override_mime_type = Some("image/png".to_owned());
+    binding.override_byte_length = Some(override_png.len() as u64);
+    binding.alpha_policy = PlaceableTextureAlphaPolicyV1::OpaqueOnly;
+    let descriptors = vec![PlaceableTexturePayloadDescriptorV1 {
+        schema_version: 1,
+        asset_id: "slot-1-blue".to_owned(),
+        sha256: override_sha256,
+        mime_type: "image/png".to_owned(),
+        byte_offset: 0,
+        byte_length: override_png.len() as u64,
+    }];
+    let authoring = inspect_meshy_static_placeable_authoring_v3(&source, &options)
+        .expect("inspect placeable authoring")
+        .document;
+
+    let resolved = resolve_meshy_static_placeable_textures_v1(
+        &source,
+        &identity().texture_resref,
+        &authoring,
+        &texture_authoring,
+        &override_png,
+        &descriptors,
+        &options,
+    )
+    .expect("resolve texture override");
+    assert_eq!(resolved.bindings.len(), 2);
+    assert_eq!(
+        resolved.bindings[0].mode,
+        PlaceableTextureBindingModeV1::Source
+    );
+    assert_eq!(
+        resolved.bindings[1].mode,
+        PlaceableTextureBindingModeV1::Override
+    );
+    assert_eq!(resolved.resources.len(), 2);
+    assert_eq!(resolved.bindings[1].source_alpha_mode, "OPAQUE");
+    assert!(
+        resolved.bindings[1]
+            .ignored_source_pbr_maps
+            .contains(&"normalTexture".to_owned())
+    );
+
+    let artifact = build_meshy_static_placeable_package_v5(
+        &source,
+        &base_placeables_2da(),
+        &identity(),
+        PlaceablePlacementV1 {
+            x: 10.0,
+            y: 14.5,
+            z: 0.0,
+            bearing: 0.0,
+        },
+        7,
+        &authoring,
+        &texture_authoring,
+        &override_png,
+        &descriptors,
+        &options,
+    )
+    .expect("build authored placeable with texture override");
+    assert_eq!(artifact.report.texture_authoring.as_ref(), Some(&resolved));
+    let hak = ErfArchive::parse(&artifact.hak_payload).expect("read HAK");
+    for resource in &resolved.resources {
+        let payload = hak
+            .find(&resource.resref, resource.resource_type)
+            .expect("resolved texture in HAK");
+        assert_eq!(hex_sha256(payload), resource.sha256);
+    }
+}
+
+#[test]
+fn placeable_texture_override_rejects_nonopaque_alpha_malformed_image_and_stale_binding() {
+    let source = multi_material_static_source_glb();
+    let options = m2a_core::placeable::StaticPlaceableBuildOptionsV1::default();
+    let mut authoring = inspect_meshy_static_placeable_textures_v1(&source, &options)
+        .expect("inspect placeable materials")
+        .document;
+    let geometry_authoring = inspect_meshy_static_placeable_authoring_v3(&source, &options)
+        .expect("inspect placeable authoring")
+        .document;
+    let override_png = owned_rgba_png([255, 0, 0, 96]);
+    let descriptor = PlaceableTexturePayloadDescriptorV1 {
+        schema_version: 1,
+        asset_id: "slot-0-alpha".to_owned(),
+        sha256: hex_sha256(&override_png),
+        mime_type: "image/png".to_owned(),
+        byte_offset: 0,
+        byte_length: override_png.len() as u64,
+    };
+    let binding = &mut authoring.bindings[0];
+    binding.mode = PlaceableTextureBindingModeV1::Override;
+    binding.override_asset_id = Some(descriptor.asset_id.clone());
+    binding.override_sha256 = Some(descriptor.sha256.clone());
+    binding.override_mime_type = Some(descriptor.mime_type.clone());
+    binding.override_byte_length = Some(descriptor.byte_length);
+    let error = resolve_meshy_static_placeable_textures_v1(
+        &source,
+        &identity().texture_resref,
+        &geometry_authoring,
+        &authoring,
+        &override_png,
+        std::slice::from_ref(&descriptor),
+        &options,
+    )
+    .expect_err("nonopaque alpha must fail closed");
+    assert_eq!(error.code, "PLACEABLE-TEXTURE-ALPHA-UNSUPPORTED");
+
+    let malformed_png = b"\x89PNG\r\n\x1a\nnot-a-valid-png".to_vec();
+    let malformed_descriptor = PlaceableTexturePayloadDescriptorV1 {
+        schema_version: 1,
+        asset_id: "slot-0-malformed".to_owned(),
+        sha256: hex_sha256(&malformed_png),
+        mime_type: "image/png".to_owned(),
+        byte_offset: 0,
+        byte_length: malformed_png.len() as u64,
+    };
+    let binding = &mut authoring.bindings[0];
+    binding.override_asset_id = Some(malformed_descriptor.asset_id.clone());
+    binding.override_sha256 = Some(malformed_descriptor.sha256.clone());
+    binding.override_mime_type = Some(malformed_descriptor.mime_type.clone());
+    binding.override_byte_length = Some(malformed_descriptor.byte_length);
+    let error = resolve_meshy_static_placeable_textures_v1(
+        &source,
+        &identity().texture_resref,
+        &geometry_authoring,
+        &authoring,
+        &malformed_png,
+        std::slice::from_ref(&malformed_descriptor),
+        &options,
+    )
+    .expect_err("malformed PNG must fail closed");
+    assert_eq!(error.code, "PLACEABLE-TEXTURE-DECODE-FAILED");
+
+    authoring.bindings[0].source_image_sha256 = "0".repeat(64);
+    let error = resolve_meshy_static_placeable_textures_v1(
+        &source,
+        &identity().texture_resref,
+        &geometry_authoring,
+        &authoring,
+        &malformed_png,
+        &[malformed_descriptor],
+        &options,
+    )
+    .expect_err("stale source image binding must fail closed");
+    assert_eq!(error.code, "PLACEABLE-TEXTURE-SOURCE-BINDING-STALE");
+}
+
+#[test]
+fn placeable_texture_resolution_tracks_only_materials_retained_by_geometry_authoring() {
+    let source = multi_material_static_source_glb();
+    let options = m2a_core::placeable::StaticPlaceableBuildOptionsV1::default();
+    let texture_authoring = inspect_meshy_static_placeable_textures_v1(&source, &options)
+        .expect("inspect placeable materials")
+        .document;
+    let mut geometry_authoring = inspect_meshy_static_placeable_authoring_v3(&source, &options)
+        .expect("inspect placeable authoring")
+        .document;
+    let inspection = inspect_meshy_static_placeable_authoring_v3(&source, &options)
+        .expect("inspect placeable authoring components")
+        .inspection;
+    let template = geometry_authoring.elements[0].clone();
+    geometry_authoring.elements = inspection.nodes[0]
+        .primitives
+        .iter()
+        .flat_map(|primitive| {
+            let template = template.clone();
+            primitive.components.iter().map(move |component| {
+                let mut element = template.clone();
+                element.id = format!(
+                    "node-0-p{}-c{}",
+                    primitive.primitive_id, component.component_index
+                );
+                element.kind = PlaceableElementKindV1::SourceComponent;
+                let selector = element.source.as_mut().expect("source element");
+                selector.primitive_id = Some(primitive.primitive_id);
+                selector.component_index = Some(component.component_index);
+                element.deleted = primitive.primitive_id != 0;
+                element
+            })
+        })
+        .collect();
+
+    let resolved = resolve_meshy_static_placeable_textures_v1(
+        &source,
+        &identity().texture_resref,
+        &geometry_authoring,
+        &texture_authoring,
+        &[],
+        &[],
+        &options,
+    )
+    .expect("resolve only retained material");
+    assert_eq!(resolved.bindings.len(), 1);
+    assert_eq!(resolved.bindings[0].material_slot, 0);
+    assert_eq!(resolved.resources.len(), 1);
+}
+
+#[test]
+fn placeable_texture_override_rejects_source_cutout_without_txi_contract() {
+    let source = build_synthetic_glb::mutate_json(multi_material_static_source_glb(), |root| {
+        root["materials"][0]["alphaMode"] = serde_json::json!("MASK");
+        root["materials"][0]["alphaCutoff"] = serde_json::json!(0.5);
+    });
+    let options = m2a_core::placeable::StaticPlaceableBuildOptionsV1::default();
+    let mut texture_authoring = inspect_meshy_static_placeable_textures_v1(&source, &options)
+        .expect("inspect cutout material")
+        .document;
+    let geometry_authoring = inspect_meshy_static_placeable_authoring_v3(&source, &options)
+        .expect("inspect geometry authoring")
+        .document;
+    let override_png = owned_rgb_png([9, 19, 29]);
+    let descriptor = PlaceableTexturePayloadDescriptorV1 {
+        schema_version: 1,
+        asset_id: "cutout-override".to_owned(),
+        sha256: hex_sha256(&override_png),
+        mime_type: "image/png".to_owned(),
+        byte_offset: 0,
+        byte_length: override_png.len() as u64,
+    };
+    let binding = &mut texture_authoring.bindings[0];
+    binding.mode = PlaceableTextureBindingModeV1::Override;
+    binding.override_asset_id = Some(descriptor.asset_id.clone());
+    binding.override_sha256 = Some(descriptor.sha256.clone());
+    binding.override_mime_type = Some(descriptor.mime_type.clone());
+    binding.override_byte_length = Some(descriptor.byte_length);
+
+    let error = resolve_meshy_static_placeable_textures_v1(
+        &source,
+        &identity().texture_resref,
+        &geometry_authoring,
+        &texture_authoring,
+        &override_png,
+        &[descriptor],
+        &options,
+    )
+    .expect_err("cutout override requires a future TXI contract");
+    assert_eq!(error.code, "PLACEABLE-TEXTURE-ALPHA-MODE-UNSUPPORTED");
 }
 
 #[test]
@@ -245,6 +640,313 @@ fn authored_placeable_emits_independent_mesh_shadow_flags_and_collision_projecti
         .collect::<Vec<_>>();
     shadows.sort_unstable();
     assert_eq!(shadows, vec![0, 1]);
+}
+
+#[test]
+fn authored_placeable_rejects_an_empty_collision_projection() {
+    let source = static_source_glb();
+    let mut authoring = inspect_meshy_static_placeable_authoring_v1(&source)
+        .expect("inspect authoring")
+        .document;
+    for element in &mut authoring.elements {
+        element.flags.include_in_collision = false;
+    }
+
+    let error = build_meshy_static_placeable_package_v2(
+        &source,
+        &base_placeables_2da(),
+        &identity(),
+        PlaceablePlacementV1 {
+            x: 10.0,
+            y: 14.5,
+            z: 0.0,
+            bearing: 0.0,
+        },
+        7,
+        &authoring,
+    )
+    .expect_err("empty collision projection must fail closed");
+    assert_eq!(error.code, "PLACEABLE-COLLISION-EMPTY");
+}
+
+#[test]
+fn authored_placeable_v2_custom_polygon_is_written_to_the_exact_hak_pwk() {
+    let source = static_source_glb();
+    let v1 = inspect_meshy_static_placeable_authoring_v1(&source)
+        .expect("inspect authoring")
+        .document;
+    let authoring = PlaceableAuthoringDocumentV2 {
+        schema_version: 2,
+        source_sha256: v1.source_sha256,
+        elements: v1.elements,
+        collision: PlaceableCollisionSpecV1 {
+            schema_version: 1,
+            mode: PlaceableCollisionModeV1::CustomPolygon,
+            coordinate_space: PlaceableCollisionCoordinateSpaceV1::GltfSourceXzMeters,
+            padding_meters: 0.0,
+            vertices: vec![
+                [-0.5, -0.5],
+                [0.5, -0.5],
+                [0.5, 0.5],
+                [0.0, 0.0],
+                [-0.5, 0.5],
+            ],
+        },
+    };
+    let artifact = build_meshy_static_placeable_package_v4(
+        &source,
+        &base_placeables_2da(),
+        &identity(),
+        PlaceablePlacementV1 {
+            x: 10.0,
+            y: 14.5,
+            z: 0.0,
+            bearing: 0.0,
+        },
+        7,
+        &authoring,
+        &Default::default(),
+    )
+    .expect("build custom collision placeable");
+
+    let collision = artifact
+        .report
+        .collision
+        .as_ref()
+        .expect("collision report");
+    let preview = resolve_meshy_static_placeable_collision_v1(
+        &source,
+        &identity().model_resref,
+        &authoring,
+        &Default::default(),
+    )
+    .expect("resolve the same custom collision for Studio preview");
+    assert_eq!(&preview, collision);
+    assert_eq!(collision.mode, PlaceableCollisionModeV1::CustomPolygon);
+    assert_eq!(collision.vertices.len(), 5);
+    assert_eq!(collision.triangles.len(), 3);
+    assert_eq!(collision.surface_id, 7);
+    assert_eq!(
+        collision.authoring_sha256,
+        artifact.report.authoring.as_ref().unwrap().authoring_sha256
+    );
+
+    let hak = ErfArchive::parse(&artifact.hak_payload).expect("read HAK");
+    let pwk = hak
+        .find("m2a_plc_ped", PWK_RESOURCE_TYPE)
+        .expect("custom PWK");
+    assert_eq!(
+        m2a_core::placeable_collision::sha256_hex(pwk),
+        collision.pwk_sha256
+    );
+    let readback = m2a_core::placeable_collision::inspect_ascii_placeable_walkmesh_v1(pwk)
+        .expect("read custom PWK");
+    assert_eq!(readback.mesh_nodes[0].vertices.len(), 5);
+    assert_eq!(readback.mesh_nodes[0].faces.len(), 3);
+}
+
+#[test]
+fn authored_placeable_v2_auto_rectangle_preserves_the_legacy_pwk_bytes() {
+    let source = static_source_glb();
+    let identity = identity();
+    let placement = PlaceablePlacementV1 {
+        x: 10.0,
+        y: 14.5,
+        z: 0.0,
+        bearing: 0.0,
+    };
+    let legacy = build_meshy_static_placeable_package_v1(
+        &source,
+        &base_placeables_2da(),
+        &identity,
+        placement,
+        7,
+    )
+    .expect("legacy auto rectangle");
+    let authoring = m2a_core::placeable::inspect_meshy_static_placeable_authoring_v3(
+        &source,
+        &Default::default(),
+    )
+    .expect("V2 authoring")
+    .document;
+    let v2 = build_meshy_static_placeable_package_v4(
+        &source,
+        &base_placeables_2da(),
+        &identity,
+        placement,
+        7,
+        &authoring,
+        &Default::default(),
+    )
+    .expect("V2 auto rectangle");
+    let legacy_hak = ErfArchive::parse(&legacy.hak_payload).expect("legacy HAK");
+    let v2_hak = ErfArchive::parse(&v2.hak_payload).expect("V2 HAK");
+    assert_eq!(
+        legacy_hak
+            .find(&identity.model_resref, PWK_RESOURCE_TYPE)
+            .expect("legacy PWK"),
+        v2_hak
+            .find(&identity.model_resref, PWK_RESOURCE_TYPE)
+            .expect("V2 PWK"),
+    );
+    assert_eq!(legacy.report.pwk_sha256, v2.report.pwk_sha256);
+    assert_eq!(
+        v2.report.collision.as_ref().expect("collision").mode,
+        PlaceableCollisionModeV1::AutoRectangle,
+    );
+}
+
+#[test]
+fn material_separated_placeable_writes_two_textures_and_preserves_pwk_bytes() {
+    let source = multi_material_static_source_glb();
+    let identity = identity();
+    let placement = PlaceablePlacementV1 {
+        x: 10.0,
+        y: 14.5,
+        z: 0.0,
+        bearing: 0.0,
+    };
+    let authoring = inspect_meshy_static_placeable_authoring_v3(&source, &Default::default())
+        .expect("Placeable authoring")
+        .document;
+    let ingest = ingest_glb(&source, &GlbLimits::default()).expect("material source ingest");
+    let fallback_sha = ingest.ir.images[0].sha256.clone();
+    let material = |id: &str| AuthoredMaterialV1 {
+        authored_material_id: id.to_owned(),
+        display_name: id.to_owned(),
+        preview_color: "#806040".to_owned(),
+        source_fallback_material_id: Some(0),
+        source_fallback_image_sha256: Some(fallback_sha.clone()),
+    };
+    let separation = ModelMaterialSeparationDocumentV1 {
+        schema_version: 1,
+        source_sha256: ingest.ir.source.sha256.clone(),
+        materials: vec![material("material:sail"), material("material:wood")],
+        assignments: vec![
+            ModelMaterialAssignmentV1 {
+                component: SourceComponentKeyV1 {
+                    scene_id: 0,
+                    node_id: 0,
+                    primitive_id: 0,
+                    component_index: 0,
+                },
+                authored_material_id: "material:wood".to_owned(),
+            },
+            ModelMaterialAssignmentV1 {
+                component: SourceComponentKeyV1 {
+                    scene_id: 0,
+                    node_id: 0,
+                    primitive_id: 1,
+                    component_index: 0,
+                },
+                authored_material_id: "material:sail".to_owned(),
+            },
+        ],
+    };
+    let materials =
+        resolve_model_materials_v1(&ingest.ir, &separation).expect("material separation");
+    let mut texture_authoring =
+        default_model_texture_authoring_v1(&ingest, &materials).expect("texture authoring");
+    let override_png = owned_rgb_png([30, 50, 80]);
+    let override_sha = hex_sha256(&override_png);
+    let sail = texture_authoring
+        .bindings
+        .iter_mut()
+        .find(|binding| binding.authored_material_id == "material:sail")
+        .expect("sail binding");
+    sail.mode = ModelTextureBindingModeV1::Override;
+    sail.override_asset_id = Some("override:sail".to_owned());
+    sail.override_sha256 = Some(override_sha.clone());
+    sail.override_mime_type = Some("image/png".to_owned());
+    sail.override_byte_length = Some(override_png.len() as u64);
+    let descriptors = [ModelTexturePayloadDescriptorV1 {
+        schema_version: 1,
+        asset_id: "override:sail".to_owned(),
+        sha256: override_sha,
+        mime_type: "image/png".to_owned(),
+        byte_offset: 0,
+        byte_length: override_png.len() as u64,
+    }];
+
+    let baseline = build_meshy_static_placeable_package_v4(
+        &source,
+        &base_placeables_2da(),
+        &identity,
+        placement,
+        7,
+        &authoring,
+        &Default::default(),
+    )
+    .expect("baseline Placeable");
+    let separated = build_meshy_static_placeable_package_v6(
+        &source,
+        &base_placeables_2da(),
+        &identity,
+        placement,
+        7,
+        &authoring,
+        &separation,
+        &texture_authoring,
+        &override_png,
+        &descriptors,
+        &Default::default(),
+    )
+    .expect("material-separated Placeable");
+    let repeated = build_meshy_static_placeable_package_v6(
+        &source,
+        &base_placeables_2da(),
+        &identity,
+        placement,
+        7,
+        &authoring,
+        &separation,
+        &texture_authoring,
+        &override_png,
+        &descriptors,
+        &Default::default(),
+    )
+    .expect("repeated material-separated Placeable");
+
+    assert_eq!(baseline.report.pwk_sha256, separated.report.pwk_sha256);
+    assert_eq!(separated.hak_payload, repeated.hak_payload);
+    assert_eq!(separated.module_payload, repeated.module_payload);
+    assert_eq!(
+        serde_json::to_vec(&separated.report).expect("first report"),
+        serde_json::to_vec(&repeated.report).expect("repeated report")
+    );
+    let baseline_hak = ErfArchive::parse(&baseline.hak_payload).expect("baseline HAK");
+    let separated_hak = ErfArchive::parse(&separated.hak_payload).expect("separated HAK");
+    assert_eq!(
+        baseline_hak
+            .find(&identity.model_resref, PWK_RESOURCE_TYPE)
+            .expect("baseline PWK"),
+        separated_hak
+            .find(&identity.model_resref, PWK_RESOURCE_TYPE)
+            .expect("separated PWK")
+    );
+    assert_eq!(
+        separated
+            .report
+            .material_separation
+            .as_ref()
+            .expect("separation report")
+            .material_slots
+            .len(),
+        2
+    );
+    let texture_report = separated
+        .report
+        .model_texture_authoring
+        .as_ref()
+        .expect("model texture report");
+    assert_eq!(texture_report.bindings.len(), 2);
+    assert_eq!(texture_report.resources.len(), 2);
+    assert!(
+        texture_report
+            .resources
+            .iter()
+            .all(|resource| separated_hak.find(&resource.resref, 3).is_ok())
+    );
 }
 
 fn hex_sha256(bytes: &[u8]) -> String {
@@ -442,9 +1144,59 @@ fn placeable_package_rejects_nonfinite_placement_and_unbound_identity_texture() 
     assert_eq!(error.code, "PLACEABLE-IDENTITY-TEXTURE-MISSING");
 
     let mut request = static_request();
+    request
+        .material_textures
+        .push(request.material_textures[0].clone());
+    let error =
+        build_static_placeable_package_v1(&request).expect_err("duplicate material slot binding");
+    assert_eq!(error.code, "PLACEABLE-TEXTURE-BINDING-DUPLICATE");
+
+    let mut request = static_request();
+    request.textures.push(request.textures[0].clone());
+    let error = build_static_placeable_package_v1(&request)
+        .expect_err("duplicate texture resource identity");
+    assert_eq!(error.code, "PLACEABLE-TEXTURE-RESREF-DUPLICATE");
+
+    let mut request = static_request();
     request.model.segments[0].indices = [0_u32, 1, 2].repeat(300_001);
     let error = build_static_placeable_package_v1(&request).expect_err("shared triangle budget");
     assert_eq!(error.code, "PLACEABLE-M2A-MODEL-TRIANGLE-BUDGET-EXCEEDED");
+}
+
+#[test]
+fn owner_approved_oversized_placeable_exception_is_exact_source_bound() {
+    let source = build_synthetic_glb::minimal_indexed_triangle();
+    let exception = OwnerApprovedOversizedPlaceableV1 {
+        schema_version: 1,
+        exact_source_sha256: hex_sha256(&source),
+        authorization_note: "owner-approved test exception".to_owned(),
+        max_input_bytes: source.len(),
+        max_vertices: 3,
+        max_indices: 3,
+        max_decoded_geometry_bytes: 16 * 1024 * 1024,
+        max_triangles: AURORA_MODEL_TRIANGLE_BUDGET_V1 + 1,
+        max_profile_work_bytes: 64 * 1024 * 1024,
+        max_hak_output_bytes: 256 * 1024 * 1024,
+    };
+
+    let bootstrap =
+        inspect_meshy_static_placeable_authoring_with_oversized_exception_v1(&source, &exception)
+            .expect("exact-source exception admits the oversized source");
+    assert_eq!(bootstrap.document.elements.len(), 1);
+
+    let mut wrong_source = exception;
+    wrong_source.exact_source_sha256 = "f".repeat(64);
+    let error = inspect_meshy_static_placeable_authoring_with_oversized_exception_v1(
+        &source,
+        &wrong_source,
+    )
+    .expect_err("exception must not transfer to another source identity");
+    assert_eq!(error.code, "PLACEABLE-OVERSIZED-EXCEPTION-SOURCE-MISMATCH");
+
+    assert_eq!(
+        static_placeable_glb_limits_v1().triangle_blocking_above,
+        AURORA_MODEL_TRIANGLE_BUDGET_V1
+    );
 }
 
 #[test]
@@ -474,8 +1226,9 @@ fn full_static_placeable_package_is_deterministic_and_cross_resource_consistent(
     assert_eq!(first.report.palette_completeness, "custom_itp_emitted");
     assert_eq!(
         first.report.collision_completeness,
-        "ascii_pwk_emitted_runtime_readback_passed"
+        "ascii_pwk_emitted_offline_readback_passed"
     );
+    assert!(!first.report.experimental_aggressive_geometry_cleanup);
     assert_eq!(first.report.hak_resource_count, 4);
     assert_eq!(first.report.profile, "STATIC_PLACEABLE");
     assert_eq!(first.report.component_statuses.mdl, "passed");
@@ -531,6 +1284,19 @@ fn full_static_placeable_package_is_deterministic_and_cross_resource_consistent(
 
     let module = ErfArchive::parse(&first.module_payload).expect("read MOD");
     assert!(module.find("module", IFO_RESOURCE_TYPE).is_ok());
+    let are = read_gff_v32(
+        module.find("m2a_plc_area", ARE_RESOURCE_TYPE).expect("ARE"),
+        &GffLimitsV1::default(),
+    )
+    .expect("read ARE");
+    let GffValueV1::LocString(area_name) = field(&are.root, "Name") else {
+        panic!("ARE Name must be a localized string");
+    };
+    assert_eq!(area_name.substrings.len(), 1);
+    assert_eq!(
+        area_name.substrings[0].bytes,
+        b"Meshy2Aurora placeable area"
+    );
     assert!(module.find("m2a_plc_area", GIT_RESOURCE_TYPE).is_ok());
     assert!(module.find("m2a_plc_area", GIC_RESOURCE_TYPE).is_ok());
     assert!(module.find("m2a_plc_utp", UTP_RESOURCE_TYPE).is_ok());

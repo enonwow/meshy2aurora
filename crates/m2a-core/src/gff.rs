@@ -26,6 +26,8 @@ pub const GFF_MAX_BYTES: u64 = 67_108_864;
 pub enum GffFileTypeV1 {
     #[serde(rename = "UTC ")]
     Utc,
+    #[serde(rename = "UTI ")]
+    Uti,
     #[serde(rename = "UTP ")]
     Utp,
     #[serde(rename = "ITP ")]
@@ -46,6 +48,7 @@ impl GffFileTypeV1 {
     const fn bytes(self) -> [u8; 4] {
         match self {
             Self::Utc => *b"UTC ",
+            Self::Uti => *b"UTI ",
             Self::Utp => *b"UTP ",
             Self::Itp => *b"ITP ",
             Self::Ifo => *b"IFO ",
@@ -58,6 +61,7 @@ impl GffFileTypeV1 {
     fn from_bytes(bytes: &[u8]) -> Option<Self> {
         match bytes {
             b"UTC " => Some(Self::Utc),
+            b"UTI " => Some(Self::Uti),
             b"UTP " => Some(Self::Utp),
             b"ITP " => Some(Self::Itp),
             b"IFO " => Some(Self::Ifo),

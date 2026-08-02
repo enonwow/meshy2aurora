@@ -48,6 +48,34 @@ fn model_package_is_one_deterministic_hak_with_exact_manifest_parity() {
 }
 
 #[test]
+fn model_package_accepts_multiple_distinct_material_textures() {
+    let resources = vec![
+        resource("appearance", 2017, b"2da"),
+        resource("model", 2002, b"mdl"),
+        resource("texture", 3, b"hull"),
+        resource("texture_m1", 3, b"trim"),
+    ];
+    let package = write_model_package_v1(&resources, &HakWriterOptionsV1::default()).unwrap();
+    assert_eq!(package.hak.report.entry_count, 4);
+    assert_eq!(
+        package
+            .manifest
+            .resources
+            .iter()
+            .filter(|resource| resource.role == PackageResourceRoleV1::Texture)
+            .count(),
+        2
+    );
+    assert!(
+        package
+            .manifest
+            .resources
+            .iter()
+            .any(|resource| resource.resref == "texture_m1")
+    );
+}
+
+#[test]
 fn model_package_is_permutation_invariant_and_invalid_roles_never_panic() {
     let items = profile_resources();
     let expected = write_model_package_v1(&items, &HakWriterOptionsV1::default()).unwrap();

@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-02",
+  "status": "owner_failure_reported_lane_classification_required",
+  "source": "owner_report_in_active_codex_task",
+  "ownerReport": "nic w tym module nie ma",
+  "candidate": {
+    "moduleFileName": "m2a_ms1_mod.mod",
+    "moduleSha256": "f0ebb252a86a399e7b458716dcfbc8051280ea9639a1f03a5302814fa063b287",
+    "hakFileName": "m2a_ms1_hak.hak",
+    "hakSha256": "d6dd8dcc711b9ef449be67d868126b15cea436039a56e0f5725c702b56199664",
+    "toolsetModuleName": "Meshy2Aurora Material Separation V1",
+    "areaName": "Material Separation Two Material Proof",
+    "objectTag": "m2a_ms1_two_material_panels",
+    "appearanceRow": 3
+  },
+  "ownerObservation": {
+    "operationalResult": "failed",
+    "expectedContentVisible": false,
+    "lane": "not_specified",
+    "bindingBasis": "The report immediately follows the exact m2a_ms1 handoff, but does not state whether the empty module was observed in Toolset or NWN."
+  },
+  "axes": {
+    "toolset": {
+      "modelVisibility": "not_tested",
+      "proofCompleteness": "missing"
+    },
+    "nwn": {
+      "modelVisibility": "not_tested",
+      "proofCompleteness": "missing"
+    },
+    "reason": "The owner reported visible absence, but the lane is required before assigning the result to either Toolset or NWN."
+  },
+  "offlineReadback": {
+    "moduleAreaCount": 1,
+    "areaResref": "m2a_ms1_area",
+    "placeableCount": 1,
+    "placeablePosition": [10.0, 14.5, 0.0],
+    "orderedHakResrefs": ["m2a_ms1_hak"],
+    "materialSlotCount": 2,
+    "textureResrefs": ["m2a_ms1_tex", "m2a_ms1_tex_m1"]
+  },
+  "diagnosis": {
+    "code": "MS1-PROOF-BASE-2DA-NOT-PRODUCTION",
+    "summary": "The proof materializer reused a tiny unit-test placeables.2da baseline and appended the custom row as Appearance 3.",
+    "candidatePlaceables2daSha256": "81040cb68af3c91ed29155986cbb0fbb43db22a7bc4e8ccb0c698a0c6fc2391b",
+    "candidateAppearanceRow": 3,
+    "knownProductionBaselinePath": "C:\\Projects\\meshy2aurora\\proof-output\\tlc-meshy-p20k-placeables-v1-20260725\\generated\\base-placeables.2da",
+    "knownProductionBaselineByteLength": 3019695,
+    "knownProductionBaselineSha256": "b772eafec5e6b380ad41e163e2a52585f2ddcec1c5bd7acea230b7e1a618df90",
+    "expectedAppendedAppearanceRow": 16500,
+    "comparison": "Two earlier Placeable proof modules use the exact full baseline and Appearance 16500; m2a_ms1 is the outlier at row 3."
+  },
+  "iterationGate": {
+    "ms1Frozen": true,
+    "newCandidateAdmitted": false,
+    "minimalIntendedDelta": "Use the exact full production placeables.2da baseline and append at row 16500. Preserve source GLB, geometry, recipe, textures, placement and all other artifact semantics.",
+    "resumeCondition": "Owner identifies the failed lane as Toolset or NWN so the corresponding modelVisibility can be recorded as not_visible before materializing m2a_ms2."
+  }
+}

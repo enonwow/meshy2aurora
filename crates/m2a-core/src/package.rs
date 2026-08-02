@@ -54,8 +54,8 @@ pub struct ModelPackageArtifactV1 {
     pub manifest: PackageManifestV1,
 }
 
-/// Composes the three ready model-package payloads (binary MDL with appended
-/// MDX, TGA and appended `appearance.2da`) into one HAK plus its manifest.
+/// Composes one binary MDL, one or more TGA material textures and the appended
+/// `appearance.2da` into one HAK plus its manifest.
 pub fn write_model_package_v1(
     resources: &[HakResourceInputV1],
     options: &HakWriterOptionsV1,
@@ -81,33 +81,40 @@ fn build_package_manifest_from_artifact(
         return Err(package_error(
             PACKAGE_ROLE_MISSING,
             "resources",
-            "package profile requires exactly three resources",
+            "package profile requires one model, one or more textures and appearance.2da",
         ));
     }
-    if reports.len() > 3 {
-        return Err(package_error(
-            PACKAGE_RESOURCE_INVALID,
-            "resources[3].resourceType",
-            "package profile does not allow extra resources",
-        ));
-    }
-
-    let mut roles = [None; 3];
-    let mut seen = [false; 3];
+    let mut roles = Vec::new();
+    roles.try_reserve_exact(reports.len()).map_err(|_| {
+        package_error(
+            ALLOCATION_FAILED,
+            "output",
+            "could not reserve package resource roles",
+        )
+    })?;
+    let mut model_seen = false;
+    let mut appearance_seen = false;
+    let mut texture_count = 0usize;
     for (index, report) in reports.iter().enumerate() {
         let role = classify_role(&report.resref, report.resource_type, index)?;
-        let slot = role_index(role);
-        if seen[slot] {
+        let duplicated = match role {
+            PackageResourceRoleV1::Model => std::mem::replace(&mut model_seen, true),
+            PackageResourceRoleV1::AppearanceTable => std::mem::replace(&mut appearance_seen, true),
+            PackageResourceRoleV1::Texture => {
+                texture_count += 1;
+                false
+            }
+        };
+        if duplicated {
             return Err(package_error(
                 PACKAGE_ROLE_DUPLICATE,
                 &format!("resources[{index}]"),
                 "package resource role is duplicated",
             ));
         }
-        seen[slot] = true;
-        roles[index] = Some(role);
+        roles.push(role);
     }
-    if seen.iter().any(|present| !present) {
+    if !model_seen || !appearance_seen || texture_count == 0 {
         return Err(package_error(
             PACKAGE_ROLE_MISSING,
             "resources",
@@ -118,16 +125,18 @@ fn build_package_manifest_from_artifact(
     validate_hak_artifact(source_resources, artifact)?;
 
     let mut manifest_resources = Vec::new();
-    manifest_resources.try_reserve_exact(3).map_err(|_| {
-        package_error(
-            ALLOCATION_FAILED,
-            "output",
-            "could not reserve package manifest resources",
-        )
-    })?;
+    manifest_resources
+        .try_reserve_exact(reports.len())
+        .map_err(|_| {
+            package_error(
+                ALLOCATION_FAILED,
+                "output",
+                "could not reserve package manifest resources",
+            )
+        })?;
     for (index, report) in reports.iter().enumerate() {
         manifest_resources.push(PackageManifestResourceV1 {
-            role: roles[index].expect("all package roles were classified"),
+            role: roles[index],
             resref: clone_string_fallible(&report.resref)?,
             resource_type: report.resource_type,
             byte_length: u64::from(report.payload_size),
@@ -174,14 +183,6 @@ fn classify_role(
             &format!("resources[{index}].resourceType"),
             "resource type is not valid for the package profile",
         )),
-    }
-}
-
-const fn role_index(role: PackageResourceRoleV1) -> usize {
-    match role {
-        PackageResourceRoleV1::Model => 0,
-        PackageResourceRoleV1::Texture => 1,
-        PackageResourceRoleV1::AppearanceTable => 2,
     }
 }
 

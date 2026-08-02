@@ -100,7 +100,7 @@ describe("SourceStep", () => {
         source={source()}
         meshyProvenance={{
           profileId: "S1-static-prop/v1",
-          bridgeProtocolVersion: 1,
+          bridgeProtocolVersion: 2,
           sha256: "a".repeat(64),
           byteLength: 4,
           taskIds: { PREVIEW: "task-preview", REFINE: "task-refine" },
@@ -169,6 +169,51 @@ describe("SourceStep", () => {
     expect(container.textContent).toContain("one-pixel alpha holes");
     await act(async () => checkbox?.click());
     expect(onTextureArtifactCleanupChange).toHaveBeenCalledWith(true);
+  });
+
+  it("exposes an explicit Creature source-forward axis and reports changes", async () => {
+    const onCreatureSourceForwardChange = vi.fn();
+    const container = await render(
+      <SourceStep
+        {...handlers()}
+        onCreatureProfileChange={vi.fn()}
+        onCreatureSourceForwardChange={onCreatureSourceForwardChange}
+        onContinue={vi.fn()}
+      />,
+    );
+    const selector = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Model front in source GLB"]',
+    );
+    expect(selector?.value).toBe("POSITIVE_Z");
+    expect(container.textContent).toContain("Aurora/NWN forward (-Y)");
+
+    await act(async () => {
+      if (!selector) throw new Error("missing source-forward selector");
+      selector.value = "NEGATIVE_X";
+      selector.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(onCreatureSourceForwardChange).toHaveBeenCalledWith("NEGATIVE_X");
+  });
+
+  it("keeps aggressive Placeable geometry cleanup experimental and disabled by default", async () => {
+    const onChange = vi.fn();
+    const container = await render(
+      <SourceStep
+        {...handlers()}
+        target="PLACEABLE"
+        onExperimentalAggressiveGeometryCleanupChange={onChange}
+        onContinue={vi.fn()}
+      />,
+    );
+    const checkbox = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Experimental aggressive geometry cleanup"]',
+    );
+
+    expect(checkbox).not.toBeNull();
+    expect(checkbox?.checked).toBe(false);
+    expect(container.textContent).toContain("may create holes or erase dense detail");
+    await act(async () => checkbox?.click());
+    expect(onChange).toHaveBeenCalledWith(true);
   });
 
   it("exposes audited detached-accessory modes and accepts a global bone or valid component overrides", async () => {

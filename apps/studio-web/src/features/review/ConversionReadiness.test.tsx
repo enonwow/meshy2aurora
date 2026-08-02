@@ -39,7 +39,13 @@ function resultFixture(gates: CanonicalConversionGate[] = []): CanonicalResultSn
     conversionEvidence: {
       schemaVersion: 1,
       conversionEligible: !gates.some(({ severity }) => severity === "BLOCKING"),
-      policies: { engineFacingProof: "OPEN_M6", uvRuntimeProof: "OPEN_M6" },
+      policies: {
+        basisStatus: "CREATURE_BASIS_V2_RESOLVED",
+        assetForwardMapping: "GLTF_POSITIVE_Z_TO_AURORA_NEGATIVE_Y",
+        orientationParity: "POSITIVE_PROPER_ROTATION_COMPOSITE_DETERMINANT",
+        engineFacingProof: "OWNER_PROOF_REQUIRED",
+        uvRuntimeProof: "OPEN_M6",
+      },
       gates,
       diagnostics: [],
     },
@@ -84,15 +90,31 @@ afterEach(async () => {
 });
 
 describe("projectConversionReadiness", () => {
-  it("emits PASS, NOT_CHECKED and exact OPEN policy without inventing positive conversion rules", () => {
-    const projection = projectConversionReadiness(resultFixture(), readbackFixture());
+  it("fails closed when the engine-facing policy is still unresolved", () => {
+    const result = resultFixture();
+    result.conversionEvidence.policies.engineFacingProof = "OPEN_M6";
+    const projection = projectConversionReadiness(result, readbackFixture());
     expect(projection.items
       .filter(({ id }) => ["GEOMETRY", "MATERIALS_TEXTURES", "RIG", "ANIMATIONS"].includes(id))
       .every(({ status }) => status === "NOT_CHECKED"))
       .toBe(true);
     expect(projection.items.find(({ id }) => id === "BINARY_READBACK")).toMatchObject({ status: "PASS", checkCount: 1 });
     expect(projection.items.find(({ id }) => id === "PACKAGE_ASSEMBLY")).toMatchObject({ status: "PASS", checkCount: 8 });
-    expect(projection.items.find(({ id }) => id === "RUNTIME_PROOF")).toMatchObject({ status: "OPEN", statusLabel: "OPEN_M6" });
+    expect(projection.items.find(({ id }) => id === "RUNTIME_PROOF")).toMatchObject({ status: "FAIL", statusLabel: "FACING_UNRESOLVED" });
+  });
+
+  it("keeps owner visual proof open after the Creature V2 facing contract is resolved", () => {
+    const result = resultFixture();
+    result.conversionEvidence.policies = {
+      basisStatus: "CREATURE_BASIS_V2_RESOLVED",
+      assetForwardMapping: "GLTF_POSITIVE_Z_TO_AURORA_NEGATIVE_Y",
+      orientationParity: "POSITIVE_PROPER_ROTATION_COMPOSITE_DETERMINANT",
+      engineFacingProof: "OWNER_PROOF_REQUIRED",
+      uvRuntimeProof: "OPEN_M6",
+    };
+    expect(projectConversionReadiness(result, readbackFixture()).items
+      .find(({ id }) => id === "RUNTIME_PROOF"))
+      .toMatchObject({ status: "OPEN", statusLabel: "OWNER_PROOF_REQUIRED / OPEN_M6" });
   });
 
   it("promotes the exact owner-verified lineage to a runtime PASS", () => {

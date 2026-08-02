@@ -48,6 +48,10 @@ use crate::{
         AURORA_MODEL_TRIANGLE_BUDGET_V1, AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1,
         MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_CEILING_V1,
     },
+    model_material_capabilities::{ModelRenderTargetV1, validate_material_separation_counts_v1},
+    model_material_separation::{
+        ModelMaterialSeparationDocumentV1, ResolvedModelMaterialsV1, resolve_model_materials_v1,
+    },
 };
 
 // Backward-compatible creature names now alias the shared model-kind-neutral
@@ -157,9 +161,41 @@ locked_policy!(ProfileASourceScenePolicyV1, DefaultSceneOnly);
 locked_policy!(ProfileASourceRigPolicyV1, RejectPresent);
 locked_policy!(ProfileASourceAnimationPolicyV1, RejectPresent);
 locked_policy!(ProfileANormalPolicyV1, RequireSource);
-locked_policy!(ProfileABasisPolicyV1, GltfToAuroraXzy);
 locked_policy!(ProfileAUvPolicyV1, FlipVOnce);
-locked_policy!(ProfileAWindingPolicyV1, ReverseOnce);
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CreatureSourceForwardV1 {
+    #[default]
+    PositiveZ,
+    NegativeZ,
+    PositiveX,
+    NegativeX,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ProfileABasisPolicyV1 {
+    /// Frozen M3 compatibility policy. It maps source +Z to Aurora +Y and has
+    /// negative parity, so it is not valid for new direct-Creature outputs.
+    GltfToAuroraXzy,
+    /// Creature Basis V2: glTF +Y up / +Z forward becomes Aurora +Z up / -Y
+    /// forward. This is a proper rotation (determinant +1), not a reflection.
+    GltfYUpPositiveZForwardToAuroraZUpNegativeYForwardV2,
+    /// Creature Basis V2 for a model authored facing glTF -Z.
+    GltfYUpNegativeZForwardToAuroraZUpNegativeYForwardV2,
+    /// Creature Basis V2 for a model authored facing glTF +X.
+    GltfYUpPositiveXForwardToAuroraZUpNegativeYForwardV2,
+    /// Creature Basis V2 for a model authored facing glTF -X.
+    GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ProfileAWindingPolicyV1 {
+    /// Frozen M3 compatibility label for the negative-parity basis.
+    ReverseOnce,
+    /// Derive winding and tangent handedness from the full composed transform.
+    CompositeDeterminantV2,
+}
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ProfileAMaterialPolicyV1 {
@@ -243,6 +279,46 @@ impl Default for ProfileAOptionsV1 {
             limits: ProfileALimitsV1::default(),
         }
     }
+}
+
+/// Product options for Meshy humanoid/direct-Creature routes. Static
+/// Placeables intentionally retain the frozen M3 basis through their own
+/// options constructor because props have no humanoid forward contract.
+pub fn direct_creature_profile_a_options_v2() -> ProfileAOptionsV1 {
+    direct_creature_profile_a_options_for_source_forward_v2(CreatureSourceForwardV1::PositiveZ)
+}
+
+pub fn direct_creature_profile_a_options_for_source_forward_v2(
+    source_forward: CreatureSourceForwardV1,
+) -> ProfileAOptionsV1 {
+    ProfileAOptionsV1 {
+        basis_policy: creature_basis_policy_for_source_forward_v2(source_forward),
+        winding_policy: ProfileAWindingPolicyV1::CompositeDeterminantV2,
+        ..ProfileAOptionsV1::default()
+    }
+}
+
+fn creature_basis_policy_for_source_forward_v2(
+    source_forward: CreatureSourceForwardV1,
+) -> ProfileABasisPolicyV1 {
+    match source_forward {
+        CreatureSourceForwardV1::PositiveZ => {
+            ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpNegativeYForwardV2
+        }
+        CreatureSourceForwardV1::NegativeZ => {
+            ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpNegativeYForwardV2
+        }
+        CreatureSourceForwardV1::PositiveX => {
+            ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpNegativeYForwardV2
+        }
+        CreatureSourceForwardV1::NegativeX => {
+            ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2
+        }
+    }
+}
+
+pub fn creature_source_forward_mapping_v1(source_forward: CreatureSourceForwardV1) -> &'static str {
+    profile_a_forward_mapping_v2(creature_basis_policy_for_source_forward_v2(source_forward))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -617,16 +693,36 @@ pub fn derive_meshy_h1_profile_and_mapping_v1(
         source,
         &ProfileALimitsV1::default(),
         MeshySurfaceDegeneracyPolicyV1::LegacyAbsoluteEpsilon,
+        ProfileABasisPolicyV1::GltfToAuroraXzy,
     )
 }
 
 pub(crate) fn derive_meshy_h1_profile_and_mapping_exact_v1(
     source: &GlbIngestResult,
 ) -> Result<(CreatureRigProfileV1, ProfileAAnimationMappingV1), ProfileAConversionFatalError> {
+    derive_meshy_h1_profile_and_mapping_v2(source)
+}
+
+/// Current direct-Creature H1 derivation. It preserves every finite,
+/// non-collinear source face and authors the target rig in Creature Basis V2.
+pub fn derive_meshy_h1_profile_and_mapping_v2(
+    source: &GlbIngestResult,
+) -> Result<(CreatureRigProfileV1, ProfileAAnimationMappingV1), ProfileAConversionFatalError> {
+    derive_meshy_h1_profile_and_mapping_for_source_forward_v2(
+        source,
+        CreatureSourceForwardV1::PositiveZ,
+    )
+}
+
+pub fn derive_meshy_h1_profile_and_mapping_for_source_forward_v2(
+    source: &GlbIngestResult,
+    source_forward: CreatureSourceForwardV1,
+) -> Result<(CreatureRigProfileV1, ProfileAAnimationMappingV1), ProfileAConversionFatalError> {
     derive_meshy_h1_profile_and_mapping_with_limits_v1(
         source,
         &ProfileALimitsV1::default(),
         MeshySurfaceDegeneracyPolicyV1::ExactFiniteNonCollinear,
+        creature_basis_policy_for_source_forward_v2(source_forward),
     )
 }
 
@@ -668,6 +764,7 @@ fn meshy_surface_triangle_is_valid_v1(
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn derive_meshy_h1_profile_and_mapping_p100k_experiment_v1(
     source: &GlbIngestResult,
 ) -> Result<(CreatureRigProfileV1, ProfileAAnimationMappingV1), ProfileAConversionFatalError> {
@@ -680,9 +777,28 @@ pub(crate) fn derive_meshy_h1_profile_and_mapping_p100k_experiment_v1(
         source,
         &limits,
         MeshySurfaceDegeneracyPolicyV1::ExactFiniteNonCollinear,
+        ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpNegativeYForwardV2,
     )
 }
 
+pub(crate) fn derive_meshy_h1_profile_and_mapping_p100k_experiment_for_source_forward_v1(
+    source: &GlbIngestResult,
+    source_forward: CreatureSourceForwardV1,
+) -> Result<(CreatureRigProfileV1, ProfileAAnimationMappingV1), ProfileAConversionFatalError> {
+    let limits = ProfileALimitsV1 {
+        triangle_warning_above: 50_000,
+        triangle_blocking_above: MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_CEILING_V1 as u64,
+        ..ProfileALimitsV1::default()
+    };
+    derive_meshy_h1_profile_and_mapping_with_limits_v1(
+        source,
+        &limits,
+        MeshySurfaceDegeneracyPolicyV1::ExactFiniteNonCollinear,
+        creature_basis_policy_for_source_forward_v2(source_forward),
+    )
+}
+
+#[allow(dead_code)]
 pub(crate) fn derive_meshy_h1_profile_and_mapping_p300k_experiment_v1(
     source: &GlbIngestResult,
 ) -> Result<(CreatureRigProfileV1, ProfileAAnimationMappingV1), ProfileAConversionFatalError> {
@@ -695,6 +811,24 @@ pub(crate) fn derive_meshy_h1_profile_and_mapping_p300k_experiment_v1(
         source,
         &limits,
         MeshySurfaceDegeneracyPolicyV1::ExactFiniteNonCollinear,
+        ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpNegativeYForwardV2,
+    )
+}
+
+pub(crate) fn derive_meshy_h1_profile_and_mapping_p300k_experiment_for_source_forward_v1(
+    source: &GlbIngestResult,
+    source_forward: CreatureSourceForwardV1,
+) -> Result<(CreatureRigProfileV1, ProfileAAnimationMappingV1), ProfileAConversionFatalError> {
+    let limits = ProfileALimitsV1 {
+        triangle_warning_above: AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 as u64,
+        triangle_blocking_above: AURORA_MODEL_TRIANGLE_BUDGET_V1 as u64,
+        ..ProfileALimitsV1::default()
+    };
+    derive_meshy_h1_profile_and_mapping_with_limits_v1(
+        source,
+        &limits,
+        MeshySurfaceDegeneracyPolicyV1::ExactFiniteNonCollinear,
+        creature_basis_policy_for_source_forward_v2(source_forward),
     )
 }
 
@@ -702,6 +836,7 @@ fn derive_meshy_h1_profile_and_mapping_with_limits_v1(
     source: &GlbIngestResult,
     limits: &ProfileALimitsV1,
     surface_degeneracy_policy: MeshySurfaceDegeneracyPolicyV1,
+    basis_policy: ProfileABasisPolicyV1,
 ) -> Result<(CreatureRigProfileV1, ProfileAAnimationMappingV1), ProfileAConversionFatalError> {
     if source.ir.skins.len() != 1 {
         return Err(fatal(
@@ -837,7 +972,8 @@ fn derive_meshy_h1_profile_and_mapping_with_limits_v1(
                 "selected Meshy H1 mesh world transform is missing",
             )
         })?;
-    let basis = basis_matrix();
+    let basis_transform = profile_a_basis_transform_v2(basis_policy);
+    let basis = basis_transform.matrix;
     let mut target_bounds = Bounds3V1::empty();
     for &position in &primitive.positions {
         target_bounds.include(basis.mul(mesh_world).transform_point(position)?);
@@ -896,7 +1032,11 @@ fn derive_meshy_h1_profile_and_mapping_with_limits_v1(
                 .filter(|name| logical_label(name))
                 .unwrap_or_else(|| format!("meshy_joint_{joint_id}")),
             parent_id,
-            bind_local_matrix: meshy_h1_target_local_matrix(source_node, container_scale)?,
+            bind_local_matrix: meshy_h1_target_local_matrix(
+                source_node,
+                container_scale,
+                basis_transform,
+            )?,
         });
     }
     let root_matrix = nodes
@@ -920,6 +1060,7 @@ fn derive_meshy_h1_profile_and_mapping_with_limits_v1(
     let surface_transform = root_inverse
         .mul(Mat4::from_scale_basis_translation(
             1.0 / container_scale,
+            basis,
             [0.0; 3],
         ))
         .mul(mesh_world);
@@ -987,7 +1128,16 @@ fn derive_meshy_h1_profile_and_mapping_with_limits_v1(
     };
     let mut profile = CreatureRigProfileV1 {
         schema_version: PROFILE_A_SCHEMA_VERSION,
-        profile_id: "meshy-h1-derived-user-rig-v1".to_owned(),
+        profile_id: match basis_policy {
+            ProfileABasisPolicyV1::GltfToAuroraXzy => "meshy-h1-derived-user-rig-v1",
+            ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpNegativeYForwardV2
+            | ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpNegativeYForwardV2
+            | ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpNegativeYForwardV2
+            | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2 => {
+                "meshy-h1-derived-user-rig-v2"
+            }
+        }
+        .to_owned(),
         content_sha256: String::new(),
         provenance: provenance.clone(),
         target_bounds,
@@ -1173,7 +1323,7 @@ pub fn derive_meshy_m0_static_rigid_profile_v1(
                 "selected M0 mesh world transform is missing",
             )
         })?;
-    let basis = basis_matrix();
+    let basis = profile_a_basis_transform_v2(ProfileABasisPolicyV1::GltfToAuroraXzy).matrix;
     let surface_transform = basis.mul(mesh_world);
     let mut surface_positions = Vec::new();
     let mut surface_indices = Vec::new();
@@ -1346,6 +1496,7 @@ fn meshy_h1_container_scale(
 fn meshy_h1_target_local_matrix(
     source_node: &IrNode,
     container_scale: f32,
+    basis: ProfileABasisTransformV2,
 ) -> Result<[f32; 16], ProfileAConversionFatalError> {
     if source_node.transform.kind != "TRS" || source_node.transform.matrix.is_some() {
         return Err(fatal(
@@ -1378,8 +1529,7 @@ fn meshy_h1_target_local_matrix(
             .unwrap_or([0.0, 0.0, 0.0, 1.0]),
         [1.0; 3],
     )?;
-    let basis = basis_matrix();
-    Ok(basis.mul(local).mul(basis).0)
+    Ok(basis.matrix.mul(local).mul(basis.inverse).0)
 }
 
 fn normalize_profile_zeroes(
@@ -1511,6 +1661,49 @@ pub fn convert_profile_a(
         options,
         SourceInventoryPolicy::RejectPresent,
         ProfileATriangleThresholdContractV1::Product,
+        None,
+    )
+}
+
+pub fn convert_profile_a_with_material_separation_v1(
+    source: &GlbIngestResult,
+    rig: &CreatureRigProfileV1,
+    options: &ProfileAOptionsV1,
+    separation: &ModelMaterialSeparationDocumentV1,
+) -> Result<ProfileAConversionOutcomeV1, ProfileAConversionFatalError> {
+    let resolved = resolve_model_materials_v1(&source.ir, separation)
+        .map_err(|source| fatal(&source.code, &source.path, source.message))?;
+    validate_material_separation_counts_v1(
+        ModelRenderTargetV1::Creature,
+        resolved.report.material_slots.len(),
+        resolved.report.output_section_count,
+    )
+    .map_err(|source| fatal(&source.code, &source.path, source.message))?;
+    convert_profile_a_impl(
+        source,
+        rig,
+        options,
+        SourceInventoryPolicy::RejectPresent,
+        ProfileATriangleThresholdContractV1::Product,
+        Some(&resolved),
+    )
+}
+
+/// Internal bridge for one source-bound, owner-approved oversized Placeable
+/// materialization. The public Product conversion contract remains unchanged;
+/// the Placeable boundary validates the immutable source identity first.
+pub(crate) fn convert_profile_a_owner_approved_oversized_v1(
+    source: &GlbIngestResult,
+    rig: &CreatureRigProfileV1,
+    options: &ProfileAOptionsV1,
+) -> Result<ProfileAConversionOutcomeV1, ProfileAConversionFatalError> {
+    convert_profile_a_impl(
+        source,
+        rig,
+        options,
+        SourceInventoryPolicy::RejectPresent,
+        ProfileATriangleThresholdContractV1::OwnerApprovedOversized,
+        None,
     )
 }
 
@@ -1526,6 +1719,55 @@ pub fn convert_profile_a_with_animations_v1(
         profile_options,
         mapping,
         ProfileATriangleThresholdContractV1::Product,
+        None,
+    )
+}
+
+pub fn convert_profile_a_with_animations_and_material_separation_v1(
+    source: &GlbIngestResult,
+    rig: &CreatureRigProfileV1,
+    profile_options: &ProfileAOptionsV1,
+    mapping: &ProfileAAnimationMappingV1,
+    separation: &ModelMaterialSeparationDocumentV1,
+) -> Result<ProfileAAnimatedOutcomeV1, ProfileAAnimationFatalError> {
+    let resolved = resolve_model_materials_v1(&source.ir, separation).map_err(|source| {
+        ProfileAAnimationFatalError::from(fatal(&source.code, &source.path, source.message))
+    })?;
+    validate_material_separation_counts_v1(
+        ModelRenderTargetV1::Creature,
+        resolved.report.material_slots.len(),
+        resolved.report.output_section_count,
+    )
+    .map_err(|source| {
+        ProfileAAnimationFatalError::from(fatal(&source.code, &source.path, source.message))
+    })?;
+    let material_options = profile_a_options_with_material_separation_v1(profile_options);
+    convert_profile_a_with_animations_internal_v1(
+        source,
+        rig,
+        &material_options,
+        mapping,
+        ProfileATriangleThresholdContractV1::Product,
+        Some(&resolved),
+    )
+}
+
+/// Current direct-Creature conversion. The policy is intentionally not
+/// caller-selectable: it combines exact finite/non-collinear geometry with
+/// Creature Basis V2 so a product route cannot silently fall back to the
+/// historical reflected facing transform.
+pub fn convert_profile_a_with_animations_v2(
+    source: &GlbIngestResult,
+    rig: &CreatureRigProfileV1,
+    mapping: &ProfileAAnimationMappingV1,
+) -> Result<ProfileAAnimatedOutcomeV1, ProfileAAnimationFatalError> {
+    convert_profile_a_with_animations_internal_v1(
+        source,
+        rig,
+        &direct_creature_profile_a_options_v2(),
+        mapping,
+        ProfileATriangleThresholdContractV1::ProductExact,
+        None,
     )
 }
 
@@ -1541,6 +1783,36 @@ pub(crate) fn convert_profile_a_with_animations_exact_v1(
         profile_options,
         mapping,
         ProfileATriangleThresholdContractV1::ProductExact,
+        None,
+    )
+}
+
+pub(crate) fn convert_profile_a_with_animations_exact_and_material_separation_v1(
+    source: &GlbIngestResult,
+    rig: &CreatureRigProfileV1,
+    profile_options: &ProfileAOptionsV1,
+    mapping: &ProfileAAnimationMappingV1,
+    separation: &ModelMaterialSeparationDocumentV1,
+) -> Result<ProfileAAnimatedOutcomeV1, ProfileAAnimationFatalError> {
+    let resolved = resolve_model_materials_v1(&source.ir, separation).map_err(|source| {
+        ProfileAAnimationFatalError::from(fatal(&source.code, &source.path, source.message))
+    })?;
+    validate_material_separation_counts_v1(
+        ModelRenderTargetV1::Creature,
+        resolved.report.material_slots.len(),
+        resolved.report.output_section_count,
+    )
+    .map_err(|source| {
+        ProfileAAnimationFatalError::from(fatal(&source.code, &source.path, source.message))
+    })?;
+    let material_options = profile_a_options_with_material_separation_v1(profile_options);
+    convert_profile_a_with_animations_internal_v1(
+        source,
+        rig,
+        &material_options,
+        mapping,
+        ProfileATriangleThresholdContractV1::ProductExact,
+        Some(&resolved),
     )
 }
 
@@ -1555,7 +1827,7 @@ pub(crate) fn convert_profile_a_with_animations_p100k_experiment_v1(
             triangle_blocking_above: MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_CEILING_V1 as u64,
             ..ProfileALimitsV1::default()
         },
-        ..ProfileAOptionsV1::default()
+        ..direct_creature_profile_a_options_v2()
     };
     convert_profile_a_with_animations_internal_v1(
         source,
@@ -1563,6 +1835,44 @@ pub(crate) fn convert_profile_a_with_animations_p100k_experiment_v1(
         &options,
         mapping,
         ProfileATriangleThresholdContractV1::P100kExperiment,
+        None,
+    )
+}
+
+pub(crate) fn convert_profile_a_with_animations_p100k_experiment_and_material_separation_v1(
+    source: &GlbIngestResult,
+    rig: &CreatureRigProfileV1,
+    mapping: &ProfileAAnimationMappingV1,
+    separation: &ModelMaterialSeparationDocumentV1,
+) -> Result<ProfileAAnimatedOutcomeV1, ProfileAAnimationFatalError> {
+    let resolved = resolve_model_materials_v1(&source.ir, separation).map_err(|source| {
+        ProfileAAnimationFatalError::from(fatal(&source.code, &source.path, source.message))
+    })?;
+    validate_material_separation_counts_v1(
+        ModelRenderTargetV1::Creature,
+        resolved.report.material_slots.len(),
+        resolved.report.output_section_count,
+    )
+    .map_err(|source| {
+        ProfileAAnimationFatalError::from(fatal(&source.code, &source.path, source.message))
+    })?;
+    let options = ProfileAOptionsV1 {
+        material_policy: ProfileAMaterialPolicyV1::BoundedSourceSlots,
+        limits: ProfileALimitsV1 {
+            max_unique_materials: PROFILE_A_HARD_MAX_UNIQUE_MATERIALS_V1,
+            triangle_warning_above: 50_000,
+            triangle_blocking_above: MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_CEILING_V1 as u64,
+            ..ProfileALimitsV1::default()
+        },
+        ..direct_creature_profile_a_options_v2()
+    };
+    convert_profile_a_with_animations_internal_v1(
+        source,
+        rig,
+        &options,
+        mapping,
+        ProfileATriangleThresholdContractV1::P100kExperiment,
+        Some(&resolved),
     )
 }
 
@@ -1577,7 +1887,7 @@ pub(crate) fn convert_profile_a_with_animations_p300k_experiment_v1(
             triangle_blocking_above: AURORA_MODEL_TRIANGLE_BUDGET_V1 as u64,
             ..ProfileALimitsV1::default()
         },
-        ..ProfileAOptionsV1::default()
+        ..direct_creature_profile_a_options_v2()
     };
     convert_profile_a_with_animations_internal_v1(
         source,
@@ -1585,7 +1895,56 @@ pub(crate) fn convert_profile_a_with_animations_p300k_experiment_v1(
         &options,
         mapping,
         ProfileATriangleThresholdContractV1::P300kExperiment,
+        None,
     )
+}
+
+pub(crate) fn convert_profile_a_with_animations_p300k_experiment_and_material_separation_v1(
+    source: &GlbIngestResult,
+    rig: &CreatureRigProfileV1,
+    mapping: &ProfileAAnimationMappingV1,
+    separation: &ModelMaterialSeparationDocumentV1,
+) -> Result<ProfileAAnimatedOutcomeV1, ProfileAAnimationFatalError> {
+    let resolved = resolve_model_materials_v1(&source.ir, separation).map_err(|source| {
+        ProfileAAnimationFatalError::from(fatal(&source.code, &source.path, source.message))
+    })?;
+    validate_material_separation_counts_v1(
+        ModelRenderTargetV1::Creature,
+        resolved.report.material_slots.len(),
+        resolved.report.output_section_count,
+    )
+    .map_err(|source| {
+        ProfileAAnimationFatalError::from(fatal(&source.code, &source.path, source.message))
+    })?;
+    let options = ProfileAOptionsV1 {
+        material_policy: ProfileAMaterialPolicyV1::BoundedSourceSlots,
+        limits: ProfileALimitsV1 {
+            max_unique_materials: PROFILE_A_HARD_MAX_UNIQUE_MATERIALS_V1,
+            triangle_warning_above: AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 as u64,
+            triangle_blocking_above: AURORA_MODEL_TRIANGLE_BUDGET_V1 as u64,
+            ..ProfileALimitsV1::default()
+        },
+        ..direct_creature_profile_a_options_v2()
+    };
+    convert_profile_a_with_animations_internal_v1(
+        source,
+        rig,
+        &options,
+        mapping,
+        ProfileATriangleThresholdContractV1::P300kExperiment,
+        Some(&resolved),
+    )
+}
+
+fn profile_a_options_with_material_separation_v1(options: &ProfileAOptionsV1) -> ProfileAOptionsV1 {
+    ProfileAOptionsV1 {
+        material_policy: ProfileAMaterialPolicyV1::BoundedSourceSlots,
+        limits: ProfileALimitsV1 {
+            max_unique_materials: PROFILE_A_HARD_MAX_UNIQUE_MATERIALS_V1,
+            ..options.limits.clone()
+        },
+        ..options.clone()
+    }
 }
 
 fn convert_profile_a_with_animations_internal_v1(
@@ -1594,6 +1953,7 @@ fn convert_profile_a_with_animations_internal_v1(
     profile_options: &ProfileAOptionsV1,
     mapping: &ProfileAAnimationMappingV1,
     triangle_threshold_contract: ProfileATriangleThresholdContractV1,
+    material_projection: Option<&ResolvedModelMaterialsV1>,
 ) -> Result<ProfileAAnimatedOutcomeV1, ProfileAAnimationFatalError> {
     let validated = validate_animation_mapping_v1(source, rig, mapping)?;
     let base = convert_profile_a_impl(
@@ -1602,6 +1962,7 @@ fn convert_profile_a_with_animations_internal_v1(
         profile_options,
         SourceInventoryPolicy::AllowMappedForM4A2,
         triangle_threshold_contract,
+        material_projection,
     )
     .map_err(ProfileAAnimationFatalError::from)?;
     if base.creature.is_none() {
@@ -1617,7 +1978,13 @@ fn convert_profile_a_with_animations_internal_v1(
             "successful Profile A conversion did not expose its uniform scale",
         )
     })?;
-    let animations = emit_animation_set_v1(source, mapping, &validated, scale)?;
+    let animations = emit_animation_set_v1(
+        source,
+        mapping,
+        &validated,
+        scale,
+        profile_options.basis_policy,
+    )?;
     Ok(ProfileAAnimatedOutcomeV1 {
         base,
         animations: Some(animations),
@@ -1630,10 +1997,11 @@ fn convert_profile_a_impl(
     options: &ProfileAOptionsV1,
     source_inventory_policy: SourceInventoryPolicy,
     triangle_threshold_contract: ProfileATriangleThresholdContractV1,
+    material_projection: Option<&ResolvedModelMaterialsV1>,
 ) -> Result<ProfileAConversionOutcomeV1, ProfileAConversionFatalError> {
     let base_work_bytes = validate_api(source, rig, options, triangle_threshold_contract)?;
     let mut gates = collect_preflight_gates(source, rig, options, source_inventory_policy)?;
-    let mut transform_report = empty_transform_report(rig.alignment_anchor);
+    let mut transform_report = empty_transform_report(rig.alignment_anchor, options.basis_policy);
     let mut counters = Counters {
         work_bytes_peak: base_work_bytes,
         ..Default::default()
@@ -1674,6 +2042,13 @@ fn convert_profile_a_impl(
     let (instances, instance_work_bytes, construction_peak) = if let Some(selection) = &selection {
         geometry_instances(
             source,
+            source.ir.default_scene_id.ok_or_else(|| {
+                fatal(
+                    "M3A-INTERNAL-CONTRACT",
+                    "source.ir.defaultSceneId",
+                    "selected default scene id is missing",
+                )
+            })?,
             &selection.worlds,
             &selection.ordered_nodes,
             &options.limits,
@@ -1762,17 +2137,23 @@ fn convert_profile_a_impl(
             )?;
         }
     }
-    let unique_material_keys = instances
-        .iter()
-        .map(|instance| instance.primitive.material_id)
-        .collect::<BTreeSet<_>>();
-    if usize_u64(unique_material_keys.len()) > options.limits.max_unique_materials {
+    let unique_material_count = material_projection.map_or_else(
+        || {
+            instances
+                .iter()
+                .map(|instance| instance.primitive.material_id)
+                .collect::<BTreeSet<_>>()
+                .len()
+        },
+        |projection| projection.report.material_slots.len(),
+    );
+    if usize_u64(unique_material_count) > options.limits.max_unique_materials {
         push_gate_checked(
             &mut gates,
             gate(
                 "M3A-MATERIAL-LIMIT",
                 "sourceSelection.meshInstances",
-                "Creature Profile A admits exactly one used source material and one classic diffuse TGA; multiple used materials are blocked instead of silently selecting the first material",
+                "resolved material slot count exceeds the selected Profile A material capability",
             ),
             &options.limits,
         )?;
@@ -1812,13 +2193,17 @@ fn convert_profile_a_impl(
     }
     finalize_gates(&mut gates);
     drop(seen_primitive_instances);
-    let material_summary = material_summary(
-        source,
-        &instances,
-        gates.len(),
-        instance_work_bytes,
-        &options.limits,
-    )?;
+    let material_summary = if let Some(projection) = material_projection {
+        material_summary_from_projection(projection, instance_work_bytes, &options.limits)?
+    } else {
+        material_summary(
+            source,
+            &instances,
+            gates.len(),
+            instance_work_bytes,
+            &options.limits,
+        )?
+    };
     counters.work_bytes_peak = counters
         .work_bytes_peak
         .max(material_summary.peak_work_bytes);
@@ -1841,7 +2226,8 @@ fn convert_profile_a_impl(
     }
 
     let source_bounds = world_bounds(&instances)?;
-    let basis_bounds = transform_bounds(source_bounds, basis_matrix());
+    let basis = profile_a_basis_transform_v2(options.basis_policy);
+    let basis_bounds = transform_bounds(source_bounds, basis.matrix);
     let source_height = basis_bounds.max[2] - basis_bounds.min[2];
     let target_height = rig.target_bounds.max[2] - rig.target_bounds.min[2];
     if !source_height.is_finite() || source_height <= 0.0 {
@@ -1879,7 +2265,7 @@ fn convert_profile_a_impl(
     let scaled_basis_bounds = scale_bounds(basis_bounds, scale);
     let bottom_center = bottom_center(scaled_basis_bounds);
     let translation = sub3(rig.alignment_anchor, bottom_center);
-    let conversion = Mat4::from_scale_basis_translation(scale, translation);
+    let conversion = Mat4::from_scale_basis_translation(scale, basis.matrix, translation);
     let target_bounds_expected = translate_bounds(scaled_basis_bounds, translation);
 
     transform_report.source_world_bounds = Some(source_bounds);
@@ -1896,6 +2282,7 @@ fn convert_profile_a_impl(
         rig,
         &rig_worlds,
         &material_bindings,
+        material_projection,
         material_work_bytes,
         &mut counters,
         &options.limits,
@@ -1943,7 +2330,6 @@ fn convert_profile_a_impl(
     let buckets = emit_assigned_geometry(
         &instances,
         &assignment_plan,
-        &material_bindings,
         conversion,
         rig,
         &rig_worlds,
@@ -2017,8 +2403,8 @@ fn convert_profile_a_impl(
         schema_version: PROFILE_A_SCHEMA_VERSION,
         profile_id: rig.profile_id.clone(),
         source_sha256: source.ir.source.sha256.clone(),
-        basis_status: "PROFILE_A_LOCKED_M3".to_owned(),
-        engine_facing_proof: "OPEN_M6".to_owned(),
+        basis_status: profile_a_basis_status_v2(options.basis_policy).to_owned(),
+        engine_facing_proof: profile_a_engine_facing_proof_v2(options.basis_policy).to_owned(),
         uv_runtime_proof: "OPEN_M6".to_owned(),
         nodes,
         material_source_bindings: material_bindings.clone(),
@@ -2647,6 +3033,7 @@ fn emit_animation_set_v1(
     mapping: &ProfileAAnimationMappingV1,
     validated: &ValidatedAnimationMapping,
     scale: f32,
+    basis_policy: ProfileABasisPolicyV1,
 ) -> Result<MdlAnimationSetV1, ProfileAAnimationFatalError> {
     if !scale.is_finite() || scale <= 0.0 {
         return Err(animation_fatal(
@@ -2655,6 +3042,7 @@ fn emit_animation_set_v1(
             "Profile A animation scale must be positive and finite",
         ));
     }
+    let basis = profile_a_basis_transform_v2(basis_policy);
     let mut clips = Vec::new();
     clips.try_reserve(source.ir.animations.len()).map_err(|_| {
         animation_fatal(
@@ -2685,7 +3073,7 @@ fn emit_animation_set_v1(
             let output_id = validated.source_to_output[&channel.target_node_id];
             let source_rest = validated.source_rest[&channel.target_node_id];
             let target_rest = validated.target_rest[&output_id];
-            let source_rest_basis = animation_basis_conjugate(source_rest.rotation);
+            let source_rest_basis = animation_basis_conjugate(source_rest.rotation, basis);
             let correction = animation_mul3(target_rest.rotation, transpose3(source_rest_basis));
             let (path, values) = match channel.target_path.to_ascii_lowercase().as_str() {
                 "translation" => {
@@ -2699,7 +3087,7 @@ fn emit_animation_set_v1(
                                 row[1] - source_rest.translation[1],
                                 row[2] - source_rest.translation[2],
                             ];
-                            let basis_delta = animation_basis_vector(delta);
+                            let basis_delta = animation_basis_vector(delta, basis);
                             let mapped = mul3(
                                 correction,
                                 [
@@ -2738,7 +3126,7 @@ fn emit_animation_set_v1(
                                 &format!("source.ir.animations.channels.values[{row_index}]"),
                             )?;
                             let source_key_basis =
-                                animation_basis_conjugate(quaternion_to_matrix3(source_q));
+                                animation_basis_conjugate(quaternion_to_matrix3(source_q), basis);
                             let output_rotation = animation_mul3(correction, source_key_basis);
                             let q = matrix3_to_canonical_quaternion(
                                 output_rotation,
@@ -2885,13 +3273,18 @@ fn matrix3_to_canonical_quaternion(
     canonical_animation_quaternion(q, path)
 }
 
-fn animation_basis_vector(value: [f32; 3]) -> [f32; 3] {
-    [value[0], value[2], value[1]]
+fn animation_basis_vector(value: [f32; 3], basis: ProfileABasisTransformV2) -> [f32; 3] {
+    mul3(basis.matrix.linear(), value)
 }
 
-fn animation_basis_conjugate(matrix: [[f32; 3]; 3]) -> [[f32; 3]; 3] {
-    let basis = [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0, 0.0]];
-    animation_mul3(animation_mul3(basis, matrix), basis)
+fn animation_basis_conjugate(
+    matrix: [[f32; 3]; 3],
+    basis: ProfileABasisTransformV2,
+) -> [[f32; 3]; 3] {
+    animation_mul3(
+        animation_mul3(basis.matrix.linear(), matrix),
+        basis.inverse.linear(),
+    )
 }
 
 fn animation_mul3(left: [[f32; 3]; 3], right: [[f32; 3]; 3]) -> [[f32; 3]; 3] {
@@ -3487,12 +3880,33 @@ enum ProfileATriangleThresholdContractV1 {
     ProductExact,
     P100kExperiment,
     P300kExperiment,
+    OwnerApprovedOversized,
 }
 
 fn validate_options(
     options: &ProfileAOptionsV1,
     triangle_threshold_contract: ProfileATriangleThresholdContractV1,
 ) -> Result<(), ProfileAConversionFatalError> {
+    let basis_winding_pair_is_valid = matches!(
+        (options.basis_policy, options.winding_policy),
+        (
+            ProfileABasisPolicyV1::GltfToAuroraXzy,
+            ProfileAWindingPolicyV1::ReverseOnce
+        ) | (
+            ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpNegativeYForwardV2
+                | ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpNegativeYForwardV2
+                | ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpNegativeYForwardV2
+                | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2,
+            ProfileAWindingPolicyV1::CompositeDeterminantV2
+        )
+    );
+    if !basis_winding_pair_is_valid {
+        return Err(fatal(
+            "M3A-OPTIONS-INVALID",
+            "options.basisPolicy",
+            "basis and winding policies must use one coherent versioned transform contract",
+        ));
+    }
     if options.weight_merge_epsilon != 0.0
         || options.weight_sum_tolerance != 0.00001
         || options.bounds_tolerance_factor != 0.00001
@@ -3519,6 +3933,10 @@ fn validate_options(
             AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 as u64,
             AURORA_MODEL_TRIANGLE_BUDGET_V1 as u64,
         ),
+        ProfileATriangleThresholdContractV1::OwnerApprovedOversized => (
+            AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 as u64,
+            limits.triangle_blocking_above,
+        ),
     };
     let triangle_thresholds_are_compiled_profile = (
         limits.triangle_warning_above,
@@ -3538,9 +3956,32 @@ fn validate_options(
         (limits.max_work_bytes, hard.max_work_bytes),
         (limits.max_diagnostics, hard.max_diagnostics),
     ];
-    if pairs
-        .iter()
-        .any(|(value, maximum)| *value == 0 || value > maximum)
+    let exceeds_compiled_maximum = match triangle_threshold_contract {
+        ProfileATriangleThresholdContractV1::OwnerApprovedOversized => {
+            let retained_hard_pairs = [
+                (limits.max_rig_nodes, hard.max_rig_nodes),
+                (limits.max_segments, hard.max_segments),
+                (
+                    limits.max_distance_evaluations,
+                    hard.max_distance_evaluations,
+                ),
+                (limits.max_diagnostics, hard.max_diagnostics),
+            ];
+            retained_hard_pairs
+                .iter()
+                .any(|(value, maximum)| *value == 0 || value > maximum)
+                || limits.max_reference_vertices == 0
+                || limits.max_reference_triangles == 0
+                || limits.max_output_vertices == 0
+                || limits.max_output_indices == 0
+                || limits.max_work_bytes == 0
+                || limits.triangle_blocking_above <= AURORA_MODEL_TRIANGLE_BUDGET_V1 as u64
+        }
+        _ => pairs
+            .iter()
+            .any(|(value, maximum)| *value == 0 || value > maximum),
+    };
+    if exceeds_compiled_maximum
         || !triangle_thresholds_are_compiled_profile
         || limits.max_unique_materials == 0
         || limits.max_unique_materials > PROFILE_A_HARD_MAX_UNIQUE_MATERIALS_V1
@@ -3747,7 +4188,8 @@ fn validate_rig(
         | ProfileATriangleThresholdContractV1::P300kExperiment => {
             MeshySurfaceDegeneracyPolicyV1::ExactFiniteNonCollinear
         }
-        ProfileATriangleThresholdContractV1::Product => {
+        ProfileATriangleThresholdContractV1::Product
+        | ProfileATriangleThresholdContractV1::OwnerApprovedOversized => {
             MeshySurfaceDegeneracyPolicyV1::LegacyAbsoluteEpsilon
         }
     };
@@ -4041,6 +4483,8 @@ fn collect_preflight_gates(
 }
 
 struct GeometryInstance<'a> {
+    scene_id: u32,
+    node_id: u32,
     primitive: &'a IrPrimitive,
     source_world: Mat4,
 }
@@ -4072,6 +4516,7 @@ fn geometry_buffer_bytes(primitive: &IrPrimitive) -> Result<u64, ProfileAConvers
 
 fn geometry_instances<'a>(
     source: &'a GlbIngestResult,
+    scene_id: u32,
     worlds: &[Option<Mat4>],
     nodes: &[&'a IrNode],
     limits: &ProfileALimitsV1,
@@ -4273,6 +4718,8 @@ fn geometry_instances<'a>(
                 )
             })?;
             result.push(GeometryInstance {
+                scene_id,
+                node_id: node.id,
                 primitive: source
                     .ir
                     .primitives
@@ -4308,6 +4755,73 @@ struct MaterialSummary {
     diagnostics: Vec<ProfileADiagnosticV1>,
     retained_work_bytes: u64,
     peak_work_bytes: u64,
+}
+
+fn material_summary_from_projection(
+    projection: &ResolvedModelMaterialsV1,
+    base_work_bytes: u64,
+    limits: &ProfileALimitsV1,
+) -> Result<MaterialSummary, ProfileAConversionFatalError> {
+    let binding_count = projection.report.material_slots.len();
+    let binding_bytes = usize_u64(binding_count)
+        .checked_mul(WORK_MATERIAL_BINDING)
+        .ok_or_else(|| {
+            fatal(
+                "M3A-INTEGER-OVERFLOW",
+                "workBytes",
+                "resolved material binding byte product overflow",
+            )
+        })?;
+    let binding_name_bytes = projection
+        .report
+        .material_slots
+        .iter()
+        .filter_map(|slot| slot.source_material_name.as_deref())
+        .try_fold(0u64, |sum, name| sum.checked_add(usize_u64(name.len())))
+        .ok_or_else(|| {
+            fatal(
+                "M3A-INTEGER-OVERFLOW",
+                "workBytes",
+                "resolved material binding name byte sum overflow",
+            )
+        })?;
+    let retained_material_bytes =
+        binding_bytes
+            .checked_add(binding_name_bytes)
+            .ok_or_else(|| {
+                fatal(
+                    "M3A-INTEGER-OVERFLOW",
+                    "workBytes",
+                    "resolved material retained byte sum overflow",
+                )
+            })?;
+    let mut peak_work_bytes = base_work_bytes;
+    reserve_work_bytes(&mut peak_work_bytes, retained_material_bytes, limits)?;
+    let retained_work_bytes = base_work_bytes
+        .checked_add(retained_material_bytes)
+        .ok_or_else(|| {
+            fatal(
+                "M3A-INTEGER-OVERFLOW",
+                "workBytes",
+                "resolved material retained work byte sum overflow",
+            )
+        })?;
+    let bindings = projection
+        .report
+        .material_slots
+        .iter()
+        .map(|slot| MaterialSourceBindingV1 {
+            slot: slot.material_slot,
+            source_material_id: slot.source_material_id,
+            source_material_name: slot.source_material_name.clone(),
+        })
+        .collect();
+    Ok(MaterialSummary {
+        bindings,
+        diagnostics: Vec::new(),
+        retained_work_bytes,
+        peak_work_bytes,
+    })
 }
 
 fn material_summary(
@@ -4894,6 +5408,7 @@ struct BucketPlan {
 
 struct AssignmentPlan {
     triangle_segments: Vec<Vec<usize>>,
+    triangle_material_slots: Vec<Vec<u32>>,
     buckets: BTreeMap<(u32, u32), BucketPlan>,
     segment_order: Vec<usize>,
     mixed_tangent_buckets: Vec<(u32, u32)>,
@@ -4958,6 +5473,7 @@ fn plan_triangle_assignments(
     rig: &CreatureRigProfileV1,
     rig_worlds: &BTreeMap<u32, Mat4>,
     bindings: &[MaterialSourceBindingV1],
+    material_projection: Option<&ResolvedModelMaterialsV1>,
     base_work_bytes: u64,
     counters: &mut Counters,
     limits: &ProfileALimitsV1,
@@ -4975,7 +5491,7 @@ fn plan_triangle_assignments(
             )
         })?;
     let assignment_bytes = usize_u64(triangle_count)
-        .checked_mul(WORK_USIZE)
+        .checked_mul(WORK_USIZE + WORK_U32)
         .ok_or_else(|| {
             fatal(
                 "M3A-INTEGER-OVERFLOW",
@@ -4984,7 +5500,7 @@ fn plan_triangle_assignments(
             )
         })?;
     let assignment_outer_bytes = usize_u64(instances.len())
-        .checked_mul(WORK_VEC_HEADER)
+        .checked_mul(WORK_VEC_HEADER * 2)
         .ok_or_else(|| {
             fatal(
                 "M3A-INTEGER-OVERFLOW",
@@ -5002,8 +5518,8 @@ fn plan_triangle_assignments(
             )
         })?;
     let bucket_budget_bytes = usize_u64(rig.segments.len())
-        .checked_mul(WORK_BUCKET_PLAN_ENTRY)
-        .and_then(|value| value.checked_mul(3))
+        .checked_mul(limits.max_unique_materials)
+        .and_then(|value| value.checked_mul(WORK_BUCKET_PLAN_ENTRY))
         .ok_or_else(|| {
             fatal(
                 "M3A-INTEGER-OVERFLOW",
@@ -5067,6 +5583,16 @@ fn plan_triangle_assignments(
                 "assignment outer allocation failed",
             )
         })?;
+    let mut triangle_material_slots = Vec::new();
+    triangle_material_slots
+        .try_reserve(instances.len())
+        .map_err(|_| {
+            fatal(
+                "M3A-LIMIT-EXCEEDED",
+                "materialAssignment",
+                "material assignment outer allocation failed",
+            )
+        })?;
     let mut segment_order = Vec::new();
     segment_order.try_reserve(rig.segments.len()).map_err(|_| {
         fatal(
@@ -5082,9 +5608,9 @@ fn plan_triangle_assignments(
 
     for instance in instances {
         let primitive = instance.primitive;
-        let material_slot = material_slot_for(primitive.material_id, bindings)?;
         let target_matrix = conversion.mul(instance.source_world);
         let mut assignments = Vec::new();
+        let mut material_assignments = Vec::new();
         assignments
             .try_reserve(primitive.indices.len() / 3)
             .map_err(|_| {
@@ -5094,7 +5620,22 @@ fn plan_triangle_assignments(
                     "assignment allocation failed",
                 )
             })?;
-        for triangle in primitive.indices.chunks_exact(3) {
+        material_assignments
+            .try_reserve(primitive.indices.len() / 3)
+            .map_err(|_| {
+                fatal(
+                    "M3A-LIMIT-EXCEEDED",
+                    "materialAssignment",
+                    "material assignment allocation failed",
+                )
+            })?;
+        for (triangle_index, triangle) in primitive.indices.chunks_exact(3).enumerate() {
+            let material_slot = material_slot_for_instance_triangle(
+                instance,
+                triangle_index,
+                bindings,
+                material_projection,
+            )?;
             let target = [
                 target_matrix.transform_point(primitive.positions[triangle[0] as usize])?,
                 target_matrix.transform_point(primitive.positions[triangle[1] as usize])?,
@@ -5158,6 +5699,7 @@ fn plan_triangle_assignments(
                 segment_index
             };
             assignments.push(segment_index);
+            material_assignments.push(material_slot);
             let segment = &rig.segments[segment_index];
             let plan = buckets
                 .entry((segment.id, material_slot))
@@ -5191,13 +5733,13 @@ fn plan_triangle_assignments(
                     "assignment mark byte product overflow",
                 )
             })?;
-        let active_bytes = usize_u64(rig.segments.len())
-            .checked_mul(WORK_BOOL)
+        let active_bytes = usize_u64(assignments.len())
+            .checked_mul(16)
             .ok_or_else(|| {
                 fatal(
                     "M3A-INTEGER-OVERFLOW",
                     "workBytes",
-                    "active segment byte product overflow",
+                    "active segment/material pair byte product overflow",
                 )
             })?;
         let scratch = marks_bytes.checked_add(active_bytes).ok_or_else(|| {
@@ -5219,18 +5761,20 @@ fn plan_triangle_assignments(
             )
         })?;
         marks.resize(primitive.positions.len(), 0_u32);
-        let mut active = Vec::new();
-        active.try_reserve(rig.segments.len()).map_err(|_| {
+        let mut active_pairs = Vec::new();
+        active_pairs.try_reserve(assignments.len()).map_err(|_| {
             fatal(
                 "M3A-LIMIT-EXCEEDED",
                 "segmentAssignment",
-                "active segment allocation failed",
+                "active segment/material pair allocation failed",
             )
         })?;
-        active.resize(rig.segments.len(), false);
         let mut source_used = 0usize;
         for (triangle_index, triangle) in primitive.indices.chunks_exact(3).enumerate() {
-            active[assignments[triangle_index]] = true;
+            active_pairs.push((
+                assignments[triangle_index],
+                material_assignments[triangle_index],
+            ));
             for &source_index in triangle {
                 let mark = &mut marks[source_index as usize];
                 if *mark == 0 {
@@ -5239,10 +5783,14 @@ fn plan_triangle_assignments(
                 }
             }
         }
+        active_pairs.sort_by_key(|(segment_index, material_slot)| {
+            (rig.segments[*segment_index].id, *material_slot)
+        });
+        active_pairs.dedup();
         let mut stamp = 1_u32;
         has_unreferenced_vertices |= source_used != primitive.positions.len();
         let mut emitted_for_instance = 0usize;
-        for &segment_index in segment_order.iter().filter(|index| active[**index]) {
+        for &(segment_index, material_slot) in &active_pairs {
             stamp = stamp.checked_add(1).ok_or_else(|| {
                 fatal(
                     "M3A-INTEGER-OVERFLOW",
@@ -5252,7 +5800,9 @@ fn plan_triangle_assignments(
             })?;
             let mut count = 0usize;
             for (triangle_index, triangle) in primitive.indices.chunks_exact(3).enumerate() {
-                if assignments[triangle_index] != segment_index {
+                if assignments[triangle_index] != segment_index
+                    || material_assignments[triangle_index] != material_slot
+                {
                     continue;
                 }
                 for &source_index in triangle {
@@ -5312,6 +5862,7 @@ fn plan_triangle_assignments(
             "duplicated vertices",
         )?;
         triangle_segments.push(assignments);
+        triangle_material_slots.push(material_assignments);
     }
 
     if counters.output_vertices > limits.max_output_vertices
@@ -5490,6 +6041,7 @@ fn plan_triangle_assignments(
     );
     Ok(AssignmentPlan {
         triangle_segments,
+        triangle_material_slots,
         buckets,
         segment_order,
         mixed_tangent_buckets,
@@ -5517,11 +6069,42 @@ fn material_slot_for(
         })
 }
 
+fn material_slot_for_instance_triangle(
+    instance: &GeometryInstance<'_>,
+    triangle_index: usize,
+    bindings: &[MaterialSourceBindingV1],
+    material_projection: Option<&ResolvedModelMaterialsV1>,
+) -> Result<u32, ProfileAConversionFatalError> {
+    if let Some(projection) = material_projection {
+        let triangle_index = u32::try_from(triangle_index).map_err(|_| {
+            fatal(
+                "M3A-INTEGER-OVERFLOW",
+                "source.ir.primitives.indices",
+                "triangle index does not fit u32",
+            )
+        })?;
+        return projection
+            .material_slot_for_triangle(
+                instance.scene_id,
+                instance.node_id,
+                instance.primitive.id,
+                triangle_index,
+            )
+            .ok_or_else(|| {
+                fatal(
+                    "M3A-MATERIAL-SEPARATION-TRIANGLE-MISSING",
+                    "materialSeparation.assignments",
+                    "resolved material separation has no slot for a selected source triangle",
+                )
+            });
+    }
+    material_slot_for(instance.primitive.material_id, bindings)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn emit_assigned_geometry(
     instances: &[GeometryInstance<'_>],
     plan: &AssignmentPlan,
-    material_bindings: &[MaterialSourceBindingV1],
     conversion: Mat4,
     rig: &CreatureRigProfileV1,
     rig_worlds: &BTreeMap<u32, Mat4>,
@@ -5643,155 +6226,177 @@ fn emit_assigned_geometry(
     for (instance_index, instance) in instances.iter().enumerate() {
         let primitive = instance.primitive;
         let assignments = &plan.triangle_segments[instance_index];
+        let material_assignments = &plan.triangle_material_slots[instance_index];
         for &segment_index in plan
             .segment_order
             .iter()
             .filter(|index| assignments.contains(index))
         {
             let segment = &rig.segments[segment_index];
-            let material_slot = material_slot_for(primitive.material_id, material_bindings)?;
-            let key = (segment.id, material_slot);
-            let bucket = buckets.get_mut(&key).ok_or_else(|| {
-                fatal(
-                    "M3A-INTERNAL-CONTRACT",
-                    "creature.segments",
-                    "planned output bucket is missing",
-                )
-            })?;
-            let parent_world = *rig_worlds.get(&segment.parent_node_id).ok_or_else(|| {
-                fatal(
-                    "M3A-INTERNAL-CONTRACT",
-                    "rig.segments.parentNodeId",
-                    "validated rig parent is missing",
-                )
-            })?;
-            let parent_inverse = parent_world.inverse_affine().ok_or_else(|| {
-                fatal(
-                    "M3A-PROFILE-HIERARCHY-INVALID",
-                    "rig.nodes.bindLocalMatrix",
-                    "rig parent bind world is singular",
-                )
-            })?;
-            let total_matrix = parent_inverse.mul(conversion).mul(instance.source_world);
-            let target_matrix = conversion.mul(instance.source_world);
-            let normal_matrix = total_matrix.inverse_transpose_linear().ok_or_else(|| {
-                fatal(
-                    "M3A-NONFINITE-FLOAT",
-                    "source.ir.nodes.transform",
-                    "geometry transform is singular",
-                )
-            })?;
-            let linear = total_matrix.linear();
-            let parity = determinant3(linear);
-            if !parity.is_finite() || parity.abs() <= 1.0e-12 {
-                return Err(fatal(
-                    "M3A-NONFINITE-FLOAT",
-                    "source.ir.nodes.transform",
-                    "composite geometry transform is singular",
-                ));
-            }
-            let mut mapping = Vec::new();
-            mapping
-                .try_reserve(primitive.positions.len())
-                .map_err(|_| {
+            let mut material_slots = material_assignments
+                .iter()
+                .enumerate()
+                .filter(|(triangle_index, _)| assignments[*triangle_index] == segment_index)
+                .map(|(_, material_slot)| *material_slot)
+                .collect::<Vec<_>>();
+            material_slots.sort_unstable();
+            material_slots.dedup();
+            for material_slot in material_slots {
+                let key = (segment.id, material_slot);
+                let bucket = buckets.get_mut(&key).ok_or_else(|| {
                     fatal(
-                        "M3A-LIMIT-EXCEEDED",
+                        "M3A-INTERNAL-CONTRACT",
                         "creature.segments",
-                        "output vertex mapping allocation failed",
+                        "planned output bucket is missing",
                     )
                 })?;
-            mapping.resize(primitive.positions.len(), None);
-            for (triangle_index, triangle) in primitive.indices.chunks_exact(3).enumerate() {
-                if assignments[triangle_index] != segment_index {
-                    continue;
+                let parent_world = *rig_worlds.get(&segment.parent_node_id).ok_or_else(|| {
+                    fatal(
+                        "M3A-INTERNAL-CONTRACT",
+                        "rig.segments.parentNodeId",
+                        "validated rig parent is missing",
+                    )
+                })?;
+                let parent_inverse = parent_world.inverse_affine().ok_or_else(|| {
+                    fatal(
+                        "M3A-PROFILE-HIERARCHY-INVALID",
+                        "rig.nodes.bindLocalMatrix",
+                        "rig parent bind world is singular",
+                    )
+                })?;
+                let total_matrix = parent_inverse.mul(conversion).mul(instance.source_world);
+                let target_matrix = conversion.mul(instance.source_world);
+                let normal_matrix = total_matrix.inverse_transpose_linear().ok_or_else(|| {
+                    fatal(
+                        "M3A-NONFINITE-FLOAT",
+                        "source.ir.nodes.transform",
+                        "geometry transform is singular",
+                    )
+                })?;
+                let linear = total_matrix.linear();
+                let parity = determinant3(linear);
+                if !parity.is_finite() || parity.abs() <= 1.0e-12 {
+                    return Err(fatal(
+                        "M3A-NONFINITE-FLOAT",
+                        "source.ir.nodes.transform",
+                        "composite geometry transform is singular",
+                    ));
                 }
-                let emitted = if parity < 0.0 {
-                    [triangle[0], triangle[2], triangle[1]]
-                } else {
-                    [triangle[0], triangle[1], triangle[2]]
-                };
-                for &source_index in triangle {
-                    let source_index_usize = source_index as usize;
-                    if mapping[source_index_usize].is_none() {
-                        let index = u32::try_from(bucket.positions.len()).map_err(|_| {
-                            fatal(
-                                "M3A-INTEGER-OVERFLOW",
-                                "creature.segments.positions",
-                                "output vertex index does not fit u32",
-                            )
-                        })?;
-                        bucket.positions.push(
-                            total_matrix
-                                .transform_point(primitive.positions[source_index_usize])?,
-                        );
-                        bucket.normals.push(normalize(
-                            mul3(normal_matrix, primitive.normals[source_index_usize]),
-                            "source.ir.primitives.normals",
-                        )?);
-                        if let Some(tangents) = bucket.tangents.as_mut() {
-                            let source = primitive.tangents[source_index_usize];
-                            let xyz = normalize(
-                                mul3(linear, [source[0], source[1], source[2]]),
-                                "source.ir.primitives.tangents",
-                            )?;
-                            tangents.push([xyz[0], xyz[1], xyz[2], source[3] * parity.signum()]);
-                        }
-                        bucket.uv0.push([
-                            primitive.uv0[source_index_usize][0],
-                            1.0 - primitive.uv0[source_index_usize][1],
-                        ]);
-                        match segment.deformation {
-                            RigSegmentDeformationV1::Rigid => {
-                                counters.rigid_vertices =
-                                    checked_add(counters.rigid_vertices, 1, "rigid vertices")?
-                            }
-                            RigSegmentDeformationV1::Skin => {
-                                if plan.direct_skin_weights_by_source_vertex {
-                                    bucket.weights.push(direct_source_skin_weights(
-                                        source_index_usize,
-                                        segment,
-                                        gates,
-                                        counters,
-                                        limits,
-                                    )?);
-                                } else {
-                                    let target_position = target_matrix
-                                        .transform_point(primitive.positions[source_index_usize])?;
-                                    bucket.weights.push(transfer_skin_weights(
-                                        target_position,
-                                        segment,
-                                        parent_world,
-                                        gates,
-                                        counters,
-                                        limits,
-                                    )?);
-                                }
-                                counters.skinned_vertices =
-                                    checked_add(counters.skinned_vertices, 1, "skinned vertices")?;
-                            }
-                        }
-                        counters.normals = checked_add(counters.normals, 1, "normal transforms")?;
-                        counters.tangents = checked_add(
-                            counters.tangents,
-                            usize::from(!primitive.tangents.is_empty()),
-                            "tangent transforms",
-                        )?;
-                        counters.uv = checked_add(counters.uv, 1, "UV transforms")?;
-                        mapping[source_index_usize] = Some(index);
-                    }
-                }
-                for &source_index in &emitted {
-                    let output_index = mapping[source_index as usize].ok_or_else(|| {
+                let mut mapping = Vec::new();
+                mapping
+                    .try_reserve(primitive.positions.len())
+                    .map_err(|_| {
                         fatal(
-                            "M3A-INTERNAL-CONTRACT",
-                            "creature.segments.indices",
-                            "output vertex mapping is missing",
+                            "M3A-LIMIT-EXCEEDED",
+                            "creature.segments",
+                            "output vertex mapping allocation failed",
                         )
                     })?;
-                    bucket.indices.push(output_index);
-                }
-                if parity < 0.0 {
-                    counters.winding = checked_add(counters.winding, 1, "winding reversals")?;
+                mapping.resize(primitive.positions.len(), None);
+                for (triangle_index, triangle) in primitive.indices.chunks_exact(3).enumerate() {
+                    if assignments[triangle_index] != segment_index
+                        || material_assignments[triangle_index] != material_slot
+                    {
+                        continue;
+                    }
+                    let emitted = if parity < 0.0 {
+                        [triangle[0], triangle[2], triangle[1]]
+                    } else {
+                        [triangle[0], triangle[1], triangle[2]]
+                    };
+                    for &source_index in triangle {
+                        let source_index_usize = source_index as usize;
+                        if mapping[source_index_usize].is_none() {
+                            let index = u32::try_from(bucket.positions.len()).map_err(|_| {
+                                fatal(
+                                    "M3A-INTEGER-OVERFLOW",
+                                    "creature.segments.positions",
+                                    "output vertex index does not fit u32",
+                                )
+                            })?;
+                            bucket.positions.push(
+                                total_matrix
+                                    .transform_point(primitive.positions[source_index_usize])?,
+                            );
+                            bucket.normals.push(normalize(
+                                mul3(normal_matrix, primitive.normals[source_index_usize]),
+                                "source.ir.primitives.normals",
+                            )?);
+                            if let Some(tangents) = bucket.tangents.as_mut() {
+                                let source = primitive.tangents[source_index_usize];
+                                let xyz = normalize(
+                                    mul3(linear, [source[0], source[1], source[2]]),
+                                    "source.ir.primitives.tangents",
+                                )?;
+                                tangents.push([
+                                    xyz[0],
+                                    xyz[1],
+                                    xyz[2],
+                                    source[3] * parity.signum(),
+                                ]);
+                            }
+                            bucket.uv0.push([
+                                primitive.uv0[source_index_usize][0],
+                                1.0 - primitive.uv0[source_index_usize][1],
+                            ]);
+                            match segment.deformation {
+                                RigSegmentDeformationV1::Rigid => {
+                                    counters.rigid_vertices =
+                                        checked_add(counters.rigid_vertices, 1, "rigid vertices")?
+                                }
+                                RigSegmentDeformationV1::Skin => {
+                                    if plan.direct_skin_weights_by_source_vertex {
+                                        bucket.weights.push(direct_source_skin_weights(
+                                            source_index_usize,
+                                            segment,
+                                            gates,
+                                            counters,
+                                            limits,
+                                        )?);
+                                    } else {
+                                        let target_position = target_matrix.transform_point(
+                                            primitive.positions[source_index_usize],
+                                        )?;
+                                        bucket.weights.push(transfer_skin_weights(
+                                            target_position,
+                                            segment,
+                                            parent_world,
+                                            gates,
+                                            counters,
+                                            limits,
+                                        )?);
+                                    }
+                                    counters.skinned_vertices = checked_add(
+                                        counters.skinned_vertices,
+                                        1,
+                                        "skinned vertices",
+                                    )?;
+                                }
+                            }
+                            counters.normals =
+                                checked_add(counters.normals, 1, "normal transforms")?;
+                            counters.tangents = checked_add(
+                                counters.tangents,
+                                usize::from(!primitive.tangents.is_empty()),
+                                "tangent transforms",
+                            )?;
+                            counters.uv = checked_add(counters.uv, 1, "UV transforms")?;
+                            mapping[source_index_usize] = Some(index);
+                        }
+                    }
+                    for &source_index in &emitted {
+                        let output_index = mapping[source_index as usize].ok_or_else(|| {
+                            fatal(
+                                "M3A-INTERNAL-CONTRACT",
+                                "creature.segments.indices",
+                                "output vertex mapping is missing",
+                            )
+                        })?;
+                        bucket.indices.push(output_index);
+                    }
+                    if parity < 0.0 {
+                        counters.winding = checked_add(counters.winding, 1, "winding reversals")?;
+                    }
                 }
             }
         }
@@ -6253,25 +6858,17 @@ impl Mat4 {
             inv[1][2], inv[2][2], 0.0, it[0], it[1], it[2], 1.0,
         ]))
     }
-    fn from_scale_basis_translation(scale: f32, translation: [f32; 3]) -> Self {
-        Self([
-            scale,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            scale,
-            0.0,
-            0.0,
-            scale,
-            0.0,
-            0.0,
-            translation[0],
-            translation[1],
-            translation[2],
-            1.0,
-        ])
+    fn from_scale_basis_translation(scale: f32, basis: Mat4, translation: [f32; 3]) -> Self {
+        let mut result = basis;
+        for row in 0..3 {
+            for column in 0..3 {
+                result.set(row, column, basis.get(row, column) * scale);
+            }
+        }
+        result.set(0, 3, translation[0]);
+        result.set(1, 3, translation[1]);
+        result.set(2, 3, translation[2]);
+        result
     }
     fn from_trs(
         t: [f32; 3],
@@ -6360,11 +6957,107 @@ impl Bounds3V1 {
     }
 }
 
-fn basis_matrix() -> Mat4 {
-    Mat4([
-        1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-    ])
+#[derive(Clone, Copy)]
+struct ProfileABasisTransformV2 {
+    matrix: Mat4,
+    inverse: Mat4,
+    determinant: f32,
 }
+
+fn profile_a_basis_transform_v2(policy: ProfileABasisPolicyV1) -> ProfileABasisTransformV2 {
+    let matrix = match policy {
+        ProfileABasisPolicyV1::GltfToAuroraXzy => Mat4([
+            1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ]),
+        ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpNegativeYForwardV2 => Mat4([
+            1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ]),
+        ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpNegativeYForwardV2 => Mat4([
+            -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ]),
+        ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpNegativeYForwardV2 => Mat4([
+            0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ]),
+        ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2 => Mat4([
+            0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ]),
+    };
+    let inverse = matrix
+        .inverse_affine()
+        .expect("locked Profile A basis matrices are invertible affine transforms");
+    ProfileABasisTransformV2 {
+        matrix,
+        inverse,
+        determinant: determinant3(matrix.linear()),
+    }
+}
+
+fn profile_a_basis_status_v2(policy: ProfileABasisPolicyV1) -> &'static str {
+    match policy {
+        ProfileABasisPolicyV1::GltfToAuroraXzy => "PROFILE_A_LOCKED_M3",
+        ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpNegativeYForwardV2
+        | ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpNegativeYForwardV2
+        | ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpNegativeYForwardV2
+        | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2 => {
+            "CREATURE_BASIS_V2_RESOLVED"
+        }
+    }
+}
+
+fn profile_a_basis_evidence_v2(policy: ProfileABasisPolicyV1) -> &'static str {
+    match policy {
+        ProfileABasisPolicyV1::GltfToAuroraXzy => "REFERENCE_ONLY_IMPLEMENTATION_INFERENCE",
+        ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpNegativeYForwardV2
+        | ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpNegativeYForwardV2
+        | ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpNegativeYForwardV2
+        | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2 => {
+            "SOURCE_HEADFRONT_AND_RETAIL_NATIVE_NEGATIVE_Y"
+        }
+    }
+}
+
+fn profile_a_forward_mapping_v2(policy: ProfileABasisPolicyV1) -> &'static str {
+    match policy {
+        ProfileABasisPolicyV1::GltfToAuroraXzy => "GLTF_POSITIVE_Z_TO_AURORA_POSITIVE_Y",
+        ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpNegativeYForwardV2 => {
+            "GLTF_POSITIVE_Z_TO_AURORA_NEGATIVE_Y"
+        }
+        ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpNegativeYForwardV2 => {
+            "GLTF_NEGATIVE_Z_TO_AURORA_NEGATIVE_Y"
+        }
+        ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpNegativeYForwardV2 => {
+            "GLTF_POSITIVE_X_TO_AURORA_NEGATIVE_Y"
+        }
+        ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2 => {
+            "GLTF_NEGATIVE_X_TO_AURORA_NEGATIVE_Y"
+        }
+    }
+}
+
+fn profile_a_orientation_parity_v2(policy: ProfileABasisPolicyV1) -> &'static str {
+    match policy {
+        ProfileABasisPolicyV1::GltfToAuroraXzy => "NEGATIVE_FOR_POSITIVE_SOURCE_AND_RIG_PARITY",
+        ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpNegativeYForwardV2
+        | ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpNegativeYForwardV2
+        | ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpNegativeYForwardV2
+        | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2 => {
+            "POSITIVE_PROPER_ROTATION_COMPOSITE_DETERMINANT"
+        }
+    }
+}
+
+fn profile_a_engine_facing_proof_v2(policy: ProfileABasisPolicyV1) -> &'static str {
+    match policy {
+        ProfileABasisPolicyV1::GltfToAuroraXzy => "OPEN_M6",
+        ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpNegativeYForwardV2
+        | ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpNegativeYForwardV2
+        | ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpNegativeYForwardV2
+        | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2 => {
+            "OWNER_PROOF_REQUIRED"
+        }
+    }
+}
+
 fn transform_bounds(bounds: Bounds3V1, matrix: Mat4) -> Bounds3V1 {
     let mut out = Bounds3V1::empty();
     for x in [bounds.min[0], bounds.max[0]] {
@@ -6685,10 +7378,14 @@ fn ensure_diagnostic_limit(
     }
     Ok(())
 }
-fn empty_transform_report(anchor: [f32; 3]) -> ProfileATransformReportV1 {
+fn empty_transform_report(
+    anchor: [f32; 3],
+    basis_policy: ProfileABasisPolicyV1,
+) -> ProfileATransformReportV1 {
+    let basis = profile_a_basis_transform_v2(basis_policy);
     ProfileATransformReportV1 {
-        basis_matrix: basis_matrix().0,
-        determinant: -1.0,
+        basis_matrix: basis.matrix.0,
+        determinant: basis.determinant,
         source_world_bounds: None,
         after_basis_bounds: None,
         target_bounds: None,
@@ -6731,13 +7428,13 @@ fn report(
                 && rig.provenance.attestations.rights_confirmed,
         },
         policies: ProfileAReportPoliciesV1 {
-            basis_status: "PROFILE_A_LOCKED_M3".to_owned(),
-            basis_evidence: "REFERENCE_ONLY_IMPLEMENTATION_INFERENCE".to_owned(),
-            asset_forward_mapping: "GLTF_POSITIVE_Z_TO_AURORA_POSITIVE_Y".to_owned(),
-            orientation_parity: "NEGATIVE_FOR_POSITIVE_SOURCE_AND_RIG_PARITY".to_owned(),
+            basis_status: profile_a_basis_status_v2(options.basis_policy).to_owned(),
+            basis_evidence: profile_a_basis_evidence_v2(options.basis_policy).to_owned(),
+            asset_forward_mapping: profile_a_forward_mapping_v2(options.basis_policy).to_owned(),
+            orientation_parity: profile_a_orientation_parity_v2(options.basis_policy).to_owned(),
             uv_evidence: "REFERENCE_ONLY_IMPLEMENTATION_INFERENCE".to_owned(),
             uv_mapping: "GLTF_V_TO_ONE_MINUS_V".to_owned(),
-            engine_facing_proof: "OPEN_M6".to_owned(),
+            engine_facing_proof: profile_a_engine_facing_proof_v2(options.basis_policy).to_owned(),
             uv_runtime_proof: "OPEN_M6".to_owned(),
             source_scene_policy: "DEFAULT_SCENE_ONLY".to_owned(),
             alignment_policy: "BOTTOM_CENTER_TO_PROFILE_ANCHOR".to_owned(),
@@ -6807,5 +7504,43 @@ fn blocked_outcome(
             None,
         ),
         creature: None,
+    }
+}
+
+#[cfg(test)]
+mod creature_basis_v2_tests {
+    use super::{
+        ProfileABasisPolicyV1, animation_basis_conjugate, animation_basis_vector,
+        profile_a_basis_transform_v2,
+    };
+
+    #[test]
+    fn basis_and_inverse_round_trip_and_preserve_rotation_semantics() {
+        let basis = profile_a_basis_transform_v2(
+            ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpNegativeYForwardV2,
+        );
+        assert_eq!(
+            animation_basis_vector([1.0, 0.0, 0.0], basis),
+            [1.0, 0.0, 0.0]
+        );
+        assert_eq!(
+            animation_basis_vector([0.0, 1.0, 0.0], basis),
+            [0.0, 0.0, 1.0]
+        );
+        assert_eq!(
+            animation_basis_vector([0.0, 0.0, 1.0], basis),
+            [0.0, -1.0, 0.0]
+        );
+        assert_eq!(basis.matrix.mul(basis.inverse).0, super::Mat4::identity().0);
+        assert_eq!(
+            animation_basis_conjugate([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], basis,),
+            [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            "B * identity * B^-1 must remain identity; B * identity * B would not"
+        );
+        assert_eq!(
+            animation_basis_conjugate([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]], basis,),
+            [[0.0, 0.0, -1.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]],
+            "a +Z source rotation must become the same rotation about Aurora -Y"
+        );
     }
 }

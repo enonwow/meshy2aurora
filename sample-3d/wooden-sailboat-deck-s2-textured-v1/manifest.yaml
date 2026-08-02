@@ -1,0 +1,11 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: wooden-sailboat-deck-s2-textured-v1
+provider: meshy
+local_only: true
+qualification: ready-for-owner-proof-preserve-microtriangles-oversized-exception
+files:
+  - role: source
+    path: source.glb
+    size_bytes: 98546920
+    sha256: 5085db9399eb7d30ddcb6c65b51748f4cabc5ed10cdf7ba912cdf2ef62e1dabe
+provenance_note: exact owner-provided Meshy GLB copied byte-for-byte from Downloads without manual geometry, texture, scale, UV or material modification; original filename Meshy_AI_Wooden_Sailboat_Deck__0731170742_texture.glb; generator meshy-scene; measured source geometry 1971350 triangles, 1 mesh, 1 material and 4 embedded textures; owner authorized a source-bound oversized exception on 2026-07-31; legacy absolute-epsilon sanitation removed 1751244 triangles and materialized 220106 triangles at uniform demo scale 8; subsequent exact measurement proved that only 4 source faces are truly zero-area while 1751240 valid finite microtriangles were incorrectly removed by the legacy Placeable policy; preserve-v2 disabled experimental aggressive cleanup, removed only those 4 invalid faces, emitted and read back 1971346 triangles in 91 Aurora-safe streams, and installed exact m2a_ship3 MOD/HAK artifacts for owner proof

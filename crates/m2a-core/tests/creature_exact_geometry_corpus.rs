@@ -2,6 +2,7 @@ use std::{fs, path::PathBuf};
 
 use m2a_core::{
     direct_creature_animation::DirectCreatureAnimationClipOriginV2,
+    glb::{GlbLimits, ingest_glb},
     model_pipeline::{
         ProceduralCreatureBuildOptionsV1, ProceduralCreaturePackageIdentityV1,
         ProceduralCreatureProductIdentityV2,
@@ -10,6 +11,7 @@ use m2a_core::{
         build_meshy_procedural_humanoid_product_v2,
         build_meshy_procedural_humanoid_product_with_options_v3,
     },
+    profile_a::{convert_profile_a_with_animations_v2, derive_meshy_h1_profile_and_mapping_v2},
     proof_module::BinaryCreatureModuleIdentityV1,
     skin_accessory::{
         SkinAccessoryComponentActionV1, SkinAccessoryStabilizationModeV1,
@@ -170,6 +172,54 @@ fn product_300k_accepts_and_writes_owner_verified_stoneback_geometry_without_fac
 }
 
 #[test]
+#[ignore = "requires the local Git-ignored canonical Fogbound Claw Guard GLB"]
+fn fogbound_claw_guard_uses_creature_basis_v2_without_geometry_or_animation_loss() {
+    let source = fs::read(
+        repo_root()
+            .join("sample-3d/tlc-fogbound-claw-guard-h1-p300k-v1/source-death-continuous.glb"),
+    )
+    .expect("canonical Fogbound Claw Guard source");
+    let source_before = source.clone();
+    let ingest =
+        ingest_glb(&source, &GlbLimits::default()).expect("canonical Fogbound Claw Guard ingest");
+    let (rig, mapping) = derive_meshy_h1_profile_and_mapping_v2(&ingest)
+        .expect("canonical Fogbound Claw Guard H1 rig and mapping");
+    let converted = convert_profile_a_with_animations_v2(&ingest, &rig, &mapping)
+        .expect("Fogbound Claw Guard Creature Basis V2 conversion");
+
+    assert_eq!(
+        source, source_before,
+        "canonical GLB bytes must remain immutable"
+    );
+    assert_eq!(ingest.report.statistics.triangle_count, 297_190);
+    assert_eq!(
+        converted.base.report.geometry.source_triangle_count,
+        297_190
+    );
+    assert_eq!(
+        converted.base.report.geometry.output_triangle_count,
+        297_190
+    );
+    assert_eq!(
+        converted.base.report.policies.basis_status,
+        "CREATURE_BASIS_V2_RESOLVED"
+    );
+    assert_eq!(
+        converted.base.report.policies.asset_forward_mapping,
+        "GLTF_POSITIVE_Z_TO_AURORA_NEGATIVE_Y"
+    );
+    assert_eq!(
+        converted.base.report.policies.engine_facing_proof,
+        "OWNER_PROOF_REQUIRED"
+    );
+    assert_eq!(converted.base.report.transform.determinant, 1.0);
+    assert_eq!(
+        converted.animations.as_ref().map(|set| set.clips.len()),
+        Some(9)
+    );
+}
+
+#[test]
 #[ignore = "requires the local Git-ignored canonical Void Crystal Knight GLB"]
 fn void_crystal_knight_auto_stabilizes_four_detached_crystals_without_geometry_loss() {
     let source = fs::read(repo_root().join("sample-3d/void-crystal-knight-h1-v1/source.glb"))
@@ -186,6 +236,7 @@ fn void_crystal_knight_auto_stabilizes_four_detached_crystals_without_geometry_l
         },
         &ProceduralCreatureBuildOptionsV1 {
             schema_version: 1,
+            source_forward: Default::default(),
             texture_artifact_cleanup: false,
             skin_accessory_stabilization: SkinAccessoryStabilizationOptionsV2 {
                 schema_version: 2,

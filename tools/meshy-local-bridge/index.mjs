@@ -1,14 +1,27 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
-import { inspectGlbTriangleCount, mergeMeshyAnimationGlbs } from "./merge-animation-glbs.mjs";
+import {
+  inspectGlbAnimationNames,
+  inspectGlbTriangleCount,
+  mergeMeshyAnimationGlbs,
+} from "./merge-animation-glbs.mjs";
 import {
   AURORA_MODEL_TRIANGLE_BUDGET_V1,
   MESHY_RIG_FACE_LIMIT,
   planAutomaticRigFaceRecovery,
 } from "./remesh-rig-animation-recovery-options.mjs";
+import { loadReadyRunsV1, persistReadyRunV1 } from "./run-store.mjs";
 
-const PROTOCOL_VERSION = 1;
+const PROTOCOL_VERSION = 2;
+const BRIDGE_CAPABILITIES = Object.freeze({
+  multiAnimationMerge: "NAMED_GLTF_CLIPS_V1",
+  maximumAnimationActions: 10,
+  animationCreditFormula: "40_PLUS_3_PER_ACTION_V1",
+  localRunRecovery: "LIST_RUNS_V1",
+  artifactRecovery: "RUN_BOUND_PROVENANCE_V1",
+  buildContract: "M2A_MESHY_BRIDGE_2026_07_31_V2",
+});
 const API_ORIGIN = "https://api.meshy.ai";
 const SESSION_TTL_MS = 15 * 60_000;
 const MAX_BODY_BYTES = 100 * 1024 * 1024;
@@ -217,6 +230,7 @@ export function createLocalBridge({
   startRuns = true,
   requestRestart,
   allowAutomaticPairing = false,
+  stateDirectory,
 } = {}) {
   if (!apiKey) throw new Error("MESHY_API_KEY is required by the local Bridge process.");
   if (!allowedOrigin) throw new Error("MESHY_BRIDGE_ALLOWED_ORIGIN is required and must be an exact Studio origin.");
@@ -229,6 +243,7 @@ export function createLocalBridge({
   const sessions = new Map();
   const previews = new Map();
   const runs = new Map();
+  for (const recovered of loadReadyRunsV1(stateDirectory)) runs.set(recovered.id, recovered);
   const imagePreviews = new Map();
   const imageRuns = new Map();
   const retexturePreviews = new Map();
@@ -524,6 +539,14 @@ export function createLocalBridge({
           label: `Meshy action ${actionId}`,
           bytes,
         })));
+        const expectedClipNames = run.artifacts.map(({ clipName }) => clipName);
+        const actualClipNames = inspectGlbAnimationNames(artifactBytes, "merged Meshy animation GLB");
+        if (JSON.stringify(actualClipNames) !== JSON.stringify(expectedClipNames)) {
+          throw bridgeError(
+            "ARTIFACT_INVALID",
+            `Merged animation GLB clip contract mismatch: expected ${expectedClipNames.join(", ")}, got ${actualClipNames.join(", ")}.`,
+          );
+        }
       } else {
         const assetUrl = output.model_urls?.glb;
         if (typeof assetUrl !== "string") throw bridgeError("ARTIFACT_INVALID", "Meshy did not return a GLB artifact for this run.");
@@ -547,6 +570,7 @@ export function createLocalBridge({
       run.status = "READY";
       run.progress = 100;
       run.updatedAt = new Date().toISOString();
+      persistReadyRunV1(stateDirectory, run);
     } catch (error) {
       if (run.status !== "CANCELED") {
         run.status = "FAILED";
@@ -652,7 +676,14 @@ export function createLocalBridge({
       };
 
       if (request.method === "GET" && url.pathname === "/v1/health") {
-        json(response, 200, { protocolVersion: PROTOCOL_VERSION, bridge: "LOCAL", status: "READY", restartSupported: typeof requestRestart === "function", automaticPairingSupported: allowAutomaticPairing }, origin); return;
+        json(response, 200, {
+          protocolVersion: PROTOCOL_VERSION,
+          bridge: "LOCAL",
+          status: "READY",
+          restartSupported: typeof requestRestart === "function",
+          automaticPairingSupported: allowAutomaticPairing,
+          capabilities: BRIDGE_CAPABILITIES,
+        }, origin); return;
       }
       if (request.method === "POST" && url.pathname === "/v1/bridge/restart") {
         if (typeof requestRestart !== "function") throw bridgeError("BRIDGE_UNAVAILABLE", "This local Bridge was not started by a restart-capable supervisor.", 501);
@@ -816,6 +847,16 @@ export function createLocalBridge({
         if (startRuns) void executeRun(run);
         return;
       }
+      if (request.method === "GET" && url.pathname === "/v1/runs") {
+        json(
+          response,
+          200,
+          Array.from(runs.values(), safeRun)
+            .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+          origin,
+        );
+        return;
+      }
 
       const historyMatch = url.pathname.match(/^\/v1\/history\/([^/]+)\/(artifact|provenance|thumbnail)$/);
       if (historyMatch && request.method === "GET") {
@@ -919,6 +960,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     allowContainerBind: process.env.MESHY_BRIDGE_ALLOW_CONTAINER_BIND === "1",
     requestRestart: process.env.MESHY_BRIDGE_RESTARTABLE === "1" ? () => process.exit(0) : undefined,
     allowAutomaticPairing: process.env.MESHY_BRIDGE_AUTOMATIC_PAIRING === "1",
+    stateDirectory: process.env.MESHY_BRIDGE_STATE_DIRECTORY,
   });
   const origin = await bridge.listen(Number(process.env.MESHY_BRIDGE_PORT || 43119));
   process.stdout.write(`Meshy Local Bridge listening at ${origin}\nPairing code: ${bridge.pairingCode}\n`);

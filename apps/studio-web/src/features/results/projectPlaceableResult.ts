@@ -1,7 +1,12 @@
 import type { WorkerArtifact } from "../../worker/types";
+import {
+  parseResolvedPlaceableTextures,
+  type ResolvedPlaceableTextures,
+} from "../placeable-authoring/textureTypes";
 
 export interface PlaceableComponentStatuses {
   mdl: "passed";
+  pwk: "passed";
   twoDa: "passed";
   utp: "passed";
   gitGic: "passed";
@@ -49,6 +54,20 @@ export interface PlaceableResultSnapshot {
     boundsMin: [number, number, number];
     boundsMax: [number, number, number];
   };
+  collision?: {
+    mode: "AUTO_RECTANGLE" | "CUSTOM_POLYGON";
+    inputVertices: [number, number][];
+    sourceVertices: [number, number][];
+    vertices: [number, number][];
+    triangles: [number, number, number][];
+    boundsMin: [number, number];
+    boundsMax: [number, number];
+    surfaceId: 7;
+    authoringSha256: string;
+    collisionSha256: string;
+    pwkSha256: string;
+  };
+  textureAuthoring?: ResolvedPlaceableTextures;
   resources: PlaceableResourceSnapshot[];
   artifacts: WorkerArtifact[];
   reportJson: string;
@@ -74,6 +93,10 @@ const sha256 = (value: unknown, path: string): string => {
 };
 const exact = <T extends string>(value: unknown, expected: T, path: string): T =>
   string(value, path) === expected ? expected : fail(path);
+const collisionMode = (value: unknown, path: string): "AUTO_RECTANGLE" | "CUSTOM_POLYGON" => {
+  const mode = string(value, path);
+  return mode === "AUTO_RECTANGLE" || mode === "CUSTOM_POLYGON" ? mode : fail(path);
+};
 const vec3 = (value: unknown, path: string): [number, number, number] => {
   const values = array(value, path);
   return values.length === 3
@@ -84,6 +107,14 @@ const vec3 = (value: unknown, path: string): [number, number, number] => {
       ]
     : fail(path);
 };
+const vec2 = (value: unknown, path: string): [number, number] => {
+  const values = array(value, path);
+  return values.length === 2
+    ? [finite(values[0], `${path}[0]`), finite(values[1], `${path}[1]`)]
+    : fail(path);
+};
+const vec2Array = (value: unknown, path: string): [number, number][] =>
+  array(value, path).map((item, index) => vec2(item, `${path}[${index}]`));
 
 function parseJson(json: string) {
   try {
@@ -126,6 +157,7 @@ export function projectPlaceableResult(
   const statuses = record(report.componentStatuses, "report.componentStatuses");
   const componentStatuses: PlaceableComponentStatuses = {
     mdl: exact(statuses.mdl, "passed", "report.componentStatuses.mdl"),
+    pwk: exact(statuses.pwk, "passed", "report.componentStatuses.pwk"),
     twoDa: exact(statuses.twoDa, "passed", "report.componentStatuses.twoDa"),
     utp: exact(statuses.utp, "passed", "report.componentStatuses.utp"),
     gitGic: exact(statuses.gitGic, "passed", "report.componentStatuses.gitGic"),
@@ -163,6 +195,7 @@ export function projectPlaceableResult(
   const hakFileName = string(report.hakFileName, "report.hakFileName");
   const modelResref = string(report.modelResref, "report.modelResref");
   const modelSha256 = sha256(report.mdlSha256, "report.mdlSha256");
+  const pwkSha256 = sha256(report.pwkSha256, "report.pwkSha256");
   verifyArtifact(
     artifactsInput,
     "placeable-package-hak",
@@ -199,6 +232,14 @@ export function projectPlaceableResult(
       && resource.sha256 === modelSha256,
   );
   if (modelResource.length !== 1) fail("report.resources.MODEL");
+  const walkmeshResource = resources.filter(
+    (resource) => resource.container === "HAK"
+      && resource.role === "PLACEABLE_WALKMESH"
+      && resource.resref === modelResref
+      && resource.resourceType === 2053
+      && resource.sha256 === pwkSha256,
+  );
+  if (walkmeshResource.length !== 1) fail("report.resources.PLACEABLE_WALKMESH");
   const authoringRecord = report.authoring === undefined
     ? undefined
     : record(report.authoring, "report.authoring");
@@ -213,6 +254,65 @@ export function projectPlaceableResult(
     boundsMin: vec3(authoringRecord.boundsMin, "report.authoring.boundsMin"),
     boundsMax: vec3(authoringRecord.boundsMax, "report.authoring.boundsMax"),
   } : undefined;
+  const collisionRecord = report.collision === undefined
+    ? undefined
+    : record(report.collision, "report.collision");
+  const collision = collisionRecord ? {
+    mode: collisionMode(collisionRecord.mode, "report.collision.mode"),
+    inputVertices: vec2Array(collisionRecord.inputVertices, "report.collision.inputVertices"),
+    sourceVertices: vec2Array(collisionRecord.sourceVertices, "report.collision.sourceVertices"),
+    vertices: vec2Array(collisionRecord.vertices, "report.collision.vertices"),
+    triangles: array(collisionRecord.triangles, "report.collision.triangles").map((item, index) => {
+      const triangle = array(item, `report.collision.triangles[${index}]`);
+      return triangle.length === 3
+        ? [
+            integer(triangle[0], `report.collision.triangles[${index}][0]`),
+            integer(triangle[1], `report.collision.triangles[${index}][1]`),
+            integer(triangle[2], `report.collision.triangles[${index}][2]`),
+          ] as [number, number, number]
+        : fail(`report.collision.triangles[${index}]`);
+    }),
+    boundsMin: vec2(collisionRecord.boundsMin, "report.collision.boundsMin"),
+    boundsMax: vec2(collisionRecord.boundsMax, "report.collision.boundsMax"),
+    surfaceId: integer(collisionRecord.surfaceId, "report.collision.surfaceId") === 7
+      ? 7 as const
+      : fail("report.collision.surfaceId"),
+    authoringSha256: sha256(collisionRecord.authoringSha256, "report.collision.authoringSha256"),
+    collisionSha256: sha256(collisionRecord.collisionSha256, "report.collision.collisionSha256"),
+    pwkSha256: sha256(collisionRecord.pwkSha256, "report.collision.pwkSha256"),
+  } : undefined;
+  if (collision && collision.pwkSha256 !== pwkSha256) fail("report.collision.pwkSha256");
+  if (collision && authoring && collision.authoringSha256 !== authoring.authoringSha256) {
+    fail("report.collision.authoringSha256");
+  }
+  const textureAuthoring = report.textureAuthoring === undefined
+    ? undefined
+    : parseResolvedPlaceableTextures(JSON.stringify(report.textureAuthoring));
+  if (textureAuthoring) {
+    verifyArtifact(
+      artifactsInput,
+      "placeable-authoring-v3-json",
+      "JSON_REPORT",
+      "placeable-authoring-v3.json",
+      undefined,
+    );
+    for (const texture of textureAuthoring.resources) {
+      verifyArtifact(
+        artifactsInput,
+        `placeable-texture-${texture.resref}-tga`,
+        "TEXTURE",
+        `${texture.resref}.tga`,
+        texture.sha256,
+      );
+      const packaged = resources.filter((resource) => (
+        resource.container === "HAK"
+        && resource.resref === texture.resref
+        && resource.resourceType === texture.resourceType
+        && resource.sha256 === texture.sha256
+      ));
+      if (packaged.length !== 1) fail(`report.textureAuthoring.resources.${texture.resref}`);
+    }
+  }
 
   return {
     status,
@@ -237,8 +337,14 @@ export function projectPlaceableResult(
     modelVisibility: exact(report.modelVisibility, "not_tested", "report.modelVisibility"),
     proofCompleteness: exact(report.proofCompleteness, "missing", "report.proofCompleteness"),
     paletteCompleteness: string(report.paletteCompleteness, "report.paletteCompleteness"),
-    collisionCompleteness: string(report.collisionCompleteness, "report.collisionCompleteness"),
+    collisionCompleteness: exact(
+      report.collisionCompleteness,
+      "ascii_pwk_emitted_offline_readback_passed",
+      "report.collisionCompleteness",
+    ),
     authoring,
+    collision,
+    textureAuthoring,
     resources,
     artifacts: [...artifactsInput],
     reportJson,

@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "assetId": "tlc-ship-under-construction-s1-p150k-v1",
+  "ownerAuthorization": "Direct owner instruction on 2026-07-31 to generate the model and run it through the Meshy2Aurora pipeline",
+  "profileId": "S1-static-prop/v1",
+  "sourceMode": "MULTI_IMAGE",
+  "localBridgeRunId": "51a32abd-9fe9-46de-ba15-1c8bddd0c689",
+  "meshyTaskIds": {
+    "PREVIEW": "019fb9aa-379a-7024-9e10-8418206ac9b7"
+  },
+  "status": "READY",
+  "createdAt": "2026-07-31T19:32:46.709Z",
+  "updatedAt": "2026-07-31T19:35:43.320Z",
+  "creditReview": {
+    "maximumCredits": 30,
+    "balanceBefore": 586,
+    "balanceAfter": 556,
+    "spentCredits": 30
+  },
+  "inputs": [
+    {
+      "path": "concept-top.jpg",
+      "sizeBytes": 92240,
+      "sha256": "0530e60430361ecccf935fb2cbbc8000ee56dbdab8bfba907f48c0515c20c441"
+    },
+    {
+      "path": "concept-stern.jpg",
+      "sizeBytes": 80375,
+      "sha256": "f907e64bf290291a3f808625ddf0b657229bc4899ca16446d6e35541de8e3fa4"
+    },
+    {
+      "path": "concept-side-three-quarter.jpg",
+      "sizeBytes": 106540,
+      "sha256": "5ac81677a92eea70c83e870227761f89941295d8b9c78912ad43e334aba7ec48"
+    },
+    {
+      "path": "concept-bow.jpg",
+      "sizeBytes": 77718,
+      "sha256": "a03ed01fa916f51f7abc927c5d918a919a72c9bf097f246bfab0a247f92640ae"
+    }
+  ],
+  "request": {
+    "aiModel": "meshy-6",
+    "shouldRemesh": true,
+    "topology": "triangle",
+    "targetPolycount": 150000,
+    "shouldTexture": true,
+    "textureResolution": "2k",
+    "enablePbr": false,
+    "imageEnhancement": false,
+    "removeLighting": true,
+    "moderation": true,
+    "targetFormats": [
+      "glb"
+    ],
+    "autoSize": false,
+    "texturePrompt": "Classic Neverwinter Nights environment asset for The Last City. Readable medium warm-brown timber, broad hand-painted wood grain, restrained wear, soft contrast and lifted shadows. Matte diffuse finish. Preserve the gray-beige furled sails. Avoid black baked shadows, excessive micro-noise, glossy PBR highlights, rot, soot and dramatic lighting."
+  },
+  "artifact": {
+    "path": "source.glb",
+    "sizeBytes": 11498076,
+    "sha256": "61baad674f9509e9e7f1718aa415dc12411b099ffedaea6484f68ceb3bf10278",
+    "measuredTriangleCount": 152574,
+    "manualMeshOrTextureEdits": false
+  },
+  "redaction": {
+    "apiKeyPersisted": false,
+    "sessionTokenPersisted": false,
+    "signedUrlsPersisted": false
+  }
+}

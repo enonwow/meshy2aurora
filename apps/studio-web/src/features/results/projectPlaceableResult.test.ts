@@ -32,6 +32,7 @@ function fixture() {
     profile: "STATIC_PLACEABLE",
     componentStatuses: {
       mdl: "passed",
+      pwk: "passed",
       twoDa: "passed",
       utp: "passed",
       gitGic: "passed",
@@ -52,6 +53,7 @@ function fixture() {
     placement: { x: 10, y: 14.5, z: 0, bearing: 0 },
     sourceModelSha256: hash("0"),
     mdlSha256: hash("b"),
+    pwkSha256: hash("9"),
     textureSha256: hash("c"),
     placeables2daSha256: hash("d"),
     utpSha256: hash("e"),
@@ -60,15 +62,43 @@ function fixture() {
     gicSha256: hash("2"),
     hakSha256: hash("a"),
     moduleSha256: hash("7"),
-    hakResourceCount: 3,
+    hakResourceCount: 4,
     moduleResourceCount: 7,
     modelVisibility: "not_tested",
     proofCompleteness: "missing",
     paletteCompleteness: "custom_itp_emitted",
-    collisionCompleteness: "pwk_not_implemented",
+    collisionCompleteness: "ascii_pwk_emitted_offline_readback_passed",
+    authoring: {
+      sourceSha256: hash("0"),
+      authoringSha256: hash("4"),
+      sourceTriangleCount: 2,
+      outputTriangleCount: 2,
+      renderableElementCount: 1,
+      collisionElementCount: 1,
+      shadowElementCount: 1,
+      boundsMin: [-1, 0, -1],
+      boundsMax: [1, 1, 1],
+    },
+    collision: {
+      schemaVersion: 1,
+      mode: "CUSTOM_POLYGON",
+      sourceCoordinateSpace: "GLTF_SOURCE_XZ_METERS",
+      outputCoordinateSpace: "AURORA_XY_METERS",
+      inputVertices: [[-1, -1], [1, -1], [1, 1], [-1, 1]],
+      sourceVertices: [[-1, -1], [1, -1], [1, 1], [-1, 1]],
+      vertices: [[-1, -1], [1, -1], [1, 1], [-1, 1]],
+      triangles: [[0, 1, 2], [0, 2, 3]],
+      boundsMin: [-1, -1],
+      boundsMax: [1, 1],
+      surfaceId: 7,
+      authoringSha256: hash("4"),
+      collisionSha256: hash("5"),
+      pwkSha256: hash("9"),
+    },
     resources: [
       { container: "HAK", role: "PLACEABLES_2DA", resref: "placeables", resourceType: 2017, byteLength: 11, sha256: hash("d") },
       { container: "HAK", role: "MODEL", resref: "m2a_s1_plc_ped", resourceType: 2002, byteLength: 2, sha256: hash("b") },
+      { container: "HAK", role: "PLACEABLE_WALKMESH", resref: "m2a_s1_plc_ped", resourceType: 2053, byteLength: 4, sha256: hash("9") },
       { container: "HAK", role: "TEXTURE", resref: "m2a_s1_plc_tex", resourceType: 3, byteLength: 3, sha256: hash("c") },
       { container: "MOD", role: "MODULE_INFO", resref: "module", resourceType: 2014, byteLength: 5, sha256: hash("3") },
       { container: "MOD", role: "FACTIONS", resref: "repute", resourceType: 2038, byteLength: 5, sha256: hash("4") },
@@ -97,11 +127,23 @@ describe("projectPlaceableResult", () => {
     expect(result.profile).toBe("STATIC_PLACEABLE");
     expect(result.appearanceRow).toBe(16500);
     expect(result.componentStatuses.proof).toBe("not_tested");
+    expect(result.componentStatuses.pwk).toBe("passed");
     expect(result.modelVisibility).toBe("not_tested");
     expect(result.proofCompleteness).toBe("missing");
     expect(result.resources).toContainEqual(expect.objectContaining({
       resref: "m2a_s1_plc_utp",
       resourceType: 2044,
+    }));
+    expect(result.collision).toMatchObject({
+      mode: "CUSTOM_POLYGON",
+      surfaceId: 7,
+      triangles: [[0, 1, 2], [0, 2, 3]],
+    });
+    expect(result.resources).toContainEqual(expect.objectContaining({
+      role: "PLACEABLE_WALKMESH",
+      resref: "m2a_s1_plc_ped",
+      resourceType: 2053,
+      sha256: hash("9"),
     }));
   });
 
@@ -110,6 +152,52 @@ describe("projectPlaceableResult", () => {
     value.artifacts[0] = { ...value.artifacts[0], sha256: hash("8") };
     expect(() => projectPlaceableResult(value.reportJson, value.artifacts))
       .toThrow("placeable-package-hak.sha256");
+  });
+
+  it("verifies each authored TGA and the combined V3 authoring recipe", () => {
+    const value = fixture();
+    const textureAuthoring = {
+      schemaVersion: 1,
+      sourceSha256: hash("0"),
+      authoringSha256: hash("6"),
+      alphaPolicy: "OPAQUE_ONLY",
+      bindings: [{
+        materialSlot: 0,
+        sourceMaterialId: 0,
+        sourceImageSha256: hash("1"),
+        mode: "OVERRIDE",
+        inputSha256: hash("2"),
+        outputResref: "m2a_s1_plc_tex",
+        outputSha256: hash("c"),
+      }],
+      resources: [{
+        resref: "m2a_s1_plc_tex",
+        resourceType: 3,
+        byteLength: 3,
+        sha256: hash("c"),
+        materialSlots: [0],
+      }],
+    };
+    const reportJson = JSON.stringify({ ...value.report, textureAuthoring });
+    const artifacts = [
+      ...value.artifacts,
+      artifact(
+        "placeable-texture-m2a_s1_plc_tex-tga",
+        "TEXTURE",
+        "m2a_s1_plc_tex.tga",
+        [8, 8, 8],
+        hash("c"),
+      ),
+      artifact(
+        "placeable-authoring-v3-json",
+        "JSON_REPORT",
+        "placeable-authoring-v3.json",
+        [1],
+        hash("7"),
+      ),
+    ];
+    const result = projectPlaceableResult(reportJson, artifacts);
+    expect(result.textureAuthoring).toEqual(textureAuthoring);
   });
 
   it("rejects a visual-proof claim at the offline Studio boundary", () => {

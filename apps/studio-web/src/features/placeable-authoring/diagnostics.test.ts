@@ -33,7 +33,7 @@ const transform = (translation: [number, number, number]) => ({
 });
 
 const document: PlaceableAuthoringDocument = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   sourceSha256: inspection.sourceSha256,
   elements: [{
     id: "a",
@@ -54,6 +54,13 @@ const document: PlaceableAuthoringDocument = {
     flags: { hidden: false, locked: false, renderable: true, includeInCollision: true, castShadow: true },
     deleted: false,
   }],
+  collision: {
+    schemaVersion: 1,
+    mode: "AUTO_RECTANGLE",
+    coordinateSpace: "GLTF_SOURCE_XZ_METERS",
+    paddingMeters: 0,
+    vertices: [],
+  },
 };
 
 describe("placeable authoring diagnostics", () => {
@@ -67,5 +74,32 @@ describe("placeable authoring diagnostics", () => {
       "ELEMENT_DISTANT",
       "SOURCE_DISCONNECTED_COMPONENTS",
     ]));
+  });
+
+  it("fails the authoring preflight when every source element is excluded from collision", () => {
+    const withoutCollision: PlaceableAuthoringDocument = {
+      ...document,
+      elements: document.elements.map((element) => ({
+        ...element,
+        flags: { ...element.flags, includeInCollision: false },
+      })),
+    };
+    expect(diagnosePlaceableAuthoring(withoutCollision, inspection)).toContainEqual(
+      expect.objectContaining({ code: "COLLISION_EMPTY", severity: "ERROR" }),
+    );
+  });
+
+  it("skips quadratic gap analysis for large component documents", () => {
+    const large: PlaceableAuthoringDocument = {
+      ...document,
+      elements: Array.from({ length: 513 }, (_, index) => ({
+        ...document.elements[0],
+        id: `component-${index}`,
+        transform: transform([index * 0.001, 0, 0]),
+      })),
+    };
+    const diagnostics = diagnosePlaceableAuthoring(large, inspection);
+    expect(diagnostics).toContainEqual(expect.objectContaining({ code: "GAP_ANALYSIS_SKIPPED" }));
+    expect(diagnostics.some(({ code }) => code === "GAP_BETWEEN_ELEMENTS")).toBe(false);
   });
 });

@@ -6,6 +6,11 @@ export type CreatureConversionProfileV1 =
   | "PRODUCT_300K"
   | "EXPERIMENTAL_P100K"
   | "EXPERIMENTAL_P300K";
+export type CreatureSourceForwardV1 =
+  | "POSITIVE_Z"
+  | "NEGATIVE_Z"
+  | "POSITIVE_X"
+  | "NEGATIVE_X";
 export type SkinAccessoryStabilizationModeV1 =
   | "AUTO"
   | "KEEP_SOURCE_WEIGHTS"
@@ -31,7 +36,9 @@ export interface SourceInputProps {
   appearance?: File;
   animationEvents?: File;
   creatureProfile?: CreatureConversionProfileV1;
+  creatureSourceForward?: CreatureSourceForwardV1;
   textureArtifactCleanup?: boolean;
+  experimentalAggressiveGeometryCleanup?: boolean;
   skinAccessoryStabilizationMode?: SkinAccessoryStabilizationModeV1;
   skinAccessorySelectedBoneName?: string;
   skinAccessoryComponentBoneOverrides?: string;
@@ -44,7 +51,9 @@ export interface SourceInputProps {
   onSelectAppearance: (file: File) => void;
   onSelectAnimationEvents: (file: File) => void;
   onCreatureProfileChange?: (profile: CreatureConversionProfileV1) => void;
+  onCreatureSourceForwardChange?: (sourceForward: CreatureSourceForwardV1) => void;
   onTextureArtifactCleanupChange?: (enabled: boolean) => void;
+  onExperimentalAggressiveGeometryCleanupChange?: (enabled: boolean) => void;
   onSkinAccessoryStabilizationModeChange?: (
     mode: SkinAccessoryStabilizationModeV1,
   ) => void;
@@ -153,7 +162,9 @@ export function InputsPanel({
   appearance,
   animationEvents,
   creatureProfile = "PRODUCT_300K",
+  creatureSourceForward = "POSITIVE_Z",
   textureArtifactCleanup = false,
+  experimentalAggressiveGeometryCleanup = false,
   skinAccessoryStabilizationMode = "AUTO",
   skinAccessorySelectedBoneName = "",
   skinAccessoryComponentBoneOverrides = "",
@@ -166,7 +177,9 @@ export function InputsPanel({
   onSelectAppearance,
   onSelectAnimationEvents,
   onCreatureProfileChange,
+  onCreatureSourceForwardChange,
   onTextureArtifactCleanupChange,
+  onExperimentalAggressiveGeometryCleanupChange,
   onSkinAccessoryStabilizationModeChange,
   onSkinAccessorySelectedBoneNameChange,
   onSkinAccessoryComponentBoneOverridesChange,
@@ -222,6 +235,23 @@ export function InputsPanel({
               <option value="EXPERIMENTAL_P300K">Legacy P300K compatibility</option>
             </select>
           </label>
+          {onCreatureSourceForwardChange ? (
+            <label>
+              Model front in source GLB
+              <select
+                aria-label="Model front in source GLB"
+                value={creatureSourceForward}
+                onChange={(event) => onCreatureSourceForwardChange(
+                  event.currentTarget.value as CreatureSourceForwardV1,
+                )}
+              >
+                <option value="POSITIVE_Z">+Z</option>
+                <option value="NEGATIVE_Z">-Z</option>
+                <option value="POSITIVE_X">+X</option>
+                <option value="NEGATIVE_X">-X</option>
+              </select>
+            </label>
+          ) : null}
           {onTextureArtifactCleanupChange ? (
             <label>
               <input
@@ -278,6 +308,20 @@ export function InputsPanel({
             </>
           ) : null}
         </>
+      ) : null}
+
+      {target === "PLACEABLE" && onExperimentalAggressiveGeometryCleanupChange ? (
+        <label>
+          <input
+            type="checkbox"
+            aria-label="Experimental aggressive geometry cleanup"
+            checked={experimentalAggressiveGeometryCleanup}
+            onChange={(event) => onExperimentalAggressiveGeometryCleanupChange(
+              event.currentTarget.checked,
+            )}
+          />
+          Experimental aggressive geometry cleanup
+        </label>
       ) : null}
 
       <ul className="inputs-panel__list">

@@ -19,6 +19,8 @@ import {
   type MeshyTextTo3DOptions,
   DEFAULT_MESHY_TEXT_TO_3D_OPTIONS,
   AURORA_MODEL_TRIANGLE_BUDGET_V1,
+  MESHY_BRIDGE_CAPABILITIES_V2,
+  MESHY_BRIDGE_PROTOCOL_VERSION,
   NWN_DIRECT_CREATURE_CLIPS,
   validateMeshyAnimationActions,
 } from "./bridge";
@@ -26,6 +28,23 @@ import { MeshyModelViewport } from "./MeshyModelViewport";
 
 type LabScreen = "CONNECT" | "CONFIGURE" | "REVIEW" | "RUN" | "HISTORY" | "IMAGE_CONFIGURE" | "IMAGE_REVIEW" | "IMAGE_RUN";
 type HistoryFilter = "READY" | "ALL";
+const ACTIVE_MESHY_RUN_STORAGE_KEY = "m2a.meshy.activeRun.v2";
+
+function bridgeCapabilitiesMatch(
+  capabilities: unknown,
+): capabilities is typeof MESHY_BRIDGE_CAPABILITIES_V2 {
+  return JSON.stringify(capabilities) === JSON.stringify(MESHY_BRIDGE_CAPABILITIES_V2);
+}
+
+function rememberedRunId() {
+  try { return window.sessionStorage.getItem(ACTIVE_MESHY_RUN_STORAGE_KEY) ?? undefined; }
+  catch { return undefined; }
+}
+
+function rememberRun(run: MeshyRun) {
+  try { window.sessionStorage.setItem(ACTIVE_MESHY_RUN_STORAGE_KEY, run.id); }
+  catch { /* Recovery is best-effort when browser storage is disabled. */ }
+}
 
 export interface MeshyLabProps {
   readonly bridge: MeshyBridgeClient;
@@ -184,18 +203,36 @@ export function MeshyLab({ bridge, onBack, onImport }: MeshyLabProps) {
 
   const connect = () => void perform(async () => {
     const health = await bridge.health();
-    if (health.protocolVersion !== 1 || health.status !== "READY") throw new Error("The local Meshy Bridge does not support this Studio protocol.");
+    if (
+      health.protocolVersion !== MESHY_BRIDGE_PROTOCOL_VERSION
+      || health.status !== "READY"
+      || !bridgeCapabilitiesMatch(health.capabilities)
+    ) {
+      throw new Error("The local Meshy Bridge is stale or does not support the required multi-animation and recovery contract. Restart it before creating a paid run.");
+    }
     setRestartSupported(health.restartSupported);
     setAutomaticPairingSupported(health.automaticPairingSupported);
     const pairing = health.automaticPairingSupported ? await bridge.pairAutomatically() : await bridge.pair({ pairingCode });
-    const [balance, profiles, recentHistory] = await Promise.all([
-      bridge.balance(pairing.sessionToken), bridge.profiles(pairing.sessionToken), bridge.listHistory(pairing.sessionToken),
+    const [balance, profiles, recentHistory, localRuns] = await Promise.all([
+      bridge.balance(pairing.sessionToken),
+      bridge.profiles(pairing.sessionToken),
+      bridge.listHistory(pairing.sessionToken),
+      bridge.listRuns(pairing.sessionToken),
     ]);
     if (!profiles.length) throw new Error("The local Bridge did not expose a supported generation profile.");
     setSessionToken(pairing.sessionToken);
     setAvailableCredits(balance.availableCredits);
     setHistory(recentHistory);
-    setScreen("CONFIGURE");
+    const remembered = rememberedRunId();
+    const recoveredRun = localRuns.find((candidate) => candidate.id === remembered)
+      ?? localRuns[0];
+    if (recoveredRun) {
+      setRun(recoveredRun);
+      rememberRun(recoveredRun);
+      setScreen("RUN");
+    } else {
+      setScreen("CONFIGURE");
+    }
   });
 
   const restartLocalBridge = () => void perform(async () => {
@@ -280,11 +317,25 @@ export function MeshyLab({ bridge, onBack, onImport }: MeshyLabProps) {
 
   const generate = () => void perform(async () => {
     if (!sessionToken || !preview) return;
-    setRun(await bridge.createRun(sessionToken, { previewId: preview.previewId, confirmationNonce: crypto.randomUUID() }));
+    const created = await bridge.createRun(sessionToken, { previewId: preview.previewId, confirmationNonce: crypto.randomUUID() });
+    setRun(created);
+    rememberRun(created);
     setScreen("RUN");
   });
-  const refresh = () => void perform(async () => { if (sessionToken && run) setRun(await bridge.getRun(sessionToken, run.id)); });
-  const cancel = () => void perform(async () => { if (sessionToken && run) setRun(await bridge.cancelRun(sessionToken, run.id)); });
+  const refresh = () => void perform(async () => {
+    if (sessionToken && run) {
+      const refreshed = await bridge.getRun(sessionToken, run.id);
+      setRun(refreshed);
+      rememberRun(refreshed);
+    }
+  });
+  const cancel = () => void perform(async () => {
+    if (sessionToken && run) {
+      const canceled = await bridge.cancelRun(sessionToken, run.id);
+      setRun(canceled);
+      rememberRun(canceled);
+    }
+  });
   const importArtifact = () => void perform(async () => { if (sessionToken && run) { const artifact = await bridge.downloadArtifact(sessionToken, run.id); onImport(artifact.file, artifact.provenance); } });
   const downloadProvenance = () => void perform(async () => {
     if (!sessionToken || !run) return;

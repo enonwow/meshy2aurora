@@ -63,6 +63,46 @@ export function PlaceableReview({
                 <dd>
                   <strong>{result.authoring.outputTriangleCount.toLocaleString("en-US")} triangles</strong>
                   <code title={result.authoring.authoringSha256}>{result.authoring.authoringSha256.slice(0, 12)}...</code>
+                  <code title={result.authoring.sourceSha256}>source {result.authoring.sourceSha256.slice(0, 12)}...</code>
+                </dd>
+              </div>
+            </>
+          ) : null}
+          {result.collision ? (
+            <>
+              <div>
+                <dt>PWK footprint</dt>
+                <dd>
+                  <strong>{result.collision.mode}</strong>
+                  <span>{result.collision.sourceVertices.length} vertices · {result.collision.triangles.length} faces · surface {result.collision.surfaceId}</span>
+                </dd>
+              </div>
+              <div>
+                <dt>PWK bounds</dt>
+                <dd>
+                  <code>{result.collision.boundsMin.join(", ")} → {result.collision.boundsMax.join(", ")}</code>
+                  <code title={result.collision.collisionSha256}>collision {result.collision.collisionSha256.slice(0, 12)}...</code>
+                  <code title={result.collision.pwkSha256}>PWK {result.collision.pwkSha256.slice(0, 12)}...</code>
+                </dd>
+              </div>
+            </>
+          ) : null}
+          {result.textureAuthoring ? (
+            <>
+              <div>
+                <dt>Material textures</dt>
+                <dd>
+                  <strong>{result.textureAuthoring.bindings.length} bindings</strong>
+                  <span>{result.textureAuthoring.resources.length} exact TGA resources · OPAQUE_ONLY</span>
+                </dd>
+              </div>
+              <div>
+                <dt>Texture recipe</dt>
+                <dd>
+                  <code title={result.textureAuthoring.authoringSha256}>
+                    {result.textureAuthoring.authoringSha256.slice(0, 12)}...
+                  </code>
+                  <span>{result.textureAuthoring.bindings.filter((binding) => binding.mode === "OVERRIDE").length} overrides</span>
                 </dd>
               </div>
             </>

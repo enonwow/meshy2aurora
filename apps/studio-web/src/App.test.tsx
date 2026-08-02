@@ -14,26 +14,42 @@ vi.mock("./features/preview/SceneViewport", () => ({
 vi.mock("./features/placeable-authoring/PlaceableAuthoringEditor", () => ({
   PlaceableAuthoringEditor: ({
     bootstrap,
+    textureBootstrap,
     onDocumentChange,
+    onTextureSnapshotChange,
   }: {
     bootstrap: {
       document: {
-        schemaVersion: 1;
+        schemaVersion: 2;
         sourceSha256: string;
         elements: unknown[];
+        collision: unknown;
       };
     };
+    textureBootstrap: { document: unknown };
     onDocumentChange: (document: unknown) => void;
+    onTextureSnapshotChange: (snapshot: unknown) => void;
   }) => (
     <button
       type="button"
-      onClick={() => onDocumentChange({
-        ...bootstrap.document,
-        elements: [{
-          id: "mock-authored-element",
-          marker: "edited-in-placeable-editor",
-        }],
-      })}
+      onClick={() => {
+        onDocumentChange({
+          ...bootstrap.document,
+          elements: [{
+            id: "mock-authored-element",
+            marker: "edited-in-placeable-editor",
+            source: { nodeId: 0, primitiveId: 0, componentIndex: 0 },
+            flags: { includeInCollision: true },
+            deleted: false,
+          }],
+        });
+        onTextureSnapshotChange({
+          document: textureBootstrap.document,
+          files: new Map(),
+          preview: "EDITED",
+          selectedMaterialSlot: null,
+        });
+      }}
     >
       Apply placeable edit
     </button>
@@ -100,7 +116,7 @@ function sourceInspectionJson() {
 function placeableAuthoringJson() {
   const sourceSha256 = "a".repeat(64);
   return JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     inspection: {
       schemaVersion: 1,
       sourceSha256,
@@ -110,10 +126,53 @@ function placeableAuthoringJson() {
       nodes: [],
     },
     document: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       sourceSha256,
       elements: [],
+      collision: {
+        schemaVersion: 1,
+        mode: "AUTO_RECTANGLE",
+        coordinateSpace: "GLTF_SOURCE_XZ_METERS",
+        paddingMeters: 0,
+        vertices: [],
+      },
     },
+  });
+}
+
+function placeableTextureAuthoringJson() {
+  const sourceSha256 = "a".repeat(64);
+  return JSON.stringify({
+    schemaVersion: 1,
+    inspection: {
+      schemaVersion: 1,
+      sourceSha256,
+      materials: [],
+    },
+    document: {
+      schemaVersion: 1,
+      sourceSha256,
+      bindings: [],
+    },
+  });
+}
+
+function placeableCollisionJson() {
+  return JSON.stringify({
+    schemaVersion: 1,
+    mode: "AUTO_RECTANGLE",
+    sourceCoordinateSpace: "GLTF_SOURCE_XZ_METERS",
+    outputCoordinateSpace: "AURORA_XY_METERS",
+    inputVertices: [[-1, -1], [1, -1], [1, 1], [-1, 1]],
+    sourceVertices: [[-1, -1], [1, -1], [-1, 1], [1, 1]],
+    vertices: [[-1, -1], [1, -1], [-1, 1], [1, 1]],
+    triangles: [[0, 1, 2], [1, 3, 2]],
+    boundsMin: [-1, -1],
+    boundsMax: [1, 1],
+    surfaceId: 7,
+    authoringSha256: "1".repeat(64),
+    collisionSha256: "2".repeat(64),
+    pwkSha256: "3".repeat(64),
   });
 }
 
@@ -179,7 +238,7 @@ function builtResponse(requestId: string, format = "nwn1-binary-mdl"): StudioWor
     schemaVersion: 1,
     geometry: { vertexCount: 24, triangleCount: 12, activeJointCount: 2, outputSegmentDeformation: "SKIN" },
     ingest: { schemaVersion: 1, inventory: { nodeCount: 3, meshCount: 1, jointReferenceCount: 2, animationCount: 1 }, statistics: { vertexCount: 24, triangleCount: 12 } },
-    conversion: { schemaVersion: 1, conversionEligible: true, policies: { engineFacingProof: "OPEN_M6", uvRuntimeProof: "OPEN_M6" }, gates: [], diagnostics: [] },
+    conversion: { schemaVersion: 1, conversionEligible: true, policies: { basisStatus: "CREATURE_BASIS_V2_RESOLVED", assetForwardMapping: "GLTF_POSITIVE_Z_TO_AURORA_NEGATIVE_Y", orientationParity: "POSITIVE_PROPER_ROTATION_COMPOSITE_DETERMINANT", engineFacingProof: "OPEN_M6", uvRuntimeProof: "OPEN_M6" }, gates: [], diagnostics: [] },
     model: { payloadSha256: "b".repeat(64), layout: { fileLength: 2 }, projection: { modelResourceResref: "m2a_model", animationCount: 1, rigNodeCount: 2, meshNodeCount: 1, triangleCount: 12 }, semanticDiff: [], deviations: [] },
     texture: { width: 2, height: 2, pixelFormat: "RGBA8", byteLength: 60, outputSha256: "d".repeat(64) },
     appearance: { appendedRowIndex: 1, sourcePrefixPreserved: true, outputByteLength: 7, outputSha256: "e".repeat(64) },
@@ -209,6 +268,7 @@ function placeableBuiltResponse(requestId: string): StudioWorkerResponse {
   const resources = [
     { container: "HAK", role: "PLACEABLES_2DA", resref: "placeables", resourceType: 2017, byteLength: 11, sha256: hash("d") },
     { container: "HAK", role: "MODEL", resref: "m2a_s1_plc_ped", resourceType: 2002, byteLength: 2, sha256: hash("b") },
+    { container: "HAK", role: "PLACEABLE_WALKMESH", resref: "m2a_s1_plc_ped", resourceType: 2053, byteLength: 4, sha256: hash("9") },
     { container: "HAK", role: "TEXTURE", resref: "m2a_s1_plc_tex", resourceType: 3, byteLength: 3, sha256: hash("c") },
     { container: "MOD", role: "MODULE_INFO", resref: "module", resourceType: 2014, byteLength: 5, sha256: hash("3") },
     { container: "MOD", role: "FACTIONS", resref: "repute", resourceType: 2038, byteLength: 5, sha256: hash("4") },
@@ -223,7 +283,7 @@ function placeableBuiltResponse(requestId: string): StudioWorkerResponse {
     status: "OFFLINE_ADMISSION_PASSED",
     profile: "STATIC_PLACEABLE",
     componentStatuses: {
-      mdl: "passed", twoDa: "passed", utp: "passed", gitGic: "passed",
+      mdl: "passed", pwk: "passed", twoDa: "passed", utp: "passed", gitGic: "passed",
       palette: "passed", package: "passed", proof: "not_tested",
     },
     moduleFileName: "m2a_s1_plc_mod.mod",
@@ -239,6 +299,7 @@ function placeableBuiltResponse(requestId: string): StudioWorkerResponse {
     placement: { x: 10, y: 14.5, z: 0, bearing: 0 },
     sourceModelSha256: hash("0"),
     mdlSha256: hash("b"),
+    pwkSha256: hash("9"),
     textureSha256: hash("c"),
     placeables2daSha256: hash("d"),
     utpSha256: hash("e"),
@@ -247,12 +308,12 @@ function placeableBuiltResponse(requestId: string): StudioWorkerResponse {
     gicSha256: hash("2"),
     hakSha256: hash("a"),
     moduleSha256: hash("7"),
-    hakResourceCount: 3,
+    hakResourceCount: 4,
     moduleResourceCount: 7,
     modelVisibility: "not_tested",
     proofCompleteness: "missing",
     paletteCompleteness: "custom_itp_emitted",
-    collisionCompleteness: "pwk_not_implemented",
+    collisionCompleteness: "ascii_pwk_emitted_offline_readback_passed",
     resources,
   });
   const withName = (value: WorkerArtifact, fileName: string) => ({ ...value, fileName });
@@ -361,6 +422,20 @@ async function settle() {
   await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 0)); });
 }
 
+async function waitForWorkerRequest<T extends StudioWorkerRequest["type"]>(
+  worker: FakeWorker,
+  type: T,
+): Promise<Extract<StudioWorkerRequest, { type: T }>> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const request = worker.requests.find((candidate) => candidate.type === type);
+    if (request) return request as Extract<StudioWorkerRequest, { type: T }>;
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+  }
+  throw new Error(`Timed out waiting for Worker request ${type}`);
+}
+
 async function selectFile(input: HTMLInputElement, file: File) {
   Object.defineProperty(input, "files", { configurable: true, value: [file] });
   await act(async () => { input.dispatchEvent(new window.Event("change", { bubbles: true })); });
@@ -428,8 +503,8 @@ async function driveToBuild(
   await act(async () => button(container, "Continue to Inspect")?.click());
   await act(async () => button(container, "Continue to Build")?.click());
   await act(async () => button(container, "Build Package")?.click());
-  await settle();
-  return { sourceInput, worker, build: worker.requests.find((request) => request.type === "BUILD_MODEL_PACKAGE")! };
+  const build = await waitForWorkerRequest(worker, "BUILD_MODEL_PACKAGE");
+  return { sourceInput, worker, build };
 }
 
 async function driveToPlaceableBuild(container: HTMLElement) {
@@ -446,18 +521,53 @@ async function driveToPlaceableBuild(container: HTMLElement) {
       type: "SOURCE_INSPECTED",
       ingestJson: sourceInspectionJson(),
       placeableAuthoringJson: placeableAuthoringJson(),
+      placeableCollisionJson: placeableCollisionJson(),
+      placeableTexturesJson: placeableTextureAuthoringJson(),
     });
     worker.emit({ requestId: appearanceRequest.requestId, ok: true, type: "APPEARANCE_INSPECTED", inspectionJson: appearanceInspectionJson() });
     await Promise.resolve();
   });
   await act(async () => button(container, "Continue to Inspect")?.click());
   await act(async () => button(container, "Apply placeable edit")?.click());
+  await act(async () => {
+    await new Promise((resolve) => window.setTimeout(resolve, 140));
+  });
+  const collisionRequest = worker.requests
+    .filter((request) => request.type === "RESOLVE_PLACEABLE_COLLISION")
+    .at(-1);
+  if (!collisionRequest) throw new Error("placeable collision request missing");
+  const textureRequest = worker.requests
+    .filter((request) => request.type === "RESOLVE_PLACEABLE_TEXTURES")
+    .at(-1);
+  if (!textureRequest) throw new Error("placeable texture request missing");
+  await act(async () => {
+    worker.emit({
+      requestId: collisionRequest.requestId,
+      ok: true,
+      type: "PLACEABLE_COLLISION_RESOLVED",
+      collisionJson: placeableCollisionJson(),
+    });
+    worker.emit({
+      requestId: textureRequest.requestId,
+      ok: true,
+      type: "PLACEABLE_TEXTURES_RESOLVED",
+      texturesJson: JSON.stringify({
+        schemaVersion: 1,
+        sourceSha256: "a".repeat(64),
+        authoringSha256: "4".repeat(64),
+        alphaPolicy: "OPAQUE_ONLY",
+        bindings: [],
+        resources: [],
+      }),
+    });
+    await Promise.resolve();
+  });
   await act(async () => button(container, "Continue to Build")?.click());
   await act(async () => button(container, "Build Package")?.click());
-  await settle();
+  const build = await waitForWorkerRequest(worker, "BUILD_PLACEABLE_PACKAGE");
   return {
     worker,
-    build: worker.requests.find((request) => request.type === "BUILD_PLACEABLE_PACKAGE")!,
+    build,
   };
 }
 
@@ -485,10 +595,10 @@ async function driveToTileBuild(container: HTMLElement) {
   await act(async () => button(container, "Continue to Inspect")?.click());
   await act(async () => button(container, "Continue to Build")?.click());
   await act(async () => button(container, "Build Package")?.click());
-  await settle();
+  const build = await waitForWorkerRequest(worker, "BUILD_TILE_PACKAGE");
   return {
     worker,
-    build: worker.requests.find((request) => request.type === "BUILD_TILE_PACKAGE")!,
+    build,
   };
 }
 
@@ -608,6 +718,24 @@ describe("Studio workflow", () => {
       hakResref: `ch${suffix}`,
     });
     expect(build.demoCreatureResref).toBe(`cc${suffix}`);
+  });
+
+  it("passes the selected source-forward axis into the canonical Creature build", async () => {
+    const container = await renderApp();
+    const sourceForward = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Model front in source GLB"]',
+    );
+    expect(sourceForward?.value).toBe("POSITIVE_Z");
+    await act(async () => setSelectValue(sourceForward!, "NEGATIVE_X"));
+
+    const { build } = await driveToBuild(container, singleIdleSkinnedSourceInspectionJson());
+    if (
+      build.type !== "BUILD_MODEL_PACKAGE"
+      || build.packageLane !== "SKINNED_PROCEDURAL_HUMANOID_42"
+    ) {
+      throw new Error("procedural product request unavailable");
+    }
+    expect(build.sourceForward).toBe("NEGATIVE_X");
   });
 
   it("routes an explicit accessory bone through the procedural build request", async () => {
@@ -832,10 +960,16 @@ describe("Studio workflow", () => {
     const container = await renderApp();
     const { build, worker } = await driveToPlaceableBuild(container);
     expect(build.paletteId).toBe(7);
-    expect(JSON.parse(build.identityJson).modelResref).toBe("m2a_s1_plc_ped");
+    expect(build.experimentalAggressiveGeometryCleanup).toBe(false);
+    expect(JSON.parse(build.identityJson).modelResref).toMatch(/^pm[0-9a-f]{8}$/);
     expect(JSON.parse(build.authoringJson ?? "{}").elements).toEqual([
       expect.objectContaining({ marker: "edited-in-placeable-editor" }),
     ]);
+    expect(JSON.parse(build.textureAuthoringJson ?? "{}")).toMatchObject({
+      schemaVersion: 1,
+      bindings: [],
+    });
+    expect(build.texturePayloadBlob?.byteLength).toBe(0);
     await act(async () => {
       worker.emit(placeableBuiltResponse(build.requestId));
       await Promise.resolve();

@@ -115,6 +115,17 @@ export function ReviewModelDetails({
       <ConversionReadiness result={result} readback={readback} />
 
       <div className="review-model__evidence" aria-label="Canonical evidence">
+        {result.geometry.deformation === "SKIN" && (
+          <article>
+            <span>Creature facing</span>
+            <strong data-status={result.conversionEvidence.policies.engineFacingProof === "OWNER_PROOF_REQUIRED" ? "warning" : "pass"}>
+              {result.conversionEvidence.policies.assetForwardMapping}
+            </strong>
+            <small>
+              {`${result.conversionEvidence.policies.basisStatus} · ${result.conversionEvidence.policies.orientationParity} · ${result.conversionEvidence.policies.engineFacingProof}`}
+            </small>
+          </article>
+        )}
         {result.runtimeFixtureContract && (
           <article>
             <span>M0 runtime fixture</span>

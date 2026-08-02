@@ -14,9 +14,23 @@ use std::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::glb::{AuroraAssetIr, GlbIngestResult, IrMesh, IrNode, IrPrimitive, IrTransform};
+use crate::glb::{
+    AuroraAssetIr, GlbIngestResult, IrMaterial, IrMesh, IrNode, IrPrimitive, IrTransform,
+};
+use crate::model_components::{
+    ConnectedComponentV1 as ConnectedComponent,
+    connected_components_v1 as shared_connected_components_v1,
+};
+use crate::model_material_capabilities::{
+    ModelRenderTargetV1, validate_material_separation_counts_v1,
+};
+use crate::model_material_separation::{
+    ModelMaterialSeparationDocumentV1, ResolvedModelMaterialsV1, resolve_model_materials_v1,
+};
 
 pub const PLACEABLE_AUTHORING_SCHEMA_VERSION_V1: u32 = 1;
+pub const PLACEABLE_AUTHORING_SCHEMA_VERSION_V2: u32 = 2;
+pub const PLACEABLE_COLLISION_SPEC_SCHEMA_VERSION_V1: u32 = 1;
 pub const SHADOWLESS_MATERIAL_SUFFIX_V1: &str = "__m2a_no_shadow";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -113,6 +127,77 @@ pub struct PlaceableAuthoringDocumentV1 {
     pub elements: Vec<PlaceableAuthoringElementV1>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum PlaceableCollisionModeV1 {
+    AutoRectangle,
+    CustomPolygon,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum PlaceableCollisionCoordinateSpaceV1 {
+    GltfSourceXzMeters,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PlaceableCollisionSpecV1 {
+    pub schema_version: u32,
+    pub mode: PlaceableCollisionModeV1,
+    pub coordinate_space: PlaceableCollisionCoordinateSpaceV1,
+    pub padding_meters: f32,
+    pub vertices: Vec<[f32; 2]>,
+}
+
+impl Default for PlaceableCollisionSpecV1 {
+    fn default() -> Self {
+        Self {
+            schema_version: PLACEABLE_COLLISION_SPEC_SCHEMA_VERSION_V1,
+            mode: PlaceableCollisionModeV1::AutoRectangle,
+            coordinate_space: PlaceableCollisionCoordinateSpaceV1::GltfSourceXzMeters,
+            padding_meters: 0.0,
+            vertices: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PlaceableAuthoringDocumentV2 {
+    pub schema_version: u32,
+    pub source_sha256: String,
+    pub elements: Vec<PlaceableAuthoringElementV1>,
+    pub collision: PlaceableCollisionSpecV1,
+}
+
+impl PlaceableAuthoringDocumentV2 {
+    pub fn elements_document_v1(&self) -> PlaceableAuthoringDocumentV1 {
+        PlaceableAuthoringDocumentV1 {
+            schema_version: PLACEABLE_AUTHORING_SCHEMA_VERSION_V1,
+            source_sha256: self.source_sha256.clone(),
+            elements: self.elements.clone(),
+        }
+    }
+}
+
+pub fn placeable_authoring_hash_v2(
+    document: &PlaceableAuthoringDocumentV2,
+) -> Result<String, PlaceableAuthoringErrorV1> {
+    let mut canonical = document.clone();
+    canonical
+        .elements
+        .sort_by(|left, right| left.id.cmp(&right.id));
+    let bytes = serde_json::to_vec(&canonical).map_err(|source| {
+        error(
+            "PLACEABLE-AUTHORING-SERIALIZE",
+            "document",
+            source.to_string(),
+        )
+    })?;
+    Ok(format!("{:x}", Sha256::digest(bytes)))
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaceableComponentInspectionV1 {
@@ -205,12 +290,6 @@ fn error(
         path: path.into(),
         message: message.into(),
     }
-}
-
-#[derive(Clone, Debug)]
-struct ConnectedComponent {
-    triangle_indices: Vec<usize>,
-    vertex_indices: BTreeSet<u32>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -537,65 +616,14 @@ fn connected_components(
     primitive: &IrPrimitive,
     path: &str,
 ) -> Result<Vec<ConnectedComponent>, PlaceableAuthoringErrorV1> {
-    if primitive.topology != "TRIANGLES" || !primitive.indices.len().is_multiple_of(3) {
-        return Err(error(
-            "PLACEABLE-AUTHORING-TOPOLOGY-UNSUPPORTED",
-            path,
-            "element editing requires indexed TRIANGLES",
-        ));
-    }
-    if primitive.indices.iter().any(|index| {
-        usize::try_from(*index)
-            .ok()
-            .is_none_or(|index| index >= primitive.positions.len())
-    }) {
-        return Err(error(
-            "PLACEABLE-AUTHORING-INDEX-OOB",
-            path,
-            "primitive index exceeds the position array",
-        ));
-    }
-    let triangle_count = primitive.indices.len() / 3;
-    let mut vertex_triangles = BTreeMap::<u32, Vec<usize>>::new();
-    for (triangle_index, triangle) in primitive.indices.chunks_exact(3).enumerate() {
-        for index in triangle {
-            vertex_triangles
-                .entry(*index)
-                .or_default()
-                .push(triangle_index);
-        }
-    }
-    let mut visited = vec![false; triangle_count];
-    let mut output = Vec::new();
-    for seed in 0..triangle_count {
-        if visited[seed] {
-            continue;
-        }
-        let mut pending = vec![seed];
-        let mut triangles = Vec::new();
-        let mut vertices = BTreeSet::new();
-        visited[seed] = true;
-        while let Some(triangle_index) = pending.pop() {
-            triangles.push(triangle_index);
-            for index in &primitive.indices[triangle_index * 3..triangle_index * 3 + 3] {
-                vertices.insert(*index);
-                if let Some(neighbors) = vertex_triangles.get(index) {
-                    for neighbor in neighbors {
-                        if !visited[*neighbor] {
-                            visited[*neighbor] = true;
-                            pending.push(*neighbor);
-                        }
-                    }
-                }
-            }
-        }
-        triangles.sort_unstable();
-        output.push(ConnectedComponent {
-            triangle_indices: triangles,
-            vertex_indices: vertices,
-        });
-    }
-    Ok(output)
+    shared_connected_components_v1(primitive, path).map_err(|source| {
+        let code = match source.code.as_str() {
+            "MODEL-COMPONENTS-TOPOLOGY-UNSUPPORTED" => "PLACEABLE-AUTHORING-TOPOLOGY-UNSUPPORTED",
+            "MODEL-COMPONENTS-INDEX-OOB" => "PLACEABLE-AUTHORING-INDEX-OOB",
+            _ => "PLACEABLE-AUTHORING-COMPONENT-INSPECTION",
+        };
+        error(code, source.path, source.message)
+    })
 }
 
 fn component_bounds(
@@ -1272,6 +1300,51 @@ pub fn apply_placeable_authoring_v1(
     ir: &mut AuroraAssetIr,
     document: &PlaceableAuthoringDocumentV1,
 ) -> Result<PlaceableAuthoringApplyReportV1, PlaceableAuthoringErrorV1> {
+    apply_placeable_authoring_resolved_v1(ir, document, None)
+}
+
+pub fn apply_placeable_authoring_with_material_separation_to_ingest_v1(
+    ingest: &mut GlbIngestResult,
+    document: &PlaceableAuthoringDocumentV1,
+    separation: &ModelMaterialSeparationDocumentV1,
+) -> Result<PlaceableAuthoringApplyReportV1, PlaceableAuthoringErrorV1> {
+    let report = apply_placeable_authoring_with_material_separation_v1(
+        &mut ingest.ir,
+        document,
+        separation,
+    )?;
+    update_ingest_report(ingest);
+    Ok(report)
+}
+
+pub fn apply_placeable_authoring_with_material_separation_v1(
+    ir: &mut AuroraAssetIr,
+    document: &PlaceableAuthoringDocumentV1,
+    separation: &ModelMaterialSeparationDocumentV1,
+) -> Result<PlaceableAuthoringApplyReportV1, PlaceableAuthoringErrorV1> {
+    let resolved = resolve_model_materials_v1(ir, separation).map_err(|source| {
+        error(
+            &source
+                .code
+                .replacen("MATERIAL-SEPARATION", "PLACEABLE-MATERIAL-SEPARATION", 1),
+            source.path,
+            source.message,
+        )
+    })?;
+    validate_material_separation_counts_v1(
+        ModelRenderTargetV1::Placeable,
+        resolved.report.material_slots.len(),
+        resolved.report.output_section_count,
+    )
+    .map_err(|source| error(&source.code, source.path, source.message))?;
+    apply_placeable_authoring_resolved_v1(ir, document, Some(&resolved))
+}
+
+fn apply_placeable_authoring_resolved_v1(
+    ir: &mut AuroraAssetIr,
+    document: &PlaceableAuthoringDocumentV1,
+    material_projection: Option<&ResolvedModelMaterialsV1>,
+) -> Result<PlaceableAuthoringApplyReportV1, PlaceableAuthoringErrorV1> {
     let original = ir.clone();
     let elements = validate_document(&original, document)?;
     let source_worlds = source_world_matrices(&original)?;
@@ -1354,9 +1427,55 @@ pub fn apply_placeable_authoring_v1(
         .iter()
         .any(|element| !element.deleted && element.flags.renderable && !element.flags.cast_shadow);
     let mut output_materials = original.materials.clone();
+    let mut material_id_by_slot = BTreeMap::<u32, Option<u32>>::new();
+    if let Some(projection) = material_projection {
+        for slot in &projection.report.material_slots {
+            let material_id = if slot.system_source_material {
+                slot.source_material_id
+            } else {
+                let mut material = slot
+                    .source_material_id
+                    .and_then(|source_id| {
+                        original
+                            .materials
+                            .iter()
+                            .find(|material| material.id == source_id)
+                    })
+                    .cloned()
+                    .unwrap_or(IrMaterial {
+                        id: 0,
+                        name: None,
+                        base_color_factor: [1.0; 4],
+                        base_color_texture: None,
+                        metallic_factor: 0.0,
+                        roughness_factor: 1.0,
+                        metallic_roughness_texture: None,
+                        normal_texture: None,
+                        emissive_factor: [0.0; 3],
+                        emissive_texture: None,
+                        alpha_mode: "OPAQUE".to_owned(),
+                        alpha_cutoff: None,
+                        double_sided: false,
+                    });
+                let id = u32::try_from(output_materials.len()).map_err(|_| {
+                    error(
+                        "PLACEABLE-AUTHORING-LIMIT-EXCEEDED",
+                        "materials",
+                        "authored material count exceeds u32",
+                    )
+                })?;
+                material.id = id;
+                material.name = Some(slot.authored_material_id.clone());
+                output_materials.push(material);
+                Some(id)
+            };
+            material_id_by_slot.insert(slot.material_slot, material_id);
+        }
+    }
     let mut shadowless_material_ids = BTreeMap::<u32, u32>::new();
     if needs_shadowless_materials {
-        for material in &original.materials {
+        let shadow_sources = output_materials.clone();
+        for material in &shadow_sources {
             let mut shadowless = material.clone();
             let id = u32::try_from(output_materials.len()).map_err(|_| {
                 error(
@@ -1377,7 +1496,7 @@ pub fn apply_placeable_authoring_v1(
 
     for node in original.nodes.iter().filter(|node| node.mesh_id.is_some()) {
         let source_mesh = &original.meshes[node.mesh_id.unwrap() as usize];
-        let mut authored_primitives = BTreeMap::<(u32, bool), IrPrimitive>::new();
+        let mut authored_primitives = BTreeMap::<(u32, bool, Option<u32>), IrPrimitive>::new();
 
         for element in &document.elements {
             let Some(source) = element.source.as_ref() else {
@@ -1421,11 +1540,58 @@ pub fn apply_placeable_authoring_v1(
                 let source_primitive = &original.primitives[primitive_id as usize];
                 let component = &components[&primitive_id][component_index as usize];
                 if !element.deleted && element.flags.renderable {
+                    let projected_material_id = if let Some(projection) = material_projection {
+                        let first_triangle =
+                            component.triangle_indices.first().ok_or_else(|| {
+                                error(
+                                    "PLACEABLE-MATERIAL-SEPARATION-COMPONENT-EMPTY",
+                                    format!("primitives[{primitive_id}].indices"),
+                                    "connected component has no source triangle",
+                                )
+                            })?;
+                        let triangle_index = u32::try_from(*first_triangle).map_err(|_| {
+                            error(
+                                "PLACEABLE-AUTHORING-LIMIT-EXCEEDED",
+                                format!("primitives[{primitive_id}].indices"),
+                                "source triangle index exceeds u32",
+                            )
+                        })?;
+                        let scene_id = original.default_scene_id.ok_or_else(|| {
+                            error(
+                                "PLACEABLE-MATERIAL-SEPARATION-SCENE-MISSING",
+                                "defaultSceneId",
+                                "Material Separation requires an explicit default scene",
+                            )
+                        })?;
+                        let slot = projection
+                            .material_slot_for_triangle(
+                                scene_id,
+                                node.id,
+                                primitive_id,
+                                triangle_index,
+                            )
+                            .ok_or_else(|| {
+                                error(
+                                    "PLACEABLE-MATERIAL-SEPARATION-TRIANGLE-MISSING",
+                                    format!("primitives[{primitive_id}].indices"),
+                                    "source component has no resolved material slot",
+                                )
+                            })?;
+                        *material_id_by_slot.get(&slot).ok_or_else(|| {
+                            error(
+                                "PLACEABLE-MATERIAL-SEPARATION-SLOT-MISSING",
+                                "materialSlots",
+                                "resolved material slot has no authored IR material",
+                            )
+                        })?
+                    } else {
+                        source_primitive.material_id
+                    };
                     let target_material_id =
                         if element.flags.cast_shadow {
-                            source_primitive.material_id
+                            projected_material_id
                         } else {
-                            let source_material_id = source_primitive.material_id.ok_or_else(|| {
+                            let source_material_id = projected_material_id.ok_or_else(|| {
                             error(
                                 "PLACEABLE-AUTHORING-SHADOW-MATERIAL-MISSING",
                                 format!("primitives[{primitive_id}].materialId"),
@@ -1443,7 +1609,7 @@ pub fn apply_placeable_authoring_v1(
                         )?)
                         };
                     let target = authored_primitives
-                        .entry((primitive_id, element.flags.cast_shadow))
+                        .entry((primitive_id, element.flags.cast_shadow, target_material_id))
                         .or_insert_with(|| {
                             let mut primitive = empty_authored_primitive(source_primitive);
                             primitive.material_id = target_material_id;

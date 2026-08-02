@@ -7,18 +7,29 @@ use std::{
 use m2a_core::{
     erf::ErfArchive,
     gff::{GffLimitsV1, GffValueV1, read_gff_v32},
+    glb::{GlbLimits, ingest_glb},
     mdl::{
         MdlFormatProfileV1, MdlMaterialTextureBindingV1, MdlStateProjectionProfileV1,
         MdlWriterOptionsV1, inspect_binary_mdl, write_binary_tile_mdl_v1,
     },
+    model_components::SourceComponentKeyV1,
     model_ir::{
         AuroraMaterialSourceBindingV1, AuroraModelIrV1, AuroraModelNodeV1, AuroraModelSegmentV1,
         AuroraSegmentDeformationV1,
     },
+    model_material_separation::{
+        AuthoredMaterialV1, ModelMaterialAssignmentV1, ModelMaterialSeparationDocumentV1,
+        resolve_model_materials_v1,
+    },
+    model_texture_authoring::{
+        ModelTextureBindingModeV1, ModelTexturePayloadDescriptorV1,
+        default_model_texture_authoring_v1,
+    },
     tile::{
         MDL_RESOURCE_TYPE, SET_RESOURCE_TYPE, StaticTileBuildRequestV1, StaticTileIdentityV1,
-        TileDescriptorV1, TileSurfaceV1, TileTextureInputV1, build_static_tile_package_v1,
-        minimal_static_tileset_v1, parse_tileset_v1, resolve_are_tile_v1, write_tileset_v1,
+        TileDescriptorV1, TileSurfaceV1, TileTextureInputV1, build_meshy_static_tile_package_v2,
+        build_static_tile_package_v1, minimal_static_tileset_v1, parse_tileset_v1,
+        resolve_are_tile_v1, write_tileset_v1,
     },
     walkmesh::{
         build_aabb_tree_v1, flat_tile_navigation_v1, inspect_ascii_tile_wok_v1,
@@ -26,6 +37,10 @@ use m2a_core::{
     },
 };
 use sha2::{Digest, Sha256};
+
+#[path = "fixtures/build_synthetic_glb.rs"]
+#[allow(dead_code)]
+mod fixtures;
 
 fn identity_matrix() -> [f32; 16] {
     [
@@ -250,6 +265,156 @@ fn aabb_tree_and_ascii_wok_are_deterministic_and_fail_closed() {
             .code,
         "TILE-WALKMESH-INDEX-OOB"
     );
+}
+
+#[test]
+fn material_separated_tile_changes_render_materials_but_not_wok_or_set() {
+    let source = fixtures::one_primitive_two_disconnected_triangles_with_embedded_texture();
+    let ingest = ingest_glb(&source, &GlbLimits::default()).expect("two-component Tile source");
+    let material = |id: &str, source_material_id: u32, image_sha256: String| AuthoredMaterialV1 {
+        authored_material_id: id.to_owned(),
+        display_name: id.to_owned(),
+        preview_color: "#806040".to_owned(),
+        source_fallback_material_id: Some(source_material_id),
+        source_fallback_image_sha256: Some(image_sha256),
+    };
+    let recipe = |swapped: bool| ModelMaterialSeparationDocumentV1 {
+        schema_version: 1,
+        source_sha256: ingest.ir.source.sha256.clone(),
+        materials: vec![
+            material("material:sail", 0, ingest.ir.images[0].sha256.clone()),
+            material("material:wood", 0, ingest.ir.images[0].sha256.clone()),
+        ],
+        assignments: vec![
+            ModelMaterialAssignmentV1 {
+                component: SourceComponentKeyV1 {
+                    scene_id: 0,
+                    node_id: 0,
+                    primitive_id: 0,
+                    component_index: 0,
+                },
+                authored_material_id: if swapped {
+                    "material:sail"
+                } else {
+                    "material:wood"
+                }
+                .to_owned(),
+            },
+            ModelMaterialAssignmentV1 {
+                component: SourceComponentKeyV1 {
+                    scene_id: 0,
+                    node_id: 0,
+                    primitive_id: 0,
+                    component_index: 1,
+                },
+                authored_material_id: if swapped {
+                    "material:wood"
+                } else {
+                    "material:sail"
+                }
+                .to_owned(),
+            },
+        ],
+    };
+    let first_recipe = recipe(false);
+    let second_recipe = recipe(true);
+    let first_materials =
+        resolve_model_materials_v1(&ingest.ir, &first_recipe).expect("first materials");
+    let second_materials =
+        resolve_model_materials_v1(&ingest.ir, &second_recipe).expect("second materials");
+    let mut first_textures =
+        default_model_texture_authoring_v1(&ingest, &first_materials).expect("first textures");
+    let mut second_textures =
+        default_model_texture_authoring_v1(&ingest, &second_materials).expect("second textures");
+    let override_payload = fixtures::OWNED_BLUE_RGBA_PNG.to_vec();
+    let override_sha256 = format!("{:x}", Sha256::digest(&override_payload));
+    for document in [&mut first_textures, &mut second_textures] {
+        let sail = document
+            .bindings
+            .iter_mut()
+            .find(|binding| binding.authored_material_id == "material:sail")
+            .expect("sail texture binding");
+        sail.mode = ModelTextureBindingModeV1::Override;
+        sail.override_asset_id = Some("tile-sail-blue".to_owned());
+        sail.override_sha256 = Some(override_sha256.clone());
+        sail.override_mime_type = Some("image/png".to_owned());
+        sail.override_byte_length = Some(override_payload.len() as u64);
+    }
+    let texture_descriptors = [ModelTexturePayloadDescriptorV1 {
+        schema_version: 1,
+        asset_id: "tile-sail-blue".to_owned(),
+        sha256: override_sha256,
+        mime_type: "image/png".to_owned(),
+        byte_offset: 0,
+        byte_length: override_payload.len() as u64,
+    }];
+    let identity = StaticTileIdentityV1::owner_candidate_v1();
+
+    let first = build_meshy_static_tile_package_v2(
+        &source,
+        &identity,
+        false,
+        "grass",
+        TileSurfaceV1::Grass,
+        &first_recipe,
+        &first_textures,
+        &override_payload,
+        &texture_descriptors,
+    )
+    .expect("first separated Tile");
+    let second = build_meshy_static_tile_package_v2(
+        &source,
+        &identity,
+        false,
+        "grass",
+        TileSurfaceV1::Grass,
+        &second_recipe,
+        &second_textures,
+        &override_payload,
+        &texture_descriptors,
+    )
+    .expect("second separated Tile");
+
+    assert_eq!(first.wok_payload, second.wok_payload);
+    assert_eq!(first.set_payload, second.set_payload);
+    assert_eq!(first.report.wok_sha256, second.report.wok_sha256);
+    assert_eq!(first.report.set_sha256, second.report.set_sha256);
+    assert_eq!(first.report.surface_id, second.report.surface_id);
+    assert_eq!(
+        first
+            .report
+            .material_separation
+            .as_ref()
+            .expect("material report")
+            .material_slots
+            .len(),
+        2
+    );
+    assert_eq!(
+        first
+            .report
+            .model_texture_authoring
+            .as_ref()
+            .expect("texture report")
+            .resources
+            .len(),
+        2
+    );
+    let readback = inspect_binary_mdl(&first.mdl_payload).expect("Tile MDL readback");
+    let mut pending = readback.node_tree.roots.iter().collect::<Vec<_>>();
+    let mut textures = std::collections::BTreeSet::new();
+    while let Some(node) = pending.pop() {
+        if let Some(mesh) = &node.mesh {
+            textures.extend(
+                mesh.textures
+                    .iter()
+                    .filter(|texture| !texture.is_empty())
+                    .cloned(),
+            );
+        }
+        pending.extend(&node.children);
+    }
+    assert_eq!(textures.len(), 2);
 }
 
 #[test]

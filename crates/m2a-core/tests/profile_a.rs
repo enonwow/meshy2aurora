@@ -11,12 +11,21 @@ use m2a_core::{
         MdlAnimationTrackPathV1, MdlFormatProfileV1, MdlMaterialTextureBindingV1,
         MdlStateProjectionProfileV1, MdlWriterOptionsV1, write_binary_mdl_with_animations,
     },
+    model_components::SourceComponentKeyV1,
+    model_material_separation::{
+        AuthoredMaterialV1, ModelMaterialAssignmentV1, ModelMaterialSeparationDocumentV1,
+    },
     profile_a::{
         Bounds3V1, CreatureRigNodeV1, CreatureRigProfileV1, CreatureRigSegmentV1,
-        ProfileAAnimationClipMappingV1, ProfileAAnimationMappingV1, ProfileAAnimationNodeMappingV1,
-        ProfileAOptionsV1, RigProvenanceAttestationsV1, RigProvenanceKindV1, RigProvenanceV1,
+        CreatureSourceForwardV1, ProfileAAnimationClipMappingV1, ProfileAAnimationMappingV1,
+        ProfileAAnimationNodeMappingV1, ProfileAMaterialPolicyV1, ProfileAOptionsV1,
+        ProfileAWindingPolicyV1, RigProvenanceAttestationsV1, RigProvenanceKindV1, RigProvenanceV1,
         RigSegmentDeformationV1, RigWeightInfluenceV1, canonical_creature_sha256,
-        canonical_profile_sha256, convert_profile_a, convert_profile_a_with_animations_v1,
+        canonical_profile_sha256, convert_profile_a,
+        convert_profile_a_with_animations_and_material_separation_v1,
+        convert_profile_a_with_animations_v1, convert_profile_a_with_material_separation_v1,
+        direct_creature_profile_a_options_for_source_forward_v2,
+        direct_creature_profile_a_options_v2,
     },
 };
 
@@ -68,6 +77,295 @@ fn profile(height: f32) -> CreatureRigProfileV1 {
 
 fn minimal_source() -> m2a_core::glb::GlbIngestResult {
     ingest_glb(&fixtures::minimal_indexed_triangle(), &GlbLimits::default()).unwrap()
+}
+
+fn exact_triangle_fingerprints(creature: &m2a_core::profile_a::AuroraCreatureIrV1) -> Vec<String> {
+    let mut fingerprints = Vec::new();
+    for segment in &creature.segments {
+        for (triangle_ordinal, triangle) in segment.indices.chunks_exact(3).enumerate() {
+            let vertices = triangle
+                .iter()
+                .map(|index| {
+                    let index = *index as usize;
+                    let tangent = segment
+                        .tangents
+                        .as_ref()
+                        .map(|values| values[index].map(f32::to_bits));
+                    let weights = segment.weights.get(index).map(|weights| {
+                        (
+                            weights.bone_node_ids,
+                            weights.values.map(f32::to_bits),
+                            weights.influence_count,
+                        )
+                    });
+                    (
+                        segment.positions[index].map(f32::to_bits),
+                        segment.normals[index].map(f32::to_bits),
+                        tangent,
+                        segment.uv0[index].map(f32::to_bits),
+                        weights,
+                    )
+                })
+                .collect::<Vec<_>>();
+            fingerprints.push(format!(
+                "{:?}",
+                (
+                    segment.parent_node_id,
+                    &segment.deformation,
+                    segment.cast_shadow,
+                    segment.face_surface_ids.get(triangle_ordinal).copied(),
+                    vertices,
+                )
+            ));
+        }
+    }
+    fingerprints.sort();
+    fingerprints
+}
+
+#[test]
+fn material_separation_splits_one_source_primitive_into_two_profile_a_slots() {
+    let mut source = ingest_glb(
+        &fixtures::one_primitive_two_disconnected_triangles(),
+        &GlbLimits::default(),
+    )
+    .expect("two-component source");
+    source.ir.primitives[0].tangents = vec![[1.0, 0.0, 0.0, 1.0]; 6];
+    let authored = |id: &str, name: &str| AuthoredMaterialV1 {
+        authored_material_id: id.to_owned(),
+        display_name: name.to_owned(),
+        preview_color: "#806040".to_owned(),
+        source_fallback_material_id: None,
+        source_fallback_image_sha256: None,
+    };
+    let component = |component_index| SourceComponentKeyV1 {
+        scene_id: 0,
+        node_id: 0,
+        primitive_id: 0,
+        component_index,
+    };
+    let separation = ModelMaterialSeparationDocumentV1 {
+        schema_version: 1,
+        source_sha256: source.ir.source.sha256.clone(),
+        materials: vec![
+            authored("material:sail", "Sail"),
+            authored("material:wood", "Wood"),
+        ],
+        assignments: vec![
+            ModelMaterialAssignmentV1 {
+                component: component(0),
+                authored_material_id: "material:wood".to_owned(),
+            },
+            ModelMaterialAssignmentV1 {
+                component: component(1),
+                authored_material_id: "material:sail".to_owned(),
+            },
+        ],
+    };
+    let options = ProfileAOptionsV1 {
+        material_policy: ProfileAMaterialPolicyV1::BoundedSourceSlots,
+        limits: m2a_core::profile_a::ProfileALimitsV1 {
+            max_unique_materials: 2,
+            ..ProfileAOptionsV1::default().limits
+        },
+        ..ProfileAOptionsV1::default()
+    };
+
+    let legacy =
+        convert_profile_a(&source, &profile(1.0), &options).expect("legacy rigid Profile A");
+    let outcome = convert_profile_a_with_material_separation_v1(
+        &source,
+        &profile(1.0),
+        &options,
+        &separation,
+    )
+    .expect("material-separated Profile A");
+    let creature = outcome.creature.expect("converted creature");
+
+    assert_eq!(creature.material_source_bindings.len(), 2);
+    assert_eq!(creature.segments.len(), 2);
+    assert_eq!(
+        creature
+            .segments
+            .iter()
+            .map(|segment| segment.material_slot)
+            .collect::<std::collections::BTreeSet<_>>(),
+        [0, 1].into_iter().collect()
+    );
+    assert!(
+        creature
+            .segments
+            .iter()
+            .all(|segment| segment.indices.len() == 3 && segment.positions.len() == 3)
+    );
+    assert_eq!(outcome.report.geometry.source_triangle_count, 2);
+    assert_eq!(outcome.report.geometry.output_triangle_count, 2);
+    assert_eq!(outcome.report.weights, legacy.report.weights);
+    let legacy_creature = legacy.creature.expect("legacy rigid creature");
+    assert_eq!(creature.nodes, legacy_creature.nodes);
+    assert_eq!(
+        exact_triangle_fingerprints(&creature),
+        exact_triangle_fingerprints(&legacy_creature),
+        "material buckets must preserve rigid triangle geometry and every vertex attribute"
+    );
+    assert!(creature.segments.iter().all(|segment| {
+        segment.deformation == RigSegmentDeformationV1::Rigid && segment.weights.is_empty()
+    }));
+}
+
+#[test]
+fn material_separation_preserves_skin_bones_influence_counts_and_normalized_weights() {
+    let mut source = ingest_glb(
+        &fixtures::one_primitive_two_disconnected_triangles(),
+        &GlbLimits::default(),
+    )
+    .expect("two-component source");
+    source.ir.primitives[0].tangents = vec![[1.0, 0.0, 0.0, -1.0]; 6];
+    let weights = vec![
+        vec![RigWeightInfluenceV1 {
+            bone_node_id: 1,
+            value: 1.0,
+        }],
+        vec![RigWeightInfluenceV1 {
+            bone_node_id: 2,
+            value: 1.0,
+        }],
+        vec![RigWeightInfluenceV1 {
+            bone_node_id: 3,
+            value: 1.0,
+        }],
+        vec![RigWeightInfluenceV1 {
+            bone_node_id: 4,
+            value: 1.0,
+        }],
+    ];
+    let rig = skin_profile(weights);
+    let authored = |id: &str| AuthoredMaterialV1 {
+        authored_material_id: id.to_owned(),
+        display_name: id.to_owned(),
+        preview_color: "#806040".to_owned(),
+        source_fallback_material_id: None,
+        source_fallback_image_sha256: None,
+    };
+    let separation = ModelMaterialSeparationDocumentV1 {
+        schema_version: 1,
+        source_sha256: source.ir.source.sha256.clone(),
+        materials: vec![authored("material:sail"), authored("material:wood")],
+        assignments: vec![
+            ModelMaterialAssignmentV1 {
+                component: SourceComponentKeyV1 {
+                    scene_id: 0,
+                    node_id: 0,
+                    primitive_id: 0,
+                    component_index: 0,
+                },
+                authored_material_id: "material:wood".to_owned(),
+            },
+            ModelMaterialAssignmentV1 {
+                component: SourceComponentKeyV1 {
+                    scene_id: 0,
+                    node_id: 0,
+                    primitive_id: 0,
+                    component_index: 1,
+                },
+                authored_material_id: "material:sail".to_owned(),
+            },
+        ],
+    };
+    let options = ProfileAOptionsV1 {
+        material_policy: ProfileAMaterialPolicyV1::BoundedSourceSlots,
+        limits: m2a_core::profile_a::ProfileALimitsV1 {
+            max_unique_materials: 2,
+            ..ProfileAOptionsV1::default().limits
+        },
+        ..ProfileAOptionsV1::default()
+    };
+
+    let legacy = convert_profile_a(&source, &rig, &options).expect("legacy skin conversion");
+    let separated =
+        convert_profile_a_with_material_separation_v1(&source, &rig, &options, &separation)
+            .expect("material-separated skin conversion");
+    let legacy_creature = legacy.creature.expect("legacy skin creature");
+    let separated_creature = separated.creature.expect("separated skin creature");
+
+    assert_eq!(separated.report.weights, legacy.report.weights);
+    assert_eq!(separated_creature.nodes, legacy_creature.nodes);
+    assert_eq!(
+        exact_triangle_fingerprints(&separated_creature),
+        exact_triangle_fingerprints(&legacy_creature),
+        "material buckets must preserve skin ownership, attributes, bone ids and exact weights"
+    );
+    assert!(
+        separated_creature
+            .segments
+            .iter()
+            .all(|segment| segment.deformation == RigSegmentDeformationV1::Skin)
+    );
+    for weights in separated_creature
+        .segments
+        .iter()
+        .flat_map(|segment| &segment.weights)
+    {
+        let sum = weights.values.iter().sum::<f32>();
+        approx(sum, 1.0);
+        assert_eq!(
+            weights.influence_count as usize,
+            weights
+                .bone_node_ids
+                .iter()
+                .filter(|bone| bone.is_some())
+                .count()
+        );
+    }
+}
+
+#[test]
+fn empty_material_separation_recipe_is_profile_a_identity() {
+    let source = minimal_source();
+    let rig = profile(1.0);
+    let options = ProfileAOptionsV1::default();
+    let recipe = ModelMaterialSeparationDocumentV1 {
+        schema_version: 1,
+        source_sha256: source.ir.source.sha256.clone(),
+        materials: Vec::new(),
+        assignments: Vec::new(),
+    };
+    let legacy = convert_profile_a(&source, &rig, &options).expect("legacy conversion");
+    let projected = convert_profile_a_with_material_separation_v1(&source, &rig, &options, &recipe)
+        .expect("identity projected conversion");
+    assert_eq!(
+        serde_json::to_vec(&projected).unwrap(),
+        serde_json::to_vec(&legacy).unwrap()
+    );
+}
+
+#[test]
+fn empty_material_separation_recipe_is_skin_profile_a_identity() {
+    let source = square_source();
+    let weights = (1..=4)
+        .map(|bone_node_id| {
+            vec![RigWeightInfluenceV1 {
+                bone_node_id,
+                value: 1.0,
+            }]
+        })
+        .collect();
+    let rig = skin_profile(weights);
+    let options = ProfileAOptionsV1::default();
+    let recipe = ModelMaterialSeparationDocumentV1 {
+        schema_version: 1,
+        source_sha256: source.ir.source.sha256.clone(),
+        materials: Vec::new(),
+        assignments: Vec::new(),
+    };
+    let legacy = convert_profile_a(&source, &rig, &options).expect("legacy skin conversion");
+    let projected = convert_profile_a_with_material_separation_v1(&source, &rig, &options, &recipe)
+        .expect("identity projected skin conversion");
+    assert_eq!(
+        serde_json::to_vec(&projected).unwrap(),
+        serde_json::to_vec(&legacy).unwrap(),
+        "an empty Material Separation recipe must be a byte-exact no-op for Skin"
+    );
 }
 
 #[test]
@@ -310,6 +608,115 @@ fn basis_scale_alignment_winding_normal_tangent_and_uv_are_exact() {
         serde_json::to_vec(&source).unwrap(),
         "source IR and report are immutable"
     );
+}
+
+#[test]
+fn creature_basis_v2_maps_source_forward_to_native_aurora_forward_without_reflection() {
+    let mut source = minimal_source();
+    source.ir.primitives[0].tangents = vec![[1.0, 0.0, 0.0, 1.0]; 3];
+    let source_before = serde_json::to_vec(&source).unwrap();
+
+    let outcome = convert_profile_a(
+        &source,
+        &profile(1.0),
+        &direct_creature_profile_a_options_v2(),
+    )
+    .expect("Creature Basis V2 conversion");
+    assert!(outcome.report.conversion_eligible);
+    assert_eq!(outcome.report.transform.determinant, 1.0);
+    assert_eq!(
+        outcome.report.transform.basis_matrix,
+        [
+            1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ]
+    );
+    assert_eq!(
+        outcome.report.policies.asset_forward_mapping,
+        "GLTF_POSITIVE_Z_TO_AURORA_NEGATIVE_Y"
+    );
+    assert_eq!(
+        outcome.report.policies.engine_facing_proof,
+        "OWNER_PROOF_REQUIRED"
+    );
+
+    let creature = outcome.creature.expect("eligible Creature V2 output");
+    assert_eq!(creature.basis_status, "CREATURE_BASIS_V2_RESOLVED");
+    assert_eq!(creature.engine_facing_proof, "OWNER_PROOF_REQUIRED");
+    let segment = &creature.segments[0];
+    assert_eq!(segment.indices, [0, 1, 2]);
+    assert_eq!(segment.normals, [[0.0, -1.0, 0.0]; 3]);
+    assert_eq!(
+        segment.tangents.as_ref().unwrap(),
+        &vec![[1.0, 0.0, 0.0, 1.0]; 3]
+    );
+    assert_eq!(
+        source_before,
+        serde_json::to_vec(&source).unwrap(),
+        "Creature Basis V2 must not mutate source bytes or source IR"
+    );
+}
+
+#[test]
+fn creature_basis_v2_supports_all_explicit_cardinal_source_forward_axes() {
+    let cases = [
+        (
+            CreatureSourceForwardV1::PositiveZ,
+            "GLTF_POSITIVE_Z_TO_AURORA_NEGATIVE_Y",
+            [
+                1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+        ),
+        (
+            CreatureSourceForwardV1::NegativeZ,
+            "GLTF_NEGATIVE_Z_TO_AURORA_NEGATIVE_Y",
+            [
+                -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+        ),
+        (
+            CreatureSourceForwardV1::PositiveX,
+            "GLTF_POSITIVE_X_TO_AURORA_NEGATIVE_Y",
+            [
+                0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+        ),
+        (
+            CreatureSourceForwardV1::NegativeX,
+            "GLTF_NEGATIVE_X_TO_AURORA_NEGATIVE_Y",
+            [
+                0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+        ),
+    ];
+
+    for (source_forward, expected_mapping, expected_matrix) in cases {
+        let outcome = convert_profile_a(
+            &minimal_source(),
+            &profile(1.0),
+            &direct_creature_profile_a_options_for_source_forward_v2(source_forward),
+        )
+        .expect("explicit Creature source-forward conversion");
+        assert_eq!(outcome.report.transform.basis_matrix, expected_matrix);
+        assert_eq!(outcome.report.transform.determinant, 1.0);
+        assert_eq!(
+            outcome.report.policies.asset_forward_mapping,
+            expected_mapping
+        );
+        assert_eq!(
+            outcome.report.policies.basis_status,
+            "CREATURE_BASIS_V2_RESOLVED"
+        );
+    }
+}
+
+#[test]
+fn creature_basis_v2_rejects_a_legacy_manual_winding_override() {
+    let mut options = direct_creature_profile_a_options_v2();
+    options.winding_policy = ProfileAWindingPolicyV1::ReverseOnce;
+    let error = convert_profile_a(&minimal_source(), &profile(1.0), &options)
+        .expect_err("mixed V1/V2 basis policies must fail closed");
+    assert_eq!(error.code, "M3A-OPTIONS-INVALID");
+    assert_eq!(error.path, "options.basisPolicy");
 }
 
 #[test]
@@ -643,6 +1050,126 @@ fn mapped_linear_animation_retargets_rest_delta_and_hands_off_to_writer() {
             .expect("mapped animation writer handoff");
     assert!(artifact.report.semantic_diff.is_empty());
     assert_eq!(artifact.inspection.animations.len(), 1);
+}
+
+#[test]
+fn material_separation_preserves_animation_and_writes_two_texture_resrefs() {
+    let input = fixtures::mutate_json(
+        fixtures::skin_animation_two_disconnected_triangles(),
+        |root| {
+            root["animations"][0]["samplers"][1]["interpolation"] = serde_json::json!("LINEAR");
+            root["animations"][0]["samplers"]
+                .as_array_mut()
+                .expect("synthetic animation samplers")
+                .truncate(2);
+            root["animations"][0]["channels"]
+                .as_array_mut()
+                .expect("synthetic animation channels")
+                .truncate(2);
+        },
+    );
+    let source = ingest_glb(&input, &GlbLimits::default()).expect("animated two-part source");
+    let material = |id: &str| AuthoredMaterialV1 {
+        authored_material_id: id.to_owned(),
+        display_name: id.to_owned(),
+        preview_color: "#806040".to_owned(),
+        source_fallback_material_id: None,
+        source_fallback_image_sha256: None,
+    };
+    let separation = ModelMaterialSeparationDocumentV1 {
+        schema_version: 1,
+        source_sha256: source.ir.source.sha256.clone(),
+        materials: vec![material("material:sail"), material("material:wood")],
+        assignments: vec![
+            ModelMaterialAssignmentV1 {
+                component: SourceComponentKeyV1 {
+                    scene_id: 0,
+                    node_id: 2,
+                    primitive_id: 0,
+                    component_index: 0,
+                },
+                authored_material_id: "material:wood".to_owned(),
+            },
+            ModelMaterialAssignmentV1 {
+                component: SourceComponentKeyV1 {
+                    scene_id: 0,
+                    node_id: 2,
+                    primitive_id: 0,
+                    component_index: 1,
+                },
+                authored_material_id: "material:sail".to_owned(),
+            },
+        ],
+    };
+    let options = ProfileAOptionsV1 {
+        material_policy: ProfileAMaterialPolicyV1::BoundedSourceSlots,
+        limits: m2a_core::profile_a::ProfileALimitsV1 {
+            max_unique_materials: 2,
+            ..ProfileAOptionsV1::default().limits
+        },
+        ..ProfileAOptionsV1::default()
+    };
+
+    let legacy = convert_profile_a_with_animations_v1(
+        &source,
+        &animated_profile(),
+        &options,
+        &animation_mapping(),
+    )
+    .expect("legacy animated conversion");
+    let separated = convert_profile_a_with_animations_and_material_separation_v1(
+        &source,
+        &animated_profile(),
+        &options,
+        &animation_mapping(),
+        &separation,
+    )
+    .expect("separated animated conversion");
+
+    assert_eq!(separated.animations, legacy.animations);
+    let creature = separated
+        .base
+        .creature
+        .as_ref()
+        .expect("separated creature");
+    assert_eq!(creature.segments.len(), 2);
+    let mut writer = animation_writer_options();
+    writer.diffuse_texture_resref_by_material_slot = vec![
+        MdlMaterialTextureBindingV1 {
+            material_slot: 0,
+            resref: "m2a_wood".to_owned(),
+        },
+        MdlMaterialTextureBindingV1 {
+            material_slot: 1,
+            resref: "m2a_sail".to_owned(),
+        },
+    ];
+    let artifact = write_binary_mdl_with_animations(
+        creature,
+        separated.animations.as_ref().expect("animation set"),
+        &writer,
+    )
+    .expect("multi-material animated writer");
+    let mut pending = artifact
+        .inspection
+        .node_tree
+        .roots
+        .iter()
+        .collect::<Vec<_>>();
+    let mut textures = std::collections::BTreeSet::new();
+    while let Some(node) = pending.pop() {
+        if let Some(mesh) = &node.mesh {
+            textures.extend(
+                mesh.textures
+                    .iter()
+                    .map(String::as_str)
+                    .filter(|texture| !texture.is_empty()),
+            );
+        }
+        pending.extend(&node.children);
+    }
+    assert_eq!(textures, ["m2a_sail", "m2a_wood"].into_iter().collect());
+    assert!(artifact.report.semantic_diff.is_empty());
 }
 
 #[test]

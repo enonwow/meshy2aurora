@@ -60,6 +60,9 @@ export interface CanonicalConversionEvidence {
   schemaVersion: 1;
   conversionEligible: boolean;
   policies: {
+    basisStatus: string;
+    assetForwardMapping: string;
+    orientationParity: string;
     engineFacingProof: string;
     uvRuntimeProof: string;
   };
@@ -549,6 +552,9 @@ export function projectCanonicalResult(
     schemaVersion: 1,
     conversionEligible: boolean(conversion.conversionEligible, "report.conversion.conversionEligible"),
     policies: {
+      basisStatus: string(conversionPolicies.basisStatus, "report.conversion.policies.basisStatus"),
+      assetForwardMapping: string(conversionPolicies.assetForwardMapping, "report.conversion.policies.assetForwardMapping"),
+      orientationParity: string(conversionPolicies.orientationParity, "report.conversion.policies.orientationParity"),
       engineFacingProof: string(conversionPolicies.engineFacingProof, "report.conversion.policies.engineFacingProof"),
       uvRuntimeProof: string(conversionPolicies.uvRuntimeProof, "report.conversion.policies.uvRuntimeProof"),
     },

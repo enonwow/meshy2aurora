@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { StudioHeader } from "./app/StudioHeader";
 import { StudioShell } from "./app/StudioShell";
 import { getUnlockedWorkflowSteps, getWorkflowStepStatus } from "./app/studioSelectors";
@@ -13,6 +13,10 @@ import { WORKFLOW_STEPS } from "./app/workflow";
 import { WorkflowStepper } from "./app/WorkflowStepper";
 import { BuildStep, type BuildStepState } from "./features/build/BuildStep";
 import { ArtifactDownloads } from "./features/downloads/ArtifactDownloads";
+import {
+  loadLatestWorkerArtifactsV1,
+  persistLatestWorkerArtifactsV1,
+} from "./features/downloads/artifactStore";
 import {
   buildStageForPipelineStage,
   projectBuildFailure,
@@ -29,11 +33,36 @@ import {
 import type { InspectValidationCheck } from "./features/inspect/ValidationPanel";
 import { AuroraReadbackViewport } from "./features/preview/AuroraReadbackViewport";
 import { SourceViewport } from "./features/preview/SourceViewport";
+import { MaterialSeparationEditor } from "./features/material-separation/MaterialSeparationEditor";
+import {
+  isCurrentModelMaterialResponseV1,
+  parseModelComponentInspectionV1,
+  parseModelMaterialResolutionV1,
+  type ModelComponentInspectionBootstrapV1,
+  type ModelMaterialResolutionV1,
+  type ModelMaterialSeparationDocumentV1,
+} from "./features/material-separation/types";
+import {
+  prepareModelTexturePayloadsV1,
+  type ModelTextureEditorSnapshotV1,
+  type PreparedModelTexturePayloadsV1,
+} from "./features/material-separation/texturePayloads";
 import { PlaceableAuthoringEditor } from "./features/placeable-authoring/PlaceableAuthoringEditor";
 import {
   parsePlaceableAuthoringBootstrap,
+  parseResolvedPlaceableCollision,
   type PlaceableAuthoringBootstrap,
+  type ResolvedPlaceableCollision,
 } from "./features/placeable-authoring/types";
+import {
+  parsePlaceableTextureAuthoringBootstrap,
+  parseResolvedPlaceableTextures,
+  preparePlaceableTexturePayloadsV1,
+  type PlaceableTextureAuthoringBootstrap,
+  type PlaceableTextureEditorSnapshot,
+  type PreparedPlaceableTexturePayloads,
+  type ResolvedPlaceableTextures,
+} from "./features/placeable-authoring/textureTypes";
 import type { BinaryMdlInspectionReport, ModelPartRef } from "./features/preview/types";
 import {
   ReviewModelDetails,
@@ -61,6 +90,7 @@ import {
 import {
   InputsPanel,
   type CreatureConversionProfileV1,
+  type CreatureSourceForwardV1,
   type SkinAccessoryStabilizationModeV1,
   type TileAuthoringOptions,
 } from "./features/source/InputsPanel";
@@ -70,8 +100,10 @@ import { hasFullNativeDirectCreatureProfileV1 } from "./features/source/directCr
 import { LocalMeshyBridgeClient, type MeshyArtifactProvenance, type MeshyBridgeClient } from "./features/meshy/bridge";
 import { isMeshyLabEnabled } from "./features/meshy/feature";
 import { MeshyLab } from "./features/meshy/MeshyLab";
+import { validateMeshyImportedSourceV1 } from "./features/meshy/validateMeshyImport";
 import { isTileTargetEnabled } from "./features/tile/feature";
 import { StudioWorkerClient } from "./worker/client";
+import type { WorkerArtifact } from "./worker/types";
 
 const requestId = () => crypto.randomUUID();
 
@@ -144,17 +176,81 @@ const STUDIO_PLACEABLE_IDENTITY = {
   objectTag: "m2a_s1_ritual_pedestal",
   displayName: "Meshy Ritual Pedestal",
 } as const;
+
+interface StudioPlaceableIdentityV1 {
+  readonly moduleResref: string;
+  readonly moduleFileName: string;
+  readonly moduleDisplayName: string;
+  readonly areaResref: string;
+  readonly areaName: string;
+  readonly hakResref: string;
+  readonly hakFileName: string;
+  readonly modelResref: string;
+  readonly textureResref: string;
+  readonly blueprintResref: string;
+  readonly objectTag: string;
+  readonly displayName: string;
+}
+
+async function studioPlaceablePackageIdentity(
+  sourceSha256: string,
+  placeablesTwoDaSha256: string,
+  authoringJson: string,
+  textureAuthoringJson: string,
+  experimentalAggressiveGeometryCleanup: boolean,
+  materialSeparationJson?: string,
+  modelTextureAuthoringJson?: string,
+): Promise<StudioPlaceableIdentityV1> {
+  const identityPayload = new TextEncoder().encode(JSON.stringify({
+    schemaVersion: 1,
+    sourceSha256,
+    placeablesTwoDaSha256,
+    authoring: JSON.parse(authoringJson),
+    textures: JSON.parse(textureAuthoringJson),
+    experimentalAggressiveGeometryCleanup,
+    ...(materialSeparationJson && modelTextureAuthoringJson ? {
+      materialSeparation: JSON.parse(materialSeparationJson),
+      modelTextures: JSON.parse(modelTextureAuthoringJson),
+    } : {}),
+  }));
+  const token = (await sha256ArrayBufferHexV1(identityPayload.buffer)).slice(0, 8);
+  return {
+    moduleResref: `pm${token}m`,
+    moduleFileName: `pm${token}m.mod`,
+    moduleDisplayName: `Meshy2Aurora Placeable ${token}`,
+    areaResref: `pa${token}`,
+    areaName: `Meshy2Aurora Placeable ${token}`,
+    hakResref: `ph${token}`,
+    hakFileName: `ph${token}.hak`,
+    modelResref: `pm${token}`,
+    textureResref: `pt${token}`,
+    blueprintResref: `pu${token}`,
+    objectTag: `m2a_placeable_${token}`,
+    displayName: `Meshy Placeable ${token}`,
+  } as const;
+}
 async function studioCreatureProductIdentity(
   sourceSha256: string,
   appearanceSha256: string,
   animationEventsSha256: string | undefined,
+  sourceForward: CreatureSourceForwardV1,
   textureArtifactCleanup: boolean,
   skinAccessoryStabilizationMode: SkinAccessoryStabilizationModeV1,
   skinAccessorySelectedBoneName: string,
   skinAccessoryComponentBoneOverrides: string,
+  materialSeparationJson?: string,
+  modelTextureAuthoringJson?: string,
 ) {
+  const [materialSeparationSha256, modelTextureAuthoringSha256] =
+    materialSeparationJson && modelTextureAuthoringJson
+      ? await Promise.all([
+          sha256ArrayBufferHexV1(new TextEncoder().encode(materialSeparationJson).buffer),
+          sha256ArrayBufferHexV1(new TextEncoder().encode(modelTextureAuthoringJson).buffer),
+        ])
+      : [undefined, undefined];
   const token = await creatureArtifactIdentityTokenV2({
     profile: "PRODUCT_300K",
+    sourceForward,
     sourceSha256,
     appearanceSha256,
     animationEventsSha256,
@@ -162,6 +258,8 @@ async function studioCreatureProductIdentity(
     skinAccessoryStabilizationMode,
     skinAccessorySelectedBoneName,
     skinAccessoryComponentBoneOverrides,
+    materialSeparationSha256,
+    modelTextureAuthoringSha256,
   });
   return {
     modelResref: `cm${token}`,
@@ -185,6 +283,7 @@ async function studioCreatureExperimentPackageIdentity(
   profile: "EXPERIMENTAL_P100K" | "EXPERIMENTAL_P300K",
   sourceSha256: string,
   appearanceSha256: string,
+  sourceForward: CreatureSourceForwardV1,
   textureArtifactCleanup: boolean,
   skinAccessoryStabilizationMode: SkinAccessoryStabilizationModeV1,
   skinAccessorySelectedBoneName: string,
@@ -192,6 +291,7 @@ async function studioCreatureExperimentPackageIdentity(
 ) {
   const token = await creatureArtifactIdentityTokenV2({
     profile,
+    sourceForward,
     sourceSha256,
     appearanceSha256,
     animationEventsSha256: undefined,
@@ -340,7 +440,11 @@ export function App({
   const [tileOptions, setTileOptions] = useState<TileAuthoringOptions>(DEFAULT_TILE_OPTIONS);
   const [creatureProfile, setCreatureProfile] =
     useState<CreatureConversionProfileV1>("PRODUCT_300K");
+  const [creatureSourceForward, setCreatureSourceForward] =
+    useState<CreatureSourceForwardV1>("POSITIVE_Z");
   const [textureArtifactCleanup, setTextureArtifactCleanup] = useState(false);
+  const [experimentalAggressiveGeometryCleanup, setExperimentalAggressiveGeometryCleanup] =
+    useState(false);
   const [skinAccessoryStabilizationMode, setSkinAccessoryStabilizationMode] =
     useState<SkinAccessoryStabilizationModeV1>("AUTO");
   const [skinAccessorySelectedBoneName, setSkinAccessorySelectedBoneName] =
@@ -348,18 +452,61 @@ export function App({
   const [skinAccessoryComponentBoneOverrides, setSkinAccessoryComponentBoneOverrides] =
     useState("");
   const [placeableAuthoring, setPlaceableAuthoring] = useState<PlaceableAuthoringBootstrap>();
+  const [placeableCollision, setPlaceableCollision] = useState<ResolvedPlaceableCollision>();
+  const [placeableTextureBootstrap, setPlaceableTextureBootstrap] =
+    useState<PlaceableTextureAuthoringBootstrap>();
+  const [placeableTextureSnapshot, setPlaceableTextureSnapshot] =
+    useState<PlaceableTextureEditorSnapshot>();
+  const [placeableResolvedTextures, setPlaceableResolvedTextures] =
+    useState<ResolvedPlaceableTextures>();
+  const [materialSeparationBootstrap, setMaterialSeparationBootstrap] =
+    useState<ModelComponentInspectionBootstrapV1>();
+  const [materialSeparationDocument, setMaterialSeparationDocument] =
+    useState<ModelMaterialSeparationDocumentV1>();
+  const [materialSeparationPreviewDocument, setMaterialSeparationPreviewDocument] =
+    useState<ModelMaterialSeparationDocumentV1>();
+  const [materialSeparationResolution, setMaterialSeparationResolution] =
+    useState<ModelMaterialResolutionV1>();
+  const [materialSeparationResolvedRecipeJson, setMaterialSeparationResolvedRecipeJson] =
+    useState<string>();
+  const [modelTextureSnapshot, setModelTextureSnapshot] =
+    useState<ModelTextureEditorSnapshotV1>();
   const placeableAuthoringRef = useRef<PlaceableAuthoringBootstrap | undefined>(undefined);
+  const placeableTextureSnapshotRef = useRef<PlaceableTextureEditorSnapshot | undefined>(undefined);
+  const modelTextureSnapshotRef = useRef<ModelTextureEditorSnapshotV1 | undefined>(undefined);
   const [reviewViewport, setReviewViewport] = useState<ReviewViewport>("CONVERTED");
   const [selectedReadbackPart, setSelectedReadbackPart] = useState<ModelPartRef>();
   const [debugDrawerMessage, setDebugDrawerMessage] = useState<string>();
   const [showMeshyLab, setShowMeshyLab] = useState(false);
   const [meshyProvenance, setMeshyProvenance] = useState<MeshyArtifactProvenance>();
+  const [recoveredArtifacts, setRecoveredArtifacts] = useState<WorkerArtifact[]>([]);
   const meshyBridgeRef = useRef<MeshyBridgeClient | undefined>(undefined);
 
   if (!meshyBridgeRef.current) meshyBridgeRef.current = meshyBridge ?? new LocalMeshyBridgeClient();
 
   sessionRef.current = session;
   placeableAuthoringRef.current = placeableAuthoring;
+  placeableTextureSnapshotRef.current = placeableTextureSnapshot;
+  modelTextureSnapshotRef.current = modelTextureSnapshot;
+
+  const updatePlaceableTextureSnapshot = useCallback((snapshot: PlaceableTextureEditorSnapshot) => {
+    const previous = placeableTextureSnapshotRef.current;
+    const recipeChanged = JSON.stringify(previous?.document) !== JSON.stringify(snapshot.document);
+    placeableTextureSnapshotRef.current = snapshot;
+    setPlaceableTextureSnapshot(snapshot);
+    if (recipeChanged) {
+      setPlaceableResolvedTextures(undefined);
+      dispatch({ type: "AUTHORING_DOCUMENT_CHANGED" });
+    }
+  }, []);
+
+  const updateModelTextureSnapshot = useCallback((snapshot: ModelTextureEditorSnapshotV1) => {
+    const previous = modelTextureSnapshotRef.current;
+    const changed = JSON.stringify(previous?.document) !== JSON.stringify(snapshot.document);
+    modelTextureSnapshotRef.current = snapshot;
+    setModelTextureSnapshot(snapshot);
+    if (changed && previous) dispatch({ type: "AUTHORING_DOCUMENT_CHANGED" });
+  }, []);
 
   useEffect(() => {
     const worker = new StudioWorkerClient();
@@ -368,6 +515,18 @@ export function App({
       workerRef.current?.dispose();
       workerRef.current = undefined;
     };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void loadLatestWorkerArtifactsV1()
+      .then((artifacts) => { if (active) setRecoveredArtifacts(artifacts); })
+      .catch((error: unknown) => {
+        if (active) setDebugDrawerMessage(
+          `Artifact recovery error: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
+    return () => { active = false; };
   }, []);
 
   const replaceWorker = () => {
@@ -405,6 +564,11 @@ export function App({
           sourceGlb,
           target: session.target,
           creatureProfile: session.target === "CREATURE" ? creatureProfile : undefined,
+          experimentalAggressiveGeometryCleanup:
+            session.target === "PLACEABLE" ? experimentalAggressiveGeometryCleanup : undefined,
+          modelResref: session.target === "PLACEABLE"
+            ? STUDIO_PLACEABLE_IDENTITY.modelResref
+            : undefined,
         },
         [sourceGlb],
       ))
@@ -422,10 +586,27 @@ export function App({
         if (projection.kind === "FAILED") {
           throw new Error(`${projection.failure.code}: ${projection.failure.message}`);
         }
+        const meshyImportError = validateMeshyImportedSourceV1(
+          meshyProvenance,
+          projection.snapshot,
+        );
+        if (meshyImportError) throw new Error(meshyImportError);
         setSourceError(undefined);
         setPlaceableAuthoring(
           response.placeableAuthoringJson
             ? parsePlaceableAuthoringBootstrap(response.placeableAuthoringJson)
+            : undefined,
+        );
+        setPlaceableTextureBootstrap(
+          response.placeableTexturesJson
+            ? parsePlaceableTextureAuthoringBootstrap(response.placeableTexturesJson)
+            : undefined,
+        );
+        setPlaceableTextureSnapshot(undefined);
+        setPlaceableResolvedTextures(undefined);
+        setPlaceableCollision(
+          response.placeableCollisionJson
+            ? parseResolvedPlaceableCollision(response.placeableCollisionJson)
             : undefined,
         );
         dispatch({
@@ -452,7 +633,211 @@ export function App({
       });
 
     return () => { cancelled = true; };
-  }, [creatureProfile, session.revision, session.target, sourceFile]);
+  }, [
+    creatureProfile,
+    experimentalAggressiveGeometryCleanup,
+    meshyProvenance,
+    session.revision,
+    session.target,
+    sourceFile,
+  ]);
+
+  useEffect(() => {
+    const sourceSha256 = session.source?.sha256;
+    if (!sourceFile || !sourceSha256) {
+      setMaterialSeparationBootstrap(undefined);
+      setMaterialSeparationDocument(undefined);
+      setMaterialSeparationPreviewDocument(undefined);
+      setMaterialSeparationResolution(undefined);
+      setMaterialSeparationResolvedRecipeJson(undefined);
+      setModelTextureSnapshot(undefined);
+      return;
+    }
+    const worker = workerRef.current;
+    if (!worker) return;
+    let cancelled = false;
+    const sourceStateId = `${session.target}:${sourceSha256}`;
+    setMaterialSeparationBootstrap(undefined);
+    setMaterialSeparationResolution(undefined);
+    setMaterialSeparationResolvedRecipeJson(undefined);
+    setModelTextureSnapshot(undefined);
+    void sourceFile.arrayBuffer()
+      .then((sourceGlb) => worker.request({
+        requestId: requestId(),
+        type: "INSPECT_MODEL_COMPONENTS",
+        sourceGlb,
+        target: session.target,
+        sourceStateId,
+      }, [sourceGlb]))
+      .then((response) => {
+        if (cancelled || !response.ok || response.type !== "MODEL_COMPONENTS_INSPECTED") return;
+        if (response.sourceStateId !== sourceStateId
+          || sessionRef.current.source?.sha256 !== sourceSha256
+          || sessionRef.current.target !== session.target) return;
+        const bootstrap = parseModelComponentInspectionV1(response.inspectionJson);
+        setMaterialSeparationBootstrap(bootstrap);
+        setMaterialSeparationDocument(bootstrap.document);
+        setMaterialSeparationPreviewDocument(bootstrap.document);
+        setSourceError(undefined);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setSourceError(error instanceof Error ? error.message : String(error));
+      });
+    return () => { cancelled = true; };
+  }, [session.source?.sha256, session.target, sourceFile]);
+
+  useEffect(() => {
+    const sourceSha256 = session.source?.sha256;
+    if (!sourceFile || !sourceSha256 || !materialSeparationPreviewDocument) {
+      setMaterialSeparationResolution(undefined);
+      return;
+    }
+    const worker = workerRef.current;
+    if (!worker) return;
+    let cancelled = false;
+    const sourceStateId = `${session.target}:${sourceSha256}`;
+    const documentJson = JSON.stringify(materialSeparationPreviewDocument);
+    const recipeStateId = documentJson;
+    const timer = window.setTimeout(() => {
+      void sourceFile.arrayBuffer()
+        .then((sourceGlb) => worker.request({
+          requestId: requestId(),
+          type: "RESOLVE_MODEL_MATERIALS",
+          sourceGlb,
+          target: session.target,
+          documentJson,
+          sourceStateId,
+          recipeStateId,
+        }, [sourceGlb]))
+        .then((response) => {
+          if (cancelled || !response.ok || response.type !== "MODEL_MATERIALS_RESOLVED") return;
+          if (!isCurrentModelMaterialResponseV1({
+            responseSourceStateId: response.sourceStateId,
+            responseRecipeStateId: response.recipeStateId,
+            expectedSourceStateId: sourceStateId,
+            expectedRecipeStateId: recipeStateId,
+            currentSourceSha256: sessionRef.current.source?.sha256,
+            expectedSourceSha256: sourceSha256,
+            currentTarget: sessionRef.current.target,
+            expectedTarget: session.target,
+          })) return;
+          setMaterialSeparationResolution(parseModelMaterialResolutionV1(response.resolutionJson));
+          setMaterialSeparationResolvedRecipeJson(documentJson);
+          setSourceError(undefined);
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) setSourceError(error instanceof Error ? error.message : String(error));
+        });
+    }, 120);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [materialSeparationPreviewDocument, session.source?.sha256, session.target, sourceFile]);
+
+  useEffect(() => {
+    if (!sourceFile || session.target !== "PLACEABLE" || !placeableAuthoring) {
+      setPlaceableCollision(undefined);
+      return;
+    }
+    const worker = workerRef.current;
+    if (!worker) return;
+    let cancelled = false;
+    const authoringJson = JSON.stringify(placeableAuthoring.document);
+    setPlaceableCollision(undefined);
+    const timer = window.setTimeout(() => {
+      void sourceFile.arrayBuffer()
+        .then((sourceGlb) => worker.request({
+          requestId: requestId(),
+          type: "RESOLVE_PLACEABLE_COLLISION",
+          sourceGlb,
+          modelResref: STUDIO_PLACEABLE_IDENTITY.modelResref,
+          authoringJson,
+          experimentalAggressiveGeometryCleanup,
+        }, [sourceGlb]))
+        .then((response) => {
+          if (cancelled || !response.ok) return;
+          if (response.type !== "PLACEABLE_COLLISION_RESOLVED") return;
+          if (JSON.stringify(placeableAuthoringRef.current?.document) !== authoringJson) return;
+          setPlaceableCollision(parseResolvedPlaceableCollision(response.collisionJson));
+          setSourceError(undefined);
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) setSourceError(error instanceof Error ? error.message : String(error));
+        });
+    }, 120);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [experimentalAggressiveGeometryCleanup, placeableAuthoring, session.target, sourceFile]);
+
+  useEffect(() => {
+    const placeablesSha256 = session.appearanceInspection?.value.sourceSha256;
+    const sourceSha256 = session.source?.sha256;
+    if (
+      !sourceFile
+      || session.target !== "PLACEABLE"
+      || !placeableAuthoring
+      || !placeableTextureSnapshot
+      || !placeablesSha256
+      || !sourceSha256
+    ) {
+      setPlaceableResolvedTextures(undefined);
+      return;
+    }
+    const worker = workerRef.current;
+    if (!worker) return;
+    let cancelled = false;
+    const recipeJson = JSON.stringify(placeableTextureSnapshot.document);
+    setPlaceableResolvedTextures(undefined);
+    const timer = window.setTimeout(() => {
+      void Promise.all([
+        sourceFile.arrayBuffer(),
+        preparePlaceableTexturePayloadsV1(placeableTextureSnapshot),
+        studioPlaceablePackageIdentity(
+          sourceSha256,
+          placeablesSha256,
+          JSON.stringify(placeableAuthoring.document),
+          recipeJson,
+          experimentalAggressiveGeometryCleanup,
+        ),
+      ])
+        .then(([sourceGlb, prepared, identity]) => worker.request({
+          requestId: requestId(),
+          type: "RESOLVE_PLACEABLE_TEXTURES",
+          sourceGlb,
+          baseTextureResref: identity.textureResref,
+          geometryAuthoringJson: JSON.stringify(placeableAuthoring.document),
+          textureAuthoringJson: prepared.authoringJson,
+          texturePayloadBlob: prepared.payloadBlob,
+          texturePayloadDescriptorsJson: prepared.descriptorsJson,
+          experimentalAggressiveGeometryCleanup,
+        }, [sourceGlb, prepared.payloadBlob]))
+        .then((response) => {
+          if (cancelled || !response.ok || response.type !== "PLACEABLE_TEXTURES_RESOLVED") return;
+          if (JSON.stringify(placeableTextureSnapshotRef.current?.document) !== recipeJson) return;
+          setPlaceableResolvedTextures(parseResolvedPlaceableTextures(response.texturesJson));
+          setSourceError(undefined);
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) setSourceError(error instanceof Error ? error.message : String(error));
+        });
+    }, 120);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    experimentalAggressiveGeometryCleanup,
+    placeableAuthoring,
+    placeableTextureSnapshot?.document,
+    placeableTextureSnapshot?.files,
+    session.appearanceInspection,
+    session.source,
+    session.target,
+    sourceFile,
+  ]);
 
   const appearanceFile = session.appearance?.file;
   useEffect(() => {
@@ -520,6 +905,9 @@ export function App({
     setSourceError(undefined);
     setAnimationEventsError(undefined);
     setPlaceableAuthoring(undefined);
+    setPlaceableTextureBootstrap(undefined);
+    setPlaceableTextureSnapshot(undefined);
+    setPlaceableResolvedTextures(undefined);
     setMeshyProvenance(provenance);
     dispatch({ type: "SOURCE_SELECTED", file });
   };
@@ -530,6 +918,9 @@ export function App({
     setAppearanceError(undefined);
     setAnimationEventsError(undefined);
     setPlaceableAuthoring(undefined);
+    setPlaceableTextureBootstrap(undefined);
+    setPlaceableTextureSnapshot(undefined);
+    setPlaceableResolvedTextures(undefined);
     if (target !== "CREATURE") setCreatureProfile("PRODUCT_300K");
     dispatch({ type: "TARGET_SELECTED", target });
   };
@@ -541,9 +932,25 @@ export function App({
     dispatch({ type: "AUTHORING_OPTIONS_CHANGED" });
   };
 
+  const updateCreatureSourceForward = (sourceForward: CreatureSourceForwardV1) => {
+    invalidateRunningBuild();
+    setCreatureSourceForward(sourceForward);
+    dispatch({ type: "AUTHORING_OPTIONS_CHANGED" });
+  };
+
   const updateTextureArtifactCleanup = (enabled: boolean) => {
     invalidateRunningBuild();
     setTextureArtifactCleanup(enabled);
+    dispatch({ type: "AUTHORING_OPTIONS_CHANGED" });
+  };
+
+  const updateExperimentalAggressiveGeometryCleanup = (enabled: boolean) => {
+    invalidateRunningBuild();
+    setExperimentalAggressiveGeometryCleanup(enabled);
+    setPlaceableAuthoring(undefined);
+    setPlaceableTextureBootstrap(undefined);
+    setPlaceableTextureSnapshot(undefined);
+    setPlaceableResolvedTextures(undefined);
     dispatch({ type: "AUTHORING_OPTIONS_CHANGED" });
   };
 
@@ -581,6 +988,9 @@ export function App({
     setAppearanceError(undefined);
     setAnimationEventsError(undefined);
     setPlaceableAuthoring(undefined);
+    setPlaceableTextureBootstrap(undefined);
+    setPlaceableTextureSnapshot(undefined);
+    setPlaceableResolvedTextures(undefined);
     dispatch({ type: "APPEARANCE_SELECTED", file });
   };
 
@@ -599,6 +1009,9 @@ export function App({
     setSourceError(undefined);
     setMeshyProvenance(undefined);
     setPlaceableAuthoring(undefined);
+    setPlaceableTextureBootstrap(undefined);
+    setPlaceableTextureSnapshot(undefined);
+    setPlaceableResolvedTextures(undefined);
     dispatch({ type: "SOURCE_REMOVED" });
   };
 
@@ -624,11 +1037,16 @@ export function App({
     setDebugDrawerMessage(undefined);
     setTileOptions(DEFAULT_TILE_OPTIONS);
     setCreatureProfile("PRODUCT_300K");
+    setCreatureSourceForward("POSITIVE_Z");
     setTextureArtifactCleanup(false);
+    setExperimentalAggressiveGeometryCleanup(false);
     setSkinAccessoryStabilizationMode("AUTO");
     setSkinAccessorySelectedBoneName("");
     setSkinAccessoryComponentBoneOverrides("");
     setPlaceableAuthoring(undefined);
+    setPlaceableTextureBootstrap(undefined);
+    setPlaceableTextureSnapshot(undefined);
+    setPlaceableResolvedTextures(undefined);
     dispatch({ type: "START_NEW_CONVERSION" });
   };
 
@@ -658,6 +1076,57 @@ export function App({
     const animationEvents = current.animationEvents?.file;
     const tileLane = current.target === "TILE";
     const placeableLane = current.target === "PLACEABLE";
+    const materialSeparationJson = materialSeparationDocument
+      ? JSON.stringify(materialSeparationDocument)
+      : undefined;
+    const materialSeparationActive = Boolean(
+      materialSeparationDocument
+      && (materialSeparationDocument.materials.length || materialSeparationDocument.assignments.length),
+    );
+    let modelTextureAuthoringJson = materialSeparationActive
+      && materialSeparationResolution
+      && materialSeparationResolvedRecipeJson === materialSeparationJson
+      ? JSON.stringify(materialSeparationResolution.textureAuthoring)
+      : undefined;
+    if (materialSeparationActive && !modelTextureAuthoringJson) {
+      setDebugDrawerMessage(
+        "MODEL-MATERIALS-NOT-RESOLVED: Wait for the applied Material Separation recipe to resolve before build.",
+      );
+      return;
+    }
+    if (
+      placeableLane
+      && placeableAuthoringRef.current?.document.collision.mode === "AUTO_RECTANGLE"
+      && !placeableAuthoringRef.current.document.elements.some(
+      (element) => !element.deleted && element.source !== null && element.flags.includeInCollision,
+      )
+    ) {
+      setDebugDrawerMessage(
+        "PLACEABLE-COLLISION-EMPTY: Include at least one non-deleted source element in collision before build.",
+      );
+      return;
+    }
+    if (placeableLane && placeableAuthoringRef.current?.document.collision.mode === "CUSTOM_POLYGON") {
+      const vertexCount = placeableAuthoringRef.current.document.collision.vertices.length;
+      if (vertexCount < 3 || vertexCount > 64) {
+        setDebugDrawerMessage(
+          `PLACEABLE-PWK-CUSTOM-POLYGON-INVALID: Custom collision requires 3–64 vertices; received ${vertexCount}.`,
+        );
+        return;
+      }
+    }
+    if (placeableLane && placeableAuthoringRef.current && !placeableCollision) {
+      setDebugDrawerMessage(
+        "PLACEABLE-COLLISION-NOT-RESOLVED: Wait for the current collision preview to resolve without errors before build.",
+      );
+      return;
+    }
+    if (placeableLane && (!placeableTextureSnapshotRef.current || !placeableResolvedTextures)) {
+      setDebugDrawerMessage(
+        "PLACEABLE-TEXTURES-NOT-RESOLVED: Wait for all material textures to resolve without errors before build.",
+      );
+      return;
+    }
     const placeableAuthoringJson = placeableLane && placeableAuthoringRef.current
       ? JSON.stringify(placeableAuthoringRef.current.document)
       : undefined;
@@ -703,6 +1172,24 @@ export function App({
       module: { moduleResref: "", areaResref: "", hakResref: "" },
       creatureResref: "",
     };
+    let placeableIdentity: StudioPlaceableIdentityV1 = STUDIO_PLACEABLE_IDENTITY;
+    let preparedPlaceableTextures: PreparedPlaceableTexturePayloads | undefined;
+    let preparedModelTextures: PreparedModelTexturePayloadsV1 | undefined;
+    if (materialSeparationActive) {
+      const snapshot = modelTextureSnapshotRef.current;
+      if (!snapshot || snapshot.document.separationSha256
+        !== materialSeparationResolution?.textureAuthoring.separationSha256) {
+        setDebugDrawerMessage("MODEL-TEXTURE-AUTHORING-NOT-READY");
+        return;
+      }
+      try {
+        preparedModelTextures = await prepareModelTexturePayloadsV1(snapshot);
+        modelTextureAuthoringJson = preparedModelTextures.authoringJson;
+      } catch (error) {
+        setDebugDrawerMessage(error instanceof Error ? error.message : String(error));
+        return;
+      }
+    }
     if (!tileLane && !placeableLane) {
       const appearanceSha256 = current.appearanceInspection?.value.sourceSha256;
       if (!appearanceSha256) {
@@ -724,6 +1211,7 @@ export function App({
             p300kLane ? "EXPERIMENTAL_P300K" : "EXPERIMENTAL_P100K",
             current.sourceInspection.value.source.sha256,
             appearanceSha256,
+            creatureSourceForward,
             textureArtifactCleanup,
             skinAccessoryStabilizationMode,
             skinAccessorySelectedBoneName,
@@ -739,14 +1227,40 @@ export function App({
             current.sourceInspection.value.source.sha256,
             appearanceSha256,
             animationEventsSha256,
+            creatureSourceForward,
             textureArtifactCleanup,
             skinAccessoryStabilizationMode,
             skinAccessorySelectedBoneName,
             skinAccessoryComponentBoneOverrides,
+            materialSeparationActive ? materialSeparationJson : undefined,
+            materialSeparationActive ? modelTextureAuthoringJson : undefined,
           );
           creatureIdentityJson = JSON.stringify(identity);
           productDemoIdentity = studioCreatureProductDemoIdentity(identity);
         }
+      } catch (error) {
+        setDebugDrawerMessage(error instanceof Error ? error.message : String(error));
+        return;
+      }
+    }
+    if (placeableLane) {
+      const snapshot = placeableTextureSnapshotRef.current;
+      const placeablesSha256 = current.appearanceInspection?.value.sourceSha256;
+      if (!snapshot || !placeablesSha256 || !placeableAuthoringJson) {
+        setDebugDrawerMessage("PLACEABLE-TEXTURE-IDENTITY-INPUT-MISSING");
+        return;
+      }
+      try {
+        preparedPlaceableTextures = await preparePlaceableTexturePayloadsV1(snapshot);
+        placeableIdentity = await studioPlaceablePackageIdentity(
+          current.sourceInspection.value.source.sha256,
+          placeablesSha256,
+          placeableAuthoringJson,
+          preparedPlaceableTextures.authoringJson,
+          experimentalAggressiveGeometryCleanup,
+          materialSeparationActive ? materialSeparationJson : undefined,
+          modelTextureAuthoringJson,
+        );
       } catch (error) {
         setDebugDrawerMessage(error instanceof Error ? error.message : String(error));
         return;
@@ -772,6 +1286,8 @@ export function App({
     ])
       .then(([sourceGlb, appearanceTwoDa]) => {
         if (workerRef.current !== worker) return undefined;
+        const modelTexturePayloadBlob = preparedModelTextures?.payloadBlob ?? new ArrayBuffer(0);
+        const modelTexturePayloadDescriptorsJson = preparedModelTextures?.descriptorsJson ?? "[]";
         if (tileLane) {
           return worker.request(
             {
@@ -785,25 +1301,48 @@ export function App({
                 terrainName: tileOptions.terrainName.trim(),
                 surface: tileOptions.surface,
               }),
+              ...(materialSeparationActive && materialSeparationJson && modelTextureAuthoringJson ? {
+                materialSeparationJson,
+                modelTextureAuthoringJson,
+                modelTexturePayloadBlob,
+                modelTexturePayloadDescriptorsJson,
+              } : {}),
             },
-            [sourceGlb],
+            [sourceGlb, ...(materialSeparationActive ? [modelTexturePayloadBlob] : [])],
           );
         }
         if (!appearanceTwoDa) throw new Error("The selected conversion target requires a base 2DA");
         return placeableLane
-          ? worker.request(
+          ? (() => {
+              return worker.request(
               {
                 requestId: buildRequestId,
                 type: "BUILD_PLACEABLE_PACKAGE",
                 sourceGlb,
                 placeablesTwoDa: appearanceTwoDa,
-                identityJson: JSON.stringify(STUDIO_PLACEABLE_IDENTITY),
+                identityJson: JSON.stringify(placeableIdentity),
                 placementJson: JSON.stringify(STUDIO_PLACEABLE_PLACEMENT),
                 paletteId: 7,
                 authoringJson: placeableAuthoringJson,
+                textureAuthoringJson: preparedPlaceableTextures?.authoringJson,
+                texturePayloadBlob: preparedPlaceableTextures?.payloadBlob,
+                texturePayloadDescriptorsJson: preparedPlaceableTextures?.descriptorsJson,
+                ...(materialSeparationActive && materialSeparationJson && modelTextureAuthoringJson ? {
+                  materialSeparationJson,
+                  modelTextureAuthoringJson,
+                  modelTexturePayloadBlob,
+                  modelTexturePayloadDescriptorsJson,
+                } : {}),
+                experimentalAggressiveGeometryCleanup,
               },
-              [sourceGlb, appearanceTwoDa],
-            )
+              [
+                sourceGlb,
+                appearanceTwoDa,
+                ...(preparedPlaceableTextures ? [preparedPlaceableTextures.payloadBlob] : []),
+                ...(materialSeparationActive ? [modelTexturePayloadBlob] : []),
+              ],
+            );
+            })()
           : packageLane === "H1_SKINNED_FULL_42_EVENTS"
             ? worker.request(
                 {
@@ -817,6 +1356,7 @@ export function App({
                   demoModuleIdentityJson: JSON.stringify(productDemoIdentity.module),
                   demoCreatureResref: productDemoIdentity.creatureResref,
                   textureArtifactCleanup,
+                  sourceForward: creatureSourceForward,
                   skinAccessoryStabilization: {
                     mode: skinAccessoryStabilizationMode,
                     ...(skinAccessoryStabilizationMode === "SELECT_BONE"
@@ -831,8 +1371,18 @@ export function App({
                         }
                       : {}),
                   },
+                  ...(materialSeparationActive && materialSeparationJson && modelTextureAuthoringJson ? {
+                    materialSeparationJson,
+                    modelTextureAuthoringJson,
+                    modelTexturePayloadBlob,
+                    modelTexturePayloadDescriptorsJson,
+                  } : {}),
                 },
-                [sourceGlb, appearanceTwoDa],
+                [
+                  sourceGlb,
+                  appearanceTwoDa,
+                  ...(materialSeparationActive ? [modelTexturePayloadBlob] : []),
+                ],
               )
             : packageLane === "H1_SKINNED_FULL_42"
               ? worker.request(
@@ -846,6 +1396,7 @@ export function App({
                     demoModuleIdentityJson: JSON.stringify(productDemoIdentity.module),
                     demoCreatureResref: productDemoIdentity.creatureResref,
                     textureArtifactCleanup,
+                    sourceForward: creatureSourceForward,
                     skinAccessoryStabilization: {
                       mode: skinAccessoryStabilizationMode,
                       ...(skinAccessoryStabilizationMode === "SELECT_BONE"
@@ -860,8 +1411,18 @@ export function App({
                           }
                         : {}),
                     },
+                    ...(materialSeparationActive && materialSeparationJson && modelTextureAuthoringJson ? {
+                      materialSeparationJson,
+                      modelTextureAuthoringJson,
+                      modelTexturePayloadBlob,
+                      modelTexturePayloadDescriptorsJson,
+                    } : {}),
                   },
-                  [sourceGlb, appearanceTwoDa],
+                  [
+                    sourceGlb,
+                    appearanceTwoDa,
+                    ...(materialSeparationActive ? [modelTexturePayloadBlob] : []),
+                  ],
                 )
             : packageLane === "SKINNED_PROCEDURAL_HUMANOID_42"
               || packageLane === "SKINNED_PROCEDURAL_HUMANOID_P100K_EXPERIMENT"
@@ -877,6 +1438,7 @@ export function App({
                     demoModuleIdentityJson: JSON.stringify(productDemoIdentity.module),
                     demoCreatureResref: productDemoIdentity.creatureResref,
                     textureArtifactCleanup,
+                    sourceForward: creatureSourceForward,
                     skinAccessoryStabilization: {
                       mode: skinAccessoryStabilizationMode,
                       ...(skinAccessoryStabilizationMode === "SELECT_BONE"
@@ -891,8 +1453,23 @@ export function App({
                           }
                         : {}),
                     },
+                    ...(packageLane === "SKINNED_PROCEDURAL_HUMANOID_42"
+                      && materialSeparationActive
+                      && materialSeparationJson
+                      && modelTextureAuthoringJson ? {
+                        materialSeparationJson,
+                        modelTextureAuthoringJson,
+                        modelTexturePayloadBlob,
+                        modelTexturePayloadDescriptorsJson,
+                      } : {}),
                   },
-                  [sourceGlb, appearanceTwoDa],
+                  [
+                    sourceGlb,
+                    appearanceTwoDa,
+                    ...(packageLane === "SKINNED_PROCEDURAL_HUMANOID_42" && materialSeparationActive
+                      ? [modelTexturePayloadBlob]
+                      : []),
+                  ],
                 )
             : worker.request(
                 {
@@ -922,6 +1499,12 @@ export function App({
         ) {
           throw new Error("Unexpected package build response");
         }
+        setRecoveredArtifacts(response.artifacts);
+        void persistLatestWorkerArtifactsV1(response.artifacts).catch((error: unknown) => {
+          setDebugDrawerMessage(
+            `Artifact persistence error: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
         const readbackJson = response.type === "TILE_PACKAGE_BUILT"
           ? response.modelReadbackJson
           : response.readbackJson;
@@ -1073,7 +1656,9 @@ export function App({
       tileTargetEnabled={tileTargetEnabled}
       tileOptions={tileOptions}
       creatureProfile={creatureProfile}
+      creatureSourceForward={creatureSourceForward}
       textureArtifactCleanup={textureArtifactCleanup}
+      experimentalAggressiveGeometryCleanup={experimentalAggressiveGeometryCleanup}
       skinAccessoryStabilizationMode={skinAccessoryStabilizationMode}
       skinAccessorySelectedBoneName={skinAccessorySelectedBoneName}
       skinAccessoryComponentBoneOverrides={skinAccessoryComponentBoneOverrides}
@@ -1089,7 +1674,11 @@ export function App({
       onSelectAppearance={selectAppearance}
       onSelectAnimationEvents={selectAnimationEvents}
       onCreatureProfileChange={updateCreatureProfile}
+      onCreatureSourceForwardChange={updateCreatureSourceForward}
       onTextureArtifactCleanupChange={updateTextureArtifactCleanup}
+      onExperimentalAggressiveGeometryCleanupChange={
+        updateExperimentalAggressiveGeometryCleanup
+      }
       onSkinAccessoryStabilizationModeChange={updateSkinAccessoryStabilizationMode}
       onSkinAccessorySelectedBoneNameChange={updateSkinAccessorySelectedBoneName}
       onSkinAccessoryComponentBoneOverridesChange={updateSkinAccessoryComponentBoneOverrides}
@@ -1101,6 +1690,29 @@ export function App({
       onTileOptionsChange={updateTileOptions}
     />
   );
+
+  const placeableEditor = session.source?.sha256
+    && session.target === "PLACEABLE"
+    && placeableAuthoring
+    && placeableTextureBootstrap ? (
+      <PlaceableAuthoringEditor
+        key={`${session.source.sha256}:${placeableAuthoring.document.sourceSha256}`}
+        file={session.source.file}
+        sourceSha256={session.source.sha256}
+        bootstrap={placeableAuthoring}
+        resolvedCollision={placeableCollision}
+        textureBootstrap={placeableTextureBootstrap}
+        resolvedTextures={placeableResolvedTextures}
+        onDocumentChange={(document) => {
+          setPlaceableCollision(undefined);
+          setPlaceableResolvedTextures(undefined);
+          setPlaceableAuthoring((current) => current ? { ...current, document } : current);
+          dispatch({ type: "AUTHORING_DOCUMENT_CHANGED" });
+        }}
+        onTextureSnapshotChange={updatePlaceableTextureSnapshot}
+        onError={(message) => setSourceError(message || undefined)}
+      />
+    ) : null;
 
   const requirements = (
     <aside className="panel requirements-panel" aria-labelledby="input-requirements-heading">
@@ -1161,12 +1773,15 @@ export function App({
           }}
         />
       ) : session.currentStep === "SOURCE" ? (
-        <SourceStep
+        <>
+          <SourceStep
           target={session.target}
           tileTargetEnabled={tileTargetEnabled}
           tileOptions={tileOptions}
           creatureProfile={creatureProfile}
+          creatureSourceForward={creatureSourceForward}
           textureArtifactCleanup={textureArtifactCleanup}
+          experimentalAggressiveGeometryCleanup={experimentalAggressiveGeometryCleanup}
           skinAccessoryStabilizationMode={skinAccessoryStabilizationMode}
           skinAccessorySelectedBoneName={skinAccessorySelectedBoneName}
           skinAccessoryComponentBoneOverrides={skinAccessoryComponentBoneOverrides}
@@ -1182,7 +1797,11 @@ export function App({
           onSelectAppearance={selectAppearance}
           onSelectAnimationEvents={selectAnimationEvents}
           onCreatureProfileChange={updateCreatureProfile}
+          onCreatureSourceForwardChange={updateCreatureSourceForward}
           onTextureArtifactCleanupChange={updateTextureArtifactCleanup}
+          onExperimentalAggressiveGeometryCleanupChange={
+            updateExperimentalAggressiveGeometryCleanup
+          }
           onSkinAccessoryStabilizationModeChange={updateSkinAccessoryStabilizationMode}
           onSkinAccessorySelectedBoneNameChange={updateSkinAccessorySelectedBoneName}
           onSkinAccessoryComponentBoneOverridesChange={updateSkinAccessoryComponentBoneOverrides}
@@ -1195,31 +1814,46 @@ export function App({
           onContinue={() => dispatch({ type: "CONTINUE_TO_INSPECT" })}
           onOpenMeshyLab={meshyLabEnabled ? () => setShowMeshyLab(true) : undefined}
           meshyProvenance={meshyProvenance}
-        />
+          />
+          {recoveredArtifacts.length ? (
+            <ArtifactDownloads
+              artifacts={recoveredArtifacts}
+              recovered
+              onError={(message) => setDebugDrawerMessage(`Artifact download error: ${message}`)}
+            />
+          ) : null}
+        </>
       ) : session.currentStep === "INSPECT" ? (
         <InspectStep
           viewport={session.source && session.source.sha256 ? (
-            session.target === "PLACEABLE" && placeableAuthoring ? (
-              <PlaceableAuthoringEditor
-                key={`${session.source.sha256}:${placeableAuthoring.document.sourceSha256}`}
-                file={session.source.file}
-                sourceSha256={session.source.sha256}
-                bootstrap={placeableAuthoring}
-                onDocumentChange={(document) => {
-                  setPlaceableAuthoring((current) => current
-                    ? { ...current, document }
-                    : current);
-                  dispatch({ type: "AUTHORING_DOCUMENT_CHANGED" });
-                }}
-                onError={setSourceError}
-              />
+            materialSeparationBootstrap ? (
+              <div className="material-separation-stack">
+                <MaterialSeparationEditor
+                  key={`${session.source.sha256}:${session.target}`}
+                  file={session.source.file}
+                  sourceSha256={session.source.sha256}
+                  bootstrap={materialSeparationBootstrap}
+                  resolution={materialSeparationResolution}
+                  sourceForward={session.target === "CREATURE" ? creatureSourceForward : undefined}
+                  onPreviewDocumentChange={setMaterialSeparationPreviewDocument}
+                  onTextureSnapshotChange={updateModelTextureSnapshot}
+                  onApply={(document) => {
+                    setMaterialSeparationDocument(document);
+                    setMaterialSeparationPreviewDocument(document);
+                    dispatch({ type: "AUTHORING_DOCUMENT_CHANGED" });
+                  }}
+                  onError={(message) => setSourceError(message || undefined)}
+                />
+                {placeableEditor}
+              </div>
             ) : (
-              <SourceViewport
+              placeableEditor ?? <SourceViewport
                 input={{
                   provenance: "SOURCE",
                   file: session.source.file,
                   sourceSha256: session.source.sha256,
                 }}
+                sourceForward={session.target === "CREATURE" ? creatureSourceForward : undefined}
                 onError={setSourceError}
               />
             )
@@ -1238,7 +1872,7 @@ export function App({
             sourceInspection?.conversionEligible === true
             && (session.target === "TILE" || Boolean(appearanceInspection))
           }
-          wideViewport={session.target === "PLACEABLE" && Boolean(placeableAuthoring)}
+          wideViewport={Boolean(materialSeparationBootstrap) || (session.target === "PLACEABLE" && Boolean(placeableAuthoring))}
           onBack={() => dispatch({ type: "NAVIGATE", step: "SOURCE" })}
           onContinue={() => dispatch({ type: "CONTINUE_TO_BUILD" })}
         />
@@ -1305,6 +1939,7 @@ export function App({
                   file: session.source.file,
                   sourceSha256: session.source.sha256,
                 }}
+                sourceForward={creatureSourceForward}
                 onError={setSourceError}
               />
             )}

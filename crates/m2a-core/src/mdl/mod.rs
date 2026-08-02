@@ -33,11 +33,15 @@ pub use skin_deformation::{
 };
 pub(crate) use types::AnimationReport;
 pub use types::{AabbEntryReport, AabbTreeReport, InspectionReport, NodeReport, ParserLimits};
-pub(crate) use write_binary_mdl::write_binary_mdl_with_animations_exact_face_planes_v1;
 pub use write_binary_mdl::{
     write_binary_mdl, write_binary_mdl_with_animations,
     write_binary_mdl_with_animations_and_supermodel, write_binary_mdl_with_supermodel,
     write_binary_tile_mdl_v1,
+};
+pub(crate) use write_binary_mdl::{
+    write_binary_mdl_exact_face_planes_v1,
+    write_binary_mdl_exact_face_planes_with_readback_limits_v1,
+    write_binary_mdl_with_animations_exact_face_planes_v1,
 };
 pub use writer_types::{
     BinaryMdlArtifactV1, M4SemanticProjectionV1, MdlAabbNodeLayoutV1, MdlAnimationClipLayoutV1,

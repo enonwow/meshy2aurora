@@ -2,7 +2,8 @@ use m2a_core::{
     AuroraMaterialSourceBindingV1, AuroraModelIrV1, AuroraModelNodeV1, AuroraModelSegmentV1,
     AuroraSegmentDeformationV1,
     placeable_collision::{
-        PLACEABLE_PWK_NONWALK_SURFACE_ID_V1, inspect_ascii_placeable_walkmesh_v1,
+        PLACEABLE_PWK_NONWALK_SURFACE_ID_V1, custom_placeable_walkmesh_ir_v1,
+        inspect_ascii_placeable_walkmesh_v1, write_ascii_placeable_walkmesh_v1,
         write_placeable_walkmesh_v1,
     },
 };
@@ -180,4 +181,62 @@ endnode\r\n";
     let error = inspect_ascii_placeable_walkmesh_v1(invalid)
         .expect_err("out-of-range face vertex must be rejected");
     assert_eq!(error.code, "PLACEABLE-PWK-FACE-INDEX-INVALID");
+}
+
+#[test]
+fn custom_concave_polygon_is_canonical_deterministic_and_preserves_the_notch() {
+    let clockwise = vec![
+        [-2.0, -1.0],
+        [-2.0, 1.0],
+        [0.0, 0.0],
+        [2.0, 1.0],
+        [2.0, -1.0],
+    ];
+    let mut reversed = clockwise.clone();
+    reversed.reverse();
+
+    let first =
+        custom_placeable_walkmesh_ir_v1("m2a_custom", &clockwise).expect("resolve custom polygon");
+    let second = custom_placeable_walkmesh_ir_v1("m2a_custom", &reversed)
+        .expect("canonicalize reversed polygon");
+    assert_eq!(first, second);
+    assert_eq!(first.vertices.len(), 5);
+    assert_eq!(first.faces.len(), 3);
+    assert_eq!(first.bounds_min, [-2.0, -1.0]);
+    assert_eq!(first.bounds_max, [2.0, 1.0]);
+    assert!(first.faces.iter().all(|face| face.surface_id == 7));
+
+    let first_payload = write_ascii_placeable_walkmesh_v1(&first)
+        .expect("write custom PWK")
+        .payload;
+    let second_payload = write_ascii_placeable_walkmesh_v1(&second)
+        .expect("write repeated custom PWK")
+        .payload;
+    assert_eq!(first_payload, second_payload);
+    let readback = inspect_ascii_placeable_walkmesh_v1(&first_payload).expect("read custom PWK");
+    assert_eq!(readback.mesh_nodes[0].vertices.len(), 5);
+    assert_eq!(readback.mesh_nodes[0].faces.len(), 3);
+}
+
+#[test]
+fn custom_polygon_rejects_self_intersection_duplicates_and_vertex_limit() {
+    let crossing = [[-1.0, -1.0], [1.0, 1.0], [-1.0, 1.0], [1.0, -1.0]];
+    let error = custom_placeable_walkmesh_ir_v1("m2a_custom", &crossing)
+        .expect_err("self-intersection must fail closed");
+    assert_eq!(error.code, "PLACEABLE-PWK-POLYGON-SELF-INTERSECTION");
+
+    let duplicate = [[-1.0, -1.0], [1.0, -1.0], [1.0, -1.0], [-1.0, 1.0]];
+    let error = custom_placeable_walkmesh_ir_v1("m2a_custom", &duplicate)
+        .expect_err("duplicate consecutive vertices must fail closed");
+    assert_eq!(error.code, "PLACEABLE-PWK-POLYGON-VERTEX-DUPLICATE");
+
+    let too_many = (0..65)
+        .map(|index| {
+            let angle = index as f32 * std::f32::consts::TAU / 65.0;
+            [angle.cos(), angle.sin()]
+        })
+        .collect::<Vec<_>>();
+    let error = custom_placeable_walkmesh_ir_v1("m2a_custom", &too_many)
+        .expect_err("custom polygon limit must fail closed");
+    assert_eq!(error.code, "PLACEABLE-PWK-POLYGON-VERTEX-COUNT");
 }

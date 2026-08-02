@@ -25,13 +25,20 @@ const element = (id: string, nodeId: number) => ({
 });
 
 const document: PlaceableAuthoringDocument = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   sourceSha256: "a".repeat(64),
   elements: [element("node-0", 0), element("node-1", 1)],
+  collision: {
+    schemaVersion: 1,
+    mode: "AUTO_RECTANGLE",
+    coordinateSpace: "GLTF_SOURCE_XZ_METERS",
+    paddingMeters: 0,
+    vertices: [],
+  },
 };
 
 const bootstrap: PlaceableAuthoringBootstrap = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   document,
   inspection: {
     schemaVersion: 1,
@@ -152,5 +159,27 @@ describe("placeable authoring reducer", () => {
     expect(changed.transform.scale).toEqual([-2, 3, 4]);
     expect(changed.flags.includeInCollision).toBe(false);
     expect(changed.flags.castShadow).toBe(false);
+  });
+
+  it("authors a custom collision polygon as one undoable document change", () => {
+    let state = createPlaceableAuthoringEditorState(document);
+    state = placeableAuthoringReducer(state, {
+      type: "SET_COLLISION_MODE",
+      mode: "CUSTOM_POLYGON",
+      seedVertices: [[-1, -1], [1, -1], [1, 1], [-1, 1]],
+    });
+    state = placeableAuthoringReducer(state, {
+      type: "MOVE_COLLISION_VERTEX",
+      index: 2,
+      vertex: [0.25, 0.5],
+    });
+    expect(state.present.collision).toMatchObject({
+      mode: "CUSTOM_POLYGON",
+      paddingMeters: 0,
+      vertices: [[-1, -1], [1, -1], [0.25, 0.5], [-1, 1]],
+    });
+    expect(state.past).toHaveLength(2);
+    state = placeableAuthoringReducer(state, { type: "UNDO" });
+    expect(state.present.collision.vertices[2]).toEqual([1, 1]);
   });
 });

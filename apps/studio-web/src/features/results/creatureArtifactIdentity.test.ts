@@ -6,6 +6,7 @@ import {
 
 const base = {
   profile: "PRODUCT_300K" as const,
+  sourceForward: "POSITIVE_Z" as const,
   sourceSha256: "a".repeat(64),
   appearanceSha256: "b".repeat(64),
   textureArtifactCleanup: false,
@@ -40,6 +41,7 @@ describe("creatureArtifactIdentityTokenV2", () => {
         skinAccessoryComponentBoneOverrides: "0:1=Spine02",
       },
       { ...base, profile: "EXPERIMENTAL_P300K" as const },
+      { ...base, sourceForward: "NEGATIVE_X" as const },
     ];
     for (const variant of variants) {
       expect(await creatureArtifactIdentityTokenV2(variant)).not.toBe(baseline);

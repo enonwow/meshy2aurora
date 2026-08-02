@@ -12,6 +12,12 @@ repository files never receive the API key or Meshy signed URLs.
 The implementation is at `tools/meshy-local-bridge/index.mjs`; its security
 and protocol tests are `tools/meshy-local-bridge/bridge.test.mjs`.
 
+The current fail-closed contract is protocol `2` with build capability
+`M2A_MESHY_BRIDGE_2026_07_31_V2`. Studio verifies the complete capability set,
+including named multi-animation merge and run recovery, before it permits a
+paid operation. A running protocol-1 process must be restarted; source files
+changing on disk do not hot-reload the Node Bridge.
+
 ## Start locally
 
 PowerShell example for local Studio development:
@@ -42,7 +48,24 @@ supervisor. The exact-origin `POST /v1/bridge/restart` route causes only that
 Bridge process to exit; Compose recreates it and emits a fresh one-use pairing
 code in the local container terminal/log. The UI never receives or displays
 that code. Restarting clears local Bridge sessions and does not cancel a Meshy
-task that is already running.
+task that is already running. READY runs are recovered from the local state
+journal described below.
+
+### Durable local run recovery
+
+Set `MESHY_BRIDGE_STATE_DIRECTORY` to a Bridge-owned local directory. Docker
+Compose uses `/state` backed by the named `meshy_bridge_state` volume. Before a
+run becomes `READY`, the Bridge writes its redacted metadata, merged artifact
+and raw action GLBs separately. It never writes the API key or signed Meshy
+URLs. On restart it loads only complete entries whose recorded byte length and
+SHA-256 still match every stored payload; corrupt or incomplete entries remain
+unavailable.
+
+The authenticated `GET /v1/runs` endpoint returns the safe run inventory.
+Studio remembers the exact active run ID in session storage and, after a
+reload, recovers that run or the newest available READY run. Built MOD/HAK and
+related downloads are stored separately in browser IndexedDB and are exposed
+again only after exact length and SHA-256 verification.
 
 ### Same-origin automatic pairing in Docker Compose
 
@@ -85,7 +108,10 @@ requested NWN name and records `artifactKind=MERGED_ANIMATION_GLTF` plus every
 raw action identity in provenance. Studio imports that one merged file into
 Source; the user must not manually choose the first action GLB. The merge fails
 closed when node, skin, POSITION, JOINTS, WEIGHTS or index topology differs. A
-signed download failure is a transport-lane failure, not permission to create
+second inspection of the final merged GLB must return the exact requested clip
+count, order and names. Source then requires the imported bytes to match the
+run-bound SHA-256 and animation provenance before Build can start. A signed
+download failure is a transport-lane failure, not permission to create
 another model or rig:
 `resume-animation-lineage.mjs` first binds to the exact recorded model and rig
 task IDs, reuses already completed animation tasks, and creates only missing
@@ -146,6 +172,19 @@ $env:MESHY_REAL_E2E_PROFILE = "S1-static-prop/v1"
 $env:MESHY_REAL_E2E_PROMPT = "A weathered stone lantern, isolated game asset"
 $env:MESHY_REAL_E2E_GEOMETRY_TARGET = "AURORA_PROOF"
 $env:MESHY_REAL_E2E_OUTPUT_PATH = ".\\sample-3d\\<asset-id>\\source.glb"
+node tools/meshy-local-bridge/real-e2e.mjs
+```
+
+For an exact single PNG/JPEG Image-to-3D input, set
+`MESHY_REAL_E2E_IMAGE_PATH` instead of `MESHY_REAL_E2E_PROMPT`. The runner
+hashes and forwards those exact image bytes as one data URI. It disables image
+enhancement, baked-light removal and Meshy auto-size so that the source image is
+not preprocessed and downstream product authoring remains responsible for game
+scale:
+
+```powershell
+$env:MESHY_REAL_E2E_IMAGE_PATH = "C:\path\to\reference.png"
+$env:MESHY_REAL_E2E_TARGET_POLYCOUNT = "100000"
 node tools/meshy-local-bridge/real-e2e.mjs
 ```
 

@@ -349,6 +349,13 @@ fn procedural_humanoid_profile_authors_a_distinct_owned_42_state_set_from_h2_idl
             value: "R".to_owned()
         }
     );
+    assert_eq!(
+        appearance_cell("MODELTYPE"),
+        &TwoDaCellValueV1::Text {
+            value: "L".to_owned()
+        },
+        "full-native humanoids must use the weapon-capable limited-creature model type",
+    );
     assert_eq!(appearance_cell("PORTRAIT"), &TwoDaCellValueV1::Null);
     assert_eq!(
         appearance_cell("SIZECATEGORY"),
@@ -612,6 +619,28 @@ fn procedural_product_and_fixture_module_are_two_separate_build_steps() {
         &product_identity,
     )
     .expect("production creature resources");
+
+    let appearance_inspection =
+        inspect_two_da_v2(&product.appearance_two_da, &TwoDaLimitsV1::default())
+            .expect("product appearance inspection");
+    let appearance_row = read_two_da_row_v2(
+        &product.appearance_two_da,
+        product.report.appearance.appended_row_index as u32,
+        &TwoDaLimitsV1::default(),
+    )
+    .expect("product appearance row");
+    let model_type_index = appearance_inspection
+        .columns
+        .iter()
+        .position(|column| column.eq_ignore_ascii_case("MODELTYPE"))
+        .expect("MODELTYPE column");
+    assert_eq!(
+        appearance_row.cells[model_type_index],
+        TwoDaCellValueV1::Text {
+            value: "L".to_owned(),
+        },
+        "product creatures must allow native equipped weapons",
+    );
 
     assert_eq!(product.report.schema_version, 3);
     assert_eq!(product.report.identity, product_identity);
@@ -1044,6 +1073,24 @@ fn automatic_h1_v2_accepts_exactly_named_full_source_and_rejects_idle_only_sourc
         DirectCreatureAnimationProfileV1::FullNative42ExplicitV1,
     )
     .expect("automatic H1 V2 must preserve exact native source animation names");
+    assert_eq!(
+        full.report.conversion.policies.basis_status,
+        "CREATURE_BASIS_V2_RESOLVED"
+    );
+    assert_eq!(
+        full.report.conversion.policies.asset_forward_mapping,
+        "GLTF_POSITIVE_Z_TO_AURORA_NEGATIVE_Y"
+    );
+    assert_eq!(
+        full.report.conversion.policies.engine_facing_proof,
+        "OWNER_PROOF_REQUIRED"
+    );
+    assert_eq!(full.report.conversion.transform.determinant, 1.0);
+    assert_eq!(
+        full.report.conversion.geometry.source_triangle_count,
+        full.report.conversion.geometry.output_triangle_count,
+        "Creature Basis V2 must not add or remove geometry"
+    );
     let readback = inspect_binary_mdl(&full.model).expect("automatic full H1 readback");
     assert_eq!(
         readback

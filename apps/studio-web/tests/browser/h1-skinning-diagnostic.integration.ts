@@ -40,6 +40,7 @@ describe("real Meshy H2 procedural humanoid skin readback", () => {
       appearanceTwoDa,
       packageLane: "SKINNED_PROCEDURAL_HUMANOID_42",
       textureArtifactCleanup: false,
+      sourceForward: "POSITIVE_Z",
       identityJson: JSON.stringify({
         modelResref: "m2a_stcrmdl2",
         textureResref: "m2a_stcrtex2",

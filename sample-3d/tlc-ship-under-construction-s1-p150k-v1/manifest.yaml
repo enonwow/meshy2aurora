@@ -1,0 +1,76 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: tlc-ship-under-construction-s1-p150k-v1
+provider: meshy
+local_only: true
+qualification: ready-for-owner-proof
+files:
+  - role: generated-source-pending-qualification
+    path: source.glb
+    size_bytes: 11498076
+    sha256: 61baad674f9509e9e7f1718aa415dc12411b099ffedaea6484f68ceb3bf10278
+  - role: owner-selected-multi-image-concept-top
+    path: concept-top.jpg
+    size_bytes: 92240
+    sha256: 0530e60430361ecccf935fb2cbbc8000ee56dbdab8bfba907f48c0515c20c441
+  - role: owner-selected-multi-image-concept-stern
+    path: concept-stern.jpg
+    size_bytes: 80375
+    sha256: f907e64bf290291a3f808625ddf0b657229bc4899ca16446d6e35541de8e3fa4
+  - role: owner-selected-multi-image-concept-side-three-quarter
+    path: concept-side-three-quarter.jpg
+    size_bytes: 106540
+    sha256: 5ac81677a92eea70c83e870227761f89941295d8b9c78912ad43e334aba7ec48
+  - role: owner-selected-multi-image-concept-bow
+    path: concept-bow.jpg
+    size_bytes: 77718
+    sha256: a03ed01fa916f51f7abc927c5d918a919a72c9bf097f246bfab0a247f92640ae
+  - role: canonical-meshy-generated-source
+    path: source.glb
+    size_bytes: 11498076
+    sha256: 61baad674f9509e9e7f1718aa415dc12411b099ffedaea6484f68ceb3bf10278
+  - role: meshy-task-and-credit-provenance
+    path: meshy-run-provenance.json
+    size_bytes: 2393
+    sha256: e23bd24e5cd4b077d9799120bc0b270990c00475879377c1c407267bd3dfb2c4
+provenance_note: owner-authorized new The Last City ship-under-construction asset; distinct from the existing wooden-sailboat proof lineage
+generation_result:
+  status: succeeded
+  exact_local_bridge_run_id: 51a32abd-9fe9-46de-ba15-1c8bddd0c689
+  exact_model_task_id: 019fb9aa-379a-7024-9e10-8418206ac9b7
+  spent_credits: 30
+  generated_second_model: false
+  canonical_source_triangle_count: 152574
+  canonical_source_material_count: 1
+  canonical_source_texture_count: 1
+  manual_mesh_or_texture_edits: false
+owner_proof_candidate:
+  status: ready_for_owner_proof
+  module_file: m2a_tlcs1_mod.mod
+  module_display_name: The Last City - Ship Under Construction Demo
+  area_name: The Last City Shipyard Construction Demo
+  hak_file: m2a_tlcs1_hak.hak
+  model_resref: m2a_tlcs1_mdl
+  texture_resref: m2a_tlcs1_tex
+  blueprint_resref: m2a_tlcs1_utp
+  object_tag: m2a_tlcs1_building_ship
+  appearance_row: 16500
+  proof_output: proof-output/tlc-ship-under-construction-placeable-v1-20260731
+  owner_visual_result: not_tested
+generation_plan:
+  date: 2026-07-31
+  source_mode: multi-image-to-3d
+  input_count: 4
+  profile: S1-static-prop/v1
+  ai_model: meshy-6
+  should_remesh: true
+  topology: triangle
+  target_polycount: 150000
+  should_texture: true
+  texture_resolution: 2k
+  enable_pbr: false
+  image_enhancement: false
+  remove_lighting: true
+  target_format: glb
+  moderation: true
+  owner_credit_cap: 30
+  module_context: The Last City

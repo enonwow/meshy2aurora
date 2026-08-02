@@ -61,6 +61,7 @@ services:
       # API keys and manual pairing codes never reach the browser.
       MESHY_BRIDGE_AUTOMATIC_PAIRING: "1"
       MESHY_BRIDGE_PORT: "43119"
+      MESHY_BRIDGE_STATE_DIRECTORY: "/state"
     ports:
       - "127.0.0.1:43119:43119"
     restart: unless-stopped
@@ -68,9 +69,11 @@ services:
       - no-new-privileges:true
     volumes:
       - .:/workspace:ro
+      - meshy_bridge_state:/state
 
 volumes:
   studio_node_modules:
   cargo_registry:
   cargo_git:
   rust_target:
+  meshy_bridge_state:
