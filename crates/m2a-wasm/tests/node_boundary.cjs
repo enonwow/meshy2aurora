@@ -58,7 +58,7 @@ const HAK_BYTE_LENGTH = 265;
 const HAK_SHA256 =
   "494862f6a12f91d5a269519d0579a05ace5bb50fd8f72b5711fcae7445444477";
 const M7_READY_BATCH_JSON_SHA256 =
-  "ee04ebfcdbb3e1265913de8f88d3c05f9277d18c7d0c75bdbcecc8139046c808";
+  "b7905695b1873d9b858bb1430c77a5cb10fb6f1e82672ffc7067b9dc9ffcefc2";
 
 const tgaImage = JSON.stringify({
   schemaVersion: 1,
@@ -359,8 +359,185 @@ try {
   }
 
   const humanoid = readFileSync(
-    path.join(generatedOutputDirectory, "generated/source-owned.glb"),
+    path.join(generatedOutputDirectory, "generated/source.glb"),
   );
+  const humanoidBeforeAnimationLibrary = Buffer.from(humanoid);
+  const transferCompatibilityJson = wasm.inspectAnimationTransferCompatibilityV1(
+    humanoid,
+    humanoid,
+  );
+  const transferCompatibility = JSON.parse(transferCompatibilityJson);
+  assert.equal(transferCompatibility.status, "EXACT_COPY");
+  assert.deepEqual(transferCompatibility.allowedModes, [
+    "EXACT_RIG_COPY_V1",
+    "SAME_HIERARCHY_RETARGET_V1",
+  ]);
+  const transferOptionsJson = JSON.stringify({
+    mode: "SAME_HIERARCHY_RETARGET_V1",
+    clipId: "node-owned-transfer",
+    outputName: "node_transfer",
+  });
+  const transferredAnimationJson = wasm.retargetAnimationClipBetweenModelsV1(
+    humanoid,
+    humanoid,
+    "owned-linear-pause",
+    transferOptionsJson,
+  );
+  assert.equal(
+    wasm.retargetAnimationClipBetweenModelsV1(
+      humanoid,
+      humanoid,
+      "owned-linear-pause",
+      transferOptionsJson,
+    ),
+    transferredAnimationJson,
+  );
+  const transferredAnimation = JSON.parse(transferredAnimationJson);
+  assert.equal(transferredAnimation.requiredDocumentSchemaVersion, 3);
+  assert.equal(transferredAnimation.clip.source.kind, "RETARGETED_MODEL_COPY");
+  assert.equal(
+    transferredAnimation.clip.source.retarget.mode,
+    "SAME_HIERARCHY_RETARGET_V1",
+  );
+  const generatedSourcePath = path.join(
+    generatedOutputDirectory,
+    "generated/source.glb",
+  );
+  const nativeTransfer = spawnSync(
+    cargo,
+    [
+      "run",
+      "--quiet",
+      "--manifest-path",
+      path.join(repoRoot, "Cargo.toml"),
+      "-p",
+      "m2a-core",
+      "--example",
+      "animation_transfer",
+      "--",
+      "--target",
+      generatedSourcePath,
+      "--donor",
+      generatedSourcePath,
+      "--clip",
+      "owned-linear-pause",
+      "--clip-id",
+      "node-owned-transfer",
+      "--output-name",
+      "node_transfer",
+      "--mode",
+      "SAME_HIERARCHY_RETARGET_V1",
+    ],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  if (nativeTransfer.status !== 0) {
+    process.stderr.write(nativeTransfer.stderr);
+    throw new Error(`native animation transfer failed: ${nativeTransfer.status}`);
+  }
+  assert.equal(nativeTransfer.stdout.trim(), transferredAnimationJson);
+  assert.deepEqual(humanoid, humanoidBeforeAnimationLibrary);
+  const animationLibraryFixtureRoot = path.join(
+    repoRoot,
+    "apps/studio-web/tests/fixtures/animation-library/presets/m2a_fixture_pulse",
+  );
+  const animationLibraryManifestJson = readFileSync(
+    path.join(animationLibraryFixtureRoot, "manifest.json"),
+    "utf8",
+  );
+  const animationLibraryPayloadJson = readFileSync(
+    path.join(animationLibraryFixtureRoot, "animation.json"),
+    "utf8",
+  );
+  const animationLibraryCatalogSha256 = "a".repeat(64);
+
+  const validatedAnimationPreset = JSON.parse(wasm.validateAnimationPresetV1(
+    animationLibraryManifestJson,
+    animationLibraryPayloadJson,
+    animationLibraryCatalogSha256,
+  ));
+  assert.equal(validatedAnimationPreset.status, "READY");
+  assert.equal(validatedAnimationPreset.diagnostics.length, 0);
+
+  const compatibleAnimationPreset = JSON.parse(
+    wasm.inspectAnimationPresetCompatibilityV1(
+      animationLibraryManifestJson,
+      animationLibraryPayloadJson,
+      animationLibraryCatalogSha256,
+      humanoid,
+    ),
+  );
+  assert.equal(compatibleAnimationPreset.status, "COMPATIBLE");
+  assert.equal(
+    compatibleAnimationPreset.actualRigSignatureSha256,
+    "6c6f7eb5c3094c2cce427addf14125ca38208e2ce30f6f0b2c9ab96d749ab199",
+  );
+
+  const instantiatedAnimationPreset = JSON.parse(
+    wasm.instantiateAnimationPresetV1(
+      animationLibraryManifestJson,
+      animationLibraryPayloadJson,
+      animationLibraryCatalogSha256,
+      humanoid,
+      "library-fixture-copy",
+      "m2a_fixcopy",
+    ),
+  );
+  assert.equal(instantiatedAnimationPreset.status, "READY");
+  assert.equal(instantiatedAnimationPreset.clip.status, "DRAFT");
+  assert.equal(instantiatedAnimationPreset.clip.source.kind, "LIBRARY_PRESET_COPY");
+  assert.equal(
+    instantiatedAnimationPreset.clip.source.libraryPreset.catalogSha256,
+    animationLibraryCatalogSha256,
+  );
+
+  const contributionClip = {
+    ...instantiatedAnimationPreset.clip,
+    status: "VALID",
+  };
+  const exportedAnimationContribution = JSON.parse(
+    wasm.exportAnimationContributionV1(
+      JSON.stringify(contributionClip),
+      humanoid,
+      JSON.stringify({
+        presetId: "m2a_fixture_export",
+        presetVersion: 1,
+        outputName: "m2a_fixexport",
+        label: "Fixture export",
+        summary: "Portable Worker and WASM contribution fixture.",
+        authors: [{ name: "Meshy2Aurora tests" }],
+        license: "LicenseRef-Meshy2Aurora-Project-Generated",
+        tags: ["humanoid", "one-shot", "utility"],
+        playback: "ONE_SHOT",
+        rigProfile: "M2A_SYNTHETIC_M6_STRICT_V1",
+        validationStatus: "PIPELINE_VERIFIED",
+      }),
+    ),
+  );
+  assert.equal(exportedAnimationContribution.status, "READY");
+  assert.equal(exportedAnimationContribution.diagnostics.length, 0);
+  const contributionText = JSON.stringify(exportedAnimationContribution.contribution);
+  assert.ok(!contributionText.includes(readyFixtureDirectory));
+  assert.ok(!contributionText.includes("sourceRevision"));
+  assert.ok(!contributionText.toLowerCase().includes(".glb"));
+
+  const staleAnimationManifest = JSON.parse(animationLibraryManifestJson);
+  staleAnimationManifest.animationSha256 = "0".repeat(64);
+  const staleAnimationPreset = JSON.parse(wasm.validateAnimationPresetV1(
+    JSON.stringify(staleAnimationManifest),
+    animationLibraryPayloadJson,
+    animationLibraryCatalogSha256,
+  ));
+  assert.equal(staleAnimationPreset.status, "BLOCKED");
+  assert.equal(staleAnimationPreset.preset, undefined);
+  assert.ok(staleAnimationPreset.diagnostics.some(
+    ({ code }) => code === "M2A-ANIMATION-LIBRARY-ASSET-HASH",
+  ));
+  assert.deepEqual(humanoid, humanoidBeforeAnimationLibrary);
+
   const staticGlb = withoutRigAndAnimations(humanoid);
   const appearance = readFileSync(appearancePath);
   const sourceIdentity = (bytes) => ({

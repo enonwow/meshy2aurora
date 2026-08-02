@@ -1,0 +1,4 @@
+/animation-library/ @enonwow
+/contracts/community-animation-* @enonwow
+/crates/m2a-core/src/animation_library.rs @enonwow
+/scripts/*community-animation* @enonwow

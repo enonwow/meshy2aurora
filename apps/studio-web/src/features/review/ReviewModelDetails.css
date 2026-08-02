@@ -7,6 +7,16 @@
 .review-model__viewport-tabs button { padding: 12px 10px 10px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-muted); cursor: pointer; }
 .review-model__viewport-tabs button[aria-selected="true"] { border-color: var(--accent); color: var(--text); }
 .review-model__viewport { min-height: 300px; background: #09131c; }
+.review-model__held-weapon { display: grid; gap: 10px; padding: 14px; border-top: 1px solid var(--border); background: rgb(52 211 153 / 4%); }
+.review-model__held-weapon > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.review-model__held-weapon h3,
+.review-model__held-weapon p { margin: 0; }
+.review-model__held-weapon > header strong[data-status="pass"] { color: var(--success); }
+.review-model__held-weapon p { color: var(--text-muted); font-size: .76rem; }
+.review-model__held-weapon dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.review-model__held-weapon dl > div { display: grid; gap: 3px; padding: 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-soft); }
+.review-model__held-weapon dt { color: var(--text-muted); font-size: .68rem; }
+.review-model__held-weapon dd { margin: 0; font-size: .76rem; }
 .review-model__animation-mapping { display: grid; gap: 12px; padding: 14px; border-top: 1px solid var(--border); }
 .review-model__animation-mapping h3,
 .review-model__animation-mapping h4,
@@ -56,6 +66,7 @@
   .review-model__header { align-items: flex-start; flex-direction: column; }
   .review-model__evidence { grid-template-columns: 1fr; }
   .review-model__animation-evidence > div { grid-template-columns: 1fr; }
+  .review-model__held-weapon dl { grid-template-columns: 1fr; }
   .review-model__animation-evidence > header,
   .review-model__first-mismatch { align-items: flex-start; flex-direction: column; }
   .review-model__evidence article { border-right: 0; border-bottom: 1px solid var(--border); }

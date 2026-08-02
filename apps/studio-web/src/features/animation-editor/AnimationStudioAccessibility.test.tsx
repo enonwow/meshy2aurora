@@ -177,7 +177,6 @@ describe("Animation Studio accessibility", () => {
           <AnimationMappingModeSwitch value={mode} onChange={setMode} />
           <NewAnimationMenu
             onCreateBlank={vi.fn()}
-            onCreateProcedural={vi.fn()}
           />
           <AnimationBoneTree
             nodes={rig}
@@ -215,8 +214,8 @@ describe("Animation Studio accessibility", () => {
     );
     expect(document.activeElement).toBe(menuItems[0]);
     await key(menuItems[0]!, { key: "ArrowDown" });
-    expect(document.activeElement).toBe(menuItems[1]);
-    await key(menuItems[1]!, { key: "Escape" });
+    expect(document.activeElement).toBe(menuItems[0]);
+    await key(menuItems[0]!, { key: "Escape" });
     expect(document.activeElement).toBe(menuTrigger);
 
     await act(async () => {
@@ -253,7 +252,6 @@ describe("Animation Studio accessibility", () => {
         selectedId="source:hidden-by-custom-filter"
         onSelect={vi.fn()}
         onCreateBlank={vi.fn()}
-        onCreateProcedural={vi.fn()}
         onEditCopy={vi.fn()}
         onDuplicate={vi.fn()}
       />
@@ -267,9 +265,9 @@ describe("Animation Studio accessibility", () => {
     const tabs = Array.from(
       container.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
     );
-    expect(tabs.map(({ tabIndex }) => tabIndex)).toEqual([-1, 0]);
-    tabs[1]!.focus();
-    await key(tabs[1]!, { key: "ArrowLeft" });
+    expect(tabs.map(({ tabIndex }) => tabIndex)).toEqual([-1, -1, -1, 0]);
+    tabs[3]!.focus();
+    await key(tabs[3]!, { key: "Home" });
     expect(document.activeElement).toBe(tabs[0]);
     expect(tabs[0]!.getAttribute("aria-selected")).toBe("true");
     const sourceOption = required<HTMLButtonElement>(

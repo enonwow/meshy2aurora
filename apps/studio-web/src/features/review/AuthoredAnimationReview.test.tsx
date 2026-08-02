@@ -151,6 +151,19 @@ function evidenceFixture(): CanonicalAnimationStudioEvidenceV1 {
     authoredClipOutputNames: ["owned_wave", "owned_loop", "owned_end"],
     authoredEventCount: 0,
     customAssignmentCount: 2,
+    customRuntimeExposures: [{
+      schemaVersion: 1,
+      customAnimationId: "custom-one",
+      status: "BASE42_ROUTED",
+      libraryOutputClipNames: ["Wave one-shot"],
+      runtimeBaseSlots: ["cpause1"],
+    }, {
+      schemaVersion: 1,
+      customAnimationId: "custom-phased",
+      status: "BASE42_ROUTED",
+      libraryOutputClipNames: ["Combat loop_s", "Combat loop", "Combat loop_e"],
+      runtimeBaseSlots: ["cwalk"],
+    }],
     sourceRevision: "c".repeat(64),
     readbackStatus: "MATCH",
     animationStudioReadback: {
@@ -279,6 +292,12 @@ describe("AuthoredAnimationReview", () => {
         studioFingerprintSha256={"a".repeat(64)}
         reconciliation={reconciliation}
         evidence={evidenceFixture()}
+        animationPlaybackAcceptance={{
+          status: "OWNER_PROOF_REQUIRED",
+          playbackProofStatus: "not_tested",
+          proofCompleteness: "missing",
+          reason: "Owner proof required.",
+        }}
         readback={readbackFixture()}
         onOpenMismatch={openMismatch}
       />,
@@ -287,7 +306,9 @@ describe("AuthoredAnimationReview", () => {
     expect(container.textContent).toContain("Authored animations");
     expect(container.textContent).toContain("Source GLB unchanged");
     expect(container.textContent).toContain("aaaaaaaaaaaa...");
-    expect(container.textContent).toContain("Readback MISMATCH");
+    expect(container.textContent).toContain("Binary readback MISMATCH");
+    expect(container.textContent).toContain("Runtime playback proof");
+    expect(container.textContent).toContain("not_tested");
     expect(container.textContent).toContain("owned_wave");
     expect(container.textContent).toContain("VALID");
     expect(container.textContent).toContain("SOURCE_CLIP_COPY");
@@ -299,8 +320,9 @@ describe("AuthoredAnimationReview", () => {
     expect(container.textContent).toContain("LOOPING PHASED");
     expect(container.textContent).toContain("LOOP: owned_loop");
     expect(container.textContent).toContain("END: owned_end");
+    expect(container.textContent).toContain("Runtime: Base 42 routed via cpause1.");
     expect(container.textContent).toContain("M2A-ANIMATION-READBACK-CLIP-NOT-VALID");
-    expect(container.textContent).toContain("Source → Edited → Binary readback");
+    expect(container.textContent).toContain("Source → Edited → Binary MDL readback");
     expect(container.textContent).toContain("impact@0.500s");
     expect(container.textContent).toContain("Δ [1.000, 0.000, 0.000] · 1.000 m");
 

@@ -25,6 +25,7 @@ export function inventoryAnimationClips(clips: readonly THREE.AnimationClip[]): 
 
 export class AnimationPlaybackRuntime {
   private readonly mixer: THREE.AnimationMixer;
+  private clips: readonly THREE.AnimationClip[];
   private selectedAction?: THREE.AnimationAction;
   private selectedClipIndex: number | null = null;
   private playing = false;
@@ -33,9 +34,24 @@ export class AnimationPlaybackRuntime {
 
   constructor(
     private readonly root: THREE.Object3D,
-    private readonly clips: readonly THREE.AnimationClip[],
+    clips: readonly THREE.AnimationClip[],
   ) {
+    this.clips = clips;
     this.mixer = new THREE.AnimationMixer(root);
+  }
+
+  replaceClips(clips: readonly THREE.AnimationClip[]) {
+    this.mixer.stopAllAction();
+    this.clips.forEach((clip) => this.mixer.uncacheClip(clip));
+    this.clips = clips;
+    this.selectedAction = undefined;
+    this.selectedClipIndex = null;
+    this.playing = false;
+    return this.snapshot();
+  }
+
+  clipsSnapshot() {
+    return this.clips;
   }
 
   selectClip(index: number) {
@@ -48,6 +64,7 @@ export class AnimationPlaybackRuntime {
     this.configureLoop();
     this.selectedAction.reset().play();
     this.selectedAction.paused = !this.playing;
+    this.mixer.update(0);
     return this.snapshot();
   }
 

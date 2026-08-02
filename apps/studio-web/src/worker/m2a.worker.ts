@@ -6,6 +6,7 @@ import init, {
   buildMeshyH1ModelPackageV3,
   buildMeshyH1ModelPackageV4ProjectV1,
   buildMeshyH1ModelPackageV5ProjectV1,
+  buildMeshyH1ModelPackageV6HeldWeaponProjectV1,
   buildMeshyProceduralHumanoidModelPackageV1,
   buildMeshyProceduralHumanoidProductWithOptionsV3,
   buildMeshyProceduralHumanoidP100kExperimentWithOptionsV2,
@@ -21,9 +22,28 @@ import init, {
   inspectM7CorpusIntakeV1Json,
   inspectMeshyStaticPlaceableAuthoringV1,
   inspectEditableAnimationSourceV1,
+  inspectAnimationTransferCompatibilityV1,
+  retargetAnimationClipBetweenModelsV1,
+  inspectHumanoidRetargetCompatibilityV2,
+  retargetAnimationClipHumanoidV2,
+  prepareAnimationTransferBatchV2,
+  buildAnimationSequencePreviewV1,
+  applyAnimationWorkbenchOperationV1,
+  resampleAnimationCurveToLinearV1,
+  bakeAnimationLayersV1,
   validateAnimationStudioDocumentV1,
   materializeAnimationStudioDocumentV1,
   previewAuthoredAnimationClipV1,
+  applyAnimationEditCommandBatchV1,
+  analyzeAnimationMotionQualityV1,
+  applyAnimationAuthoringToolV1,
+  inspectHeldWeaponSourceV1,
+  composeHeldWeaponAttachmentV1,
+  evaluateAnimationPoseParityV1,
+  validateAnimationPresetV1,
+  inspectAnimationPresetCompatibilityV1,
+  instantiateAnimationPresetV1,
+  exportAnimationContributionV1,
   validateM7CorpusManifestV1Json,
   validateCreatureAnimationAuthoringV1,
   resolveCreatureAnimationMappingV1,
@@ -207,6 +227,105 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
       ),
     };
   }
+  if (request.type === "INSPECT_ANIMATION_TRANSFER_COMPATIBILITY") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "ANIMATION_TRANSFER_COMPATIBILITY_INSPECTED",
+      compatibilityJson: inspectAnimationTransferCompatibilityV1(
+        new Uint8Array(request.targetGlb),
+        new Uint8Array(request.donorGlb),
+      ),
+    };
+  }
+  if (request.type === "RETARGET_ANIMATION_MODEL_CLIP") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "ANIMATION_MODEL_CLIP_RETARGETED",
+      resultJson: retargetAnimationClipBetweenModelsV1(
+        new Uint8Array(request.targetGlb),
+        new Uint8Array(request.donorGlb),
+        request.clipName,
+        request.optionsJson,
+      ),
+    };
+  }
+  if (request.type === "INSPECT_HUMANOID_RETARGET_COMPATIBILITY_V2") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "HUMANOID_RETARGET_COMPATIBILITY_V2_INSPECTED",
+      compatibilityJson: inspectHumanoidRetargetCompatibilityV2(
+        new Uint8Array(request.targetGlb),
+        new Uint8Array(request.donorGlb),
+        request.overridesJson,
+        request.manualMappingConfirmed,
+      ),
+    };
+  }
+  if (request.type === "RETARGET_ANIMATION_CLIP_HUMANOID_V2") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "ANIMATION_CLIP_HUMANOID_V2_RETARGETED",
+      resultJson: retargetAnimationClipHumanoidV2(
+        new Uint8Array(request.targetGlb),
+        new Uint8Array(request.donorGlb),
+        request.clipName,
+        request.semanticMapJson,
+        request.clipId,
+        request.outputName,
+      ),
+    };
+  }
+  if (request.type === "PREPARE_ANIMATION_TRANSFER_BATCH_V2") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "ANIMATION_TRANSFER_BATCH_V2_PREPARED",
+      resultJson: prepareAnimationTransferBatchV2(
+        new Uint8Array(request.targetGlb),
+        new Uint8Array(request.donorGlb),
+        request.batchRequestJson,
+      ),
+    };
+  }
+  if (request.type === "BUILD_ANIMATION_SEQUENCE_PREVIEW") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "ANIMATION_SEQUENCE_PREVIEW_BUILT",
+      previewJson: buildAnimationSequencePreviewV1(
+        request.sequenceRequestJson,
+        request.availableClipsJson,
+      ),
+    };
+  }
+  if (request.type === "APPLY_ANIMATION_WORKBENCH_OPERATION_V1") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "ANIMATION_WORKBENCH_OPERATION_V1_APPLIED",
+      resultJson: applyAnimationWorkbenchOperationV1(request.operationJson),
+    };
+  }
+  if (request.type === "RESAMPLE_ANIMATION_CURVE_TO_LINEAR") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "ANIMATION_CURVE_RESAMPLED_TO_LINEAR",
+      reportJson: resampleAnimationCurveToLinearV1(request.curveJson, request.policyJson),
+    };
+  }
+  if (request.type === "BAKE_ANIMATION_LAYERS") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "ANIMATION_LAYERS_BAKED",
+      reportJson: bakeAnimationLayersV1(request.layersJson, request.rigJson),
+    };
+  }
   if (request.type === "VALIDATE_ANIMATION_STUDIO_DOCUMENT") {
     return {
       requestId: request.requestId,
@@ -237,6 +356,120 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
       previewJson: previewAuthoredAnimationClipV1(
         request.animationStudioDocumentJson,
         request.clipId,
+      ),
+    };
+  }
+  if (request.type === "APPLY_ANIMATION_EDIT_COMMAND_BATCH") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "ANIMATION_EDIT_COMMAND_BATCH_APPLIED",
+      resultJson: applyAnimationEditCommandBatchV1(
+        request.animationStudioDocumentJson,
+        request.commandBatchJson,
+        new Uint8Array(request.sourceGlb),
+      ),
+    };
+  }
+  if (request.type === "ANALYZE_ANIMATION_MOTION_QUALITY") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "ANIMATION_MOTION_QUALITY_ANALYZED",
+      reportJson: analyzeAnimationMotionQualityV1(
+        request.authoredClipJson,
+        request.policyJson,
+        request.contextJson,
+        new Uint8Array(request.sourceGlb),
+      ),
+    };
+  }
+  if (request.type === "APPLY_ANIMATION_AUTHORING_TOOL") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "ANIMATION_AUTHORING_TOOL_APPLIED",
+      resultJson: applyAnimationAuthoringToolV1(
+        request.authoredClipJson,
+        request.toolRequestJson,
+        new Uint8Array(request.sourceGlb),
+      ),
+    };
+  }
+  if (request.type === "INSPECT_HELD_WEAPON_SOURCE") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "HELD_WEAPON_SOURCE_INSPECTED",
+      inspectionJson: inspectHeldWeaponSourceV1(
+        request.filename,
+        request.provenance,
+        new Uint8Array(request.weaponGlb),
+      ),
+    };
+  }
+  if (request.type === "EVALUATE_ANIMATION_POSE_PARITY") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "ANIMATION_POSE_PARITY_EVALUATED",
+      reportJson: evaluateAnimationPoseParityV1(
+        request.expectedClipJson,
+        request.actualClipJson,
+        request.policyJson,
+        new Uint8Array(request.sourceGlb),
+      ),
+    };
+  }
+  if (request.type === "VALIDATE_ANIMATION_PRESET") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "ANIMATION_PRESET_VALIDATED",
+      validationJson: validateAnimationPresetV1(
+        request.manifestJson,
+        request.animationJson,
+        request.catalogSha256,
+      ),
+    };
+  }
+  if (request.type === "INSPECT_ANIMATION_PRESET_COMPATIBILITY") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "ANIMATION_PRESET_COMPATIBILITY_INSPECTED",
+      compatibilityJson: inspectAnimationPresetCompatibilityV1(
+        request.manifestJson,
+        request.animationJson,
+        request.catalogSha256,
+        new Uint8Array(request.sourceGlb),
+      ),
+    };
+  }
+  if (request.type === "INSTANTIATE_ANIMATION_PRESET") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "ANIMATION_PRESET_INSTANTIATED",
+      instantiationJson: instantiateAnimationPresetV1(
+        request.manifestJson,
+        request.animationJson,
+        request.catalogSha256,
+        new Uint8Array(request.sourceGlb),
+        request.clipId,
+        request.outputName,
+      ),
+    };
+  }
+  if (request.type === "EXPORT_ANIMATION_CONTRIBUTION") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "ANIMATION_CONTRIBUTION_EXPORTED",
+      contributionJson: exportAnimationContributionV1(
+        request.authoredClipJson,
+        new Uint8Array(request.sourceGlb),
+        request.metadataJson,
       ),
     };
   }
@@ -647,6 +880,28 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
           request.eventAuthoringJson,
         );
       case "H1_SKINNED_FULL_42_EDITED":
+        if (request.heldWeapon) {
+          const attachmentJson = composeHeldWeaponAttachmentV1(
+            new Uint8Array(request.heldWeapon.glb),
+            request.heldWeapon.filename,
+            "LOCAL_FILE",
+            request.heldWeapon.rigJson,
+            request.heldWeapon.primaryHand,
+            request.heldWeapon.targetNodeId,
+            request.heldWeapon.localTransformJson,
+            BigInt(request.heldWeapon.attachmentRevision),
+          );
+          return buildMeshyH1ModelPackageV6HeldWeaponProjectV1(
+            new Uint8Array(request.sourceGlb),
+            new Uint8Array(request.appearanceTwoDa),
+            request.animationAuthoringJson,
+            request.animationStudioDocumentJson,
+            request.projectIdentityJson,
+            new Uint8Array(request.heldWeapon.glb),
+            attachmentJson,
+            request.eventAuthoringJson,
+          );
+        }
         return buildMeshyH1ModelPackageV5ProjectV1(
           new Uint8Array(request.sourceGlb),
           new Uint8Array(request.appearanceTwoDa),

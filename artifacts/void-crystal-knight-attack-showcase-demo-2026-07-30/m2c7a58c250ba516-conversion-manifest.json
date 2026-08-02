@@ -1,0 +1,222 @@
+{
+  "schemaVersion": 1,
+  "status": "M6_MODEL_PACKAGE_MATERIALIZED",
+  "inputGlb": {
+    "byteLength": 9951624,
+    "sha256": "d3d1e18adb652524a5b3459620fab278892859ffb86a7fbb38ac4c542e44d4f7"
+  },
+  "inputAppearanceTwoDa": {
+    "byteLength": 6901349,
+    "sha256": "3dc8505bb5848044659cf44f9fe60e3f7c401db772496c4571ec0fff62a761d6"
+  },
+  "textureSelection": {
+    "materialSlot": 0,
+    "sourceMaterialId": 0,
+    "sourceTextureId": 1,
+    "sourceImageId": 0,
+    "sourceImageIndex": 0,
+    "sourceImageSha256": "f451354d22ceb7c0098fe0fe39982190a4e3e242bf2b878dcdda979da0f06fb8"
+  },
+  "appendedPhysicalRow": 15101,
+  "generatedFiles": [
+    {
+      "relativePath": "generated/source.glb",
+      "byteLength": 9951624,
+      "sha256": "d3d1e18adb652524a5b3459620fab278892859ffb86a7fbb38ac4c542e44d4f7"
+    },
+    {
+      "relativePath": "generated/m2c7a58c250ba516.mdl",
+      "byteLength": 2502788,
+      "sha256": "e899b52bc138d753877f1233754a5e7ad234715410662b65ab7513839e8103bc"
+    },
+    {
+      "relativePath": "generated/m2c7a58c250ba516.tga",
+      "byteLength": 12582956,
+      "sha256": "5101483b93b6eb4e0aa39cc705dcbed9de1a70c1661f85eacffcb58793025e8a"
+    },
+    {
+      "relativePath": "generated/appearance.2da",
+      "byteLength": 6901504,
+      "sha256": "98d39b2b4aeb7373f8eeb1466d6a61419501e4fc88ab912e2f95aa986ac8a480"
+    },
+    {
+      "relativePath": "generated/m2c7a58c250ba516.hak",
+      "byteLength": 21987504,
+      "sha256": "e4f46374d2811631acda5c7dcd7ef6c56973bcb10238f108adb87bae6d24a9db"
+    },
+    {
+      "relativePath": "generated/m2c7a58c250ba516.mod",
+      "byteLength": 15209,
+      "sha256": "97e11b3a635e96e9856bf2151aae77996df5c5dde1ff43633c40d8f87f8af09f"
+    },
+    {
+      "relativePath": "reports/materialization-report.json",
+      "byteLength": 1124675,
+      "sha256": "a9a8e2888f5848ef730b28192909c6c8951c3cb9798e32f1a6db61b569cc89f8"
+    },
+    {
+      "relativePath": "reports/summary.json",
+      "byteLength": 6111,
+      "sha256": "099a6ec580f520143575f940c6e498dc735d994e34be72d7621e9ec40993c40b"
+    }
+  ],
+  "packageManifest": {
+    "schemaVersion": 1,
+    "packageSha256": "e4f46374d2811631acda5c7dcd7ef6c56973bcb10238f108adb87bae6d24a9db",
+    "resources": [
+      {
+        "role": "APPEARANCE_TABLE",
+        "resref": "appearance",
+        "type": 2017,
+        "byteLength": 6901504,
+        "sha256": "98d39b2b4aeb7373f8eeb1466d6a61419501e4fc88ab912e2f95aa986ac8a480",
+        "hakResourceId": 0,
+        "hakPayloadOffset": 256
+      },
+      {
+        "role": "TEXTURE",
+        "resref": "m2c7a58c250ba516",
+        "type": 3,
+        "byteLength": 12582956,
+        "sha256": "5101483b93b6eb4e0aa39cc705dcbed9de1a70c1661f85eacffcb58793025e8a",
+        "hakResourceId": 1,
+        "hakPayloadOffset": 6901760
+      },
+      {
+        "role": "MODEL",
+        "resref": "m2c7a58c250ba516",
+        "type": 2002,
+        "byteLength": 2502788,
+        "sha256": "e899b52bc138d753877f1233754a5e7ad234715410662b65ab7513839e8103bc",
+        "hakResourceId": 2,
+        "hakPayloadOffset": 19484716
+      }
+    ]
+  },
+  "appearancePayloadPolicy": "PRESERVED_AND_APPENDED",
+  "projectIdentity": {
+    "schemaVersion": 1,
+    "projectId": "d744d6c5-3986-45e0-aec8-a952f573b964",
+    "projectName": "Untitled project",
+    "projectRevision": 82
+  },
+  "manifestSelfHashPolicy": "EXCLUDED_TO_AVOID_SELF_REFERENCE",
+  "animationStudioSchemaVersion": 1,
+  "animationStudioFingerprintSha256": "99eb5277493c47480ef0a91d9c4b1f46da6ffa27af36c18b8320e46f4d2a97af",
+  "animationStudioRevision": 65,
+  "creatureAnimationAuthoringSchemaVersion": 2,
+  "creatureAnimationAuthoringFingerprintSha256": "45b6f6af80e83f03b9c5f71691bde7364aa07e8c71dc2bb845f70eebc1ad8c42",
+  "authoredClipCount": 2,
+  "authoredClipIds": [
+    "authored-eff6b4bd-d513-4495-8aef-2e2aabf19308",
+    "authored-532cfbd7-2a14-4614-b262-103f15121996"
+  ],
+  "authoredClipOutputNames": [
+    "vck_cryslash",
+    "vck_showcase"
+  ],
+  "authoredEventCount": 0,
+  "customAssignmentCount": 2,
+  "sourceRevision": "d3d1e18adb652524a5b3459620fab278892859ffb86a7fbb38ac4c542e44d4f7",
+  "readbackStatus": "MATCH",
+  "animationStudioReadback": {
+    "schemaVersion": 1,
+    "studioFingerprint": "99eb5277493c47480ef0a91d9c4b1f46da6ffa27af36c18b8320e46f4d2a97af",
+    "sourceRevision": "d3d1e18adb652524a5b3459620fab278892859ffb86a7fbb38ac4c542e44d4f7",
+    "status": "MATCH",
+    "clips": [
+      {
+        "authoredClipId": "authored-532cfbd7-2a14-4614-b262-103f15121996",
+        "outputClipName": "cpause1",
+        "materializedFingerprint": "160bd0d8e0150fca1cc67948272896d5c8313c79d792446806ce21bc0345c9b4"
+      },
+      {
+        "authoredClipId": "authored-532cfbd7-2a14-4614-b262-103f15121996",
+        "outputClipName": "vck_showcase",
+        "materializedFingerprint": "765887a97740bd4bb72f55dc57a80a0b863a3ac8dbfec0ac6c6d5be48a1c767a"
+      },
+      {
+        "authoredClipId": "authored-eff6b4bd-d513-4495-8aef-2e2aabf19308",
+        "outputClipName": "ca1slashl",
+        "materializedFingerprint": "bc501a976aa38da572adf41a0e10a68bdcfb972b0cf833d9f7aac28ffa924e86"
+      },
+      {
+        "authoredClipId": "authored-eff6b4bd-d513-4495-8aef-2e2aabf19308",
+        "outputClipName": "vck_cryslash",
+        "materializedFingerprint": "eb10d5ffdc32d4c14f1a77976928189f599eb85456e604773632b72bb93cd5d0"
+      }
+    ],
+    "diagnostics": []
+  },
+  "sourceGlbUnchanged": true,
+  "authoredClips": [
+    {
+      "id": "authored-eff6b4bd-d513-4495-8aef-2e2aabf19308",
+      "outputName": "vck_cryslash",
+      "kind": "MOTION",
+      "status": "VALID",
+      "revision": 60,
+      "source": {
+        "kind": "PROCEDURAL_TEMPLATE",
+        "sourceRevision": "d3d1e18adb652524a5b3459620fab278892859ffb86a7fbb38ac4c542e44d4f7",
+        "sourceClipName": null,
+        "sourceClipFingerprint": null,
+        "proceduralTemplate": "ROOT_TRANSLATION_PULSE"
+      },
+      "keyframeCount": 68,
+      "eventCount": 0,
+      "usages": [
+        {
+          "authoredClipId": "authored-eff6b4bd-d513-4495-8aef-2e2aabf19308",
+          "outputClipName": "ca1slashl",
+          "usageKind": "BASE_SLOT",
+          "baseSlot": "ca1slashl",
+          "customAnimationId": "custom-e2d626bc-88e2-4ee5-8f2e-c3879f3b006c",
+          "phase": null
+        },
+        {
+          "authoredClipId": "authored-eff6b4bd-d513-4495-8aef-2e2aabf19308",
+          "outputClipName": "vck_cryslash",
+          "usageKind": "CUSTOM_ONE_SHOT",
+          "baseSlot": null,
+          "customAnimationId": "custom-e2d626bc-88e2-4ee5-8f2e-c3879f3b006c",
+          "phase": null
+        }
+      ]
+    },
+    {
+      "id": "authored-532cfbd7-2a14-4614-b262-103f15121996",
+      "outputName": "vck_showcase",
+      "kind": "MOTION",
+      "status": "VALID",
+      "revision": 4,
+      "source": {
+        "kind": "PROCEDURAL_TEMPLATE",
+        "sourceRevision": "d3d1e18adb652524a5b3459620fab278892859ffb86a7fbb38ac4c542e44d4f7",
+        "sourceClipName": null,
+        "sourceClipFingerprint": null,
+        "proceduralTemplate": "ROOT_TRANSLATION_PULSE"
+      },
+      "keyframeCount": 69,
+      "eventCount": 0,
+      "usages": [
+        {
+          "authoredClipId": "authored-532cfbd7-2a14-4614-b262-103f15121996",
+          "outputClipName": "cpause1",
+          "usageKind": "BASE_SLOT",
+          "baseSlot": "cpause1",
+          "customAnimationId": "custom-6d3d2e03-521f-464d-bcbb-749842764b90",
+          "phase": null
+        },
+        {
+          "authoredClipId": "authored-532cfbd7-2a14-4614-b262-103f15121996",
+          "outputClipName": "vck_showcase",
+          "usageKind": "CUSTOM_ONE_SHOT",
+          "baseSlot": null,
+          "customAnimationId": "custom-6d3d2e03-521f-464d-bcbb-749842764b90",
+          "phase": null
+        }
+      ]
+    }
+  ]
+}

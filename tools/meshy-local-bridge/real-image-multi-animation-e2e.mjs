@@ -4,6 +4,7 @@ import { extname, resolve } from "node:path";
 
 import { createLocalBridge } from "./index.mjs";
 import { parseModerationFlag } from "./real-image-multi-animation-options.mjs";
+import { animationCatalogRequestIdentityV1 } from "./animation-catalog.mjs";
 
 function required(name) {
   const value = process.env[name];
@@ -12,7 +13,7 @@ function required(name) {
 }
 
 function terminal(status) {
-  return status === "READY" || status === "FAILED" || status === "CANCELED";
+  return ["READY", "PARTIAL", "FAILED", "CANCELED", "STOPPED_LOCAL"].includes(status);
 }
 
 function sha256(bytes) {
@@ -58,7 +59,7 @@ async function main() {
   const sourceImagePath = resolve(required("MESHY_REAL_E2E_SOURCE_IMAGE"));
   const outputDirectory = resolve(required("MESHY_REAL_E2E_OUTPUT_DIR"));
   const animations = parseAnimations(required("MESHY_REAL_E2E_ANIMATIONS"));
-  const targetPolycount = Number(process.env.MESHY_REAL_E2E_TARGET_POLYCOUNT ?? "20000");
+  const targetPolycount = Number(process.env.MESHY_REAL_E2E_TARGET_POLYCOUNT ?? "300000");
   const rigHeightMeters = Number(process.env.MESHY_REAL_E2E_RIG_HEIGHT_METERS ?? "1.85");
   const moderation = parseModerationFlag(process.env.MESHY_REAL_E2E_MODERATION);
   if (!Number.isFinite(maxCredits) || maxCredits <= 0) throw new Error("MESHY_MAX_CREDITS must be a positive number.");
@@ -107,7 +108,7 @@ async function main() {
       originAt: "bottom",
       enablePbr: true,
       shouldTexture: true,
-      hdTexture: false,
+      textureResolution: "2k",
       texturePrompt: "",
       textureImageUrl: "",
       removeLighting: true,
@@ -116,6 +117,7 @@ async function main() {
       rigHumanoid: true,
       rigHeightMeters,
       animationActionIds: animations.map((animation) => animation.actionId),
+      ...animationCatalogRequestIdentityV1(),
     };
     const previewResponse = await request("/v1/runs/preview", {
       method: "POST",
@@ -126,7 +128,12 @@ async function main() {
         source: "IMAGE",
         imageDataUrls: [imageDataUrl],
         geometryTarget: "BALANCED",
-        h1Preflight: { standardHumanoid: true, clearLimbs: true, noWeapon: true },
+        h1Preflight: {
+          standardHumanoid: true,
+          clearLimbs: true,
+          noWeapon: true,
+          aOrTPose: true,
+        },
         apiOptions,
       }),
     });

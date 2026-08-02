@@ -8,20 +8,21 @@ use m2a_core::{
         AuthoredAnimationClipInputV1, AuthoredAnimationClipKindV1, AuthoredAnimationClipStatusV1,
         AuthoredAnimationEventPatchV1, AuthoredAnimationEventV1, AuthoredAnimationSourceKindV1,
         AuthoredAnimationTrackPathV1, AuthoredAnimationTrackV1, CreatureAnimationAuthoringV2,
-        CustomAnimationClipReferenceKindV2, KeyframeDeduplicationPolicyV1,
-        ProceduralAnimationTemplateV1, RemoveAuthoredClipPolicyV1, add_animation_track_v1,
-        add_authored_animation_event_v1, apply_integrated_authored_events_v1,
-        clamp_authored_animation_keys_v1, clone_source_clip_for_editing_v1,
-        create_blank_pose_clip_v1, create_procedural_template_clip_v1, detect_authored_motion_v1,
-        duplicate_authored_clip_v1, evaluate_authored_clip_status_v1,
+        CustomAnimationClipReferenceKindV2, CustomAnimationRuntimeExposureStatusV1,
+        KeyframeDeduplicationPolicyV1, ProceduralAnimationTemplateV1, RemoveAuthoredClipPolicyV1,
+        add_animation_track_v1, add_authored_animation_event_v1, apply_custom_attack_demo_route_v1,
+        apply_integrated_authored_events_v1, clamp_authored_animation_keys_v1,
+        clone_source_clip_for_editing_v1, create_blank_pose_clip_v1,
+        create_humanoid_sword_slash_from_source_clip_v1, create_procedural_template_clip_v1,
+        detect_authored_motion_v1, duplicate_authored_clip_v1, evaluate_authored_clip_status_v1,
         fingerprint_animation_studio_document_v1, fingerprint_creature_animation_authoring_v2,
-        insert_animation_keyframe_v1, materialize_animation_studio_document_v1,
-        materialize_authored_animation_library_v1, materialize_creature_animation_authoring_v2,
-        materialize_custom_animation_definition_v2, migrate_creature_animation_authoring_v1_to_v2,
-        move_animation_keyframe_v1, move_authored_animation_event_v1,
-        normalize_animation_quaternions_v1, parse_animation_studio_document_v1,
-        remove_animation_keyframe_v1, remove_animation_track_v1,
-        remove_authored_animation_event_v1, rename_authored_clip_v1,
+        insert_animation_keyframe_v1, inspect_custom_animation_runtime_exposure_v1,
+        materialize_animation_studio_document_v1, materialize_authored_animation_library_v1,
+        materialize_creature_animation_authoring_v2, materialize_custom_animation_definition_v2,
+        migrate_creature_animation_authoring_v1_to_v2, move_animation_keyframe_v1,
+        move_authored_animation_event_v1, normalize_animation_quaternions_v1,
+        parse_animation_studio_document_v1, remove_animation_keyframe_v1,
+        remove_animation_track_v1, remove_authored_animation_event_v1, rename_authored_clip_v1,
         retime_authored_animation_clip_v1, sample_animation_track_linear_v1,
         serialize_animation_studio_document_v1, set_authored_animation_transition_v1,
         shift_authored_animation_keys_v1, sort_and_deduplicate_keyframes_v1,
@@ -33,11 +34,11 @@ use m2a_core::{
         validate_creature_animation_authoring_v2,
     },
     creature_animation_mapping::{
-        AnimationMappingProvenanceV1, AnimationOwnershipV1, AnimationProviderV1,
-        AnimationSourceAssignmentV1, AnimationSourceKindV1,
-        CREATURE_ANIMATION_AUTHORING_PROFILE_V1, CreatureAnimationAuthoringV1,
-        CustomAnimationDefinitionV1, CustomAnimationPlaybackV1, DirectCreatureBaseSlotV1,
-        DirectCreatureModelTypeV1,
+        AnimationFallbackDecisionV1, AnimationFallbackReviewV1, AnimationMappingProvenanceV1,
+        AnimationOwnershipV1, AnimationProviderV1, AnimationSourceAssignmentV1,
+        AnimationSourceKindV1, CREATURE_ANIMATION_AUTHORING_PROFILE_V1,
+        CreatureAnimationAuthoringV1, CustomAnimationDefinitionV1, CustomAnimationPlaybackV1,
+        DirectCreatureBaseSlotV1, DirectCreatureModelTypeV1,
     },
     direct_creature_animation::FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1,
     mdl::{
@@ -124,6 +125,44 @@ fn rig() -> AnimationStudioRigV1 {
     }
 }
 
+fn sword_rig() -> AnimationStudioRigV1 {
+    AnimationStudioRigV1 {
+        schema_version: 1,
+        source_revision: "a".repeat(64),
+        animation_root: "Hips".to_owned(),
+        nodes: [
+            "Hips",
+            "Spine02",
+            "Spine01",
+            "Spine",
+            "RightShoulder",
+            "RightArm",
+            "RightForeArm",
+            "RightHand",
+            "LeftShoulder",
+            "LeftArm",
+            "LeftForeArm",
+            "Head",
+            "LeftUpLeg",
+            "LeftLeg",
+            "LeftFoot",
+            "RightUpLeg",
+            "RightLeg",
+            "RightFoot",
+        ]
+        .iter()
+        .enumerate()
+        .map(|(node_id, name)| AnimationStudioRigNodeV1 {
+            node_id: node_id as u32,
+            name: (*name).to_owned(),
+            parent_id: node_id.checked_sub(1).map(|parent| parent as u32),
+            translation: [0.0, node_id as f32, 0.0],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+        })
+        .collect(),
+    }
+}
+
 fn input(id: &str, name: &str) -> AuthoredAnimationClipInputV1 {
     AuthoredAnimationClipInputV1 {
         id: id.to_owned(),
@@ -161,7 +200,7 @@ fn studio_document_serde_is_strict_stable_and_round_trips() {
     assert!(parse_animation_studio_document_v1(&serde_json::to_string(&value).unwrap()).is_err());
 
     value.as_object_mut().unwrap().remove("unexpected");
-    value["schemaVersion"] = serde_json::json!(2);
+    value["schemaVersion"] = serde_json::json!(4);
     let diagnostics = validate_animation_studio_schema_v1(&serde_json::from_value(value).unwrap());
     assert_eq!(diagnostics[0].code, "M2A-ANIMATION-EDIT-SCHEMA");
 }
@@ -531,6 +570,224 @@ fn blank_clone_and_procedural_creation_are_deterministic() {
 }
 
 #[test]
+fn humanoid_sword_slash_animates_the_full_upper_body_and_returns_to_bind_pose() {
+    let mut clip = create_procedural_template_clip_v1(
+        &sword_rig(),
+        ProceduralAnimationTemplateV1::HumanoidSwordSlash,
+        AuthoredAnimationClipInputV1 {
+            id: "sword-slash".to_owned(),
+            name: "sword_slash".to_owned(),
+            source_revision: "a".repeat(64),
+            length_seconds: 1.0,
+            transition_seconds: 0.1,
+            animation_root: "Hips".to_owned(),
+        },
+    )
+    .unwrap();
+
+    assert_eq!(clip.kind, AuthoredAnimationClipKindV1::Motion);
+    assert_eq!(
+        clip.source.procedural_template.as_deref(),
+        Some("HUMANOID_SWORD_SLASH")
+    );
+    let changing_rotations = clip
+        .tracks
+        .iter()
+        .filter(|track| {
+            track.path == AuthoredAnimationTrackPathV1::Rotation
+                && track.keyframes.len() == 7
+                && track
+                    .keyframes
+                    .windows(2)
+                    .any(|keys| keys[0].value != keys[1].value)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(changing_rotations.len(), 18);
+    assert!(changing_rotations.iter().all(|track| {
+        track.keyframes.first().unwrap().value == track.keyframes.last().unwrap().value
+    }));
+    assert!(
+        changing_rotations
+            .iter()
+            .flat_map(|track| &track.keyframes)
+            .all(
+                |key| (key.value.iter().map(|value| value * value).sum::<f32>() - 1.0).abs()
+                    < 1.0e-5
+            )
+    );
+    let right_arm = changing_rotations
+        .iter()
+        .find(|track| track.target_node_id == 5)
+        .unwrap();
+    assert_eq!(
+        right_arm
+            .keyframes
+            .iter()
+            .map(|key| key.time_seconds)
+            .collect::<Vec<_>>(),
+        vec![0.0, 0.18, 0.34, 0.5, 0.66, 0.82, 1.0]
+    );
+    assert_ne!(
+        right_arm.keyframes[1].value, right_arm.keyframes[2].value,
+        "guard load and punch impact must be kinematically distinct"
+    );
+    let quaternion_dot = right_arm.keyframes[1]
+        .value
+        .iter()
+        .zip(&right_arm.keyframes[2].value)
+        .map(|(left, right)| left * right)
+        .sum::<f32>()
+        .abs()
+        .min(1.0);
+    let attack_arc_degrees = 2.0 * quaternion_dot.acos().to_degrees();
+    assert!(
+        attack_arc_degrees > 20.0 && attack_arc_degrees < 150.0,
+        "the punch must retain a bounded local-arm arc"
+    );
+    let changing_leg_rotations = changing_rotations
+        .iter()
+        .filter(|track| (12..=17).contains(&track.target_node_id))
+        .count();
+    assert_eq!(
+        changing_leg_rotations, 6,
+        "boxing impact must be driven through both legs and feet"
+    );
+
+    let hips_translation = clip
+        .tracks
+        .iter()
+        .find(|track| {
+            track.target_node_id == 0 && track.path == AuthoredAnimationTrackPathV1::Translation
+        })
+        .unwrap();
+    assert_eq!(hips_translation.keyframes.len(), 7);
+    assert_eq!(
+        hips_translation.keyframes.first().unwrap().value,
+        hips_translation.keyframes.last().unwrap().value
+    );
+    let forward_min = hips_translation
+        .keyframes
+        .iter()
+        .map(|key| key.value[1])
+        .fold(f32::INFINITY, f32::min);
+    let forward_max = hips_translation
+        .keyframes
+        .iter()
+        .map(|key| key.value[1])
+        .fold(f32::NEG_INFINITY, f32::max);
+    let vertical_min = hips_translation
+        .keyframes
+        .iter()
+        .map(|key| key.value[2])
+        .fold(f32::INFINITY, f32::min);
+    let vertical_max = hips_translation
+        .keyframes
+        .iter()
+        .map(|key| key.value[2])
+        .fold(f32::NEG_INFINITY, f32::max);
+    assert!(forward_max - forward_min > 0.1);
+    assert!(forward_max - forward_min < 0.15);
+    assert!(vertical_max - vertical_min > 0.02);
+    assert!(vertical_max - vertical_min < 0.05);
+
+    clip.status = AuthoredAnimationClipStatusV1::Valid;
+    assert!(validate_authored_animation_clip_v1(&clip, &sword_rig()).is_empty());
+}
+
+#[test]
+fn humanoid_sword_slash_from_source_clip_preserves_the_sampled_pose_and_lineage() {
+    let rig = sword_rig();
+    let mut source = create_procedural_template_clip_v1(
+        &rig,
+        ProceduralAnimationTemplateV1::BindPose,
+        AuthoredAnimationClipInputV1 {
+            id: "cpause1-copy".to_owned(),
+            name: "m2a_voidcleave".to_owned(),
+            source_revision: "a".repeat(64),
+            length_seconds: 1.0,
+            transition_seconds: 0.25,
+            animation_root: "Hips".to_owned(),
+        },
+    )
+    .unwrap();
+    source.kind = AuthoredAnimationClipKindV1::Motion;
+    source.source.kind = AuthoredAnimationSourceKindV1::SourceClipCopy;
+    source.source.source_clip_name = Some("cpause1".to_owned());
+    source.source.source_clip_fingerprint = Some("b".repeat(64));
+    source.source.procedural_template = None;
+    source.events = vec![AuthoredAnimationEventV1 {
+        id: "source-event".to_owned(),
+        time_seconds: 0.25,
+        name: "source_event".to_owned(),
+    }];
+    let half_turn = std::f32::consts::FRAC_1_SQRT_2;
+    let hips_rotation = source
+        .tracks
+        .iter_mut()
+        .find(|track| {
+            track.target_node_id == 0 && track.path == AuthoredAnimationTrackPathV1::Rotation
+        })
+        .unwrap();
+    hips_rotation.keyframes = vec![
+        AnimationKeyframeV1 {
+            id: "source-key-0000".to_owned(),
+            time_seconds: 0.0,
+            value: vec![0.0, 0.0, 0.0, 1.0],
+        },
+        AnimationKeyframeV1 {
+            id: "source-key-0001".to_owned(),
+            time_seconds: 1.0,
+            value: vec![0.0, 0.0, half_turn, half_turn],
+        },
+    ];
+
+    let attack = create_humanoid_sword_slash_from_source_clip_v1(&source, &rig, 0.5).unwrap();
+    let hips = attack
+        .tracks
+        .iter()
+        .find(|track| {
+            track.target_node_id == 0 && track.path == AuthoredAnimationTrackPathV1::Rotation
+        })
+        .unwrap();
+
+    assert_eq!(attack.id, "cpause1-copy");
+    assert_eq!(attack.name, "m2a_voidcleave");
+    assert_eq!(attack.kind, AuthoredAnimationClipKindV1::Motion);
+    assert_eq!(attack.status, AuthoredAnimationClipStatusV1::Draft);
+    assert_eq!(attack.length_seconds, 1.0);
+    assert_eq!(attack.transition_seconds, 0.1);
+    assert!(attack.events.is_empty());
+    assert_eq!(
+        attack.source.kind,
+        AuthoredAnimationSourceKindV1::SourceClipCopy
+    );
+    assert_eq!(attack.source.source_clip_name.as_deref(), Some("cpause1"));
+    assert_eq!(
+        attack.source.source_clip_fingerprint.as_deref(),
+        Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+    );
+    assert_eq!(hips.keyframes.len(), 7);
+    assert!((hips.keyframes[0].value[2] - (std::f32::consts::PI / 8.0).sin()).abs() < 1.0e-5);
+    assert!((hips.keyframes[0].value[3] - (std::f32::consts::PI / 8.0).cos()).abs() < 1.0e-5);
+    assert_eq!(
+        hips.keyframes.first().unwrap().value,
+        hips.keyframes.last().unwrap().value
+    );
+}
+
+#[test]
+fn humanoid_sword_slash_fails_closed_when_the_required_rig_chain_is_missing() {
+    let error = create_procedural_template_clip_v1(
+        &rig(),
+        ProceduralAnimationTemplateV1::HumanoidSwordSlash,
+        input("sword-slash", "sword_slash"),
+    )
+    .unwrap_err();
+    assert_eq!(error.code, "M2A-ANIMATION-EDIT-BONE-MISSING");
+    assert!(error.message.contains("Hips"));
+}
+
+#[test]
 fn keyframe_crud_sampling_dedup_and_quaternion_canonicalization_work() {
     let mut track = AuthoredAnimationTrackV1 {
         id: "track".to_owned(),
@@ -831,6 +1088,198 @@ fn public_materialization_helpers_are_exact_and_deterministic() {
     without_events.clips[0].events.clear();
     let with_events = apply_integrated_authored_events_v1(&without_events, &studio).unwrap();
     assert_eq!(with_events.clips[0].events[0].name, "impact");
+}
+
+#[test]
+fn custom_runtime_exposure_is_library_only_until_base42_routing_and_attack_demo_preserves_idle() {
+    let source = MdlAnimationSetV1 {
+        schema_version: 1,
+        clips: FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1
+            .iter()
+            .map(|name| MdlAnimationClipV1 {
+                name: (*name).to_owned(),
+                animation_root: "root".to_owned(),
+                length_seconds: 1.0,
+                transition_seconds: 0.1,
+                events: vec![],
+                tracks: vec![],
+            })
+            .collect(),
+    };
+    let mut authored = create_procedural_template_clip_v1(
+        &rig(),
+        ProceduralAnimationTemplateV1::RootTranslationPulse,
+        input("authored-pulse", "authored_pulse"),
+    )
+    .unwrap();
+    authored.status = AuthoredAnimationClipStatusV1::Valid;
+    let studio = AnimationStudioDocumentV1 {
+        schema_version: 1,
+        source_revision: "a".repeat(64),
+        authoring_revision: 2,
+        status: AnimationStudioDocumentStatusV1::Valid,
+        authored_clips: vec![authored],
+    };
+    let custom = m2a_core::animation_studio::CustomAnimationDefinitionV2 {
+        id: "custom-pulse".to_owned(),
+        name: "custpulse".to_owned(),
+        playback: CustomAnimationPlaybackV1::OneShot,
+        clip_reference: Some(m2a_core::animation_studio::CustomAnimationClipReferenceV2 {
+            source_kind: CustomAnimationClipReferenceKindV2::AuthoredClip,
+            source_clip_name: None,
+            authored_clip_id: Some("authored-pulse".to_owned()),
+        }),
+        phases: vec![],
+        provenance: AnimationMappingProvenanceV1 {
+            provider: AnimationProviderV1::UserCustom,
+            asset_id: "authored-pulse".to_owned(),
+            ownership: AnimationOwnershipV1::UserOwned,
+        },
+    };
+    let authoring = CreatureAnimationAuthoringV2 {
+        schema_version: 2,
+        profile: CREATURE_ANIMATION_AUTHORING_PROFILE_V1.to_owned(),
+        model_type: DirectCreatureModelTypeV1::Simple,
+        source_revision: "a".repeat(64),
+        authoring_revision: 3,
+        assignments: FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1
+            .iter()
+            .map(|slot| AnimationSourceAssignmentV1 {
+                target_slot: DirectCreatureBaseSlotV1::try_from(*slot).unwrap(),
+                source_kind: AnimationSourceKindV1::SourceClip,
+                source_clip_name: Some((*slot).to_owned()),
+                custom_animation_id: None,
+                provenance: AnimationMappingProvenanceV1 {
+                    provider: AnimationProviderV1::SourceGlb,
+                    asset_id: "fixture".to_owned(),
+                    ownership: AnimationOwnershipV1::UserOwned,
+                },
+            })
+            .collect(),
+        fallbacks: vec![],
+        custom_animations: vec![custom],
+    };
+
+    let library_only = inspect_custom_animation_runtime_exposure_v1(&authoring);
+    assert_eq!(library_only.len(), 1);
+    assert_eq!(
+        library_only[0].status,
+        CustomAnimationRuntimeExposureStatusV1::LibraryOnly
+    );
+    assert_eq!(library_only[0].library_output_clip_names, ["custpulse"]);
+    assert!(library_only[0].runtime_base_slots.is_empty());
+
+    let demo = apply_custom_attack_demo_route_v1(&authoring, "custom-pulse").unwrap();
+    assert_eq!(
+        demo.contract.runtime_base_slots,
+        ["ca1slashl", "ca1slashr", "ca1stab"]
+    );
+    assert!(demo.contract.all_native_attack_variants_routed);
+    assert!(demo.contract.production_idle_slot_preserved);
+    let cpause = demo
+        .authoring
+        .assignments
+        .iter()
+        .find(|assignment| assignment.target_slot.as_str() == "cpause1")
+        .unwrap();
+    assert_eq!(cpause.source_kind, AnimationSourceKindV1::SourceClip);
+    assert_eq!(cpause.source_clip_name.as_deref(), Some("cpause1"));
+    for slot in ["ca1slashl", "ca1slashr", "ca1stab"] {
+        let assignment = demo
+            .authoring
+            .assignments
+            .iter()
+            .find(|assignment| assignment.target_slot.as_str() == slot)
+            .unwrap();
+        assert_eq!(assignment.source_kind, AnimationSourceKindV1::Custom);
+        assert_eq!(
+            assignment.custom_animation_id.as_deref(),
+            Some("custom-pulse")
+        );
+        assert_eq!(assignment.source_clip_name, None);
+    }
+
+    let exposure = inspect_custom_animation_runtime_exposure_v1(&demo.authoring);
+    assert_eq!(
+        exposure[0].status,
+        CustomAnimationRuntimeExposureStatusV1::Base42Routed
+    );
+    assert_eq!(
+        exposure[0].runtime_base_slots,
+        ["ca1slashl", "ca1slashr", "ca1stab"]
+    );
+    let mut phased_demo = authoring.clone();
+    phased_demo.custom_animations[0].playback = CustomAnimationPlaybackV1::LoopingPhased;
+    let phased_error = apply_custom_attack_demo_route_v1(&phased_demo, "custom-pulse").unwrap_err();
+    assert!(phased_error.message.contains("ONE_SHOT"));
+
+    let mut wrong_provenance = demo.authoring.clone();
+    wrong_provenance
+        .assignments
+        .iter_mut()
+        .find(|assignment| assignment.target_slot.as_str() == "ca1slashl")
+        .unwrap()
+        .provenance
+        .asset_id = "fabricated-custom-id".to_owned();
+    assert!(
+        validate_creature_animation_authoring_v2(&wrong_provenance, &studio)
+            .iter()
+            .any(|diagnostic| {
+                diagnostic.path.contains("provenance")
+                    && diagnostic.message.contains("does not match")
+            })
+    );
+    let mut fallback_routed = demo.authoring.clone();
+    fallback_routed
+        .assignments
+        .retain(|assignment| assignment.target_slot.as_str() != "ca1slashr");
+    fallback_routed.fallbacks.push(AnimationFallbackDecisionV1 {
+        id: "fallback-ca1slashr-to-ca1slashl".to_owned(),
+        target_slot: DirectCreatureBaseSlotV1::try_from("ca1slashr").unwrap(),
+        source_slot: DirectCreatureBaseSlotV1::try_from("ca1slashl").unwrap(),
+        reason: "Use the reviewed attack variant for the demo.".to_owned(),
+        review: AnimationFallbackReviewV1::Accepted,
+    });
+    let fallback_exposure = inspect_custom_animation_runtime_exposure_v1(&fallback_routed);
+    assert_eq!(
+        fallback_exposure[0].runtime_base_slots,
+        ["ca1slashl", "ca1slashr", "ca1stab"]
+    );
+
+    let mut fallback_complete = authoring.clone();
+    fallback_complete.assignments.retain(|assignment| {
+        !["cpause1", "ca1slashl", "ca1slashr", "ca1stab"].contains(&assignment.target_slot.as_str())
+    });
+    fallback_complete.fallbacks.extend(
+        ["cpause1", "ca1slashl", "ca1slashr", "ca1stab"]
+            .iter()
+            .map(|slot| AnimationFallbackDecisionV1 {
+                id: format!("fallback-{slot}-to-cwalk"),
+                target_slot: DirectCreatureBaseSlotV1::try_from(*slot).unwrap(),
+                source_slot: DirectCreatureBaseSlotV1::try_from("cwalk").unwrap(),
+                reason: "Owner-approved Base 42 fallback.".to_owned(),
+                review: AnimationFallbackReviewV1::Accepted,
+            }),
+    );
+    let fallback_demo =
+        apply_custom_attack_demo_route_v1(&fallback_complete, "custom-pulse").unwrap();
+    assert!(fallback_demo.contract.production_idle_slot_preserved);
+    let fallback_idle = fallback_demo
+        .authoring
+        .assignments
+        .iter()
+        .find(|assignment| assignment.target_slot.as_str() == "cpause1")
+        .unwrap();
+    assert_eq!(fallback_idle.source_clip_name.as_deref(), Some("cwalk"));
+    let materialized = materialize_creature_animation_authoring_v2(
+        &source,
+        None,
+        &demo.authoring,
+        &studio,
+        &rig(),
+    )
+    .unwrap();
+    assert_eq!(materialized.custom_runtime_exposures, exposure);
 }
 
 #[test]

@@ -6,6 +6,8 @@ export function AnimationEditorViewport({
   selectedBoneName,
   playheadSeconds,
   path,
+  gizmoSpace = "local",
+  onGizmoSpaceChange = () => undefined,
   onGestureBegin,
   onGestureUpdate,
   onGestureCommit,
@@ -16,6 +18,8 @@ export function AnimationEditorViewport({
   selectedBoneName: string | null;
   playheadSeconds: number;
   path: "ROTATION" | "TRANSLATION";
+  gizmoSpace?: "local" | "world";
+  onGizmoSpaceChange?: (space: "local" | "world") => void;
   onGestureBegin: () => void;
   onGestureUpdate: (delta: number) => void;
   onGestureCommit: () => void;
@@ -80,6 +84,30 @@ export function AnimationEditorViewport({
             className="animation-editor-gizmo"
             aria-label={`${path.toLocaleLowerCase("en-US")} gizmo for ${selectedBoneName}`}
           >
+            <div
+              className="animation-editor-gizmo__space"
+              role="group"
+              aria-label="Transform gizmo coordinate space"
+            >
+              <button
+                type="button"
+                aria-pressed={gizmoSpace === "local"}
+                onClick={() => onGizmoSpaceChange("local")}
+              >
+                Local
+              </button>
+              <button
+                type="button"
+                aria-pressed={gizmoSpace === "world"}
+                onClick={() => onGizmoSpaceChange("world")}
+              >
+                World
+              </button>
+            </div>
+            <small className="animation-editor-gizmo__hint">
+              Drag the X/Y/Z handles on the selected bone. The slider is the
+              keyboard-accessible precision control.
+            </small>
             <label>
               <span>Gizmo delta</span>
               <input

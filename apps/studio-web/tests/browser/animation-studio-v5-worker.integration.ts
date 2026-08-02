@@ -1,15 +1,25 @@
 import { afterEach, describe, expect, it } from "vitest";
 import sourceUrl from "../.generated/owned-full42-package/generated/source.glb?url";
+import librarySourceUrl from
+  "../.generated/owned-library-humanoid-full42-package/generated/source.glb?url";
 import appearanceUrl from "../fixtures/appearance.2da?url";
+import animationPresetManifestJson from
+  "../../../../animation-library/presets/m2a_right_cross/manifest.json?raw";
+import animationPresetPayloadJson from
+  "../../../../animation-library/presets/m2a_right_cross/animation.json?raw";
+import animationCatalogJson from
+  "../../../../contracts/community-animation-catalog-v1.json?raw";
 import {
   createProceduralTemplateClipV1,
 } from "../../src/features/animation-editor/editing";
 import type {
   AnimationStudioDocumentV1,
+  AuthoredAnimationClipV1,
   CreatureAnimationAuthoringV2,
 } from "../../src/features/animation-studio/types";
 import {
   fingerprintAnimationStudioDocumentV1,
+  migrateAnimationStudioDocumentV1ToV2,
   serializeAnimationStudioDocumentV1,
 } from "../../src/features/animation-studio/schema";
 import { serializeCreatureAnimationAuthoringV2 } from
@@ -127,7 +137,7 @@ describe("Animation Studio V5 through the real Worker and WASM", () => {
               customAnimationId: "custom-stable-id",
               provenance: {
                 provider: "USER_CUSTOM",
-                assetId: "custom-stable-id",
+                assetId: clip.id,
                 ownership: "USER_OWNED",
               },
             } as const
@@ -389,6 +399,240 @@ describe("Animation Studio V5 through the real Worker and WASM", () => {
       .toEqual(built.artifacts.map(({ fileName, sha256 }) => [fileName, sha256]));
   }, 120_000);
 
+  it("instantiates a portable preset and preserves its exact motion through binary MDL readback", async () => {
+    const manifest = JSON.parse(animationPresetManifestJson) as {
+      motionSha256: string;
+      presetId: string;
+      rigProfile: string;
+      rigSignatureSha256: string;
+    };
+    const payload = JSON.parse(animationPresetPayloadJson) as {
+      tracks: Array<{
+        targetBoneName: string;
+        path: "TRANSLATION" | "ROTATION";
+        keyframes: Array<{ timeSeconds: number; value: number[] }>;
+      }>;
+    };
+    const catalogSha256 = (JSON.parse(animationCatalogJson) as {
+      catalogSha256: string;
+    }).catalogSha256;
+    const sourceRevision = await sha256(await fetchBytes(librarySourceUrl));
+    const client = new StudioWorkerClient();
+    clients.push(client);
+    await client.request({ requestId: "library-init", type: "INITIALIZE" });
+
+    const validated = await client.validateAnimationPreset(
+      animationPresetManifestJson,
+      animationPresetPayloadJson,
+      catalogSha256,
+      "library-validate",
+    );
+    expect(validated).toMatchObject({ ok: true, type: "ANIMATION_PRESET_VALIDATED" });
+    if (!validated.ok || validated.type !== "ANIMATION_PRESET_VALIDATED") {
+      throw new Error("real Worker did not validate the portable preset");
+    }
+    expect(JSON.parse(validated.validationJson)).toMatchObject({
+      schemaVersion: 1,
+      status: "READY",
+      diagnostics: [],
+    });
+
+    const compatibility = await client.inspectAnimationPresetCompatibility(
+      animationPresetManifestJson,
+      animationPresetPayloadJson,
+      catalogSha256,
+      await fetchBytes(librarySourceUrl),
+      "library-compatibility",
+    );
+    expect(compatibility).toMatchObject({
+      ok: true,
+      type: "ANIMATION_PRESET_COMPATIBILITY_INSPECTED",
+    });
+    if (
+      !compatibility.ok
+      || compatibility.type !== "ANIMATION_PRESET_COMPATIBILITY_INSPECTED"
+    ) {
+      throw new Error("real Worker did not inspect preset compatibility");
+    }
+    expect(JSON.parse(compatibility.compatibilityJson)).toMatchObject({
+      status: "COMPATIBLE",
+      actualRigSignatureSha256: manifest.rigSignatureSha256,
+      diagnostics: [],
+    });
+
+    const instantiated = await client.instantiateAnimationPreset(
+      animationPresetManifestJson,
+      animationPresetPayloadJson,
+      catalogSha256,
+      await fetchBytes(librarySourceUrl),
+      "authored-library-right-cross",
+      "m2a_rightcross",
+      "library-instantiate",
+    );
+    expect(instantiated).toMatchObject({ ok: true, type: "ANIMATION_PRESET_INSTANTIATED" });
+    if (!instantiated.ok || instantiated.type !== "ANIMATION_PRESET_INSTANTIATED") {
+      throw new Error("real Worker did not instantiate the portable preset");
+    }
+    const instance = JSON.parse(instantiated.instantiationJson) as {
+      status: "READY" | "BLOCKED";
+      clip: AuthoredAnimationClipV1 | null;
+      diagnostics: unknown[];
+    };
+    expect(instance).toMatchObject({ status: "READY", diagnostics: [] });
+    if (!instance.clip) throw new Error("preset instantiation returned no clip");
+    const clip: AuthoredAnimationClipV1 = { ...instance.clip, status: "VALID" };
+    expect(clip.source).toMatchObject({
+      kind: "LIBRARY_PRESET_COPY",
+      sourceRevision,
+      sourceClipFingerprint: manifest.motionSha256,
+      libraryPreset: {
+        presetId: manifest.presetId,
+        catalogSha256,
+        instantiationMode: "STRICT_RIG_V1",
+      },
+    });
+
+    const exported = await client.exportAnimationContribution(
+      JSON.stringify(clip),
+      await fetchBytes(librarySourceUrl),
+      JSON.stringify({
+        presetId: "m2a_right_cross_export",
+        presetVersion: 1,
+        outputName: "m2a_rcexport",
+        label: "Right cross export",
+        summary: "Portable browser Worker export of the tracked right cross.",
+        authors: [{ name: "Meshy2Aurora tests" }],
+        license: "LicenseRef-Meshy2Aurora-Project-Generated",
+        tags: ["attack", "boxing", "humanoid", "one-shot", "right-hand", "unarmed", "upper-body"],
+        playback: "ONE_SHOT",
+        rigProfile: manifest.rigProfile,
+        validationStatus: "PIPELINE_VERIFIED",
+      }),
+      "library-export",
+    );
+    expect(exported).toMatchObject({ ok: true, type: "ANIMATION_CONTRIBUTION_EXPORTED" });
+    if (!exported.ok || exported.type !== "ANIMATION_CONTRIBUTION_EXPORTED") {
+      throw new Error("real Worker did not export the contribution");
+    }
+    const contribution = JSON.parse(exported.contributionJson);
+    expect(contribution).toMatchObject({ status: "READY", diagnostics: [] });
+    expect(exported.contributionJson).not.toContain("sourceRevision");
+    expect(exported.contributionJson.toLowerCase()).not.toContain(".glb");
+
+    const studio: AnimationStudioDocumentV1 = {
+      ...migrateAnimationStudioDocumentV1ToV2({
+        schemaVersion: 1,
+        sourceRevision,
+        authoringRevision: 1,
+        status: "DRAFT",
+        authoredClips: [],
+      }),
+      sourceRevision,
+      authoringRevision: 1,
+      status: "VALID",
+      authoredClips: [clip],
+    };
+    const authoring: CreatureAnimationAuthoringV2 = {
+      schemaVersion: 2,
+      profile: "DIRECT_CREATURE_S_L_BASE_42_AUTHORING_V1",
+      modelType: "S",
+      sourceRevision,
+      authoringRevision: 1,
+      assignments: FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1.map((targetSlot) => (
+        targetSlot === "cpause1"
+          ? {
+              targetSlot,
+              sourceKind: "CUSTOM",
+              sourceClipName: null,
+              customAnimationId: "custom-library-right-cross",
+              provenance: {
+                provider: "USER_CUSTOM",
+                assetId: clip.id,
+                ownership: "USER_OWNED",
+              },
+            } as const
+          : {
+              targetSlot,
+              sourceKind: "SOURCE_CLIP",
+              sourceClipName: targetSlot,
+              customAnimationId: null,
+              provenance: {
+                provider: "SOURCE_GLB",
+                assetId: sourceRevision,
+                ownership: "USER_OWNED",
+              },
+            } as const
+      )),
+      fallbacks: [],
+      customAnimations: [{
+        id: "custom-library-right-cross",
+        name: "lib_rightcross",
+        playback: "ONE_SHOT",
+        clipReference: {
+          sourceKind: "AUTHORED_CLIP",
+          sourceClipName: null,
+          authoredClipId: clip.id,
+        },
+        phases: [],
+        provenance: {
+          provider: "USER_CUSTOM",
+          assetId: clip.id,
+          ownership: "USER_OWNED",
+        },
+      }],
+    };
+    const built = await client.buildEditedCreatureModelPackage(
+      await fetchBytes(librarySourceUrl),
+      await fetchBytes(appearanceUrl),
+      serializeCreatureAnimationAuthoringV2(authoring),
+      serializeAnimationStudioDocumentV1(studio),
+      JSON.stringify({
+        schemaVersion: 1,
+        projectId: "browser-library-project",
+        projectName: "Browser library project",
+        projectRevision: 1,
+      }),
+      undefined,
+      "library-build",
+    );
+    expect(built).toMatchObject({ ok: true, type: "MODEL_PACKAGE_BUILT" });
+    if (!built.ok || built.type !== "MODEL_PACKAGE_BUILT") {
+      throw new Error("real Worker did not build the library-derived package");
+    }
+    const canonical = projectCanonicalResult(
+      built.reportJson,
+      built.summaryJson,
+      built.manifestJson,
+      built.artifacts,
+    );
+    expect(canonical.animationStudioEvidence).toMatchObject({
+      readbackStatus: "MATCH",
+      sourceGlbUnchanged: true,
+      authoredClipIds: [clip.id],
+      authoredClipOutputNames: [clip.name],
+      animationStudioReadback: { status: "MATCH", diagnostics: [] },
+    });
+    const readback = projectCanonicalReadback(built.readbackJson);
+    const rightCross = readback.animations.find(({ name }) => name === "lib_rightcross");
+    expect(rightCross).toBeDefined();
+    const position = flattenReadbackNodes(rightCross?.nodeTree.roots ?? [])
+      .flatMap(({ controllers }) => controllers)
+      .find(({ controllerName }) => controllerName === "position");
+    const expected = payload.tracks.find(({ targetBoneName, path }) => (
+      targetBoneName === "Hips" && path === "TRANSLATION"
+    ));
+    expect(position).toBeDefined();
+    expect(expected).toBeDefined();
+    expect(position?.times).toHaveLength(expected?.keyframes.length ?? 0);
+    expect(position?.values).toHaveLength(expected?.keyframes.length ?? 0);
+    expected?.keyframes.forEach((keyframe, index) => {
+      expect(position?.times[index]).toBeCloseTo(keyframe.timeSeconds, 5);
+      keyframe.value.forEach((value, axis) => {
+        expect(position?.values[index]?.[axis]).toBeCloseTo(value, 5);
+      });
+    });
+  }, 120_000);
+
   it("returns stable schema diagnostics and supersedes an older preview", async () => {
     const client = new StudioWorkerClient();
     clients.push(client);
@@ -429,3 +673,7 @@ describe("Animation Studio V5 through the real Worker and WASM", () => {
     await expect(newer).rejects.toThrow();
   }, 30_000);
 });
+
+function flattenReadbackNodes<T extends { children: T[] }>(nodes: T[]): T[] {
+  return nodes.flatMap((node) => [node, ...flattenReadbackNodes(node.children)]);
+}

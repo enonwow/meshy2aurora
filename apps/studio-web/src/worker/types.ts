@@ -36,6 +36,68 @@ export type StudioWorkerRequest =
     }
   | {
       requestId: string;
+      type: "INSPECT_ANIMATION_TRANSFER_COMPATIBILITY";
+      targetGlb: ArrayBuffer;
+      donorGlb: ArrayBuffer;
+    }
+  | {
+      requestId: string;
+      type: "RETARGET_ANIMATION_MODEL_CLIP";
+      targetGlb: ArrayBuffer;
+      donorGlb: ArrayBuffer;
+      clipName: string;
+      optionsJson: string;
+    }
+  | {
+      requestId: string;
+      type: "INSPECT_HUMANOID_RETARGET_COMPATIBILITY_V2";
+      targetGlb: ArrayBuffer;
+      donorGlb: ArrayBuffer;
+      overridesJson: string;
+      manualMappingConfirmed: boolean;
+    }
+  | {
+      requestId: string;
+      type: "RETARGET_ANIMATION_CLIP_HUMANOID_V2";
+      targetGlb: ArrayBuffer;
+      donorGlb: ArrayBuffer;
+      clipName: string;
+      semanticMapJson: string;
+      clipId: string;
+      outputName: string;
+    }
+  | {
+      requestId: string;
+      type: "PREPARE_ANIMATION_TRANSFER_BATCH_V2";
+      targetGlb: ArrayBuffer;
+      donorGlb: ArrayBuffer;
+      batchRequestJson: string;
+    }
+  | {
+      requestId: string;
+      type: "BUILD_ANIMATION_SEQUENCE_PREVIEW";
+      sequenceRequestJson: string;
+      availableClipsJson: string;
+    }
+  | {
+      requestId: string;
+      type: "APPLY_ANIMATION_WORKBENCH_OPERATION_V1";
+      operationJson: string;
+    }
+  | {
+      requestId: string;
+      type: "RESAMPLE_ANIMATION_CURVE_TO_LINEAR";
+      curveJson: string;
+      policyJson: string;
+    }
+  | {
+      requestId: string;
+      type: "BAKE_ANIMATION_LAYERS";
+      layersJson: string;
+      rigJson: string;
+    }
+  | {
+      requestId: string;
       type: "VALIDATE_ANIMATION_STUDIO_DOCUMENT";
       sourceGlb: ArrayBuffer;
       animationStudioDocumentJson: string;
@@ -51,6 +113,75 @@ export type StudioWorkerRequest =
       type: "PREVIEW_AUTHORED_ANIMATION_CLIP";
       animationStudioDocumentJson: string;
       clipId: string;
+    }
+  | {
+      requestId: string;
+      type: "APPLY_ANIMATION_EDIT_COMMAND_BATCH";
+      sourceGlb: ArrayBuffer;
+      animationStudioDocumentJson: string;
+      commandBatchJson: string;
+    }
+  | {
+      requestId: string;
+      type: "ANALYZE_ANIMATION_MOTION_QUALITY";
+      sourceGlb: ArrayBuffer;
+      authoredClipJson: string;
+      policyJson: string;
+      contextJson: string;
+    }
+  | {
+      requestId: string;
+      type: "APPLY_ANIMATION_AUTHORING_TOOL";
+      sourceGlb: ArrayBuffer;
+      authoredClipJson: string;
+      toolRequestJson: string;
+    }
+  | {
+      requestId: string;
+      type: "INSPECT_HELD_WEAPON_SOURCE";
+      filename: string;
+      provenance: string;
+      weaponGlb: ArrayBuffer;
+    }
+  | {
+      requestId: string;
+      type: "EVALUATE_ANIMATION_POSE_PARITY";
+      sourceGlb: ArrayBuffer;
+      expectedClipJson: string;
+      actualClipJson: string;
+      policyJson: string;
+    }
+  | {
+      requestId: string;
+      type: "VALIDATE_ANIMATION_PRESET";
+      manifestJson: string;
+      animationJson: string;
+      catalogSha256: string;
+    }
+  | {
+      requestId: string;
+      type: "INSPECT_ANIMATION_PRESET_COMPATIBILITY";
+      manifestJson: string;
+      animationJson: string;
+      catalogSha256: string;
+      sourceGlb: ArrayBuffer;
+    }
+  | {
+      requestId: string;
+      type: "INSTANTIATE_ANIMATION_PRESET";
+      manifestJson: string;
+      animationJson: string;
+      catalogSha256: string;
+      sourceGlb: ArrayBuffer;
+      clipId: string;
+      outputName: string;
+    }
+  | {
+      requestId: string;
+      type: "EXPORT_ANIMATION_CONTRIBUTION";
+      authoredClipJson: string;
+      sourceGlb: ArrayBuffer;
+      metadataJson: string;
     }
   | {
       requestId: string;
@@ -117,6 +248,15 @@ export type StudioWorkerRequest =
       animationStudioDocumentJson: string;
       projectIdentityJson: string;
       eventAuthoringJson?: string;
+      heldWeapon?: {
+        glb: ArrayBuffer;
+        filename: string;
+        rigJson: string;
+        primaryHand: "RIGHT" | "LEFT";
+        targetNodeId: number;
+        localTransformJson: string;
+        attachmentRevision: number;
+      };
     }
   | {
       requestId: string;
@@ -188,6 +328,60 @@ export type StudioWorkerSuccess =
   | {
       requestId: string;
       ok: true;
+      type: "ANIMATION_TRANSFER_COMPATIBILITY_INSPECTED";
+      compatibilityJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ANIMATION_MODEL_CLIP_RETARGETED";
+      resultJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "HUMANOID_RETARGET_COMPATIBILITY_V2_INSPECTED";
+      compatibilityJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ANIMATION_CLIP_HUMANOID_V2_RETARGETED";
+      resultJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ANIMATION_TRANSFER_BATCH_V2_PREPARED";
+      resultJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ANIMATION_SEQUENCE_PREVIEW_BUILT";
+      previewJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ANIMATION_WORKBENCH_OPERATION_V1_APPLIED";
+      resultJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ANIMATION_CURVE_RESAMPLED_TO_LINEAR";
+      reportJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ANIMATION_LAYERS_BAKED";
+      reportJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
       type: "ANIMATION_STUDIO_DOCUMENT_VALIDATED";
       validationJson: string;
     }
@@ -202,6 +396,60 @@ export type StudioWorkerSuccess =
       ok: true;
       type: "AUTHORED_ANIMATION_CLIP_PREVIEWED";
       previewJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ANIMATION_EDIT_COMMAND_BATCH_APPLIED";
+      resultJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ANIMATION_MOTION_QUALITY_ANALYZED";
+      reportJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ANIMATION_AUTHORING_TOOL_APPLIED";
+      resultJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "HELD_WEAPON_SOURCE_INSPECTED";
+      inspectionJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ANIMATION_POSE_PARITY_EVALUATED";
+      reportJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ANIMATION_PRESET_VALIDATED";
+      validationJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ANIMATION_PRESET_COMPATIBILITY_INSPECTED";
+      compatibilityJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ANIMATION_PRESET_INSTANTIATED";
+      instantiationJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ANIMATION_CONTRIBUTION_EXPORTED";
+      contributionJson: string;
     }
   | {
       requestId: string;

@@ -84,9 +84,22 @@
 }
 
 .animation-studio-workspace__main {
+  border: 0;
   display: grid;
   gap: .65rem;
   grid-template-columns: minmax(14rem, .7fr) minmax(28rem, 1.6fr) minmax(15rem, .75fr);
+  margin: 0;
+  min-inline-size: 0;
+  padding: 0;
+}
+
+.animation-studio-workspace__validation-lock {
+  background: rgb(35 201 238 / 9%);
+  border: 1px solid rgb(35 201 238 / 38%);
+  border-radius: .45rem;
+  color: #bceefa;
+  margin: 0;
+  padding: .55rem .7rem;
 }
 
 .animation-clip-library,

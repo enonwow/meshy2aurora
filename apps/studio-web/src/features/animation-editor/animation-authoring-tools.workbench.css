@@ -1,0 +1,121 @@
+.animation-workbench-tools,
+.animation-curve-panel {
+  display: grid;
+  gap: 0.8rem;
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--aurora-accent, #8c7cff) 34%, transparent);
+  border-radius: 0.85rem;
+  background: linear-gradient(145deg, rgb(20 22 31 / 92%), rgb(13 15 23 / 94%));
+}
+
+.animation-workbench-tools > header,
+.animation-curve-panel > header,
+.animation-workbench-tools__actions,
+.animation-curve-panel__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.animation-workbench-tools details {
+  padding: 0.65rem;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 0.65rem;
+  background: rgb(255 255 255 / 2.5%);
+}
+
+.animation-workbench-tools summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.animation-workbench-tools__bone-grid,
+.animation-workbench-tools__phase-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.35rem 0.65rem;
+  max-height: 12rem;
+  margin-block: 0.65rem;
+  overflow: auto;
+}
+
+.animation-sequence-composer {
+  display: grid;
+  gap: 0.45rem;
+  margin-block: 0.65rem;
+}
+
+.animation-sequence-composer article {
+  display: grid;
+  grid-template-columns: auto minmax(8rem, 1fr) repeat(4, minmax(5rem, 0.55fr)) auto;
+  align-items: end;
+  gap: 0.45rem;
+  padding: 0.55rem;
+  border-radius: 0.55rem;
+  background: rgb(0 0 0 / 18%);
+}
+
+.animation-curve-panel__graph {
+  width: 100%;
+  min-height: 15rem;
+  border-radius: 0.55rem;
+  background: rgb(5 7 12 / 78%);
+  touch-action: none;
+}
+
+.animation-curve-panel__axis {
+  fill: none;
+  stroke: rgb(255 255 255 / 18%);
+  stroke-width: 1;
+}
+
+.animation-curve-panel__line {
+  fill: none;
+  stroke: var(--aurora-accent, #8c7cff);
+  stroke-width: 3;
+}
+
+.animation-curve-panel circle {
+  fill: #151824;
+  stroke: #b5abff;
+  stroke-width: 3;
+  cursor: pointer;
+}
+
+.animation-curve-panel circle.is-selected {
+  fill: #f2c14e;
+  stroke: #fff4c6;
+}
+
+.animation-curve-panel__tangents path {
+  fill: none;
+  stroke: rgb(181 171 255 / 72%);
+  stroke-width: 1.5;
+}
+
+.animation-curve-panel__tangents circle {
+  fill: #151824;
+  stroke: #66e3c4;
+  stroke-width: 2;
+}
+
+.animation-curve-panel__selection {
+  fill: rgb(140 124 255 / 18%);
+  stroke: #b5abff;
+  stroke-dasharray: 5 4;
+  pointer-events: none;
+}
+
+.animation-curve-panel__key-editor {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.55rem;
+}
+
+@media (max-width: 900px) {
+  .animation-sequence-composer article {
+    grid-template-columns: 1fr 1fr;
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "snapshotId": "meshy-animation-library-2026-07-28-curated-v1",
+  "capturedAt": "2026-07-28",
+  "sourceUrl": "https://docs.meshy.ai/en/api/animation-library",
+  "sourceCatalogSha256": "5a512931ddfde95e2f2af4e8f80b9d1671e890a04cc27b7606d6e23c155b416b",
+  "curatedActionsSha256": "661b837e858235d0c375726e123d6963298144d5e40e7c81379ad26d0fba5f4e",
+  "actions": [
+    {
+      "id": 0,
+      "name": "Idle",
+      "category": "BodyMovements",
+      "auroraCandidate": "cpause1"
+    },
+    {
+      "id": 4,
+      "name": "Attack",
+      "category": "Fighting",
+      "auroraCandidate": "ca1slashl"
+    },
+    {
+      "id": 8,
+      "name": "Dead",
+      "category": "BodyMovements",
+      "auroraCandidate": "cdead"
+    },
+    {
+      "id": 30,
+      "name": "Casual Walk",
+      "category": "WalkAndRun",
+      "auroraCandidate": "cwalk"
+    },
+    {
+      "id": 92,
+      "name": "Double Combo Attack",
+      "category": "Fighting",
+      "auroraCandidate": "ca1slashr"
+    },
+    {
+      "id": 125,
+      "name": "Charged Spell Cast",
+      "category": "Fighting",
+      "auroraCandidate": "cast01"
+    },
+    {
+      "id": 178,
+      "name": "Hit Reaction",
+      "category": "Fighting",
+      "auroraCandidate": "cdamage"
+    },
+    {
+      "id": 187,
+      "name": "Knock Down",
+      "category": "Fighting",
+      "auroraCandidate": "ckdbck"
+    },
+    {
+      "id": 613,
+      "name": "Casual Walk In Place",
+      "category": "WalkAndRun",
+      "auroraCandidate": "cwalk"
+    }
+  ]
+}

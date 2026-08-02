@@ -10,7 +10,10 @@ import type {
   ReadbackAnimation,
   ReadbackNode,
 } from "../preview/types";
-import type { CanonicalAnimationStudioEvidenceV1 } from "../results/projectCanonicalResult";
+import type {
+  CanonicalAnimationPlaybackAcceptanceV1,
+  CanonicalAnimationStudioEvidenceV1,
+} from "../results/projectCanonicalResult";
 import type { AnimationStudioReadbackReconciliationV1 } from "./reconcileAnimationStudioReadback";
 import "./AuthoredAnimationReview.css";
 
@@ -20,6 +23,7 @@ export interface AuthoredAnimationReviewProps {
   studioFingerprintSha256: string;
   reconciliation: AnimationStudioReadbackReconciliationV1;
   evidence: CanonicalAnimationStudioEvidenceV1;
+  animationPlaybackAcceptance: CanonicalAnimationPlaybackAcceptanceV1;
   readback: BinaryMdlInspectionReport;
   onOpenMismatch: (path: string) => void;
 }
@@ -30,12 +34,19 @@ export function AuthoredAnimationReview({
   studioFingerprintSha256,
   reconciliation,
   evidence,
+  animationPlaybackAcceptance,
   readback,
   onOpenMismatch,
 }: AuthoredAnimationReviewProps) {
   const clipNames = new Map(studio.authoredClips.map(({ id, name }) => [id, name]));
   const studioClips = new Map(studio.authoredClips.map((clip) => [clip.id, clip]));
   const readbackClips = new Map(readback.animations.map((clip) => [clip.name, clip]));
+  const runtimeExposures = new Map(
+    evidence.customRuntimeExposures.map((exposure) => [
+      exposure.customAnimationId,
+      exposure,
+    ]),
+  );
   const firstDiagnostic = reconciliation.diagnostics[0];
 
   return (
@@ -46,7 +57,7 @@ export function AuthoredAnimationReview({
           <h3>Authored animations</h3>
         </div>
         <strong data-status={reconciliation.status.toLowerCase()}>
-          Readback {reconciliation.status}
+          Binary readback {reconciliation.status}
         </strong>
       </header>
 
@@ -72,11 +83,20 @@ export function AuthoredAnimationReview({
           </dd>
         </div>
         <div>
-          <dt>Canonical readback</dt>
+          <dt>Binary MDL readback</dt>
           <dd>
             <strong>{reconciliation.status}</strong>
             <span>
               {reconciliation.matchedClipIds.length}/{reconciliation.checkedClipCount} clips matched
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt>Runtime playback proof</dt>
+          <dd>
+            <strong>{animationPlaybackAcceptance.playbackProofStatus}</strong>
+            <span>
+              proofCompleteness={animationPlaybackAcceptance.proofCompleteness}
             </span>
           </dd>
         </div>
@@ -121,7 +141,8 @@ export function AuthoredAnimationReview({
                     <span>{playbackLabel(custom.playback)}</span>
                   </header>
                   <p>{customDefinitionSummary(custom, clipNames)}</p>
-                  <p>{customBase42Usage(custom.id, authoring)}</p>
+                  <p>{customBase42Usage(custom.id, runtimeExposures)}</p>
+                  <p>{runtimeExposureSummary(custom.id, runtimeExposures)}</p>
                   <small>
                     {custom.provenance.provider} · {custom.provenance.ownership} · {custom.provenance.assetId}
                   </small>
@@ -133,7 +154,7 @@ export function AuthoredAnimationReview({
       </div>
 
       <div className="authored-animation-review__comparison">
-        <h4>Source → Edited → Binary readback</h4>
+        <h4>Source → Edited → Binary MDL readback</h4>
         <div>
           <table>
             <thead>
@@ -141,8 +162,8 @@ export function AuthoredAnimationReview({
                 <th scope="col">Usage</th>
                 <th scope="col">Source provenance</th>
                 <th scope="col">Edited clip</th>
-                <th scope="col">Binary readback</th>
-                <th scope="col">Root motion</th>
+                <th scope="col">Binary MDL readback</th>
+                <th scope="col">Animation-root translation</th>
                 <th scope="col">Event markers</th>
               </tr>
             </thead>
@@ -256,14 +277,29 @@ function clipUsage(
 
 function customBase42Usage(
   customId: string,
-  authoring: CreatureAnimationAuthoringV2,
+  exposures: ReadonlyMap<
+    string,
+    CanonicalAnimationStudioEvidenceV1["customRuntimeExposures"][number]
+  >,
 ) {
-  const slots = authoring.assignments
-    .filter(({ customAnimationId }) => customAnimationId === customId)
-    .map(({ targetSlot }) => targetSlot);
+  const slots = exposures.get(customId)?.runtimeBaseSlots ?? [];
   return slots.length > 0
     ? `Base 42 assignments: ${slots.join(", ")}`
     : "Base 42 assignments: none";
+}
+
+function runtimeExposureSummary(
+  customId: string,
+  exposures: ReadonlyMap<
+    string,
+    CanonicalAnimationStudioEvidenceV1["customRuntimeExposures"][number]
+  >,
+) {
+  const exposure = exposures.get(customId);
+  if (!exposure || exposure.status === "LIBRARY_ONLY") {
+    return "Runtime: library only — no arbitrary-name playback claim.";
+  }
+  return `Runtime: Base 42 routed via ${exposure.runtimeBaseSlots.join(", ")}.`;
 }
 
 function customDefinitionSummary(
@@ -338,7 +374,7 @@ function rootMotionSummary(clip: ReadbackAnimation) {
   const first = position?.values[0];
   const last = position?.values.at(-1);
   if (!first || !last || first.length < 3 || last.length < 3) {
-    return "No root translation track";
+    return "No translation controller on animation root";
   }
   const delta = [0, 1, 2].map((index) => (last[index] ?? 0) - (first[index] ?? 0));
   const magnitude = Math.hypot(...delta);

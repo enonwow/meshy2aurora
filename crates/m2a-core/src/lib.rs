@@ -2,7 +2,16 @@
 
 pub mod animated_donor;
 pub mod animated_donor_candidate;
+pub mod animation_authoring_v2;
+pub mod animation_curves;
+pub mod animation_layers;
+pub mod animation_library;
+pub mod animation_motion_tools;
+pub mod animation_pose;
+pub mod animation_retarget;
+pub mod animation_sequence;
 pub mod animation_studio;
+pub mod animation_workbench;
 pub mod creature_animation_mapping;
 pub mod creature_visibility_gate;
 pub mod direct_creature_animation;
@@ -11,6 +20,7 @@ pub mod erf;
 pub mod gff;
 pub mod glb;
 pub mod hak;
+pub mod held_weapon;
 pub mod hierarchy_candidate;
 pub mod hierarchy_experiment;
 pub mod hook_horror_clone_diagnostic;

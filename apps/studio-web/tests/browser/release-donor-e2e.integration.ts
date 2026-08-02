@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import ownerH1Url from
   "@m2a-canonical-repository/sample-3d/h1-humanoid-1500/source.glb?url";
-import {
-  compareAnimationImportRigsV1,
-  createImportedModelClipV1,
-} from "../../src/features/animation-editor/animationImport";
 import type { AnimationRigNodeV1 } from
   "../../src/features/animation-editor/AnimationBoneTree";
 import {
@@ -154,21 +150,46 @@ describe("E7 real owner-asset donor import boundary", () => {
     expect(donor.clips).toEqual([
       expect.objectContaining({ name: DONOR_CLIP_NAME }),
     ]);
-    expect(compareAnimationImportRigsV1(current.rig, donor.rig)).toMatchObject({
-      compatible: true,
-      code: null,
-      mismatches: [],
-    });
-    if (!donor.clip) {
-      throw new Error("The derived donor did not expose the selected clip.");
+    const compatibilityResponse = await client.inspectAnimationTransferCompatibility(
+      ownerBytes.slice(0),
+      donorBytes.slice(0),
+      "e7-owner-donor-compatibility",
+    );
+    if (
+      !compatibilityResponse.ok
+      || compatibilityResponse.type
+        !== "ANIMATION_TRANSFER_COMPATIBILITY_INSPECTED"
+    ) {
+      throw new Error("Core did not classify the exact owner/donor pair.");
     }
-
-    const imported = {
-      ...createImportedModelClipV1(donor.clip, {
-        id: "e7-owner-donor-idle",
-        name: "e7_donor_idle",
-        donorSourceRevision: donorSha256,
+    expect(JSON.parse(compatibilityResponse.compatibilityJson)).toMatchObject({
+      status: "EXACT_COPY",
+      donorSourceRevision: donorSha256,
+      targetSourceRevision: OWNER_H1_SHA256,
+      allowedModes: expect.arrayContaining(["EXACT_RIG_COPY_V1"]),
+    });
+    const transferResponse = await client.retargetAnimationModelClip(
+      ownerBytes.slice(0),
+      donorBytes.slice(0),
+      DONOR_CLIP_NAME,
+      JSON.stringify({
+        mode: "EXACT_RIG_COPY_V1",
+        clipId: "e7-owner-donor-idle",
+        outputName: "e7_donor_idle",
       }),
+      "e7-owner-donor-transfer",
+    );
+    if (
+      !transferResponse.ok
+      || transferResponse.type !== "ANIMATION_MODEL_CLIP_RETARGETED"
+    ) {
+      throw new Error("Core did not transfer the exact donor clip.");
+    }
+    const transferred = JSON.parse(transferResponse.resultJson) as {
+      clip: AuthoredAnimationClipV1;
+    };
+    const imported = {
+      ...transferred.clip,
       status: "VALID" as const,
     };
     const document: AnimationStudioDocumentV1 = {

@@ -1,6 +1,7 @@
+import { memo } from "react";
 import type { AuthoredAnimationEventV1 } from "../animation-studio/types";
 
-export function AnimationEventTrack({
+export const AnimationEventTrack = memo(function AnimationEventTrack({
   events,
   lengthSeconds,
   onSelect,
@@ -29,4 +30,4 @@ export function AnimationEventTrack({
       </div>
     </div>
   );
-}
+});

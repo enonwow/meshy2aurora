@@ -2,11 +2,9 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
 export function NewAnimationMenu({
   onCreateBlank,
-  onCreateProcedural,
   onImportFromModel,
 }: {
   onCreateBlank: () => void;
-  onCreateProcedural?: () => void;
   onImportFromModel?: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -60,15 +58,6 @@ export function NewAnimationMenu({
           >
             From current pose
           </button>
-          {onCreateProcedural ? (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => choose(onCreateProcedural)}
-            >
-              From procedural template
-            </button>
-          ) : null}
           {onImportFromModel ? (
             <button
               type="button"

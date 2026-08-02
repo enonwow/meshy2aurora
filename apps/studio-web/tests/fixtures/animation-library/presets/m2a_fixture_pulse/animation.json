@@ -1,0 +1,1 @@
+{"schemaVersion":1,"durationSeconds":1.0,"animationRootBoneName":"m6-root","tracks":[{"targetBoneName":"m6-root","path":"TRANSLATION","interpolation":"LINEAR","keyframes":[{"timeSeconds":0.0,"value":[0.0,0.0,0.0]},{"timeSeconds":0.5,"value":[0.1,0.0,0.0]},{"timeSeconds":1.0,"value":[0.0,0.0,0.0]}]}],"events":[{"timeSeconds":0.5,"name":"impact"}]}

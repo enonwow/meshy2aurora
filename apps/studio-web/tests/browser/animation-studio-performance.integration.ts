@@ -1,9 +1,16 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { flushSync } from "react-dom";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cdp } from "vitest/browser";
 import realH1Url from
   "@m2a-canonical-repository/sample-3d/h1-humanoid-1500/source.glb?url";
+import voidCrystalKnightUrl from
+  "@m2a-canonical-repository/sample-3d/void-crystal-knight-h1-v1/source.glb?url";
 import appearanceUrl from "../fixtures/appearance.2da?url";
 import {
+  createBlankPoseClipV1,
+  createHumanoidSwordSlashFromSourceClipV1,
   createProceduralTemplateClipV1,
 } from "../../src/features/animation-editor/editing";
 import {
@@ -21,9 +28,11 @@ import type {
 import {
   serializeAnimationStudioDocumentV1,
 } from "../../src/features/animation-studio/schema";
+import { SourceViewport } from "../../src/features/preview/SourceViewport";
 import { StudioWorkerClient } from "../../src/worker/client";
 
 const clients: StudioWorkerClient[] = [];
+const roots: Root[] = [];
 
 async function fetchBytes(url: string): Promise<ArrayBuffer> {
   const response = await fetch(url);
@@ -33,11 +42,192 @@ async function fetchBytes(url: string): Promise<ArrayBuffer> {
   return response.arrayBuffer();
 }
 
-afterEach(() => {
+async function measureFrameIntervals(durationMs: number) {
+  const intervals: number[] = [];
+  const startedAt = performance.now();
+  let previousFrameAt = startedAt;
+  await new Promise<void>((resolve) => {
+    const sample = (frameAt: number) => {
+      intervals.push(frameAt - previousFrameAt);
+      previousFrameAt = frameAt;
+      if (frameAt - startedAt >= durationMs) resolve();
+      else requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  return intervals;
+}
+
+function percentile(values: readonly number[], fraction: number) {
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.min(
+    Math.max(Math.ceil(sorted.length * fraction) - 1, 0),
+    sorted.length - 1,
+  )] ?? Infinity;
+}
+
+afterEach(async () => {
   while (clients.length) clients.pop()?.dispose();
+  while (roots.length) roots.pop()?.unmount();
+  await Promise.resolve();
+  document.body.replaceChildren();
 });
 
 describe("Animation Studio measured product limits on canonical real H1", () => {
+  it("plays the exact Void Crystal Knight on the Three clock without React frame renders or GLB reloads", async () => {
+    const sourceBytes = await fetchBytes(voidCrystalKnightUrl);
+    const sourceFile = new File([sourceBytes], "source.glb", {
+      type: "model/gltf-binary",
+    });
+    const arrayBufferSpy = vi.spyOn(sourceFile, "arrayBuffer");
+    const client = new StudioWorkerClient();
+    clients.push(client);
+    await client.request({
+      requestId: "smooth-vck-init",
+      type: "INITIALIZE",
+    });
+    const inspected = await client.inspectEditableAnimationSource(
+      sourceBytes.slice(0),
+      undefined,
+      "smooth-vck-inspect",
+    );
+    expect(inspected).toMatchObject({
+      ok: true,
+      type: "EDITABLE_ANIMATION_SOURCE_INSPECTED",
+    });
+    if (!inspected.ok || inspected.type !== "EDITABLE_ANIMATION_SOURCE_INSPECTED") {
+      throw new Error("Void Crystal Knight output rig inspection failed");
+    }
+    const inspection = JSON.parse(inspected.inspectionJson) as {
+      sourceRevision: string;
+      rig: Array<{
+        id: number;
+        name: string;
+        parentId: number | null;
+        translation: [number, number, number];
+        rotation: [number, number, number, number];
+      }>;
+    };
+    const animationRoot = inspection.rig.find(({ parentId }) => parentId === null)
+      ?.name ?? inspection.rig[0]?.name;
+    if (!animationRoot) throw new Error("Void Crystal Knight animation root is missing");
+    const pose = createBlankPoseClipV1({
+      id: "smooth-vck-pose",
+      name: "smooth_vck_pose",
+      sourceRevision: inspection.sourceRevision,
+      animationRoot,
+      rig: inspection.rig,
+    });
+    const clip = {
+      ...createHumanoidSwordSlashFromSourceClipV1(pose, inspection.rig, 0),
+      id: "smooth-vck-cleave",
+      name: "m2a_voidcleave",
+    };
+    const trailNode = inspection.rig.at(-1)!;
+    const motionVisualization = {
+      schemaVersion: 1 as const,
+      sourceRevision: inspection.sourceRevision,
+      clipId: clip.id,
+      clipRevision: clip.revision,
+      trails: [{
+        nodeId: trailNode.id,
+        points: Array.from({ length: 90 }, (_, index) => ({
+          timeSeconds: clip.lengthSeconds * index / 89,
+          translation: [
+            trailNode.translation[0] + Math.sin(index / 12) * 0.12,
+            trailNode.translation[1],
+            trailNode.translation[2],
+          ] as const,
+        })),
+      }],
+      onionPoses: [],
+      fingerprintSha256: "f".repeat(64),
+    };
+    const container = document.createElement("div");
+    container.style.width = "800px";
+    container.style.height = "600px";
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+    const updates: Array<{
+      at: number;
+      timeSeconds: number;
+      playing: boolean;
+    }> = [];
+    let parentRenderCount = 0;
+    const renderViewport = async (
+      authoredClip: typeof clip,
+      playing: boolean,
+      timeSeconds: number,
+    ) => {
+      flushSync(() => root.render((() => {
+        parentRenderCount += 1;
+        return createElement(SourceViewport, {
+          input: {
+            provenance: "SOURCE",
+            file: sourceFile,
+            sourceSha256: inspection.sourceRevision,
+          },
+          authoredClip,
+          authoredRig: inspection.rig,
+          controlledAnimationTimeSeconds: timeSeconds,
+          controlledAnimationPlayback: {
+            playing,
+            onUpdate: (snapshot) => updates.push({
+              at: Date.now(),
+              timeSeconds: snapshot.timeSeconds,
+              playing: snapshot.playing,
+            }),
+          },
+          motionVisualization,
+        });
+      })()));
+      await Promise.resolve();
+    };
+
+    await renderViewport(clip, true, 0);
+    await vi.waitFor(() => {
+      expect(updates.some(({ playing }) => playing)).toBe(true);
+    }, { timeout: 8_000, interval: 50 });
+    const desktopFrameIntervals = await measureFrameIntervals(600);
+    await vi.waitFor(() => {
+      expect(updates.some(({ playing }) => !playing)).toBe(true);
+    }, { timeout: 8_000, interval: 50 });
+    const activeUpdates = updates.filter(({ playing }) => playing);
+    expect(activeUpdates.length).toBeGreaterThanOrEqual(5);
+    expect(activeUpdates.length).toBeLessThanOrEqual(16);
+    expect(activeUpdates.every((entry, index) => (
+      index === 0
+      || entry.timeSeconds >= (activeUpdates[index - 1]?.timeSeconds ?? 0)
+    ))).toBe(true);
+    expect(percentile(desktopFrameIntervals, 0.95)).toBeLessThanOrEqual(25);
+    expect(desktopFrameIntervals.filter((duration) => duration > 50).length
+      / desktopFrameIntervals.length).toBeLessThan(0.05);
+    expect(parentRenderCount).toBe(1);
+    expect(arrayBufferSpy).toHaveBeenCalledOnce();
+
+    const devtools = cdp();
+    await devtools.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+    try {
+      await renderViewport(clip, false, 0);
+      updates.length = 0;
+      await renderViewport(clip, true, 0);
+      await vi.waitFor(() => {
+        expect(updates.some(({ playing }) => playing)).toBe(true);
+      }, { timeout: 8_000, interval: 50 });
+      const throttledFrameIntervals = await measureFrameIntervals(600);
+      expect(percentile(throttledFrameIntervals, 0.95)).toBeLessThanOrEqual(50);
+    } finally {
+      await devtools.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+    }
+
+    await renderViewport({ ...clip, revision: clip.revision + 1 }, false, 0.5);
+    await vi.waitFor(() => {
+      expect(arrayBufferSpy).toHaveBeenCalledOnce();
+    });
+    expect(parentRenderCount).toBe(4);
+  }, 30_000);
+
   it("records cold start, parse, preview and build under a 4x CPU laptop profile", async () => {
     const devtools = cdp();
     await devtools.send("Emulation.setCPUThrottlingRate", { rate: 4 });

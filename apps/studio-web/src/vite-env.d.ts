@@ -1,5 +1,7 @@
 /// <reference types="vite/client" />
 
+declare const __M2A_CANONICAL_REPOSITORY_ROOT__: string;
+
 declare module "@m2a-wasm" {
   export default function init(): Promise<unknown>;
   export function ingestGlbJson(bytes: Uint8Array): string;
@@ -80,6 +82,48 @@ declare module "@m2a-wasm" {
     sourceGlb: Uint8Array,
     clipName?: string,
   ): string;
+  export function inspectAnimationTransferCompatibilityV1(
+    targetGlb: Uint8Array,
+    donorGlb: Uint8Array,
+  ): string;
+  export function retargetAnimationClipBetweenModelsV1(
+    targetGlb: Uint8Array,
+    donorGlb: Uint8Array,
+    clipName: string,
+    optionsJson: string,
+  ): string;
+  export function inspectHumanoidRetargetCompatibilityV2(
+    targetGlb: Uint8Array,
+    donorGlb: Uint8Array,
+    overridesJson: string,
+    manualMappingConfirmed: boolean,
+  ): string;
+  export function retargetAnimationClipHumanoidV2(
+    targetGlb: Uint8Array,
+    donorGlb: Uint8Array,
+    clipName: string,
+    semanticMapJson: string,
+    clipId: string,
+    outputName: string,
+  ): string;
+  export function buildAnimationSequencePreviewV1(
+    requestJson: string,
+    availableClipsJson: string,
+  ): string;
+  export function resampleAnimationCurveToLinearV1(
+    curveJson: string,
+    policyJson: string,
+  ): string;
+  export function bakeAnimationLayersV1(
+    layersJson: string,
+    rigJson: string,
+  ): string;
+  export function applyAnimationWorkbenchOperationV1(requestJson: string): string;
+  export function prepareAnimationTransferBatchV2(
+    targetGlb: Uint8Array,
+    donorGlb: Uint8Array,
+    requestJson: string,
+  ): string;
   export function validateAnimationStudioDocumentV1(
     animationStudioDocumentJson: string,
     sourceGlb: Uint8Array,
@@ -91,6 +135,67 @@ declare module "@m2a-wasm" {
   export function previewAuthoredAnimationClipV1(
     animationStudioDocumentJson: string,
     clipId: string,
+  ): string;
+  export function applyAnimationEditCommandBatchV1(
+    animationStudioDocumentJson: string,
+    commandBatchJson: string,
+    sourceGlb: Uint8Array,
+  ): string;
+  export function analyzeAnimationMotionQualityV1(
+    authoredClipJson: string,
+    policyJson: string,
+    contextJson: string,
+    sourceGlb: Uint8Array,
+  ): string;
+  export function applyAnimationAuthoringToolV1(
+    authoredClipJson: string,
+    toolRequestJson: string,
+    sourceGlb: Uint8Array,
+  ): string;
+  export function inspectHeldWeaponSourceV1(
+    filename: string,
+    provenance: string,
+    weaponGlb: Uint8Array,
+  ): string;
+  export function composeHeldWeaponAttachmentV1(
+    weaponGlb: Uint8Array,
+    filename: string,
+    provenance: string,
+    rigJson: string,
+    primaryHand: "RIGHT" | "LEFT",
+    targetNodeId: number,
+    localTransformJson: string,
+    attachmentRevision: bigint,
+  ): string;
+  export function evaluateAnimationPoseParityV1(
+    expectedClipJson: string,
+    actualClipJson: string,
+    policyJson: string,
+    sourceGlb: Uint8Array,
+  ): string;
+  export function validateAnimationPresetV1(
+    manifestJson: string,
+    animationJson: string,
+    catalogSha256: string,
+  ): string;
+  export function inspectAnimationPresetCompatibilityV1(
+    manifestJson: string,
+    animationJson: string,
+    catalogSha256: string,
+    sourceGlb: Uint8Array,
+  ): string;
+  export function instantiateAnimationPresetV1(
+    manifestJson: string,
+    animationJson: string,
+    catalogSha256: string,
+    sourceGlb: Uint8Array,
+    clipId: string,
+    outputName: string,
+  ): string;
+  export function exportAnimationContributionV1(
+    authoredClipJson: string,
+    sourceGlb: Uint8Array,
+    metadataJson: string,
   ): string;
   export function buildMeshyH1ModelPackageV4(
     sourceGlb: Uint8Array,
@@ -145,6 +250,25 @@ declare module "@m2a-wasm" {
     animationAuthoringJson: string,
     animationStudioDocumentJson: string,
     projectIdentityJson: string,
+    eventAuthoringJson?: string,
+  ): {
+    readonly reportJson: string;
+    readonly manifestJson: string;
+    readonly summaryJson: string;
+    readonly readbackJson: string;
+    takeHakBytes(): Uint8Array;
+    takeModelBytes(): Uint8Array;
+    takeProofModuleBytes(): Uint8Array;
+    free(): void;
+  };
+  export function buildMeshyH1ModelPackageV6HeldWeaponProjectV1(
+    sourceGlb: Uint8Array,
+    appearanceTwoDa: Uint8Array,
+    animationAuthoringJson: string,
+    animationStudioDocumentJson: string,
+    projectIdentityJson: string,
+    weaponGlb: Uint8Array,
+    heldWeaponAttachmentJson: string,
     eventAuthoringJson?: string,
   ): {
     readonly reportJson: string;

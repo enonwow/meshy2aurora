@@ -15,6 +15,11 @@ export interface SourceStepProps extends SourceInputProps {
   onContinue: () => void;
   onOpenMeshyLab?: () => void;
   meshyProvenance?: MeshyArtifactProvenance;
+  visualQaFixture?: {
+    label: string;
+    state: "IDLE" | "LOADING" | "LOADED" | "ERROR";
+    onLoad: () => void;
+  };
 }
 
 interface DropZoneProps {
@@ -149,6 +154,7 @@ export function SourceStep({
   onContinue,
   onOpenMeshyLab,
   meshyProvenance,
+  visualQaFixture,
 }: SourceStepProps) {
   const headingId = useId();
   const sourceInputId = useId();
@@ -194,6 +200,27 @@ export function SourceStep({
         </p>
         <p className="source-step__privacy">All processing stays in your browser. Files are not uploaded.</p>
       </header>
+
+      {visualQaFixture ? (
+        <aside className="source-step__visual-qa" aria-label="Visual QA fixture">
+          <div>
+            <strong>Developer visual QA</strong>
+            <span>Exact local fixture through the normal Studio workflow.</span>
+          </div>
+          <button
+            type="button"
+            className="button button--secondary"
+            disabled={visualQaFixture.state === "LOADING"}
+            onClick={visualQaFixture.onLoad}
+          >
+            {visualQaFixture.state === "LOADING"
+              ? "Loading visual QA fixture..."
+              : visualQaFixture.state === "LOADED"
+                ? "Reload visual QA fixture"
+                : visualQaFixture.label}
+          </button>
+        </aside>
+      ) : null}
 
       {onTargetChange ? (
         <fieldset className="source-step__target">

@@ -14,7 +14,8 @@ use crate::{
     creature_animation_mapping::{
         AnimationFallbackDecisionV1, AnimationFallbackReviewV1, AnimationMappingProvenanceV1,
         AnimationSourceAssignmentV1, AnimationSourceKindV1, CreatureAnimationAuthoringV1,
-        CustomAnimationPhaseKindV1, CustomAnimationPlaybackV1, DirectCreatureModelTypeV1,
+        CustomAnimationPhaseKindV1, CustomAnimationPlaybackV1, DirectCreatureBaseSlotV1,
+        DirectCreatureModelTypeV1,
     },
     direct_creature_animation::FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1,
     mdl::{
@@ -25,6 +26,8 @@ use crate::{
 };
 
 pub const ANIMATION_STUDIO_DOCUMENT_SCHEMA_VERSION: u32 = 1;
+pub const ANIMATION_STUDIO_DOCUMENT_SCHEMA_VERSION_V2: u32 = 2;
+pub const ANIMATION_STUDIO_DOCUMENT_SCHEMA_VERSION_V3: u32 = 3;
 pub const CREATURE_ANIMATION_AUTHORING_SCHEMA_VERSION_V2: u32 = 2;
 pub const ANIMATION_STUDIO_DIAGNOSTIC_SCHEMA_VERSION: u32 = 1;
 pub const ANIMATION_STUDIO_READBACK_SCHEMA_VERSION: u32 = 1;
@@ -44,6 +47,10 @@ pub const ANIMATION_STUDIO_MAX_DURATION_SECONDS: f32 = 86_400.0;
 /// are normalized separately; translations beyond this range are not useful in
 /// an Aurora model and are rejected before serialization/build.
 pub const ANIMATION_STUDIO_MAX_ABSOLUTE_TRACK_VALUE: f32 = 1_000_000.0;
+/// Every native generic melee attack route is covered by the deterministic
+/// Custom attack demo mapping. The runtime still chooses the concrete attack
+/// state, but every choice resolves to the same caller-selected Custom clip.
+pub const CUSTOM_ATTACK_DEMO_BASE_SLOTS_V1: [&str; 3] = ["ca1slashl", "ca1slashr", "ca1stab"];
 
 pub const DIAGNOSTIC_SCHEMA: &str = "M2A-ANIMATION-EDIT-SCHEMA";
 pub const DIAGNOSTIC_SOURCE_STALE: &str = "M2A-ANIMATION-EDIT-SOURCE-STALE";
@@ -78,6 +85,34 @@ pub struct AnimationStudioDocumentV1 {
     pub authored_clips: Vec<AuthoredAnimationClipV1>,
 }
 
+/// Deterministically upgrades the persisted document wire contract before a
+/// `LIBRARY_PRESET_COPY` source is inserted. Existing V1 projects remain
+/// readable; V2 is the first version allowed to carry library provenance.
+pub fn migrate_animation_studio_document_v1_to_v2(
+    document: &AnimationStudioDocumentV1,
+) -> AnimationStudioDocumentV1 {
+    let mut migrated = document.clone();
+    if migrated.schema_version == ANIMATION_STUDIO_DOCUMENT_SCHEMA_VERSION {
+        migrated.schema_version = ANIMATION_STUDIO_DOCUMENT_SCHEMA_VERSION_V2;
+    }
+    migrated
+}
+
+/// Deterministically upgrades a persisted document before a retargeted clip is
+/// inserted. V3 is the first wire version allowed to carry donor/target
+/// retarget provenance; V1 and V2 remain readable for existing projects.
+pub fn migrate_animation_studio_document_v1_or_v2_to_v3(
+    document: &AnimationStudioDocumentV1,
+) -> AnimationStudioDocumentV1 {
+    let mut migrated = document.clone();
+    if migrated.schema_version == ANIMATION_STUDIO_DOCUMENT_SCHEMA_VERSION
+        || migrated.schema_version == ANIMATION_STUDIO_DOCUMENT_SCHEMA_VERSION_V2
+    {
+        migrated.schema_version = ANIMATION_STUDIO_DOCUMENT_SCHEMA_VERSION_V3;
+    }
+    migrated
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum AuthoredAnimationClipKindV1 {
@@ -100,9 +135,42 @@ pub enum AuthoredAnimationSourceKindV1 {
     SourceClipCopy,
     ImportedModelCopy,
     ProceduralTemplate,
+    LibraryPresetCopy,
+    RetargetedModelCopy,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AnimationLibraryPresetProvenanceV1 {
+    pub preset_id: String,
+    pub preset_version: u32,
+    pub preset_motion_sha256: String,
+    pub catalog_sha256: String,
+    pub source: String,
+    pub authors: Vec<String>,
+    pub license: String,
+    pub rig_signature_sha256: String,
+    pub instantiation_mode: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AnimationRetargetProvenanceV1 {
+    pub donor_source_revision: String,
+    pub target_source_revision: String,
+    pub donor_clip_name: String,
+    pub donor_clip_fingerprint: String,
+    pub donor_rig_signature_sha256: String,
+    pub target_rig_signature_sha256: String,
+    pub compatibility_fingerprint_sha256: String,
+    pub mode: String,
+    pub root_motion_scale: f32,
+    pub output_motion_fingerprint_sha256: String,
+    pub algorithm_version: String,
+    pub algorithm_limits: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AuthoredAnimationSourceV1 {
     pub kind: AuthoredAnimationSourceKindV1,
@@ -110,6 +178,10 @@ pub struct AuthoredAnimationSourceV1 {
     pub source_clip_name: Option<String>,
     pub source_clip_fingerprint: Option<String>,
     pub procedural_template: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub library_preset: Option<AnimationLibraryPresetProvenanceV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retarget: Option<AnimationRetargetProvenanceV1>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
@@ -213,6 +285,7 @@ pub struct AnimationStudioRigNodeV1 {
 pub enum ProceduralAnimationTemplateV1 {
     BindPose,
     RootTranslationPulse,
+    HumanoidSwordSlash,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -289,15 +362,16 @@ pub enum AnimationStudioReadbackStatusV1 {
     Mismatch,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AnimationStudioReadbackClipV1 {
     pub authored_clip_id: String,
     pub output_clip_name: String,
     pub materialized_fingerprint: String,
+    pub materialized_clip: MdlAnimationClipV1,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AnimationStudioReadbackV1 {
     pub schema_version: u32,
@@ -367,6 +441,45 @@ pub struct MaterializedCreatureAnimationAuthoringV2 {
     pub schema_version: u32,
     pub animations: MdlAnimationSetV1,
     pub authored_usages: Vec<AuthoredAnimationUsageV1>,
+    pub custom_runtime_exposures: Vec<CustomAnimationRuntimeExposureV1>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CustomAnimationRuntimeExposureStatusV1 {
+    /// The named Custom output is packaged as an authoring/library asset, but
+    /// no NWN runtime invocation contract is claimed for its arbitrary name.
+    LibraryOnly,
+    /// At least one exact Base-42 state routes to this Custom definition. The
+    /// Base-42 output names, not the arbitrary library names, are runtime-facing.
+    Base42Routed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomAnimationRuntimeExposureV1 {
+    pub schema_version: u32,
+    pub custom_animation_id: String,
+    pub status: CustomAnimationRuntimeExposureStatusV1,
+    pub library_output_clip_names: Vec<String>,
+    pub runtime_base_slots: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomAttackDemoContractV1 {
+    pub schema_version: u32,
+    pub custom_animation_id: String,
+    pub runtime_base_slots: Vec<String>,
+    pub all_native_attack_variants_routed: bool,
+    pub runtime_trigger_profile: String,
+    pub production_idle_slot_preserved: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CustomAttackDemoAuthoringV1 {
+    pub authoring: CreatureAnimationAuthoringV2,
+    pub contract: CustomAttackDemoContractV1,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -465,16 +578,46 @@ pub fn validate_animation_studio_schema_v1(
     document: &AnimationStudioDocumentV1,
 ) -> Vec<AnimationStudioDiagnosticV1> {
     let mut diagnostics = Vec::new();
-    if document.schema_version != ANIMATION_STUDIO_DOCUMENT_SCHEMA_VERSION {
+    if document.schema_version != ANIMATION_STUDIO_DOCUMENT_SCHEMA_VERSION
+        && document.schema_version != ANIMATION_STUDIO_DOCUMENT_SCHEMA_VERSION_V2
+        && document.schema_version != ANIMATION_STUDIO_DOCUMENT_SCHEMA_VERSION_V3
+    {
         diagnostics.push(diagnostic(
             DIAGNOSTIC_SCHEMA,
             "schemaVersion",
             format!(
-                "Animation Studio schema version must be {}, got {}",
-                ANIMATION_STUDIO_DOCUMENT_SCHEMA_VERSION, document.schema_version
+                "Animation Studio schema version must be {}, {}, or {}, got {}",
+                ANIMATION_STUDIO_DOCUMENT_SCHEMA_VERSION,
+                ANIMATION_STUDIO_DOCUMENT_SCHEMA_VERSION_V2,
+                ANIMATION_STUDIO_DOCUMENT_SCHEMA_VERSION_V3,
+                document.schema_version
             ),
             "Open or migrate a supported Animation Studio document.",
         ));
+    }
+    if document.schema_version == ANIMATION_STUDIO_DOCUMENT_SCHEMA_VERSION {
+        for (index, clip) in document.authored_clips.iter().enumerate() {
+            if clip.source.kind == AuthoredAnimationSourceKindV1::LibraryPresetCopy {
+                diagnostics.push(diagnostic(
+                    DIAGNOSTIC_SCHEMA,
+                    format!("authoredClips[{index}].source.kind"),
+                    "LIBRARY_PRESET_COPY requires Animation Studio schemaVersion 2",
+                    "Migrate the document from V1 to V2 before inserting library provenance.",
+                ));
+            }
+        }
+    }
+    if document.schema_version != ANIMATION_STUDIO_DOCUMENT_SCHEMA_VERSION_V3 {
+        for (index, clip) in document.authored_clips.iter().enumerate() {
+            if clip.source.kind == AuthoredAnimationSourceKindV1::RetargetedModelCopy {
+                diagnostics.push(diagnostic(
+                    DIAGNOSTIC_SCHEMA,
+                    format!("authoredClips[{index}].source.kind"),
+                    "RETARGETED_MODEL_COPY requires Animation Studio schemaVersion 3",
+                    "Migrate the document to V3 before inserting retarget provenance.",
+                ));
+            }
+        }
     }
     if !is_sha256(&document.source_revision) {
         diagnostics.push(diagnostic(
@@ -541,8 +684,11 @@ pub fn validate_animation_studio_schema_v1(
                 "Rename one clip so output names are unique case-insensitively.",
             ));
         }
-        if clip.source.kind != AuthoredAnimationSourceKindV1::ImportedModelCopy
-            && clip.source.source_revision != document.source_revision
+        if !matches!(
+            clip.source.kind,
+            AuthoredAnimationSourceKindV1::ImportedModelCopy
+                | AuthoredAnimationSourceKindV1::RetargetedModelCopy
+        ) && clip.source.source_revision != document.source_revision
         {
             diagnostics.push(diagnostic(
                 DIAGNOSTIC_SOURCE_STALE,
@@ -552,6 +698,16 @@ pub fn validate_animation_studio_schema_v1(
                     clip.source.source_revision, document.source_revision
                 ),
                 "Reconcile or recreate this draft against the current exact source GLB.",
+            ));
+        }
+        if let Some(retarget) = clip.source.retarget.as_ref()
+            && retarget.target_source_revision != document.source_revision
+        {
+            diagnostics.push(diagnostic(
+                DIAGNOSTIC_SOURCE_STALE,
+                format!("authoredClips[{index}].source.retarget.targetSourceRevision"),
+                "retarget provenance does not match the current target source revision",
+                "Generate a fresh retarget preview for the exact current target GLB.",
             ));
         }
     }
@@ -584,11 +740,6 @@ pub fn validate_creature_animation_authoring_v2(
         .iter()
         .map(|clip| (clip.id.as_str(), clip))
         .collect::<BTreeMap<_, _>>();
-    let custom_ids = authoring
-        .custom_animations
-        .iter()
-        .map(|custom| custom.id.as_str())
-        .collect::<BTreeSet<_>>();
     let mut seen_ids = BTreeSet::new();
     let mut seen_names = BTreeSet::new();
     for (index, custom) in authoring.custom_animations.iter().enumerate() {
@@ -672,15 +823,28 @@ pub fn validate_creature_animation_authoring_v2(
         }
     }
     for (index, assignment) in authoring.assignments.iter().enumerate() {
-        if let Some(id) = assignment.custom_animation_id.as_deref()
-            && !custom_ids.contains(id)
-        {
-            diagnostics.push(diagnostic(
-                DIAGNOSTIC_SCHEMA,
-                format!("assignments[{index}].customAnimationId"),
-                format!("assignment refers to missing custom animation id {id:?}"),
-                "Select an existing Custom library definition.",
-            ));
+        if let Some(id) = assignment.custom_animation_id.as_deref() {
+            let custom = authoring
+                .custom_animations
+                .iter()
+                .find(|custom| custom.id == id);
+            if custom.is_none() {
+                diagnostics.push(diagnostic(
+                    DIAGNOSTIC_SCHEMA,
+                    format!("assignments[{index}].customAnimationId"),
+                    format!("assignment refers to missing custom animation id {id:?}"),
+                    "Select an existing Custom library definition.",
+                ));
+            } else if assignment.source_kind == AnimationSourceKindV1::Custom
+                && custom.is_some_and(|custom| custom.provenance != assignment.provenance)
+            {
+                diagnostics.push(diagnostic(
+                    DIAGNOSTIC_SCHEMA,
+                    format!("assignments[{index}].provenance"),
+                    "Custom assignment provenance does not match its exact Custom library definition",
+                    "Reassign the Custom animation so provider, asset identity, and ownership are preserved.",
+                ));
+            }
         }
     }
     let packaged_authored_ids = authoring
@@ -868,6 +1032,193 @@ pub fn materialize_custom_animation_definition_v2(
     Ok(outputs)
 }
 
+/// Reports the only runtime exposure currently supported by the product.
+///
+/// Arbitrary Custom output names remain useful in the local library and binary
+/// payload, but they are not presented as NWScript-callable. A Custom
+/// definition becomes runtime-facing only through one or more exact Base-42
+/// assignments, whose canonical slot names are emitted by materialization.
+pub fn inspect_custom_animation_runtime_exposure_v1(
+    authoring: &CreatureAnimationAuthoringV2,
+) -> Vec<CustomAnimationRuntimeExposureV1> {
+    let assignments = authoring
+        .assignments
+        .iter()
+        .map(|assignment| (assignment.target_slot.as_str(), assignment))
+        .collect::<BTreeMap<_, _>>();
+    let fallbacks = authoring
+        .fallbacks
+        .iter()
+        .map(|fallback| (fallback.target_slot.as_str(), fallback))
+        .collect::<BTreeMap<_, _>>();
+    authoring
+        .custom_animations
+        .iter()
+        .map(|custom| {
+            let runtime_base_slots = FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1
+                .iter()
+                .filter(|slot| {
+                    resolve_v2_base_assignment(slot, &assignments, &fallbacks).is_ok_and(
+                        |assignment| {
+                            assignment.source_kind == AnimationSourceKindV1::Custom
+                                && assignment.custom_animation_id.as_deref()
+                                    == Some(custom.id.as_str())
+                        },
+                    )
+                })
+                .map(|slot| (*slot).to_owned())
+                .collect::<Vec<_>>();
+            let library_output_clip_names = match custom.playback {
+                CustomAnimationPlaybackV1::OneShot => vec![custom.name.clone()],
+                CustomAnimationPlaybackV1::LoopingPhased => custom
+                    .phases
+                    .iter()
+                    .map(|phase| custom_phase_output_name_v2(&custom.name, phase.phase))
+                    .collect(),
+            };
+            CustomAnimationRuntimeExposureV1 {
+                schema_version: 1,
+                custom_animation_id: custom.id.clone(),
+                status: if runtime_base_slots.is_empty() {
+                    CustomAnimationRuntimeExposureStatusV1::LibraryOnly
+                } else {
+                    CustomAnimationRuntimeExposureStatusV1::Base42Routed
+                },
+                library_output_clip_names,
+                runtime_base_slots,
+            }
+        })
+        .collect()
+}
+
+/// Creates a demo-only V2 authoring projection that routes one Custom
+/// animation through all three generic native attack slots. This makes the
+/// chosen clip independent of the concrete melee variant selected by the
+/// active-monster AI and never repurposes `cpause1`.
+pub fn apply_custom_attack_demo_route_v1(
+    authoring: &CreatureAnimationAuthoringV2,
+    custom_animation_id: &str,
+) -> Result<CustomAttackDemoAuthoringV1, AnimationStudioDiagnosticV1> {
+    let custom = authoring
+        .custom_animations
+        .iter()
+        .find(|custom| custom.id == custom_animation_id)
+        .ok_or_else(|| {
+            diagnostic(
+                DIAGNOSTIC_SCHEMA,
+                "customAttackDemo.customAnimationId",
+                format!(
+                    "Custom attack demo refers to missing custom animation id {custom_animation_id:?}"
+                ),
+                "Choose an existing valid Custom animation.",
+            )
+        })?;
+    if custom.playback != CustomAnimationPlaybackV1::OneShot {
+        return Err(diagnostic(
+            DIAGNOSTIC_SCHEMA,
+            "customAttackDemo.customAnimationId",
+            "Custom attack demo requires ONE_SHOT playback",
+            "Select a ONE_SHOT Custom animation or extract one explicit phase as a separate ONE_SHOT Custom.",
+        ));
+    }
+    let assignments = authoring
+        .assignments
+        .iter()
+        .map(|assignment| (assignment.target_slot.as_str(), assignment))
+        .collect::<BTreeMap<_, _>>();
+    let fallbacks = authoring
+        .fallbacks
+        .iter()
+        .map(|fallback| (fallback.target_slot.as_str(), fallback))
+        .collect::<BTreeMap<_, _>>();
+    let production_idle = resolve_v2_base_assignment("cpause1", &assignments, &fallbacks)?.clone();
+    for slot in CUSTOM_ATTACK_DEMO_BASE_SLOTS_V1 {
+        resolve_v2_base_assignment(slot, &assignments, &fallbacks)?;
+    }
+    let next_revision = authoring.authoring_revision.checked_add(1).ok_or_else(|| {
+        diagnostic(
+            DIAGNOSTIC_SCHEMA,
+            "authoringRevision",
+            "Custom attack demo cannot increment the exhausted authoring revision",
+            "Create a fresh authoring document.",
+        )
+    })?;
+    let mut routed = authoring.clone();
+    routed.authoring_revision = next_revision;
+    if !routed
+        .assignments
+        .iter()
+        .any(|assignment| assignment.target_slot.as_str() == "cpause1")
+    {
+        let mut direct_idle = production_idle.clone();
+        direct_idle.target_slot =
+            DirectCreatureBaseSlotV1::try_from("cpause1").map_err(|error| {
+                diagnostic(
+                    DIAGNOSTIC_SCHEMA,
+                    "customAttackDemo.productionIdleSlot",
+                    error.message,
+                    "Use the canonical attack demo route.",
+                )
+            })?;
+        routed.assignments.push(direct_idle);
+    }
+    for slot in CUSTOM_ATTACK_DEMO_BASE_SLOTS_V1 {
+        let replacement = AnimationSourceAssignmentV1 {
+            target_slot: DirectCreatureBaseSlotV1::try_from(slot).map_err(|error| {
+                diagnostic(
+                    DIAGNOSTIC_SCHEMA,
+                    "customAttackDemo.runtimeBaseSlots",
+                    error.message,
+                    "Use the canonical attack demo route.",
+                )
+            })?,
+            source_kind: AnimationSourceKindV1::Custom,
+            source_clip_name: None,
+            custom_animation_id: Some(custom.id.clone()),
+            provenance: custom.provenance.clone(),
+        };
+        if let Some(assignment) = routed
+            .assignments
+            .iter_mut()
+            .find(|assignment| assignment.target_slot.as_str() == slot)
+        {
+            *assignment = replacement;
+        } else {
+            routed.assignments.push(replacement);
+        }
+    }
+    let routed_assignments = routed
+        .assignments
+        .iter()
+        .map(|assignment| (assignment.target_slot.as_str(), assignment))
+        .collect::<BTreeMap<_, _>>();
+    let routed_fallbacks = routed
+        .fallbacks
+        .iter()
+        .map(|fallback| (fallback.target_slot.as_str(), fallback))
+        .collect::<BTreeMap<_, _>>();
+    let routed_idle =
+        resolve_v2_base_assignment("cpause1", &routed_assignments, &routed_fallbacks)?;
+    let production_idle_slot_preserved = routed_idle.source_kind == production_idle.source_kind
+        && routed_idle.source_clip_name == production_idle.source_clip_name
+        && routed_idle.custom_animation_id == production_idle.custom_animation_id
+        && routed_idle.provenance == production_idle.provenance;
+    Ok(CustomAttackDemoAuthoringV1 {
+        authoring: routed,
+        contract: CustomAttackDemoContractV1 {
+            schema_version: 1,
+            custom_animation_id: custom.id.clone(),
+            runtime_base_slots: CUSTOM_ATTACK_DEMO_BASE_SLOTS_V1
+                .iter()
+                .map(|slot| (*slot).to_owned())
+                .collect(),
+            all_native_attack_variants_routed: true,
+            runtime_trigger_profile: "ACTIVE_MONSTER_COMBAT_AI".to_owned(),
+            production_idle_slot_preserved,
+        },
+    })
+}
+
 pub fn materialize_creature_animation_authoring_v2(
     source: &MdlAnimationSetV1,
     procedural: Option<&MdlAnimationSetV1>,
@@ -1036,6 +1387,7 @@ pub fn materialize_creature_animation_authoring_v2(
             clips,
         },
         authored_usages: usages,
+        custom_runtime_exposures: inspect_custom_animation_runtime_exposure_v1(authoring),
     })
 }
 
@@ -1198,6 +1550,8 @@ pub fn create_blank_pose_clip_v1(
             source_clip_name: None,
             source_clip_fingerprint: None,
             procedural_template: None,
+            library_preset: None,
+            retarget: None,
         },
         length_seconds: input.length_seconds,
         transition_seconds: input.transition_seconds,
@@ -1303,6 +1657,8 @@ pub fn clone_source_clip_for_editing_v1(
             source_clip_name: Some(source_clip.name.clone()),
             source_clip_fingerprint: Some(fingerprint),
             procedural_template: None,
+            library_preset: None,
+            retarget: None,
         },
         length_seconds: source_clip.length_seconds,
         transition_seconds: input.transition_seconds,
@@ -1330,53 +1686,484 @@ pub fn create_procedural_template_clip_v1(
         match template {
             ProceduralAnimationTemplateV1::BindPose => "BIND_POSE",
             ProceduralAnimationTemplateV1::RootTranslationPulse => "ROOT_TRANSLATION_PULSE",
+            ProceduralAnimationTemplateV1::HumanoidSwordSlash => "HUMANOID_SWORD_SLASH",
         }
         .to_owned(),
     );
-    if template == ProceduralAnimationTemplateV1::RootTranslationPulse {
-        clip.kind = AuthoredAnimationClipKindV1::Motion;
-        let root_id = rig
+    match template {
+        ProceduralAnimationTemplateV1::BindPose => {}
+        ProceduralAnimationTemplateV1::RootTranslationPulse => {
+            clip.kind = AuthoredAnimationClipKindV1::Motion;
+            let root_id = rig
+                .nodes
+                .iter()
+                .find(|node| node.name == rig.animation_root)
+                .map(|node| node.node_id)
+                .or_else(|| rig.nodes.first().map(|node| node.node_id))
+                .ok_or_else(|| {
+                    diagnostic(
+                        DIAGNOSTIC_BONE_MISSING,
+                        "rig.nodes",
+                        "procedural template requires at least one rig node",
+                        "Inspect a rig with an animation root node.",
+                    )
+                })?;
+            let track = clip
+                .tracks
+                .iter_mut()
+                .find(|track| {
+                    track.target_node_id == root_id
+                        && track.path == AuthoredAnimationTrackPathV1::Translation
+                })
+                .expect("blank pose creates the root translation track");
+            let base = track.keyframes[0].value.clone();
+            track.keyframes = vec![
+                AnimationKeyframeV1 {
+                    id: "key-0000".to_owned(),
+                    time_seconds: 0.0,
+                    value: base.clone(),
+                },
+                AnimationKeyframeV1 {
+                    id: "key-0001".to_owned(),
+                    time_seconds: clip.length_seconds * 0.5,
+                    value: vec![base[0] + 0.1, base[1], base[2]],
+                },
+                AnimationKeyframeV1 {
+                    id: "key-0002".to_owned(),
+                    time_seconds: clip.length_seconds,
+                    value: base,
+                },
+            ];
+        }
+        ProceduralAnimationTemplateV1::HumanoidSwordSlash => {
+            apply_humanoid_sword_slash_template_v1(&mut clip, rig)?;
+        }
+    }
+    Ok(clip)
+}
+
+/// Creates the `HUMANOID_SWORD_SLASH` preset on the exact sampled pose of an
+/// editable source clip. This is the core equivalent of the Studio UI path:
+/// source clip copy -> pose at the playhead -> deterministic seven-phase attack.
+pub fn create_humanoid_sword_slash_from_source_clip_v1(
+    source_clip: &AuthoredAnimationClipV1,
+    rig: &AnimationStudioRigV1,
+    pose_time_seconds: f32,
+) -> Result<AuthoredAnimationClipV1, AnimationStudioDiagnosticV1> {
+    if !pose_time_seconds.is_finite() {
+        return Err(nonfinite_time("poseTimeSeconds"));
+    }
+    if !source_clip.length_seconds.is_finite() || source_clip.length_seconds <= 0.0 {
+        return Err(diagnostic(
+            DIAGNOSTIC_SCHEMA,
+            "sourceClip.lengthSeconds",
+            "source clip duration must be finite and greater than zero",
+            "Choose a valid source animation clip.",
+        ));
+    }
+    let pose_time_seconds = pose_time_seconds.clamp(0.0, source_clip.length_seconds);
+    let mut clip = source_clip.clone();
+    clip.kind = AuthoredAnimationClipKindV1::StaticPose;
+    clip.status = AuthoredAnimationClipStatusV1::Draft;
+    clip.length_seconds = 1.0;
+    clip.transition_seconds = 0.1;
+    clip.events.clear();
+    clip.revision = 1;
+    for track in &mut clip.tracks {
+        let sampled = sample_animation_track_linear_v1(track, pose_time_seconds)?;
+        track.interpolation = MdlAnimationInterpolationV1::Linear;
+        track.keyframes = vec![AnimationKeyframeV1 {
+            id: "key-0000".to_owned(),
+            time_seconds: 0.0,
+            value: sampled,
+        }];
+    }
+    apply_humanoid_sword_slash_template_v1(&mut clip, rig)?;
+    Ok(clip)
+}
+
+const SWORD_SLASH_PHASES_V1: [f32; 7] = [0.0, 0.18, 0.34, 0.5, 0.66, 0.82, 1.0];
+const SWORD_SLASH_HIPS_TRANSLATION_DELTAS_V1: [[f32; 3]; 7] = [
+    [0.0, 0.0, 0.0],
+    [-0.01, -0.015, -0.025],
+    [0.0, 0.1, 0.01],
+    [0.005, 0.07, 0.005],
+    [0.0, 0.025, -0.005],
+    [0.0, 0.0, 0.0],
+    [0.0, 0.0, 0.0],
+];
+
+struct SwordSlashBoneMotionV1 {
+    bone_name: &'static str,
+    euler_degrees: [[f32; 3]; 7],
+}
+
+const SWORD_SLASH_BONE_MOTIONS_V1: [SwordSlashBoneMotionV1; 18] = [
+    SwordSlashBoneMotionV1 {
+        bone_name: "Hips",
+        euler_degrees: [
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 6.0],
+            [0.0, 0.0, -12.0],
+            [0.0, 0.0, -7.0],
+            [0.0, 0.0, -1.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ],
+    },
+    SwordSlashBoneMotionV1 {
+        bone_name: "Spine02",
+        euler_degrees: [
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 3.0],
+            [0.0, 0.0, -5.0],
+            [0.0, 0.0, -2.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ],
+    },
+    SwordSlashBoneMotionV1 {
+        bone_name: "Spine01",
+        euler_degrees: [
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 4.0],
+            [0.0, 0.0, -6.0],
+            [0.0, 0.0, -3.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ],
+    },
+    SwordSlashBoneMotionV1 {
+        bone_name: "Spine",
+        euler_degrees: [
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 5.0],
+            [0.0, 0.0, -8.0],
+            [0.0, 0.0, -4.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ],
+    },
+    SwordSlashBoneMotionV1 {
+        bone_name: "RightShoulder",
+        euler_degrees: [
+            [17.82, -0.24, -24.35],
+            [8.4, 0.7, -16.33],
+            [-9.22, 3.0, 8.19],
+            [-24.68, -13.81, 18.46],
+            [17.82, -0.24, -24.35],
+            [17.82, -0.24, -24.35],
+            [17.82, -0.24, -24.35],
+        ],
+    },
+    SwordSlashBoneMotionV1 {
+        bone_name: "RightArm",
+        euler_degrees: [
+            [-26.29, 34.25, 6.99],
+            [-2.0, 25.87, 14.66],
+            [134.14, -14.21, 97.91],
+            [111.7, -3.96, 92.99],
+            [-26.29, 34.25, 6.99],
+            [-26.29, 34.25, 6.99],
+            [-26.29, 34.25, 6.99],
+        ],
+    },
+    SwordSlashBoneMotionV1 {
+        bone_name: "RightForeArm",
+        euler_degrees: [
+            [-107.62, 39.05, -60.51],
+            [-125.38, 32.38, -74.73],
+            [4.89, -14.69, -1.21],
+            [70.27, 43.75, 43.6],
+            [-107.62, 39.05, -60.51],
+            [-107.62, 39.05, -60.51],
+            [-107.62, 39.05, -60.51],
+        ],
+    },
+    SwordSlashBoneMotionV1 {
+        bone_name: "RightHand",
+        euler_degrees: [
+            [0.0, 0.0, 0.0],
+            [0.0, 5.0, 0.0],
+            [0.0, -10.0, 0.0],
+            [0.0, 2.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ],
+    },
+    SwordSlashBoneMotionV1 {
+        bone_name: "LeftShoulder",
+        euler_degrees: [
+            [1.95, 22.07, 5.88],
+            [1.0, 22.0, 6.0],
+            [3.0, 20.0, 7.0],
+            [2.0, 21.0, 6.0],
+            [1.95, 22.07, 5.88],
+            [1.95, 22.07, 5.88],
+            [1.95, 22.07, 5.88],
+        ],
+    },
+    SwordSlashBoneMotionV1 {
+        bone_name: "LeftArm",
+        euler_degrees: [
+            [-3.47, -16.89, -17.19],
+            [-3.5, -16.0, -17.0],
+            [-5.0, -14.0, -18.0],
+            [-4.0, -16.0, -17.0],
+            [-3.47, -16.89, -17.19],
+            [-3.47, -16.89, -17.19],
+            [-3.47, -16.89, -17.19],
+        ],
+    },
+    SwordSlashBoneMotionV1 {
+        bone_name: "LeftForeArm",
+        euler_degrees: [
+            [118.12, -72.88, -107.77],
+            [118.0, -73.0, -105.0],
+            [118.0, -73.0, -102.0],
+            [118.0, -73.0, -105.0],
+            [118.12, -72.88, -107.77],
+            [118.12, -72.88, -107.77],
+            [118.12, -72.88, -107.77],
+        ],
+    },
+    SwordSlashBoneMotionV1 {
+        bone_name: "Head",
+        euler_degrees: [
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, -5.0],
+            [0.0, 0.0, 6.0],
+            [0.0, 0.0, 3.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ],
+    },
+    SwordSlashBoneMotionV1 {
+        bone_name: "LeftUpLeg",
+        euler_degrees: [
+            [0.0, 0.0, 0.0],
+            [3.0, 0.0, 3.0],
+            [-2.0, 0.0, -4.0],
+            [-1.0, 0.0, -2.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ],
+    },
+    SwordSlashBoneMotionV1 {
+        bone_name: "LeftLeg",
+        euler_degrees: [
+            [0.0, 0.0, 0.0],
+            [-6.0, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ],
+    },
+    SwordSlashBoneMotionV1 {
+        bone_name: "LeftFoot",
+        euler_degrees: [
+            [0.0, 0.0, 0.0],
+            [3.0, 0.0, 0.0],
+            [0.0, 0.0, -5.0],
+            [0.0, 0.0, -3.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ],
+    },
+    SwordSlashBoneMotionV1 {
+        bone_name: "RightUpLeg",
+        euler_degrees: [
+            [0.0, 0.0, 0.0],
+            [-3.0, 0.0, -4.0],
+            [-1.0, 0.0, 6.0],
+            [0.0, 0.0, 3.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ],
+    },
+    SwordSlashBoneMotionV1 {
+        bone_name: "RightLeg",
+        euler_degrees: [
+            [0.0, 0.0, 0.0],
+            [-6.0, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ],
+    },
+    SwordSlashBoneMotionV1 {
+        bone_name: "RightFoot",
+        euler_degrees: [
+            [0.0, 0.0, 0.0],
+            [3.0, 0.0, 0.0],
+            [0.0, 0.0, 10.0],
+            [0.0, 0.0, 5.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ],
+    },
+];
+
+fn apply_humanoid_sword_slash_template_v1(
+    clip: &mut AuthoredAnimationClipV1,
+    rig: &AnimationStudioRigV1,
+) -> Result<(), AnimationStudioDiagnosticV1> {
+    for motion in &SWORD_SLASH_BONE_MOTIONS_V1 {
+        let node = rig
             .nodes
             .iter()
-            .find(|node| node.name == rig.animation_root)
-            .map(|node| node.node_id)
-            .or_else(|| rig.nodes.first().map(|node| node.node_id))
+            .find(|node| node.name.eq_ignore_ascii_case(motion.bone_name))
             .ok_or_else(|| {
                 diagnostic(
                     DIAGNOSTIC_BONE_MISSING,
                     "rig.nodes",
-                    "procedural template requires at least one rig node",
-                    "Inspect a rig with an animation root node.",
+                    format!(
+                        "HUMANOID_SWORD_SLASH requires the {:?} bone",
+                        motion.bone_name
+                    ),
+                    "Use a Meshy humanoid rig with the standard Hips/Spine/arm chain.",
                 )
             })?;
         let track = clip
             .tracks
             .iter_mut()
             .find(|track| {
-                track.target_node_id == root_id
-                    && track.path == AuthoredAnimationTrackPathV1::Translation
+                track.target_node_id == node.node_id
+                    && track.path == AuthoredAnimationTrackPathV1::Rotation
             })
-            .expect("blank pose creates the root translation track");
-        let base = track.keyframes[0].value.clone();
-        track.keyframes = vec![
-            AnimationKeyframeV1 {
-                id: "key-0000".to_owned(),
-                time_seconds: 0.0,
-                value: base.clone(),
-            },
-            AnimationKeyframeV1 {
-                id: "key-0001".to_owned(),
-                time_seconds: clip.length_seconds * 0.5,
-                value: vec![base[0] + 0.1, base[1], base[2]],
-            },
-            AnimationKeyframeV1 {
-                id: "key-0002".to_owned(),
-                time_seconds: clip.length_seconds,
-                value: base,
-            },
-        ];
+            .ok_or_else(|| {
+                diagnostic(
+                    DIAGNOSTIC_BONE_MISSING,
+                    "tracks",
+                    format!(
+                        "HUMANOID_SWORD_SLASH requires a rotation track for {:?}",
+                        motion.bone_name
+                    ),
+                    "Choose a source clip with rotation tracks for the standard humanoid rig.",
+                )
+            })?;
+        let base = track
+            .keyframes
+            .first()
+            .ok_or_else(|| {
+                diagnostic(
+                    DIAGNOSTIC_SCHEMA,
+                    format!("tracks[{}].keyframes", track.id),
+                    format!(
+                        "HUMANOID_SWORD_SLASH requires a rotation key for {:?}",
+                        motion.bone_name
+                    ),
+                    "Choose a source clip with a sampleable humanoid pose.",
+                )
+            })?
+            .value
+            .clone();
+        track.keyframes = SWORD_SLASH_PHASES_V1
+            .iter()
+            .zip(motion.euler_degrees)
+            .enumerate()
+            .map(|(index, (phase, euler_degrees))| {
+                Ok(AnimationKeyframeV1 {
+                    id: format!("key-{index:04}"),
+                    time_seconds: clip.length_seconds * phase,
+                    value: quaternion_with_euler_delta_v1(&base, euler_degrees)?,
+                })
+            })
+            .collect::<Result<Vec<_>, AnimationStudioDiagnosticV1>>()?;
     }
-    Ok(clip)
+    let hips_node_id = rig
+        .nodes
+        .iter()
+        .find(|node| node.name.eq_ignore_ascii_case("Hips"))
+        .expect("HUMANOID_SWORD_SLASH already required Hips")
+        .node_id;
+    let hips_translation = clip
+        .tracks
+        .iter_mut()
+        .find(|track| {
+            track.target_node_id == hips_node_id
+                && track.path == AuthoredAnimationTrackPathV1::Translation
+        })
+        .ok_or_else(|| {
+            diagnostic(
+                DIAGNOSTIC_BONE_MISSING,
+                "tracks",
+                "HUMANOID_SWORD_SLASH requires a translation track for Hips",
+                "Choose a source clip with a Hips translation track.",
+            )
+        })?;
+    let hips_base = hips_translation
+        .keyframes
+        .first()
+        .ok_or_else(|| {
+            diagnostic(
+                DIAGNOSTIC_SCHEMA,
+                format!("tracks[{}].keyframes", hips_translation.id),
+                "HUMANOID_SWORD_SLASH requires a translation key for Hips",
+                "Choose a source clip with a sampleable Hips translation.",
+            )
+        })?
+        .value
+        .clone();
+    hips_translation.keyframes = SWORD_SLASH_PHASES_V1
+        .iter()
+        .zip(SWORD_SLASH_HIPS_TRANSLATION_DELTAS_V1)
+        .enumerate()
+        .map(|(index, (phase, delta))| AnimationKeyframeV1 {
+            id: format!("key-{index:04}"),
+            time_seconds: clip.length_seconds * phase,
+            value: hips_base
+                .iter()
+                .zip(delta)
+                .map(|(component, offset)| component + offset)
+                .collect(),
+        })
+        .collect();
+    clip.kind = AuthoredAnimationClipKindV1::Motion;
+    Ok(())
+}
+
+fn quaternion_with_euler_delta_v1(
+    base: &[f32],
+    euler_degrees: [f32; 3],
+) -> Result<Vec<f32>, AnimationStudioDiagnosticV1> {
+    let base = canonical_unit_quaternion(base.to_vec())?;
+    let radians = euler_degrees.map(f32::to_radians);
+    let qx = quaternion_axis_angle_v1([1.0, 0.0, 0.0], radians[0]);
+    let qy = quaternion_axis_angle_v1([0.0, 1.0, 0.0], radians[1]);
+    let qz = quaternion_axis_angle_v1([0.0, 0.0, 1.0], radians[2]);
+    let delta = quaternion_multiply_xyzw_v1(quaternion_multiply_xyzw_v1(qz, qy), qx);
+    canonical_unit_quaternion(
+        quaternion_multiply_xyzw_v1([base[0], base[1], base[2], base[3]], delta).to_vec(),
+    )
+}
+
+fn quaternion_axis_angle_v1(axis: [f32; 3], angle: f32) -> [f32; 4] {
+    let half = angle * 0.5;
+    let sine = half.sin();
+    [axis[0] * sine, axis[1] * sine, axis[2] * sine, half.cos()]
+}
+
+fn quaternion_multiply_xyzw_v1(left: [f32; 4], right: [f32; 4]) -> [f32; 4] {
+    [
+        left[3] * right[0] + left[0] * right[3] + left[1] * right[2] - left[2] * right[1],
+        left[3] * right[1] - left[0] * right[2] + left[1] * right[3] + left[2] * right[0],
+        left[3] * right[2] + left[0] * right[1] - left[1] * right[0] + left[2] * right[3],
+        left[3] * right[3] - left[0] * right[0] - left[1] * right[1] - left[2] * right[2],
+    ]
 }
 
 pub fn rename_authored_clip_v1(
@@ -2111,6 +2898,8 @@ fn validate_authored_source_shape(
             source.source_clip_name.is_none()
                 && source.source_clip_fingerprint.is_none()
                 && source.procedural_template.is_none()
+                && source.library_preset.is_none()
+                && source.retarget.is_none()
         }
         AuthoredAnimationSourceKindV1::SourceClipCopy => {
             source
@@ -2122,6 +2911,8 @@ fn validate_authored_source_shape(
                     .as_deref()
                     .is_some_and(is_sha256)
                 && source.procedural_template.is_none()
+                && source.library_preset.is_none()
+                && source.retarget.is_none()
         }
         AuthoredAnimationSourceKindV1::ImportedModelCopy => {
             source
@@ -2133,6 +2924,8 @@ fn validate_authored_source_shape(
                     .as_deref()
                     .is_some_and(is_sha256)
                 && source.procedural_template.is_none()
+                && source.library_preset.is_none()
+                && source.retarget.is_none()
         }
         AuthoredAnimationSourceKindV1::ProceduralTemplate => {
             source.source_clip_name.is_none()
@@ -2141,6 +2934,69 @@ fn validate_authored_source_shape(
                     .procedural_template
                     .as_deref()
                     .is_some_and(|template| !template.trim().is_empty())
+                && source.library_preset.is_none()
+                && source.retarget.is_none()
+        }
+        AuthoredAnimationSourceKindV1::LibraryPresetCopy => {
+            source.source_clip_name.is_none()
+                && source
+                    .source_clip_fingerprint
+                    .as_deref()
+                    .is_some_and(is_sha256)
+                && source.procedural_template.is_none()
+                && source.retarget.is_none()
+                && source.library_preset.as_ref().is_some_and(|preset| {
+                    !preset.preset_id.trim().is_empty()
+                        && preset.preset_version > 0
+                        && is_sha256(&preset.preset_motion_sha256)
+                        && source.source_clip_fingerprint.as_deref()
+                            == Some(preset.preset_motion_sha256.as_str())
+                        && is_sha256(&preset.catalog_sha256)
+                        && !preset.source.trim().is_empty()
+                        && !preset.authors.is_empty()
+                        && preset
+                            .authors
+                            .iter()
+                            .all(|author| !author.trim().is_empty())
+                        && !preset.license.trim().is_empty()
+                        && is_sha256(&preset.rig_signature_sha256)
+                        && preset.instantiation_mode == "STRICT_RIG_V1"
+                })
+        }
+        AuthoredAnimationSourceKindV1::RetargetedModelCopy => {
+            source
+                .source_clip_name
+                .as_deref()
+                .is_some_and(|name| !name.trim().is_empty())
+                && source
+                    .source_clip_fingerprint
+                    .as_deref()
+                    .is_some_and(is_sha256)
+                && source.procedural_template.is_none()
+                && source.library_preset.is_none()
+                && source.retarget.as_ref().is_some_and(|retarget| {
+                    is_sha256(&retarget.donor_source_revision)
+                        && is_sha256(&retarget.target_source_revision)
+                        && !retarget.donor_clip_name.trim().is_empty()
+                        && is_sha256(&retarget.donor_clip_fingerprint)
+                        && is_sha256(&retarget.donor_rig_signature_sha256)
+                        && is_sha256(&retarget.target_rig_signature_sha256)
+                        && is_sha256(&retarget.compatibility_fingerprint_sha256)
+                        && matches!(
+                            retarget.mode.as_str(),
+                            "SAME_HIERARCHY_RETARGET_V1" | "HUMANOID_SEMANTIC_RETARGET_V2"
+                        )
+                        && retarget.root_motion_scale.is_finite()
+                        && retarget.root_motion_scale > 0.0
+                        && is_sha256(&retarget.output_motion_fingerprint_sha256)
+                        && !retarget.algorithm_version.trim().is_empty()
+                        && !retarget.algorithm_limits.trim().is_empty()
+                        && source.source_revision == retarget.donor_source_revision
+                        && source.source_clip_name.as_deref()
+                            == Some(retarget.donor_clip_name.as_str())
+                        && source.source_clip_fingerprint.as_deref()
+                            == Some(retarget.donor_clip_fingerprint.as_str())
+                })
         }
     };
     if valid {
@@ -2366,7 +3222,21 @@ pub fn materialize_animation_studio_document_v1(
             "Reconcile the document against the exact current source GLB.",
         ));
     }
+    let current_rig_signature = crate::animation_retarget::rig_signature_sha256_v1(rig);
     for clip in &document.authored_clips {
+        if let Some(retarget) = clip.source.retarget.as_ref()
+            && retarget.target_rig_signature_sha256 != current_rig_signature
+        {
+            diagnostics.push(diagnostic(
+                DIAGNOSTIC_SOURCE_STALE,
+                format!(
+                    "authoredClips[{}].source.retarget.targetRigSignatureSha256",
+                    clip.id
+                ),
+                "retarget provenance does not match the exact current target rig",
+                "Generate a fresh retarget preview against the current target model.",
+            ));
+        }
         diagnostics.extend(
             validate_authored_animation_clip_v1(clip, rig)
                 .into_iter()
@@ -2468,6 +3338,7 @@ pub fn reconcile_animation_studio_readback_v1(
                     authored_clip_id: usage.authored_clip_id.clone(),
                     output_clip_name: usage.output_clip_name.clone(),
                     materialized_fingerprint: fingerprint_json(actual_clip),
+                    materialized_clip: expected_clip.clone(),
                 });
             }
             _ => diagnostics.push(diagnostic(

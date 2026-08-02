@@ -5,6 +5,10 @@ import {
   resolveOwnerRuntimeProofV1,
   type CanonicalRuntimeAcceptance,
 } from "./ownerRuntimeProofs";
+import {
+  resolveOwnerAnimationPlaybackProofV1,
+  type OwnerAnimationPlaybackProofResolutionV1,
+} from "./ownerAnimationPlaybackProofs";
 
 export interface CanonicalResultSnapshot {
   status: string;
@@ -35,6 +39,8 @@ export interface CanonicalResultSnapshot {
   skinAnimationEvidence?: CanonicalSkinAnimationEvidence;
   animationMappingEvidence?: CanonicalAnimationMappingEvidenceV1;
   animationStudioEvidence?: CanonicalAnimationStudioEvidenceV1;
+  heldWeaponEvidence?: CanonicalHeldWeaponEvidenceV1;
+  animationPlaybackAcceptance: CanonicalAnimationPlaybackAcceptanceV1;
   runtimeFixtureContract?: CanonicalM0RuntimeFixtureContract;
   projectIdentity?: ProjectBuildIdentityV1;
   artifacts: WorkerArtifact[];
@@ -42,6 +48,9 @@ export interface CanonicalResultSnapshot {
   summaryJson: string;
   manifestJson: string;
 }
+
+export type CanonicalAnimationPlaybackAcceptanceV1 =
+  OwnerAnimationPlaybackProofResolutionV1;
 
 export interface CanonicalConversionGate {
   schemaVersion: 1;
@@ -143,6 +152,21 @@ export interface CanonicalSkinAnimationEvidence {
   violations: string[];
 }
 
+export interface CanonicalHeldWeaponEvidenceV1 {
+  schemaVersion: 1;
+  sourceSha256: string;
+  attachmentFingerprintSha256: string;
+  textureResref: string;
+  texture: { byteLength: number; sha256: string };
+  targetTriangleCountBefore: number;
+  weaponTriangleCount: number;
+  targetTriangleCountAfter: number;
+  attachmentNodePresentInBinaryMdl: true;
+  combinedTriangleCountMatch: true;
+  texturePayloadMatchInHak: true;
+  status: "MATCH";
+}
+
 export interface CanonicalAnimationMappingEvidenceV1 {
   schemaVersion: 1;
   profile: string;
@@ -188,8 +212,16 @@ export interface CanonicalAnimationStudioUsageV1 {
   phase: "START" | "LOOP" | "END" | null;
 }
 
+export interface CanonicalCustomAnimationRuntimeExposureV1 {
+  schemaVersion: 1;
+  customAnimationId: string;
+  status: "LIBRARY_ONLY" | "BASE42_ROUTED";
+  libraryOutputClipNames: string[];
+  runtimeBaseSlots: string[];
+}
+
 export interface CanonicalAnimationStudioEvidenceV1 {
-  animationStudioSchemaVersion: 1;
+  animationStudioSchemaVersion: 1 | 2;
   animationStudioFingerprintSha256: string;
   animationStudioRevision: number;
   creatureAnimationAuthoringSchemaVersion: 2;
@@ -199,6 +231,7 @@ export interface CanonicalAnimationStudioEvidenceV1 {
   authoredClipOutputNames: string[];
   authoredEventCount: number;
   customAssignmentCount: number;
+  customRuntimeExposures: CanonicalCustomAnimationRuntimeExposureV1[];
   sourceRevision: string;
   readbackStatus: "MATCH";
   animationStudioReadback: CanonicalAnimationStudioReadbackV1;
@@ -214,11 +247,23 @@ export interface CanonicalAnimationStudioEvidenceV1 {
         | "BLANK_POSE"
         | "SOURCE_CLIP_COPY"
         | "IMPORTED_MODEL_COPY"
-        | "PROCEDURAL_TEMPLATE";
+        | "PROCEDURAL_TEMPLATE"
+        | "LIBRARY_PRESET_COPY";
       sourceRevision: string;
       sourceClipName: string | null;
       sourceClipFingerprint: string | null;
       proceduralTemplate: string | null;
+      libraryPreset?: {
+        presetId: string;
+        presetVersion: number;
+        presetMotionSha256: string;
+        catalogSha256: string;
+        source: "BUILT_IN" | "COMMUNITY";
+        authors: string[];
+        license: string;
+        rigSignatureSha256: string;
+        instantiationMode: "STRICT_RIG_V1";
+      };
     };
     keyframeCount: number;
     eventCount: number;
@@ -235,8 +280,24 @@ export interface CanonicalAnimationStudioReadbackV1 {
     authoredClipId: string;
     outputClipName: string;
     materializedFingerprint: string;
+    materializedClip: CanonicalMaterializedAnimationClipV1;
   }>;
   diagnostics: [];
+}
+
+export interface CanonicalMaterializedAnimationClipV1 {
+  name: string;
+  animationRoot: string;
+  lengthSeconds: number;
+  transitionSeconds: number;
+  events: Array<{ timeSeconds: number; name: string }>;
+  tracks: Array<{
+    targetNodeId: number;
+    path: "TRANSLATION" | "ROTATION" | "SCALE" | "WEIGHTS";
+    interpolation: "LINEAR" | "STEP" | "CUBIC_SPLINE";
+    timesSeconds: number[];
+    values: number[][];
+  }>;
 }
 
 export interface CanonicalM0RuntimeResource {
@@ -416,6 +477,73 @@ function conversionDiagnostic(value: unknown, path: string): CanonicalConversion
 
 function nullableString(value: unknown, path: string): string | null {
   return value === null ? null : string(value, path);
+}
+
+function materializedAnimationClip(
+  value: unknown,
+  path: string,
+): CanonicalMaterializedAnimationClipV1 {
+  const clip = record(value, path);
+  const events = array(clip.events, `${path}.events`).map((eventValue, index) => {
+    const eventPath = `${path}.events[${index}]`;
+    const event = record(eventValue, eventPath);
+    return {
+      timeSeconds: number(event.timeSeconds, `${eventPath}.timeSeconds`),
+      name: string(event.name, `${eventPath}.name`),
+    };
+  });
+  const tracks = array(clip.tracks, `${path}.tracks`).map((trackValue, index) => {
+    const trackPath = `${path}.tracks[${index}]`;
+    const track = record(trackValue, trackPath);
+    const pathValue = string(track.path, `${trackPath}.path`);
+    if (!["TRANSLATION", "ROTATION", "SCALE", "WEIGHTS"].includes(pathValue)) {
+      fail(`${trackPath}.path`);
+    }
+    const interpolationValue = string(
+      track.interpolation,
+      `${trackPath}.interpolation`,
+    );
+    if (!["LINEAR", "STEP", "CUBIC_SPLINE"].includes(interpolationValue)) {
+      fail(`${trackPath}.interpolation`);
+    }
+    const timesSeconds = array(
+      track.timesSeconds,
+      `${trackPath}.timesSeconds`,
+    ).map((time, timeIndex) => number(
+      time,
+      `${trackPath}.timesSeconds[${timeIndex}]`,
+    ));
+    const values = array(track.values, `${trackPath}.values`).map(
+      (row, rowIndex) => array(row, `${trackPath}.values[${rowIndex}]`).map(
+        (component, componentIndex) => number(
+          component,
+          `${trackPath}.values[${rowIndex}][${componentIndex}]`,
+        ),
+      ),
+    );
+    if (timesSeconds.length !== values.length) fail(trackPath);
+    return {
+      targetNodeId: integer(
+        track.targetNodeId,
+        `${trackPath}.targetNodeId`,
+      ),
+      path: pathValue as CanonicalMaterializedAnimationClipV1["tracks"][number]["path"],
+      interpolation: interpolationValue as CanonicalMaterializedAnimationClipV1["tracks"][number]["interpolation"],
+      timesSeconds,
+      values,
+    };
+  });
+  return {
+    name: string(clip.name, `${path}.name`),
+    animationRoot: string(clip.animationRoot, `${path}.animationRoot`),
+    lengthSeconds: number(clip.lengthSeconds, `${path}.lengthSeconds`),
+    transitionSeconds: number(
+      clip.transitionSeconds,
+      `${path}.transitionSeconds`,
+    ),
+    events,
+    tracks,
+  };
 }
 
 function animationProvenance(value: unknown, path: string) {
@@ -615,17 +743,62 @@ function animationMappingEvidenceParser(
   };
 }
 
+function animationLibraryPresetProvenance(value: unknown, path: string) {
+  const item = record(value, path);
+  const sourceValue = string(item.source, `${path}.source`);
+  if (sourceValue !== "BUILT_IN" && sourceValue !== "COMMUNITY") {
+    fail(`${path}.source`);
+  }
+  const instantiationMode = string(
+    item.instantiationMode,
+    `${path}.instantiationMode`,
+  );
+  if (instantiationMode !== "STRICT_RIG_V1") {
+    fail(`${path}.instantiationMode`);
+  }
+  const authors = stringArray(item.authors, `${path}.authors`);
+  if (authors.length === 0 || authors.some((author) => author.trim().length === 0)) {
+    fail(`${path}.authors`);
+  }
+  const license = string(item.license, `${path}.license`);
+  if (!license) fail(`${path}.license`);
+  const presetVersion = integer(item.presetVersion, `${path}.presetVersion`);
+  if (presetVersion < 1) fail(`${path}.presetVersion`);
+  return {
+    presetId: string(item.presetId, `${path}.presetId`),
+    presetVersion,
+    presetMotionSha256: sha256(
+      item.presetMotionSha256,
+      `${path}.presetMotionSha256`,
+    ),
+    catalogSha256: sha256(item.catalogSha256, `${path}.catalogSha256`),
+    source: sourceValue as "BUILT_IN" | "COMMUNITY",
+    authors,
+    license,
+    rigSignatureSha256: sha256(
+      item.rigSignatureSha256,
+      `${path}.rigSignatureSha256`,
+    ),
+    instantiationMode: "STRICT_RIG_V1" as const,
+  };
+}
+
 function animationStudioEvidenceParser(
   value: unknown,
   path: string,
 ): CanonicalAnimationStudioEvidenceV1 {
   const item = record(value, path);
+  const animationStudioSchemaVersionCandidate = integer(
+    item.animationStudioSchemaVersion,
+    `${path}.animationStudioSchemaVersion`,
+  );
   if (
-    integer(
-      item.animationStudioSchemaVersion,
-      `${path}.animationStudioSchemaVersion`,
-    ) !== 1
-  ) fail(`${path}.animationStudioSchemaVersion`);
+    animationStudioSchemaVersionCandidate !== 1
+    && animationStudioSchemaVersionCandidate !== 2
+  ) {
+    fail(`${path}.animationStudioSchemaVersion`);
+  }
+  const animationStudioSchemaVersion = animationStudioSchemaVersionCandidate as 1 | 2;
   if (
     integer(
       item.creatureAnimationAuthoringSchemaVersion,
@@ -661,12 +834,32 @@ function animationStudioEvidenceParser(
       && sourceKindValue !== "SOURCE_CLIP_COPY"
       && sourceKindValue !== "IMPORTED_MODEL_COPY"
       && sourceKindValue !== "PROCEDURAL_TEMPLATE"
+      && sourceKindValue !== "LIBRARY_PRESET_COPY"
     ) fail(`${clipPath}.source.kind`);
     const sourceKind = sourceKindValue as
       | "BLANK_POSE"
       | "SOURCE_CLIP_COPY"
       | "IMPORTED_MODEL_COPY"
-      | "PROCEDURAL_TEMPLATE";
+      | "PROCEDURAL_TEMPLATE"
+      | "LIBRARY_PRESET_COPY";
+    const libraryPreset = source.libraryPreset === undefined || source.libraryPreset === null
+      ? null
+      : animationLibraryPresetProvenance(
+          source.libraryPreset,
+          `${clipPath}.source.libraryPreset`,
+        );
+    if (
+      (sourceKind === "LIBRARY_PRESET_COPY" && libraryPreset === null)
+      || (sourceKind !== "LIBRARY_PRESET_COPY" && libraryPreset !== null)
+    ) fail(`${clipPath}.source.libraryPreset`);
+    const sourceClipFingerprint = nullableString(
+      source.sourceClipFingerprint,
+      `${clipPath}.source.sourceClipFingerprint`,
+    );
+    if (
+      libraryPreset !== null
+      && sourceClipFingerprint !== libraryPreset.presetMotionSha256
+    ) fail(`${clipPath}.source.sourceClipFingerprint`);
     const usages = array(clip.usages, `${clipPath}.usages`).map(
       (usageValue, usageIndex): CanonicalAnimationStudioUsageV1 => {
         const usagePath = `${clipPath}.usages[${usageIndex}]`;
@@ -726,14 +919,12 @@ function animationStudioEvidenceParser(
           source.sourceClipName,
           `${clipPath}.source.sourceClipName`,
         ),
-        sourceClipFingerprint: nullableString(
-          source.sourceClipFingerprint,
-          `${clipPath}.source.sourceClipFingerprint`,
-        ),
+        sourceClipFingerprint,
         proceduralTemplate: nullableString(
           source.proceduralTemplate,
           `${clipPath}.source.proceduralTemplate`,
         ),
+        ...(libraryPreset === null ? {} : { libraryPreset }),
       },
       keyframeCount: integer(clip.keyframeCount, `${clipPath}.keyframeCount`),
       eventCount: integer(clip.eventCount, `${clipPath}.eventCount`),
@@ -748,6 +939,54 @@ function animationStudioEvidenceParser(
     item.authoredEventCount,
     `${path}.authoredEventCount`,
   );
+  const customRuntimeExposures = array(
+    item.customRuntimeExposures,
+    `${path}.customRuntimeExposures`,
+  ).map((value, index): CanonicalCustomAnimationRuntimeExposureV1 => {
+    const exposurePath = `${path}.customRuntimeExposures[${index}]`;
+    const exposure = record(value, exposurePath);
+    if (integer(exposure.schemaVersion, `${exposurePath}.schemaVersion`) !== 1) {
+      fail(`${exposurePath}.schemaVersion`);
+    }
+    const statusValue = string(exposure.status, `${exposurePath}.status`);
+    if (statusValue !== "LIBRARY_ONLY" && statusValue !== "BASE42_ROUTED") {
+      fail(`${exposurePath}.status`);
+    }
+    const runtimeBaseSlots = stringArray(
+      exposure.runtimeBaseSlots,
+      `${exposurePath}.runtimeBaseSlots`,
+    );
+    if (
+      runtimeBaseSlots.some((slot) => (
+        !FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1.includes(
+          slot as (typeof FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1)[number],
+        )
+      ))
+      || new Set(runtimeBaseSlots).size !== runtimeBaseSlots.length
+      || (statusValue === "LIBRARY_ONLY") !== (runtimeBaseSlots.length === 0)
+    ) {
+      fail(`${exposurePath}.runtimeBaseSlots`);
+    }
+    return {
+      schemaVersion: 1,
+      customAnimationId: string(
+        exposure.customAnimationId,
+        `${exposurePath}.customAnimationId`,
+      ),
+      status: statusValue as "LIBRARY_ONLY" | "BASE42_ROUTED",
+      libraryOutputClipNames: stringArray(
+        exposure.libraryOutputClipNames,
+        `${exposurePath}.libraryOutputClipNames`,
+      ),
+      runtimeBaseSlots,
+    };
+  });
+  if (
+    new Set(customRuntimeExposures.map(({ customAnimationId }) => customAnimationId))
+      .size !== customRuntimeExposures.length
+  ) {
+    fail(`${path}.customRuntimeExposures`);
+  }
   if (
     authoredClipCount !== authoredClips.length
     || authoredClipIds.length !== authoredClips.length
@@ -768,7 +1007,10 @@ function animationStudioEvidenceParser(
     fail(`${path}.sourceGlbUnchanged`);
   }
   const sourceRevision = sha256(item.sourceRevision, `${path}.sourceRevision`);
-  if (authoredClips.some((clip) => clip.source.sourceRevision !== sourceRevision)) {
+  if (authoredClips.some((clip) => (
+    clip.source.kind !== "IMPORTED_MODEL_COPY"
+    && clip.source.sourceRevision !== sourceRevision
+  ))) {
     fail(`${path}.authoredClips.sourceRevision`);
   }
   const animationStudioFingerprintSha256 = sha256(
@@ -809,6 +1051,10 @@ function animationStudioEvidenceParser(
         clip.materializedFingerprint,
         `${clipPath}.materializedFingerprint`,
       ),
+      materializedClip: materializedAnimationClip(
+        clip.materializedClip,
+        `${clipPath}.materializedClip`,
+      ),
     };
   });
   const expectedUsageKeys = authoredClips
@@ -844,7 +1090,7 @@ function animationStudioEvidenceParser(
     diagnostics: [],
   };
   return {
-    animationStudioSchemaVersion: 1,
+    animationStudioSchemaVersion,
     animationStudioFingerprintSha256,
     animationStudioRevision: integer(
       item.animationStudioRevision,
@@ -863,6 +1109,7 @@ function animationStudioEvidenceParser(
       item.customAssignmentCount,
       `${path}.customAssignmentCount`,
     ),
+    customRuntimeExposures,
     sourceRevision,
     readbackStatus: "MATCH",
     animationStudioReadback,
@@ -1308,20 +1555,36 @@ export function projectCanonicalResult(
       sha256: sha256(item.sha256, `manifest.packageManifest.resources[${index}].sha256`),
     };
   });
-  if (resources.length !== 3 || resources.length !== hak.entryCount) throw new Error("Canonical result identity mismatch at HAK resource count");
-  const resourcesByRole = new Map(resources.map((resource) => [resource.role, resource]));
-  if (resourcesByRole.size !== resources.length) throw new Error("Canonical result identity mismatch at duplicate resource role");
-  const resource = (role: string) => resourcesByRole.get(role) ?? fail(`manifest.packageManifest.resources.${role}`);
-  const modelResource = resource("MODEL");
-  const textureResource = resource("TEXTURE");
-  const appearanceResource = resource("APPEARANCE_TABLE");
-  if (resourcesByRole.size !== 3) fail("manifest.packageManifest.resources.roles");
+  if (
+    resources.length < 3
+    || resources.length > 4
+    || resources.length !== hak.entryCount
+  ) throw new Error("Canonical result identity mismatch at HAK resource count");
+  const duplicateIdentity = resources.some((candidate, index) => resources.some(
+    (other, otherIndex) => otherIndex !== index
+      && other.resref === candidate.resref
+      && other.type === candidate.type,
+  ));
+  if (duplicateIdentity) throw new Error("Canonical result identity mismatch at duplicate resource identity");
+  const byRole = (role: string) => resources.filter((resource) => resource.role === role);
+  const modelResources = byRole("MODEL");
+  const textureResources = byRole("TEXTURE");
+  const appearanceResources = byRole("APPEARANCE_TABLE");
+  if (
+    modelResources.length !== 1
+    || appearanceResources.length !== 1
+    || textureResources.length < 1
+    || textureResources.length > 2
+    || modelResources.length + textureResources.length + appearanceResources.length
+      !== resources.length
+  ) fail("manifest.packageManifest.resources.roles");
+  const modelResource = modelResources[0]!;
+  const appearanceResource = appearanceResources[0]!;
   const reconcile = (actual: { byteLength: number; sha256: string }, expected: { byteLength: number; sha256: string }, path: string) => {
     equal(actual.byteLength, expected.byteLength, `${path}.byteLength`);
     equal(actual.sha256, expected.sha256, `${path}.sha256`);
   };
   reconcile(modelResource, outputs.model, "manifest.packageManifest.resources.MODEL");
-  reconcile(textureResource, outputs.texture, "manifest.packageManifest.resources.TEXTURE");
   reconcile(appearanceResource, outputs.appearanceTwoDa, "manifest.packageManifest.resources.APPEARANCE_TABLE");
   const productIdentity = productOnly ? record(summary.identity, "summary.identity") : undefined;
   const modelResref = productOnly
@@ -1330,6 +1593,9 @@ export function projectCanonicalResult(
   const textureResref = productOnly
     ? string(productIdentity?.textureResref, "summary.identity.textureResref")
     : string(summary.textureResref, "summary.textureResref");
+  const textureResource = textureResources.find(({ resref }) => resref === textureResref)
+    ?? fail("manifest.packageManifest.resources.TEXTURE");
+  reconcile(textureResource, outputs.texture, "manifest.packageManifest.resources.TEXTURE");
   equal(modelResource.resref, modelResref, "manifest.packageManifest.resources.MODEL.resref");
   equal(string(projection.modelResourceResref, "report.model.projection.modelResourceResref"), modelResource.resref, "report.model.projection.modelResourceResref");
   equal(textureResource.resref, textureResref, "manifest.packageManifest.resources.TEXTURE.resref");
@@ -1391,6 +1657,72 @@ export function projectCanonicalResult(
       fail("animationStudioEvidence.sourceRevision");
     }
     animationStudioEvidence = reportEvidence;
+  }
+
+  const heldWeaponEvidence: CanonicalHeldWeaponEvidenceV1 | undefined =
+    report.heldWeapon === undefined
+      ? undefined
+      : (() => {
+          const value = record(report.heldWeapon, "report.heldWeapon");
+          const bake = record(value.bake, "report.heldWeapon.bake");
+          if (
+            integer(value.schemaVersion, "report.heldWeapon.schemaVersion") !== 1
+            || string(value.status, "report.heldWeapon.status") !== "MATCH"
+            || boolean(
+              value.attachmentNodePresentInBinaryMdl,
+              "report.heldWeapon.attachmentNodePresentInBinaryMdl",
+            ) !== true
+            || boolean(
+              value.combinedTriangleCountMatch,
+              "report.heldWeapon.combinedTriangleCountMatch",
+            ) !== true
+            || boolean(
+              value.texturePayloadMatchInHak,
+              "report.heldWeapon.texturePayloadMatchInHak",
+            ) !== true
+          ) {
+            fail("report.heldWeapon");
+          }
+          return {
+            schemaVersion: 1,
+            sourceSha256: sha256(value.sourceSha256, "report.heldWeapon.sourceSha256"),
+            attachmentFingerprintSha256: sha256(
+              value.attachmentFingerprintSha256,
+              "report.heldWeapon.attachmentFingerprintSha256",
+            ),
+            textureResref: string(value.textureResref, "report.heldWeapon.textureResref"),
+            texture: identity(value.texture, "report.heldWeapon.texture"),
+            targetTriangleCountBefore: integer(
+              bake.targetTriangleCountBefore,
+              "report.heldWeapon.bake.targetTriangleCountBefore",
+            ),
+            weaponTriangleCount: integer(
+              bake.weaponTriangleCount,
+              "report.heldWeapon.bake.weaponTriangleCount",
+            ),
+            targetTriangleCountAfter: integer(
+              bake.targetTriangleCountAfter,
+              "report.heldWeapon.bake.targetTriangleCountAfter",
+            ),
+            attachmentNodePresentInBinaryMdl: true,
+            combinedTriangleCountMatch: true,
+            texturePayloadMatchInHak: true,
+            status: "MATCH",
+          };
+        })();
+  if (heldWeaponEvidence) {
+    const packagedTexture = resources.find((resource) => (
+      resource.role === "TEXTURE"
+      && resource.type === 3
+      && resource.resref === heldWeaponEvidence.textureResref
+    ));
+    if (
+      !packagedTexture
+      || packagedTexture.byteLength !== heldWeaponEvidence.texture.byteLength
+      || packagedTexture.sha256 !== heldWeaponEvidence.texture.sha256
+    ) {
+      throw new Error("Canonical result identity mismatch at heldWeaponEvidence.texture");
+    }
   }
 
   let runtimeFixtureContract: CanonicalM0RuntimeFixtureContract | undefined;
@@ -1493,6 +1825,11 @@ export function projectCanonicalResult(
     skinAnimationEvidence,
     animationMappingEvidence,
     animationStudioEvidence,
+    heldWeaponEvidence,
+    animationPlaybackAcceptance: resolveOwnerAnimationPlaybackProofV1(
+      outputs,
+      animationStudioEvidence?.animationStudioFingerprintSha256,
+    ),
     runtimeFixtureContract,
     projectIdentity,
     artifacts: [...artifacts],

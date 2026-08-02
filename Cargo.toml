@@ -13,3 +13,16 @@ sha2 = "0.10"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
+[profile.release.package.m2a-core]
+opt-level = "z"
+
+[profile.release.package.m2a-wasm]
+opt-level = "z"

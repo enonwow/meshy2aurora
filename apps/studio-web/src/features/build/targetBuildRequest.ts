@@ -49,6 +49,15 @@ type TargetBuildRequestInputV1 =
       readonly animationAuthoringJson: string;
       readonly animationStudioDocumentJson?: string;
       readonly eventAuthoringJson?: string;
+      readonly heldWeapon?: {
+        readonly glb: ArrayBuffer;
+        readonly filename: string;
+        readonly rigJson: string;
+        readonly primaryHand: "RIGHT" | "LEFT";
+        readonly targetNodeId: number;
+        readonly localTransformJson: string;
+        readonly attachmentRevision: number;
+      };
     };
 
 export interface TargetBuildRequestV1 {
@@ -106,6 +115,7 @@ export function createTargetBuildRequestV1(
             input.animationStudioDocumentJson ?? "",
           projectIdentityJson: input.projectIdentityJson,
           eventAuthoringJson: input.eventAuthoringJson,
+          heldWeapon: input.heldWeapon,
         }
       : {
           requestId: input.requestId,
@@ -117,6 +127,8 @@ export function createTargetBuildRequestV1(
           projectIdentityJson: input.projectIdentityJson,
           eventAuthoringJson: input.eventAuthoringJson,
         },
-    transfer: [input.sourceGlb, input.baseTwoDa],
+    transfer: input.heldWeapon
+      ? [input.sourceGlb, input.baseTwoDa, input.heldWeapon.glb]
+      : [input.sourceGlb, input.baseTwoDa],
   };
 }

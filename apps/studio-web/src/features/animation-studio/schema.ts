@@ -1,5 +1,8 @@
 import type { CreatureAnimationAuthoringV1 } from "../animation-mapping/types";
 import {
+  ANIMATION_STUDIO_SCHEMA_VERSION_V1,
+  ANIMATION_STUDIO_SCHEMA_VERSION_V2,
+  ANIMATION_STUDIO_SCHEMA_VERSION_V3,
   CREATURE_ANIMATION_AUTHORING_PROFILE_V2,
   type AnimationKeyframeV1,
   type AnimationStudioDiagnosticV1,
@@ -43,6 +46,12 @@ export function serializeAnimationStudioDocumentV1(
         sourceClipName: clip.source.sourceClipName,
         sourceClipFingerprint: clip.source.sourceClipFingerprint,
         proceduralTemplate: clip.source.proceduralTemplate,
+        ...(clip.source.libraryPreset
+          ? { libraryPreset: clip.source.libraryPreset }
+          : {}),
+        ...(clip.source.retarget
+          ? { retarget: clip.source.retarget }
+          : {}),
       },
       lengthSeconds: canonicalFloat32ForWireV1(clip.lengthSeconds),
       transitionSeconds: canonicalFloat32ForWireV1(clip.transitionSeconds),
@@ -108,6 +117,22 @@ export function parseAnimationStudioDocumentV1(
   return diagnostics.length > 0
     ? { kind: "INVALID", diagnostics }
     : { kind: "VALID", value: value as AnimationStudioDocumentV1 };
+}
+
+export function migrateAnimationStudioDocumentV1ToV2(
+  document: AnimationStudioDocumentV1,
+): AnimationStudioDocumentV1 {
+  return document.schemaVersion === ANIMATION_STUDIO_SCHEMA_VERSION_V1
+    ? { ...document, schemaVersion: ANIMATION_STUDIO_SCHEMA_VERSION_V2 }
+    : document;
+}
+
+export function migrateAnimationStudioDocumentToV3(
+  document: AnimationStudioDocumentV1,
+): AnimationStudioDocumentV1 {
+  return document.schemaVersion === ANIMATION_STUDIO_SCHEMA_VERSION_V3
+    ? document
+    : { ...document, schemaVersion: ANIMATION_STUDIO_SCHEMA_VERSION_V3 };
 }
 
 export async function fingerprintAnimationStudioDocumentV1(
@@ -214,6 +239,7 @@ export function validateAnimationStudioSchemaV1(
     }
     if (
       clip.source.kind !== "IMPORTED_MODEL_COPY"
+      && clip.source.kind !== "RETARGETED_MODEL_COPY"
       && clip.source.sourceRevision !== document.sourceRevision
     ) {
       diagnostics.push(diagnostic(
@@ -345,8 +371,12 @@ function validateDocument(
     [],
     diagnostics,
   )) return;
-  if (value.schemaVersion !== 1) {
-    schemaIssue(`${path}.schemaVersion`, "Expected schemaVersion 1.", diagnostics);
+  if (
+    value.schemaVersion !== ANIMATION_STUDIO_SCHEMA_VERSION_V1
+    && value.schemaVersion !== ANIMATION_STUDIO_SCHEMA_VERSION_V2
+    && value.schemaVersion !== ANIMATION_STUDIO_SCHEMA_VERSION_V3
+  ) {
+    schemaIssue(`${path}.schemaVersion`, "Expected schemaVersion 1, 2, or 3.", diagnostics);
   }
   expectSha256(value.sourceRevision, `${path}.sourceRevision`, diagnostics);
   expectPositiveInteger(
@@ -365,6 +395,63 @@ function validateDocument(
   } else {
     value.authoredClips.forEach((clip, index) => {
       validateClip(clip, `${path}.authoredClips[${index}]`, diagnostics);
+      if (
+        clip !== null
+        && typeof clip === "object"
+        && !Array.isArray(clip)
+        && "source" in clip
+        && clip.source !== null
+        && typeof clip.source === "object"
+        && !Array.isArray(clip.source)
+        && "retarget" in clip.source
+        && clip.source.retarget !== null
+        && typeof clip.source.retarget === "object"
+        && !Array.isArray(clip.source.retarget)
+        && "targetSourceRevision" in clip.source.retarget
+        && clip.source.retarget.targetSourceRevision !== value.sourceRevision
+      ) {
+        schemaIssue(
+          `${path}.authoredClips[${index}].source.retarget.targetSourceRevision`,
+          "Retarget provenance must match the current target sourceRevision.",
+          diagnostics,
+        );
+      }
+      if (
+        value.schemaVersion === ANIMATION_STUDIO_SCHEMA_VERSION_V1
+        && clip !== null
+        && typeof clip === "object"
+        && !Array.isArray(clip)
+        && "source" in clip
+        && clip.source !== null
+        && typeof clip.source === "object"
+        && !Array.isArray(clip.source)
+        && "kind" in clip.source
+        && clip.source.kind === "LIBRARY_PRESET_COPY"
+      ) {
+        schemaIssue(
+          `${path}.authoredClips[${index}].source.kind`,
+          "LIBRARY_PRESET_COPY requires Animation Studio schemaVersion 2.",
+          diagnostics,
+        );
+      }
+      if (
+        value.schemaVersion !== ANIMATION_STUDIO_SCHEMA_VERSION_V3
+        && clip !== null
+        && typeof clip === "object"
+        && !Array.isArray(clip)
+        && "source" in clip
+        && clip.source !== null
+        && typeof clip.source === "object"
+        && !Array.isArray(clip.source)
+        && "kind" in clip.source
+        && clip.source.kind === "RETARGETED_MODEL_COPY"
+      ) {
+        schemaIssue(
+          `${path}.authoredClips[${index}].source.kind`,
+          "RETARGETED_MODEL_COPY requires Animation Studio schemaVersion 3.",
+          diagnostics,
+        );
+      }
     });
   }
 }
@@ -451,7 +538,7 @@ function validateSource(
       "sourceClipFingerprint",
       "proceduralTemplate",
     ],
-    [],
+    ["libraryPreset", "retarget"],
     diagnostics,
   )) return;
   expectEnum(
@@ -461,6 +548,8 @@ function validateSource(
       "SOURCE_CLIP_COPY",
       "IMPORTED_MODEL_COPY",
       "PROCEDURAL_TEMPLATE",
+      "LIBRARY_PRESET_COPY",
+      "RETARGETED_MODEL_COPY",
     ],
     `${path}.kind`,
     diagnostics,
@@ -542,6 +631,197 @@ function validateSource(
       diagnostics,
     );
   }
+  if (value.kind === "LIBRARY_PRESET_COPY") {
+    validateLibraryPresetProvenance(value.libraryPreset, `${path}.libraryPreset`, diagnostics);
+    if (
+      value.sourceClipName !== null
+      || typeof value.sourceClipFingerprint !== "string"
+      || value.proceduralTemplate !== null
+    ) {
+      schemaIssue(
+        path,
+        "LIBRARY_PRESET_COPY requires a motion fingerprint and forbids source clip/procedural fields.",
+        diagnostics,
+      );
+    }
+    const preset = value.libraryPreset;
+    if (
+      typeof value.sourceClipFingerprint === "string"
+      && preset !== null
+      && typeof preset === "object"
+      && !Array.isArray(preset)
+      && "presetMotionSha256" in preset
+      && value.sourceClipFingerprint !== preset.presetMotionSha256
+    ) {
+      schemaIssue(
+        `${path}.sourceClipFingerprint`,
+        "Library motion fingerprint must match presetMotionSha256.",
+        diagnostics,
+      );
+    }
+  } else if (value.libraryPreset !== undefined) {
+    schemaIssue(
+      `${path}.libraryPreset`,
+      `${String(value.kind)} cannot contain library preset provenance.`,
+      diagnostics,
+    );
+  }
+  if (value.kind === "RETARGETED_MODEL_COPY") {
+    validateRetargetProvenance(value.retarget, `${path}.retarget`, diagnostics);
+    if (
+      typeof value.sourceClipName !== "string"
+      || typeof value.sourceClipFingerprint !== "string"
+      || value.proceduralTemplate !== null
+      || value.libraryPreset !== undefined
+    ) {
+      schemaIssue(
+        path,
+        "RETARGETED_MODEL_COPY requires donor clip identity and forbids procedural/library fields.",
+        diagnostics,
+      );
+    }
+    const provenance = value.retarget;
+    if (
+      provenance !== null
+      && typeof provenance === "object"
+      && !Array.isArray(provenance)
+    ) {
+      if (
+        "donorSourceRevision" in provenance
+        && provenance.donorSourceRevision !== value.sourceRevision
+      ) {
+        schemaIssue(
+          `${path}.retarget.donorSourceRevision`,
+          "Donor revision must match sourceRevision.",
+          diagnostics,
+        );
+      }
+      if (
+        "donorClipName" in provenance
+        && provenance.donorClipName !== value.sourceClipName
+      ) {
+        schemaIssue(
+          `${path}.retarget.donorClipName`,
+          "Donor clip name must match sourceClipName.",
+          diagnostics,
+        );
+      }
+      if (
+        "donorClipFingerprint" in provenance
+        && provenance.donorClipFingerprint !== value.sourceClipFingerprint
+      ) {
+        schemaIssue(
+          `${path}.retarget.donorClipFingerprint`,
+          "Donor clip fingerprint must match sourceClipFingerprint.",
+          diagnostics,
+        );
+      }
+    }
+  } else if (value.retarget !== undefined) {
+    schemaIssue(
+      `${path}.retarget`,
+      `${String(value.kind)} cannot contain retarget provenance.`,
+      diagnostics,
+    );
+  }
+}
+
+function validateRetargetProvenance(
+  value: unknown,
+  path: string,
+  diagnostics: AnimationStudioDiagnosticV1[],
+): void {
+  if (!expectRecordWithKeys(
+    value,
+    path,
+    [
+      "donorSourceRevision",
+      "targetSourceRevision",
+      "donorClipName",
+      "donorClipFingerprint",
+      "donorRigSignatureSha256",
+      "targetRigSignatureSha256",
+      "compatibilityFingerprintSha256",
+      "mode",
+      "rootMotionScale",
+      "outputMotionFingerprintSha256",
+      "algorithmVersion",
+      "algorithmLimits",
+    ],
+    [],
+    diagnostics,
+  )) return;
+  for (const key of [
+    "donorSourceRevision",
+    "targetSourceRevision",
+    "donorClipFingerprint",
+    "donorRigSignatureSha256",
+    "targetRigSignatureSha256",
+    "compatibilityFingerprintSha256",
+    "outputMotionFingerprintSha256",
+  ] as const) {
+    expectSha256(value[key], `${path}.${key}`, diagnostics);
+  }
+  expectNonEmptyString(value.donorClipName, `${path}.donorClipName`, diagnostics);
+  expectEnum(
+    value.mode,
+    ["SAME_HIERARCHY_RETARGET_V1", "HUMANOID_SEMANTIC_RETARGET_V2"],
+    `${path}.mode`,
+    diagnostics,
+  );
+  if (
+    typeof value.rootMotionScale !== "number"
+    || !Number.isFinite(value.rootMotionScale)
+    || value.rootMotionScale <= 0
+  ) {
+    schemaIssue(`${path}.rootMotionScale`, "Expected a finite positive scale.", diagnostics);
+  }
+  expectNonEmptyString(value.algorithmVersion, `${path}.algorithmVersion`, diagnostics);
+  expectNonEmptyString(value.algorithmLimits, `${path}.algorithmLimits`, diagnostics);
+}
+
+function validateLibraryPresetProvenance(
+  value: unknown,
+  path: string,
+  diagnostics: AnimationStudioDiagnosticV1[],
+): void {
+  if (!expectRecordWithKeys(
+    value,
+    path,
+    [
+      "presetId",
+      "presetVersion",
+      "presetMotionSha256",
+      "catalogSha256",
+      "source",
+      "authors",
+      "license",
+      "rigSignatureSha256",
+      "instantiationMode",
+    ],
+    [],
+    diagnostics,
+  )) return;
+  expectNonEmptyString(value.presetId, `${path}.presetId`, diagnostics);
+  expectPositiveInteger(value.presetVersion, `${path}.presetVersion`, diagnostics);
+  expectSha256(value.presetMotionSha256, `${path}.presetMotionSha256`, diagnostics);
+  expectSha256(value.catalogSha256, `${path}.catalogSha256`, diagnostics);
+  expectEnum(value.source, ["BUILT_IN", "COMMUNITY"], `${path}.source`, diagnostics);
+  if (!Array.isArray(value.authors) || value.authors.length === 0) {
+    schemaIssue(`${path}.authors`, "Expected at least one author.", diagnostics);
+  } else {
+    value.authors.forEach((author, index) => {
+      expectNonEmptyString(author, `${path}.authors[${index}]`, diagnostics);
+    });
+  }
+  expectNonEmptyString(value.license, `${path}.license`, diagnostics);
+  expectSha256(value.rigSignatureSha256, `${path}.rigSignatureSha256`, diagnostics);
+  expectEnum(
+    value.instantiationMode,
+    ["STRICT_RIG_V1"],
+    `${path}.instantiationMode`,
+    diagnostics,
+  );
 }
 
 function validateTrack(

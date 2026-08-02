@@ -1739,6 +1739,234 @@ fn parse_project_build_identity_v1(
     })
 }
 
+fn parse_animation_library_preset_v1(
+    manifest_json: &str,
+    animation_json: &str,
+    catalog_sha256: &str,
+) -> Result<
+    m2a_core::animation_library::AnimationPresetV1,
+    Vec<m2a_core::animation_library::AnimationLibraryDiagnosticV1>,
+> {
+    m2a_core::animation_library::parse_animation_preset_assets_v1(
+        manifest_json,
+        animation_json,
+        catalog_sha256,
+    )
+}
+
+#[wasm_bindgen(js_name = validateAnimationPresetV1)]
+pub fn validate_animation_preset_v1(
+    manifest_json: &str,
+    animation_json: &str,
+    catalog_sha256: &str,
+) -> String {
+    let preset =
+        match parse_animation_library_preset_v1(manifest_json, animation_json, catalog_sha256) {
+            Ok(preset) => preset,
+            Err(diagnostics) => {
+                return serialize_json(&serde_json::json!({
+                    "schemaVersion": 1,
+                    "status": "BLOCKED",
+                    "diagnostics": diagnostics
+                }));
+            }
+        };
+    let tags = m2a_core::animation_library::ANIMATION_LIBRARY_DEFAULT_TAGS_V1
+        .iter()
+        .map(|value| (*value).to_owned())
+        .collect::<Vec<_>>();
+    let diagnostics = m2a_core::animation_library::validate_animation_preset_v1(&preset, &tags);
+    serialize_json(&serde_json::json!({
+        "schemaVersion": 1,
+        "status": if diagnostics.is_empty() { "READY" } else { "BLOCKED" },
+        "preset": if diagnostics.is_empty() { Some(&preset) } else { None },
+        "diagnostics": diagnostics
+    }))
+}
+
+#[wasm_bindgen(js_name = inspectAnimationPresetCompatibilityV1)]
+pub fn inspect_animation_preset_compatibility_v1(
+    manifest_json: &str,
+    animation_json: &str,
+    catalog_sha256: &str,
+    source_glb: &[u8],
+) -> String {
+    let preset =
+        match parse_animation_library_preset_v1(manifest_json, animation_json, catalog_sha256) {
+            Ok(preset) => preset,
+            Err(diagnostics) => {
+                return serialize_json(&serde_json::json!({
+                    "schemaVersion": 1,
+                    "status": "INCOMPATIBLE",
+                    "expectedRigSignatureSha256": "",
+                    "actualRigSignatureSha256": null,
+                    "missingBones": [],
+                    "diagnostics": diagnostics
+                }));
+            }
+        };
+    let inspection =
+        match m2a_core::model_pipeline::inspect_editable_animation_source_v1(source_glb) {
+            Ok(inspection) => inspection,
+            Err(error) => {
+                return serialize_json(&serde_json::json!({
+                    "schemaVersion": 1,
+                    "status": "INCOMPATIBLE",
+                    "expectedRigSignatureSha256": preset.manifest.rig_signature_sha256,
+                    "actualRigSignatureSha256": null,
+                    "missingBones": [],
+                    "diagnostics": [animation_studio_boundary_diagnostic(
+                        &error.code,
+                        &error.path,
+                        error.message,
+                    )]
+                }));
+            }
+        };
+    serialize_json(
+        &m2a_core::animation_library::inspect_animation_preset_compatibility_v1(
+            &preset,
+            &inspection.rig,
+        ),
+    )
+}
+
+#[wasm_bindgen(js_name = instantiateAnimationPresetV1)]
+pub fn instantiate_animation_preset_v1(
+    manifest_json: &str,
+    animation_json: &str,
+    catalog_sha256: &str,
+    source_glb: &[u8],
+    clip_id: &str,
+    output_name: &str,
+) -> String {
+    let preset =
+        match parse_animation_library_preset_v1(manifest_json, animation_json, catalog_sha256) {
+            Ok(preset) => preset,
+            Err(diagnostics) => {
+                return serialize_json(&serde_json::json!({
+                    "schemaVersion": 1,
+                    "status": "BLOCKED",
+                    "clip": null,
+                    "diagnostics": diagnostics
+                }));
+            }
+        };
+    let inspection =
+        match m2a_core::model_pipeline::inspect_editable_animation_source_v1(source_glb) {
+            Ok(inspection) => inspection,
+            Err(error) => {
+                return serialize_json(&serde_json::json!({
+                    "schemaVersion": 1,
+                    "status": "BLOCKED",
+                    "clip": null,
+                    "diagnostics": [animation_studio_boundary_diagnostic(
+                        &error.code,
+                        &error.path,
+                        error.message,
+                    )]
+                }));
+            }
+        };
+    match m2a_core::animation_library::instantiate_animation_preset_v1(
+        &preset,
+        &inspection.rig,
+        &inspection.source_revision,
+        clip_id,
+        output_name,
+    ) {
+        Ok(clip) => serialize_json(&serde_json::json!({
+            "schemaVersion": 1,
+            "status": "READY",
+            "clip": clip,
+            "diagnostics": []
+        })),
+        Err(diagnostics) => serialize_json(&serde_json::json!({
+            "schemaVersion": 1,
+            "status": "BLOCKED",
+            "clip": null,
+            "diagnostics": diagnostics
+        })),
+    }
+}
+
+#[wasm_bindgen(js_name = exportAnimationContributionV1)]
+pub fn export_animation_contribution_v1(
+    authored_clip_json: &str,
+    source_glb: &[u8],
+    metadata_json: &str,
+) -> String {
+    let clip = match serde_json::from_str::<m2a_core::animation_studio::AuthoredAnimationClipV1>(
+        authored_clip_json,
+    ) {
+        Ok(clip) => clip,
+        Err(error) => {
+            return serialize_json(&serde_json::json!({
+                "schemaVersion": 1,
+                "status": "BLOCKED",
+                "contribution": null,
+                "diagnostics": [animation_studio_boundary_diagnostic(
+                    "M2A-ANIMATION-LIBRARY-CONTRIBUTION-CLIP",
+                    "authoredClipJson",
+                    format!("clip JSON does not match the strict contract: {error}"),
+                )]
+            }));
+        }
+    };
+    let metadata = match serde_json::from_str::<
+        m2a_core::animation_library::ExportAnimationContributionMetadataV1,
+    >(metadata_json)
+    {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            return serialize_json(&serde_json::json!({
+                "schemaVersion": 1,
+                "status": "BLOCKED",
+                "contribution": null,
+                "diagnostics": [animation_studio_boundary_diagnostic(
+                    "M2A-ANIMATION-LIBRARY-CONTRIBUTION-METADATA",
+                    "metadataJson",
+                    format!("metadata JSON does not match the strict contract: {error}"),
+                )]
+            }));
+        }
+    };
+    let inspection =
+        match m2a_core::model_pipeline::inspect_editable_animation_source_v1(source_glb) {
+            Ok(inspection) => inspection,
+            Err(error) => {
+                return serialize_json(&serde_json::json!({
+                    "schemaVersion": 1,
+                    "status": "BLOCKED",
+                    "contribution": null,
+                    "diagnostics": [animation_studio_boundary_diagnostic(
+                        &error.code,
+                        &error.path,
+                        error.message,
+                    )]
+                }));
+            }
+        };
+    match m2a_core::animation_library::export_animation_contribution_v1(
+        &clip,
+        &inspection.rig,
+        metadata,
+    ) {
+        Ok(contribution) => serialize_json(&serde_json::json!({
+            "schemaVersion": 1,
+            "status": "READY",
+            "contribution": contribution,
+            "diagnostics": []
+        })),
+        Err(diagnostics) => serialize_json(&serde_json::json!({
+            "schemaVersion": 1,
+            "status": "BLOCKED",
+            "contribution": null,
+            "diagnostics": diagnostics
+        })),
+    }
+}
+
 /// Projects the exact immutable source GLB to the canonical output rig. When
 /// `clip_name` is supplied, the named source clip is cloned to an editable
 /// draft without modifying or embedding the source GLB.
@@ -1816,6 +2044,180 @@ fn inspect_editable_animation_source_v1_inner(
     })
 }
 
+/// Classifies donor/target rig compatibility in Core. The browser receives a
+/// read-only report and never reimplements the semantic name/parent mapping.
+#[wasm_bindgen(js_name = inspectAnimationTransferCompatibilityV1)]
+pub fn inspect_animation_transfer_compatibility_v1(
+    target_glb: &[u8],
+    donor_glb: &[u8],
+) -> Result<String, JsValue> {
+    m2a_core::animation_retarget::inspect_animation_transfer_compatibility_between_models_v1(
+        target_glb, donor_glb,
+    )
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+    .and_then(|report| serialize_json_result(&report).map_err(|error| JsValue::from_str(&error)))
+}
+
+/// Copies one selected donor clip through the explicit Core transfer mode. A
+/// same-hierarchy retarget returns a V3-ready authored clip with immutable
+/// donor/target provenance and a deterministic motion fingerprint.
+#[wasm_bindgen(js_name = retargetAnimationClipBetweenModelsV1)]
+pub fn retarget_animation_clip_between_models_v1(
+    target_glb: &[u8],
+    donor_glb: &[u8],
+    clip_name: &str,
+    options_json: &str,
+) -> Result<String, JsValue> {
+    let options = serde_json::from_str::<m2a_core::animation_retarget::AnimationTransferOptionsV1>(
+        options_json,
+    )
+    .map_err(|_| {
+        JsValue::from_str(&animation_studio_json_error(
+            "M2A-ANIMATION-TRANSFER-OPTIONS-JSON",
+            "optionsJson",
+            "animation transfer options do not match the strict V1 contract",
+        ))
+    })?;
+    m2a_core::animation_retarget::copy_animation_clip_between_models_v1(
+        target_glb, donor_glb, clip_name, &options,
+    )
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+    .and_then(|result| serialize_json_result(&result).map_err(|error| JsValue::from_str(&error)))
+}
+
+#[wasm_bindgen(js_name = inspectHumanoidRetargetCompatibilityV2)]
+pub fn inspect_humanoid_retarget_compatibility_v2(
+    target_glb: &[u8],
+    donor_glb: &[u8],
+    overrides_json: &str,
+    manual_mapping_confirmed: bool,
+) -> Result<String, JsValue> {
+    let overrides = serde_json::from_str::<
+        Vec<m2a_core::animation_retarget::HumanoidSemanticOverrideV2>,
+    >(overrides_json)
+    .map_err(|error| JsValue::from_str(&format!("invalid semantic overrides: {error}")))?;
+    m2a_core::animation_retarget::inspect_humanoid_retarget_compatibility_between_models_v2(
+        target_glb,
+        donor_glb,
+        &overrides,
+        manual_mapping_confirmed,
+    )
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+    .and_then(|report| serialize_json_result(&report).map_err(|error| JsValue::from_str(&error)))
+}
+
+#[wasm_bindgen(js_name = retargetAnimationClipHumanoidV2)]
+pub fn retarget_animation_clip_humanoid_v2(
+    target_glb: &[u8],
+    donor_glb: &[u8],
+    clip_name: &str,
+    semantic_map_json: &str,
+    clip_id: &str,
+    output_name: &str,
+) -> Result<String, JsValue> {
+    let semantic_map = serde_json::from_str::<
+        m2a_core::animation_retarget::HumanoidSemanticBoneMapV2,
+    >(semantic_map_json)
+    .map_err(|error| JsValue::from_str(&format!("invalid semantic V2 map: {error}")))?;
+    m2a_core::animation_retarget::retarget_animation_clip_between_models_humanoid_v2(
+        target_glb,
+        donor_glb,
+        clip_name,
+        &semantic_map,
+        clip_id,
+        output_name,
+    )
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+    .and_then(|result| serialize_json_result(&result).map_err(|error| JsValue::from_str(&error)))
+}
+
+#[wasm_bindgen(js_name = buildAnimationSequencePreviewV1)]
+pub fn build_animation_sequence_preview_v1(
+    request_json: &str,
+    available_clips_json: &str,
+) -> Result<String, JsValue> {
+    let request = serde_json::from_str::<
+        m2a_core::animation_sequence::AnimationSequencePreviewRequestV1,
+    >(request_json)
+    .map_err(|error| JsValue::from_str(&format!("invalid sequence request: {error}")))?;
+    let clips = serde_json::from_str::<Vec<m2a_core::animation_studio::AuthoredAnimationClipV1>>(
+        available_clips_json,
+    )
+    .map_err(|error| JsValue::from_str(&format!("invalid sequence clips: {error}")))?;
+    m2a_core::animation_sequence::build_animation_sequence_preview_v1(&request, &clips)
+        .map_err(|error| JsValue::from_str(&error))
+        .and_then(|result| {
+            serialize_json_result(&result).map_err(|error| JsValue::from_str(&error))
+        })
+}
+
+#[wasm_bindgen(js_name = prepareAnimationTransferBatchV2)]
+pub fn prepare_animation_transfer_batch_v2(
+    target_glb: &[u8],
+    donor_glb: &[u8],
+    request_json: &str,
+) -> Result<String, JsValue> {
+    let request = serde_json::from_str::<
+        m2a_core::animation_retarget::AnimationTransferBatchRequestV2,
+    >(request_json)
+    .map_err(|error| JsValue::from_str(&format!("invalid animation batch V2 request: {error}")))?;
+    m2a_core::animation_retarget::prepare_animation_transfer_batch_v2(
+        target_glb, donor_glb, &request,
+    )
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+    .and_then(|result| serialize_json_result(&result).map_err(|error| JsValue::from_str(&error)))
+}
+
+#[wasm_bindgen(js_name = applyAnimationWorkbenchOperationV1)]
+pub fn apply_animation_workbench_operation_v1(request_json: &str) -> Result<String, JsValue> {
+    let request =
+        serde_json::from_str::<m2a_core::animation_workbench::AnimationWorkbenchRequestV1>(
+            request_json,
+        )
+        .map_err(|error| {
+            JsValue::from_str(&format!("invalid animation workbench request: {error}"))
+        })?;
+    m2a_core::animation_workbench::apply_animation_workbench_operation_v1(request)
+        .map_err(|error| JsValue::from_str(&error))
+        .and_then(|result| {
+            serialize_json_result(&result).map_err(|error| JsValue::from_str(&error))
+        })
+}
+
+#[wasm_bindgen(js_name = resampleAnimationCurveToLinearV1)]
+pub fn resample_animation_curve_to_linear_v1(
+    curve_json: &str,
+    policy_json: &str,
+) -> Result<String, JsValue> {
+    let curve =
+        serde_json::from_str::<m2a_core::animation_curves::AnimationEditorCurveTrackV1>(curve_json)
+            .map_err(|error| JsValue::from_str(&format!("invalid editor curve: {error}")))?;
+    let policy =
+        serde_json::from_str::<m2a_core::animation_curves::AnimationCurveResamplePolicyV1>(
+            policy_json,
+        )
+        .map_err(|error| JsValue::from_str(&format!("invalid curve policy: {error}")))?;
+    m2a_core::animation_curves::resample_animation_curve_to_linear_v1(&curve, &policy)
+        .map_err(|error| JsValue::from_str(&error))
+        .and_then(|result| {
+            serialize_json_result(&result).map_err(|error| JsValue::from_str(&error))
+        })
+}
+
+#[wasm_bindgen(js_name = bakeAnimationLayersV1)]
+pub fn bake_animation_layers_v1(layers_json: &str, rig_json: &str) -> Result<String, JsValue> {
+    let layers =
+        serde_json::from_str::<Vec<m2a_core::animation_layers::AnimationEditLayerV1>>(layers_json)
+            .map_err(|error| JsValue::from_str(&format!("invalid animation layers: {error}")))?;
+    let rig = serde_json::from_str::<m2a_core::animation_studio::AnimationStudioRigV1>(rig_json)
+        .map_err(|error| JsValue::from_str(&format!("invalid animation rig: {error}")))?;
+    m2a_core::animation_layers::bake_animation_layers_v1(&layers, &rig)
+        .map_err(|error| JsValue::from_str(&error))
+        .and_then(|result| {
+            serialize_json_result(&result).map_err(|error| JsValue::from_str(&error))
+        })
+}
+
 /// Validates the strict Studio document against the exact canonical output rig
 /// and returns structured diagnostics instead of maintaining a JS validator.
 #[wasm_bindgen(js_name = validateAnimationStudioDocumentV1)]
@@ -1881,6 +2283,257 @@ fn validate_animation_studio_document_v1_inner(
         "documentFingerprintSha256": fingerprint,
         "diagnostics": diagnostics
     }))
+}
+
+/// Applies one atomic, revision-bound Animation Authoring V2 command batch.
+/// The exact source GLB is inspected only to recover the canonical output rig;
+/// source bytes are never mutated or persisted by this boundary.
+#[wasm_bindgen(js_name = applyAnimationEditCommandBatchV1)]
+pub fn apply_animation_edit_command_batch_v1(
+    animation_studio_document_json: &str,
+    command_batch_json: &str,
+    source_glb: &[u8],
+) -> Result<String, JsValue> {
+    let document = serde_json::from_str::<m2a_core::animation_studio::AnimationStudioDocumentV1>(
+        animation_studio_document_json,
+    )
+    .map_err(|error| {
+        JsValue::from_str(&animation_studio_json_error(
+            "M2A-ANIMATION-COMMAND-SCHEMA",
+            "animationStudioDocumentJson",
+            &format!("document JSON does not match the strict Studio schema: {error}"),
+        ))
+    })?;
+    let batch =
+        serde_json::from_str::<m2a_core::animation_authoring_v2::AnimationEditCommandBatchV1>(
+            command_batch_json,
+        )
+        .map_err(|error| {
+            JsValue::from_str(&animation_studio_json_error(
+                "M2A-ANIMATION-COMMAND-SCHEMA",
+                "commandBatchJson",
+                &format!("command JSON does not match the strict V1 schema: {error}"),
+            ))
+        })?;
+    let inspection = m2a_core::model_pipeline::inspect_editable_animation_source_v1(source_glb)
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+    let result = m2a_core::animation_authoring_v2::apply_animation_edit_command_batch_v1(
+        &document,
+        &inspection.rig,
+        &batch,
+    )
+    .map_err(|diagnostics| {
+        JsValue::from_str(&serialize_json(&serde_json::json!({
+            "schemaVersion": 1,
+            "stage": "ANIMATION",
+            "code": diagnostics.first().map(|value| value.code.as_str())
+                .unwrap_or("M2A-ANIMATION-COMMAND"),
+            "path": diagnostics.first().map(|value| value.path.as_str())
+                .unwrap_or("commandBatch"),
+            "message": diagnostics.first().map(|value| value.message.as_str())
+                .unwrap_or("Animation edit command failed"),
+            "diagnostics": diagnostics
+        })))
+    })?;
+    serialize_json_result(&result).map_err(|error| JsValue::from_str(&error))
+}
+
+/// Computes deterministic motion-quality diagnostics on the exact output rig.
+#[wasm_bindgen(js_name = analyzeAnimationMotionQualityV1)]
+pub fn analyze_animation_motion_quality_v1(
+    authored_clip_json: &str,
+    policy_json: &str,
+    context_json: &str,
+    source_glb: &[u8],
+) -> Result<String, JsValue> {
+    let clip = serde_json::from_str::<m2a_core::animation_studio::AuthoredAnimationClipV1>(
+        authored_clip_json,
+    )
+    .map_err(|error| {
+        JsValue::from_str(&animation_studio_json_error(
+            "M2A-ANIMATION-QUALITY-CLIP",
+            "authoredClipJson",
+            &format!("clip JSON does not match the strict Studio schema: {error}"),
+        ))
+    })?;
+    let policy =
+        serde_json::from_str::<m2a_core::animation_authoring_v2::AnimationQualityPolicyV1>(
+            policy_json,
+        )
+        .map_err(|error| {
+            JsValue::from_str(&animation_studio_json_error(
+                "M2A-ANIMATION-QUALITY-POLICY",
+                "policyJson",
+                &format!("quality policy JSON is invalid: {error}"),
+            ))
+        })?;
+    let context =
+        serde_json::from_str::<m2a_core::animation_authoring_v2::AnimationQualityContextV1>(
+            context_json,
+        )
+        .map_err(|error| {
+            JsValue::from_str(&animation_studio_json_error(
+                "M2A-ANIMATION-QUALITY-CONTEXT",
+                "contextJson",
+                &format!("quality context JSON is invalid: {error}"),
+            ))
+        })?;
+    let inspection = m2a_core::model_pipeline::inspect_editable_animation_source_v1(source_glb)
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+    let report = m2a_core::animation_authoring_v2::analyze_animation_motion_quality_v1(
+        &clip,
+        &inspection.rig,
+        &policy,
+        &context,
+    )
+    .map_err(|diagnostics| JsValue::from_str(&serialize_json(&diagnostics)))?;
+    serialize_json_result(&report).map_err(|error| JsValue::from_str(&error))
+}
+
+/// Applies a deterministic loop, root-motion, contact or key-reduction tool
+/// to one clip on the exact inspected output rig.
+#[wasm_bindgen(js_name = applyAnimationAuthoringToolV1)]
+pub fn apply_animation_authoring_tool_v1(
+    authored_clip_json: &str,
+    tool_request_json: &str,
+    source_glb: &[u8],
+) -> Result<String, JsValue> {
+    let clip = serde_json::from_str::<m2a_core::animation_studio::AuthoredAnimationClipV1>(
+        authored_clip_json,
+    )
+    .map_err(|error| {
+        JsValue::from_str(&animation_studio_json_error(
+            "M2A-ANIMATION-TOOL-CLIP",
+            "authoredClipJson",
+            &format!("clip JSON does not match the strict Studio schema: {error}"),
+        ))
+    })?;
+    let request = serde_json::from_str::<
+        m2a_core::animation_authoring_v2::AnimationAuthoringToolRequestV1,
+    >(tool_request_json)
+    .map_err(|error| {
+        JsValue::from_str(&animation_studio_json_error(
+            "M2A-ANIMATION-TOOL-REQUEST",
+            "toolRequestJson",
+            &format!("tool request JSON does not match the strict V1 schema: {error}"),
+        ))
+    })?;
+    let inspection = m2a_core::model_pipeline::inspect_editable_animation_source_v1(source_glb)
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+    let result = m2a_core::animation_authoring_v2::apply_animation_authoring_tool_v1(
+        &clip,
+        &inspection.rig,
+        &request,
+    )
+    .map_err(|diagnostics| JsValue::from_str(&serialize_json(&diagnostics)))?;
+    serialize_json_result(&result).map_err(|error| JsValue::from_str(&error))
+}
+
+/// Inspects one exact rigid weapon GLB for local held-equipment authoring.
+#[wasm_bindgen(js_name = inspectHeldWeaponSourceV1)]
+pub fn inspect_held_weapon_source_v1(
+    filename: &str,
+    provenance: &str,
+    weapon_glb: &[u8],
+) -> Result<String, JsValue> {
+    let source =
+        m2a_core::held_weapon::inspect_held_weapon_source_v1(filename, weapon_glb, provenance)
+            .map_err(|error| JsValue::from_str(&error))?;
+    serialize_json_result(&source).map_err(|error| JsValue::from_str(&error))
+}
+
+/// Resolves an exact source-bound held-weapon attachment against the current
+/// Animation Studio rig. The returned fingerprint is authored by Core, never
+/// reconstructed in JavaScript.
+#[wasm_bindgen(js_name = composeHeldWeaponAttachmentV1)]
+#[allow(clippy::too_many_arguments)]
+pub fn compose_held_weapon_attachment_v1(
+    weapon_glb: &[u8],
+    filename: &str,
+    provenance: &str,
+    rig_json: &str,
+    primary_hand: &str,
+    target_node_id: u32,
+    local_transform_json: &str,
+    attachment_revision: u64,
+) -> Result<String, JsValue> {
+    let source =
+        m2a_core::held_weapon::inspect_held_weapon_source_v1(filename, weapon_glb, provenance)
+            .map_err(|error| JsValue::from_str(&error))?;
+    let rig = serde_json::from_str::<m2a_core::animation_studio::AnimationStudioRigV1>(rig_json)
+        .map_err(|_| JsValue::from_str("held-weapon rig JSON does not match strict V1"))?;
+    let transform = serde_json::from_str::<m2a_core::held_weapon::HeldWeaponLocalTransformV1>(
+        local_transform_json,
+    )
+    .map_err(|_| JsValue::from_str("held-weapon transform JSON does not match strict V1"))?;
+    let hand = match primary_hand {
+        "RIGHT" => m2a_core::held_weapon::HeldWeaponHandV1::Right,
+        "LEFT" => m2a_core::held_weapon::HeldWeaponHandV1::Left,
+        _ => return Err(JsValue::from_str("held-weapon hand must be RIGHT or LEFT")),
+    };
+    let attachment = m2a_core::held_weapon::compose_held_weapon_attachment_v1(
+        source,
+        &rig,
+        hand,
+        target_node_id,
+        transform,
+        m2a_core::held_weapon::HeldWeaponPivotPolicyV1::SourceOrigin,
+        None,
+        None,
+        attachment_revision,
+    )
+    .map_err(|error| JsValue::from_str(&error))?;
+    serialize_json_result(&attachment).map_err(|error| JsValue::from_str(&error))
+}
+
+/// Compares two clip payloads at canonical world-pose sample times.
+#[wasm_bindgen(js_name = evaluateAnimationPoseParityV1)]
+pub fn evaluate_animation_pose_parity_v1(
+    expected_clip_json: &str,
+    actual_clip_json: &str,
+    policy_json: &str,
+    source_glb: &[u8],
+) -> Result<String, JsValue> {
+    let expected = serde_json::from_str::<m2a_core::animation_studio::AuthoredAnimationClipV1>(
+        expected_clip_json,
+    )
+    .map_err(|error| {
+        JsValue::from_str(&animation_studio_json_error(
+            "M2A-ANIMATION-POSE-EXPECTED",
+            "expectedClipJson",
+            &format!("expected clip JSON is invalid: {error}"),
+        ))
+    })?;
+    let actual = serde_json::from_str::<m2a_core::animation_studio::AuthoredAnimationClipV1>(
+        actual_clip_json,
+    )
+    .map_err(|error| {
+        JsValue::from_str(&animation_studio_json_error(
+            "M2A-ANIMATION-POSE-ACTUAL",
+            "actualClipJson",
+            &format!("actual clip JSON is invalid: {error}"),
+        ))
+    })?;
+    let policy = serde_json::from_str::<
+        m2a_core::animation_authoring_v2::AnimationPoseParityPolicyV1,
+    >(policy_json)
+    .map_err(|error| {
+        JsValue::from_str(&animation_studio_json_error(
+            "M2A-ANIMATION-POSE-POLICY",
+            "policyJson",
+            &format!("pose parity policy JSON is invalid: {error}"),
+        ))
+    })?;
+    let inspection = m2a_core::model_pipeline::inspect_editable_animation_source_v1(source_glb)
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+    let report = m2a_core::animation_authoring_v2::evaluate_animation_pose_parity_v1(
+        &expected,
+        &actual,
+        &inspection.rig,
+        &policy,
+    )
+    .map_err(|diagnostics| JsValue::from_str(&serialize_json(&diagnostics)))?;
+    serialize_json_result(&report).map_err(|error| JsValue::from_str(&error))
 }
 
 /// Materializes a strict Studio document to canonical MDL animation IR. The
@@ -2195,6 +2848,31 @@ pub fn build_meshy_h1_model_package_v5_project_v1(
         animation_studio_document_json,
         event_authoring_json.as_deref(),
         Some(project_identity_json),
+        None,
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+#[wasm_bindgen(js_name = buildMeshyH1ModelPackageV6HeldWeaponProjectV1)]
+#[allow(clippy::too_many_arguments)]
+pub fn build_meshy_h1_model_package_v6_held_weapon_project_v1(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring_json: &str,
+    animation_studio_document_json: &str,
+    project_identity_json: &str,
+    weapon_glb: &[u8],
+    held_weapon_attachment_json: &str,
+    event_authoring_json: Option<String>,
+) -> Result<StudioModelPackageArtifactV1, JsValue> {
+    build_meshy_h1_model_package_v5_inner_with_project(
+        source_glb,
+        appearance_two_da,
+        animation_authoring_json,
+        animation_studio_document_json,
+        event_authoring_json.as_deref(),
+        Some(project_identity_json),
+        Some((weapon_glb, held_weapon_attachment_json)),
     )
     .map_err(|error| JsValue::from_str(&error))
 }
@@ -2213,6 +2891,7 @@ fn build_meshy_h1_model_package_v5_inner(
         animation_studio_document_json,
         event_authoring_json,
         None,
+        None,
     )
 }
 
@@ -2223,6 +2902,7 @@ fn build_meshy_h1_model_package_v5_inner_with_project(
     animation_studio_document_json: &str,
     event_authoring_json: Option<&str>,
     project_identity_json: Option<&str>,
+    held_weapon: Option<(&[u8], &str)>,
 ) -> Result<StudioModelPackageArtifactV1, String> {
     let authoring =
         serde_json::from_str::<m2a_core::animation_studio::CreatureAnimationAuthoringV2>(
@@ -2261,7 +2941,40 @@ fn build_meshy_h1_model_package_v5_inner_with_project(
     let project_identity = project_identity_json
         .map(parse_project_build_identity_v1)
         .transpose()?;
-    let artifact = if let Some(project_identity) = project_identity.as_ref() {
+    let held_weapon_attachment = held_weapon
+        .map(|(_, json)| {
+            serde_json::from_str::<m2a_core::held_weapon::HeldWeaponAttachmentV1>(json).map_err(
+                |_| {
+                    animation_studio_json_error(
+                        "M2A-HELD-WEAPON-SCHEMA",
+                        "heldWeaponAttachmentJson",
+                        "held-weapon attachment JSON does not match the strict V1 schema",
+                    )
+                },
+            )
+        })
+        .transpose()?;
+    let artifact = if let (Some((weapon_glb, _)), Some(attachment)) =
+        (held_weapon, held_weapon_attachment.as_ref())
+    {
+        let project_identity = project_identity.as_ref().ok_or_else(|| {
+            animation_studio_json_error(
+                "M2A-HELD-WEAPON-PROJECT",
+                "projectIdentityJson",
+                "held-weapon product build requires exact project identity",
+            )
+        })?;
+        m2a_core::model_pipeline::build_meshy_h1_model_package_v6_with_held_weapon_project_identity(
+            source_glb,
+            appearance_two_da,
+            &authoring,
+            &studio,
+            event_authoring.as_ref(),
+            project_identity,
+            weapon_glb,
+            attachment,
+        )
+    } else if let Some(project_identity) = project_identity.as_ref() {
         m2a_core::model_pipeline::build_meshy_h1_model_package_v5_with_project_identity(
             source_glb,
             appearance_two_da,
@@ -4711,6 +5424,7 @@ mod profile_a_test_support {
         )
     }
 
+    #[allow(dead_code)]
     pub fn linear_nonplanar_animated_glb() -> Vec<u8> {
         super::profile_a_animation_fixtures::mutate_accessor_f32(linear_animated_glb(), 0, 8, 0.5)
     }
@@ -5260,7 +5974,7 @@ mod wasm_tests {
     #[wasm_bindgen_test]
     fn studio_model_package_public_wasm_boundary_matches_core() {
         let source = m2a_core::owned_fixture::synthetic_owned_m6_glb_v1().unwrap();
-        let appearance = b"2DA V2.0\r\n\r\nLABEL MOVERATE MODELTYPE RACE PORTRAIT ENVMAP DefaultPhenoType BLOODCOLR WEAPONSCALE SIZECATEGORY\r\n0 Existing NORM P existing **** **** 0 R 1.0 4\r\n";
+        let appearance = include_bytes!("../../../apps/studio-web/tests/fixtures/appearance.2da");
         let core =
             m2a_core::model_pipeline::build_m6_model_package_v1(&source, appearance).unwrap();
         let mut studio = build_m6_model_package_v1(&source, appearance).unwrap();
@@ -5321,6 +6035,7 @@ mod wasm_tests {
                 material_slot: 0,
                 deformation: RigSegmentDeformationV1::Rigid,
                 parent_node_id: 70,
+                cast_shadow: true,
                 positions: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
                 normals: vec![[0.0, 0.0, 1.0]; 3],
                 tangents: None,
@@ -5538,13 +6253,18 @@ mod wasm_tests {
             serde_json::to_string(&expected_ingest).unwrap()
         );
 
+        let limit_rig = profile_support::skin_multi_profile();
+        let limit_rig_json = profile_support::profile_json(&limit_rig);
         let mut limited = options.clone();
         limited.limits.max_distance_evaluations = 2;
-        let limited_json =
-            convert_profile_a_json(&glb, &rig_json, &profile_support::options_json(&limited));
+        let limited_json = convert_profile_a_json(
+            &glb,
+            &limit_rig_json,
+            &profile_support::options_json(&limited),
+        );
         let source = m2a_core::glb::ingest_glb(&glb, &m2a_core::glb::GlbLimits::default()).unwrap();
         let expected_limit =
-            m2a_core::profile_a::convert_profile_a(&source, &rig, &limited).unwrap_err();
+            m2a_core::profile_a::convert_profile_a(&source, &limit_rig, &limited).unwrap_err();
         assert_eq!(
             limited_json,
             serde_json::to_string(&expected_limit).unwrap()

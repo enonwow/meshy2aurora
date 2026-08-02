@@ -4,6 +4,9 @@ export function BoneTransformInspector({
   selectedBoneName,
   path,
   selectedKeyCount,
+  currentValue,
+  currentValueSource,
+  playheadSeconds,
   onPathChange,
   onInsert,
   onDeleteSelectedKeys,
@@ -11,12 +14,29 @@ export function BoneTransformInspector({
   selectedBoneName: string | null;
   path: "ROTATION" | "TRANSLATION";
   selectedKeyCount: number;
+  currentValue?: readonly number[];
+  currentValueSource: "SELECTED_KEY" | "PLAYHEAD" | "DEFAULT";
+  playheadSeconds: number;
   onPathChange: (path: "ROTATION" | "TRANSLATION") => void;
   onInsert: (value: number[]) => void;
   onDeleteSelectedKeys: () => void;
 }) {
-  const [components, setComponents] = useState<[number, number, number]>([0, 0, 0]);
-  useEffect(() => setComponents([0, 0, 0]), [path, selectedBoneName]);
+  const projectedCurrent = path === "ROTATION"
+    ? quaternionToEulerDegrees(currentValue ?? [0, 0, 0, 1])
+    : asTranslation(currentValue);
+  const currentSignature = [
+    path,
+    selectedBoneName ?? "",
+    currentValueSource,
+    ...projectedCurrent,
+  ].join(":");
+  const [components, setComponents] =
+    useState<[number, number, number]>(projectedCurrent);
+  useEffect(() => {
+    setComponents(projectedCurrent);
+  // The signature intentionally tracks scalar values, not an ephemeral array.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSignature]);
   const value = path === "ROTATION"
     ? eulerDegreesToQuaternion(components)
     : components;
@@ -37,6 +57,13 @@ export function BoneTransformInspector({
           </button>
         ))}
       </div>
+      <p className="animation-inspector-current" role="status">
+        {currentValueSource === "SELECTED_KEY"
+          ? "Editing the selected keyframe value."
+          : currentValueSource === "PLAYHEAD"
+            ? `Sampled at ${playheadSeconds.toFixed(3)} s.`
+            : "No track yet; using the neutral transform."}
+      </p>
       <fieldset disabled={!selectedBoneName}>
         <legend>
           {path === "ROTATION" ? "Euler presentation (degrees)" : "Local translation"}
@@ -59,8 +86,8 @@ export function BoneTransformInspector({
       </fieldset>
       <p className="animation-inspector-canonical">
         {path === "ROTATION"
-          ? `Stored quaternion: ${value.map((item) => item.toFixed(4)).join(", ")}`
-          : "Values are stored in output-rig local space."}
+          ? `Keyframe quaternion to write: ${value.map((item) => item.toFixed(4)).join(", ")}`
+          : `Keyframe local translation to write: ${value.map((item) => item.toFixed(4)).join(", ")}`}
       </p>
       <div className="bone-transform-inspector__actions">
         <button
@@ -81,6 +108,46 @@ export function BoneTransformInspector({
       </div>
     </section>
   );
+}
+
+function asTranslation(value?: readonly number[]): [number, number, number] {
+  return [
+    value?.[0] ?? 0,
+    value?.[1] ?? 0,
+    value?.[2] ?? 0,
+  ];
+}
+
+function quaternionToEulerDegrees(
+  value: readonly number[],
+): [number, number, number] {
+  const length = Math.hypot(
+    value[0] ?? 0,
+    value[1] ?? 0,
+    value[2] ?? 0,
+    value[3] ?? 1,
+  ) || 1;
+  const [x, y, z, w] = [
+    (value[0] ?? 0) / length,
+    (value[1] ?? 0) / length,
+    (value[2] ?? 0) / length,
+    (value[3] ?? 1) / length,
+  ];
+  const roll = Math.atan2(
+    2 * (w * x + y * z),
+    1 - 2 * (x * x + y * y),
+  );
+  const pitchInput = 2 * (w * y - z * x);
+  const pitch = Math.abs(pitchInput) >= 1
+    ? Math.sign(pitchInput) * Math.PI / 2
+    : Math.asin(pitchInput);
+  const yaw = Math.atan2(
+    2 * (w * z + x * y),
+    1 - 2 * (y * y + z * z),
+  );
+  return [roll, pitch, yaw].map((component) => (
+    component * 180 / Math.PI
+  )) as [number, number, number];
 }
 
 function eulerDegreesToQuaternion(

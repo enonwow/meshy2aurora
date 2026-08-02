@@ -61,19 +61,9 @@ import {
 import type { BinaryMdlInspectionReport, ModelPartRef } from "./features/preview/types";
 import type { ReviewViewport } from "./features/review/ReviewModelDetails";
 import { ReviewWorkflowActions } from "./features/review/ReviewWorkflowActions";
-import {
-  projectCanonicalResult,
-  type CanonicalResultSnapshot,
-} from "./features/results/projectCanonicalResult";
-import {
-  projectPlaceableResult,
-  type PlaceableResultSnapshot,
-} from "./features/results/projectPlaceableResult";
-import {
-  projectTileResult,
-  type TileResultSnapshot,
-} from "./features/results/projectTileResult";
-import { projectCanonicalReadback } from "./features/results/projectReadback";
+import type { CanonicalResultSnapshot } from "./features/results/projectCanonicalResult";
+import type { PlaceableResultSnapshot } from "./features/results/projectPlaceableResult";
+import type { TileResultSnapshot } from "./features/results/projectTileResult";
 import {
   InputsPanel,
   type CreatureConversionProfileV1,
@@ -87,14 +77,33 @@ import {
 } from "./features/source/directCreatureAnimationProfile";
 import { CreatureAnimationMappingStep } from "./features/animation-mapping/CreatureAnimationMappingStep";
 import type { AnimationRigNodeV1 } from "./features/animation-editor/AnimationBoneTree";
+import {
+  parseHeldWeaponSourceInspectionV1,
+  type HeldEquipmentPreviewV1,
+} from "./features/animation-editor/HeldEquipmentPanel";
+import {
+  emptyAnimationWorkbenchProjectStateV1,
+  parseAnimationWorkbenchResultV1,
+} from "./features/animation-editor/animationWorkbench";
 import type { AnimationMappingModeV1 } from "./features/animation-editor/AnimationMappingModeSwitch";
 import { createBlankPoseClipV1 } from "./features/animation-editor/editing";
 import {
-  ANIMATION_IMPORT_RIG_MISMATCH_V1,
-  compareAnimationImportRigsV1,
-  createImportedModelClipV1,
+  parseAnimationAuthoringToolResultV1,
+  parseAnimationEditCommandResultV1,
+  parseAnimationQualityReportV1,
+} from "./features/animation-authoring-v2/types";
+import {
+  parseHumanoidSemanticBoneMapV2,
+  parseAnimationTransferCompatibilityV1,
+  parseAnimationTransferBatchResultV2,
+  type AnimationTransferCompatibilityV1,
+  type AnimationTransferModeV1,
   type ExternalAnimationSourceInspectionV1,
+  type HumanoidSemanticBoneMapV2,
 } from "./features/animation-editor/animationImport";
+import { parseAnimationSequencePreviewV1 } from "./features/animation-editor/animationSequence";
+import { parseAnimationCurveResampleReportV1 } from "./features/animation-editor/animationCurves";
+import { parseAnimationLayerBakeReportV1 } from "./features/animation-editor/animationLayers";
 import {
   commitAnimationStudioDocumentV1,
   createAnimationStudioStateV1,
@@ -247,9 +256,35 @@ function projectContentSignature(project: Meshy2AuroraProjectV1): string {
     files: project.files,
     animationMappingV2: project.animationMappingV2,
     animationStudio: project.animationStudio,
+    animationWorkbench: project.animationWorkbench,
     placeableAuthoring: project.placeableAuthoring,
     tileOptions: project.tileOptions,
   });
+}
+
+function heldWeaponPrimaryHandV1(targetBoneName: string): "RIGHT" | "LEFT" {
+  const normalized = targetBoneName.toLocaleLowerCase("en-US").replaceAll(/[^a-z0-9]/g, "");
+  return normalized.includes("left") || normalized.startsWith("lhand") || normalized.endsWith("handl")
+    ? "LEFT"
+    : "RIGHT";
+}
+
+function quaternionFromEulerDegreesV1(
+  degrees: readonly [number, number, number],
+): readonly [number, number, number, number] {
+  const [x, y, z] = degrees.map((value) => value * Math.PI / 360);
+  const sx = Math.sin(x);
+  const cx = Math.cos(x);
+  const sy = Math.sin(y);
+  const cy = Math.cos(y);
+  const sz = Math.sin(z);
+  const cz = Math.cos(z);
+  return [
+    sx * cy * cz + cx * sy * sz,
+    cx * sy * cz - sx * cy * sz,
+    cx * cy * sz + sx * sy * cz,
+    cx * cy * cz - sx * sy * sz,
+  ];
 }
 
 interface StudioModelBuildResult {
@@ -519,6 +554,34 @@ function parseEditableAnimationSourceV1(inspectionJson: string): {
   };
 }
 
+function parseAnimationTransferResultV1(resultJson: string): {
+  requiredDocumentSchemaVersion: number;
+  compatibility: AnimationTransferCompatibilityV1;
+  clip: AuthoredAnimationClipV1;
+} {
+  const value = JSON.parse(resultJson) as {
+    schemaVersion?: unknown;
+    requiredDocumentSchemaVersion?: unknown;
+    compatibility?: unknown;
+    clip?: unknown;
+  };
+  if (
+    value.schemaVersion !== 1
+    || !Number.isSafeInteger(value.requiredDocumentSchemaVersion)
+    || value.clip === null
+    || typeof value.clip !== "object"
+  ) {
+    throw new Error("Core returned an invalid animation-transfer result.");
+  }
+  return {
+    requiredDocumentSchemaVersion: Number(value.requiredDocumentSchemaVersion),
+    compatibility: parseAnimationTransferCompatibilityV1(
+      JSON.stringify(value.compatibility),
+    ),
+    clip: value.clip as AuthoredAnimationClipV1,
+  };
+}
+
 function sourceValidationChecks(snapshot?: SourceInspectionSnapshot): InspectValidationCheck[] {
   if (!snapshot) {
     return [{
@@ -697,6 +760,13 @@ export interface AppProps {
   readonly meshyLabEnabled?: boolean;
   readonly tileTargetEnabled?: boolean;
   readonly projectDatabase?: ProjectDatabaseV1;
+  readonly visualQaFixture?: {
+    readonly label: string;
+    readonly load: () => Promise<{
+      readonly source: File;
+      readonly appearance: File;
+    }>;
+  };
 }
 
 export function App({
@@ -704,6 +774,7 @@ export function App({
   meshyLabEnabled = isMeshyLabEnabled(),
   tileTargetEnabled = isTileTargetEnabled(),
   projectDatabase,
+  visualQaFixture,
 }: AppProps = {}) {
   const { session, sessionRef, dispatch } = useStudioSessionController<
     SourceInspectionSnapshot,
@@ -731,6 +802,8 @@ export function App({
   const [sourceError, setSourceError] = useState<string>();
   const [appearanceError, setAppearanceError] = useState<string>();
   const [animationEventsError, setAnimationEventsError] = useState<string>();
+  const [visualQaFixtureState, setVisualQaFixtureState] =
+    useState<"IDLE" | "LOADING" | "LOADED" | "ERROR">("IDLE");
   const [animationMappingSaveState, setAnimationMappingSaveState] =
     useState<AnimationMappingSaveStateV1>({ kind: "IDLE" });
   const [animationStudioState, setAnimationStudioState] =
@@ -749,6 +822,8 @@ export function App({
   ] = useState<AnimationStudioDiagnosticV1 | null>(null);
   const [editableAnimationRig, setEditableAnimationRig] =
     useState<AnimationRigNodeV1[]>([]);
+  const [heldEquipmentRuntime, setHeldEquipmentRuntime] =
+    useState<HeldEquipmentPreviewV1 | null>(null);
   const [animationStudioLoadedProjectId, setAnimationStudioLoadedProjectId] =
     useState<string | null>(null);
   const [tileOptions, setTileOptions] = useState<TileAuthoringOptions>(DEFAULT_TILE_OPTIONS);
@@ -766,6 +841,12 @@ export function App({
   const [debugDrawerMessage, setDebugDrawerMessage] = useState<string>();
   const [showMeshyLab, setShowMeshyLab] = useState(false);
   const [meshyProvenance, setMeshyProvenance] = useState<MeshyArtifactProvenance>();
+  const [meshyAnimationDonors, setMeshyAnimationDonors] = useState<readonly {
+    readonly id: string;
+    readonly file: File;
+    readonly label: string;
+    readonly detail: string;
+  }[]>([]);
   const meshyBridgeRef = useRef<MeshyBridgeClient | undefined>(undefined);
   const coreAnimationValidationRequestRef = useRef<string | undefined>(undefined);
 
@@ -830,6 +911,7 @@ export function App({
     setAnimationStudioMappingStorageDiagnostic(null);
     setAnimationStudioLoadedProjectId(null);
     setEditableAnimationRig([]);
+    setHeldEquipmentRuntime(null);
     setTileOptions(nextProject.tileOptions);
     setPlaceableAuthoring(undefined);
     setReviewViewport("CONVERTED");
@@ -1268,6 +1350,20 @@ export function App({
     dispatch({ type: "APPEARANCE_SELECTED", file });
   };
 
+  const loadVisualQaFixture = async () => {
+    if (!visualQaFixture || visualQaFixtureState === "LOADING") return;
+    setVisualQaFixtureState("LOADING");
+    try {
+      const files = await visualQaFixture.load();
+      if (sessionRef.current.target !== "CREATURE") selectTarget("CREATURE");
+      selectSource(files.source);
+      selectAppearance(files.appearance);
+      setVisualQaFixtureState("LOADED");
+    } catch {
+      setVisualQaFixtureState("ERROR");
+    }
+  };
+
   const selectAnimationEvents = (file: File) => {
     if (!isJson(file)) {
       setAnimationEventsError("Select a creature animation event sidecar in .json format.");
@@ -1280,6 +1376,7 @@ export function App({
 
   const removeSource = () => {
     invalidateRunningBuild();
+    setHeldEquipmentRuntime(null);
     setSourceError(undefined);
     setMeshyProvenance(undefined);
     setPlaceableAuthoring(undefined);
@@ -1303,6 +1400,7 @@ export function App({
 
   const clearFiles = () => {
     invalidateRunningBuild();
+    setHeldEquipmentRuntime(null);
     setSourceError(undefined);
     setMeshyProvenance(undefined);
     setAppearanceError(undefined);
@@ -1357,6 +1455,19 @@ export function App({
     const editedAnimationLane = Boolean(
       studioState && studioState.document.authoredClips.length > 0,
     );
+    const persistedHeldWeapon = projectRef.current.animationWorkbench.heldWeapon;
+    if (persistedHeldWeapon && !heldEquipmentRuntime) {
+      setAnimationEventsError(
+        `Reconnect the exact held weapon ${persistedHeldWeapon.source.name} before Build.`,
+      );
+      return;
+    }
+    if (heldEquipmentRuntime && !editedAnimationLane) {
+      setAnimationEventsError(
+        "Held-weapon export requires the current valid Animation Studio document.",
+      );
+      return;
+    }
     const studioDocument = editedAnimationLane ? studioState?.document : undefined;
     const authoringV2 = editedAnimationLane
       ? animationAuthoringV2Ref.current
@@ -1448,6 +1559,32 @@ export function App({
     const animationStudioDocumentJson = studioDocument
       ? serializeAnimationStudioDocumentV1(studioDocument)
       : undefined;
+    const heldWeaponTargetNode = heldEquipmentRuntime
+      ? editableAnimationRig.find(({ name }) => name === heldEquipmentRuntime.targetBoneName)
+      : undefined;
+    if (heldEquipmentRuntime && !heldWeaponTargetNode) {
+      setAnimationEventsError(
+        `Held-weapon bone ${heldEquipmentRuntime.targetBoneName} is absent from the current rig.`,
+      );
+      return;
+    }
+    const heldWeaponRigJson = heldEquipmentRuntime && studioDocument
+      ? JSON.stringify({
+          schemaVersion: 1,
+          sourceRevision: studioDocument.sourceRevision,
+          animationRoot: studioDocument.authoredClips[0]?.animationRoot
+            ?? editableAnimationRig.find(({ parentId }) => parentId === null)?.name
+            ?? editableAnimationRig[0]?.name
+            ?? "root",
+          nodes: editableAnimationRig.map((node) => ({
+            nodeId: node.id,
+            name: node.name,
+            parentId: node.parentId,
+            translation: node.translation,
+            rotation: node.rotation,
+          })),
+        })
+      : undefined;
     if (
       (
         packageLane === "H1_SKINNED_FULL_42_AUTHORED"
@@ -1484,12 +1621,14 @@ export function App({
       studioDocument
         ? fingerprintAnimationStudioDocumentV1(studioDocument)
         : Promise.resolve(undefined),
+      heldEquipmentRuntime?.file.arrayBuffer(),
     ])
       .then(([
         sourceGlb,
         appearanceTwoDa,
         eventAuthoringJson,
         animationStudioFingerprintSha256,
+        heldWeaponGlb,
       ]) => {
         if (workerRef.current !== worker) return undefined;
         if (animationBuildInput) {
@@ -1533,6 +1672,27 @@ export function App({
                     ? { animationStudioDocumentJson }
                     : {}),
                   ...(eventAuthoringJson ? { eventAuthoringJson } : {}),
+                  ...(heldEquipmentRuntime && heldWeaponGlb && heldWeaponTargetNode && heldWeaponRigJson
+                    ? {
+                        heldWeapon: {
+                          glb: heldWeaponGlb,
+                          filename: heldEquipmentRuntime.file.name,
+                          rigJson: heldWeaponRigJson,
+                          primaryHand: heldWeaponPrimaryHandV1(
+                            heldEquipmentRuntime.targetBoneName,
+                          ),
+                          targetNodeId: heldWeaponTargetNode.id,
+                          localTransformJson: JSON.stringify({
+                            translation: heldEquipmentRuntime.translation,
+                            rotation: quaternionFromEulerDegreesV1(
+                              heldEquipmentRuntime.rotationEulerDegrees,
+                            ),
+                            scale: heldEquipmentRuntime.scale,
+                          }),
+                          attachmentRevision: projectRef.current.revision,
+                        },
+                      }
+                    : {}),
                 })
               : packageLane === "SKINNED_PROCEDURAL_HUMANOID_42"
                 || packageLane === "SKINNED_PROCEDURAL_HUMANOID_P100K_EXPERIMENT"
@@ -1574,7 +1734,7 @@ export function App({
           animationStudioFingerprintSha256,
         }));
       })
-      .then((buildOutput) => {
+      .then(async (buildOutput) => {
         if (!buildOutput || workerRef.current !== worker) return;
         const {
           response,
@@ -1595,6 +1755,19 @@ export function App({
         ) {
           throw new Error("Unexpected package build response");
         }
+        const {
+          projectCanonicalReadback,
+          projectCanonicalResult,
+          projectPlaceableResult,
+          projectTileResult,
+        } = await import("./features/results/buildResultParsers");
+        const latestBuild = sessionRef.current.build;
+        if (
+          sessionRef.current.revision !== buildRevision
+          || latestBuild.kind !== "RUNNING"
+          || latestBuild.requestId !== buildRequestId
+          || latestBuild.revision !== buildRevision
+        ) return;
         const readbackJson = response.type === "TILE_PACKAGE_BUILT"
           ? response.modelReadbackJson
           : response.readbackJson;
@@ -1848,6 +2021,7 @@ export function App({
       setAnimationAuthoringV2(null);
       setAnimationAuthoringV2Dirty(false);
       setEditableAnimationRig([]);
+      setHeldEquipmentRuntime(null);
       setAnimationStudioLoadedProjectId(null);
       setAnimationStudioMappingStorageDiagnostic(null);
       return;
@@ -2184,6 +2358,14 @@ export function App({
       animationStudio: pendingProjectRebind.sourceGlb
         ? current.animationStudio
         : animationStudioState?.document ?? null,
+      animationWorkbench: pendingProjectRebind.sourceGlb
+        ? current.animationWorkbench
+        : current.animationWorkbench.sourceRevision === (sourceGlb?.sha256 ?? null)
+          ? current.animationWorkbench
+          : {
+              ...emptyAnimationWorkbenchProjectStateV1(),
+              sourceRevision: sourceGlb?.sha256 ?? null,
+            },
       placeableAuthoring: pendingProjectRebind.sourceGlb
         ? current.placeableAuthoring
         : placeableAuthoring?.document ?? null,
@@ -2197,6 +2379,7 @@ export function App({
       files: projected.files,
       animationMappingV2: projected.animationMappingV2,
       animationStudio: projected.animationStudio,
+      animationWorkbench: projected.animationWorkbench,
       placeableAuthoring: projected.placeableAuthoring,
       tileOptions: projected.tileOptions,
     });
@@ -2504,6 +2687,13 @@ export function App({
               currentResult.animationStudioReconciliation,
             ).allowed
           )
+          && (
+            project.animationWorkbench.heldWeapon === null
+              ? currentResult.canonical.heldWeaponEvidence === undefined
+              : currentResult.canonical.heldWeaponEvidence?.status === "MATCH"
+                && currentResult.canonical.heldWeaponEvidence.sourceSha256
+                  === project.animationWorkbench.heldWeapon.source.sha256
+          )
         )
       )
     : false;
@@ -2556,6 +2746,18 @@ export function App({
       fileName: "animation-studio-v1.json",
       byteLength: null,
       sha256: currentResult.animationStudioFingerprintSha256,
+    });
+  }
+  if (
+    currentResult?.kind === "MODEL"
+    && currentResult.canonical.heldWeaponEvidence
+    && project.animationWorkbench.heldWeapon
+  ) {
+    currentDownloadInputs.push({
+      role: "HELD_WEAPON_GLB",
+      fileName: project.animationWorkbench.heldWeapon.source.name,
+      byteLength: project.animationWorkbench.heldWeapon.source.byteLength,
+      sha256: currentResult.canonical.heldWeaponEvidence.sourceSha256,
     });
   }
   if (
@@ -2707,6 +2909,21 @@ export function App({
             selectSource(file, provenance);
             setShowMeshyLab(false);
           }}
+          onImportAnimation={(file, provenance, actionId) => {
+            const id = `${provenance.sha256}:${actionId}`;
+            setMeshyAnimationDonors((current) => [
+              ...current.filter((donor) => donor.id !== id),
+              {
+                id,
+                file,
+                label: `Meshy action ${actionId}`,
+                detail: `${file.name} · SHA-256 ${provenance.sha256.slice(0, 12)}…`,
+              },
+            ]);
+            setDebugDrawerMessage(
+              `Meshy action ${actionId} is available in Animation Studio.`,
+            );
+          }}
         />
       ) : session.currentStep === "SOURCE" ? (
         <SourceStep
@@ -2741,6 +2958,13 @@ export function App({
           onContinue={() => dispatch({ type: "CONTINUE_TO_INSPECT" })}
           onOpenMeshyLab={meshyLabEnabled ? () => setShowMeshyLab(true) : undefined}
           meshyProvenance={meshyProvenance}
+          visualQaFixture={visualQaFixture ? {
+            label: visualQaFixture.label,
+            state: visualQaFixtureState,
+            onLoad: () => {
+              void loadVisualQaFixture();
+            },
+          } : undefined}
         />
       ) : session.currentStep === "INSPECT" ? (
         <InspectStep
@@ -2858,7 +3082,8 @@ export function App({
               authoring={animationAuthoringV2}
               sourceInventory={animationInspection.sourceClips}
               rig={editableAnimationRig}
-              viewport={(clip, playheadSeconds) => (
+              animationModelDonors={meshyAnimationDonors}
+              viewport={(clip, playheadSeconds, playback, transform) => (
                 <SourceViewport
                   input={{
                     provenance: "SOURCE",
@@ -2868,10 +3093,14 @@ export function App({
                   authoredClip={clip}
                   authoredRig={editableAnimationRig}
                   controlledAnimationTimeSeconds={playheadSeconds}
+                  controlledAnimationPlayback={playback}
+                  transformGizmo={transform}
+                  heldWeapon={transform.heldWeapon ?? undefined}
+                  motionVisualization={transform.motionVisualization}
                   onError={setSourceError}
                 />
               )}
-              sourceViewport={(clip, playheadSeconds) => (
+              sourceViewport={(clip, playheadSeconds, playback) => (
                 <SourceViewport
                   input={{
                     provenance: "SOURCE",
@@ -2884,6 +3113,7 @@ export function App({
                       : undefined
                   }
                   controlledAnimationTimeSeconds={playheadSeconds}
+                  controlledAnimationPlayback={playback}
                   hideAnimationControls
                   onError={setSourceError}
                 />
@@ -2902,6 +3132,108 @@ export function App({
                       : { kind: "IDLE" }
               }
               diagnostics={animationStudioDiagnostics}
+              onApplyAnimationEditCommandBatch={async (document, batch) => {
+                const worker = workerRef.current;
+                if (!worker) {
+                  throw new Error("The exact Animation Studio core is unavailable.");
+                }
+                const response = await worker.applyAnimationEditCommandBatch(
+                  await animationStudioSourceFile.arrayBuffer(),
+                  serializeAnimationStudioDocumentV1(document),
+                  JSON.stringify(batch),
+                );
+                if (
+                  !response.ok
+                  || response.type !== "ANIMATION_EDIT_COMMAND_BATCH_APPLIED"
+                ) {
+                  throw new Error("The exact core rejected the animation edit command.");
+                }
+                return parseAnimationEditCommandResultV1(
+                  JSON.parse(response.resultJson) as unknown,
+                );
+              }}
+              onAnalyzeMotionQuality={async (clip, policy, context) => {
+                const worker = workerRef.current;
+                if (!worker) {
+                  throw new Error("The exact Animation Studio core is unavailable.");
+                }
+                const response = await worker.analyzeAnimationMotionQuality(
+                  await animationStudioSourceFile.arrayBuffer(),
+                  JSON.stringify(clip),
+                  JSON.stringify(policy),
+                  JSON.stringify(context),
+                );
+                if (
+                  !response.ok
+                  || response.type !== "ANIMATION_MOTION_QUALITY_ANALYZED"
+                ) {
+                  throw new Error("The exact core could not analyze this animation.");
+                }
+                return parseAnimationQualityReportV1(
+                  JSON.parse(response.reportJson) as unknown,
+                );
+              }}
+              onApplyAnimationAuthoringTool={async (clip, request) => {
+                const worker = workerRef.current;
+                if (!worker) {
+                  throw new Error("The exact Animation Studio core is unavailable.");
+                }
+                const response = await worker.applyAnimationAuthoringTool(
+                  await animationStudioSourceFile.arrayBuffer(),
+                  JSON.stringify(clip),
+                  JSON.stringify(request),
+                );
+                if (
+                  !response.ok
+                  || response.type !== "ANIMATION_AUTHORING_TOOL_APPLIED"
+                ) {
+                  throw new Error("The exact core could not apply this authoring tool.");
+                }
+                return parseAnimationAuthoringToolResultV1(
+                  JSON.parse(response.resultJson) as unknown,
+                );
+              }}
+              onInspectHeldWeapon={async (file) => {
+                const worker = workerRef.current;
+                if (!worker) {
+                  throw new Error("The exact Animation Studio core is unavailable.");
+                }
+                const response = await worker.inspectHeldWeaponSource(
+                  await file.arrayBuffer(),
+                  file.name,
+                );
+                if (!response.ok || response.type !== "HELD_WEAPON_SOURCE_INSPECTED") {
+                  throw new Error("The exact Core rejected this held weapon source.");
+                }
+                return parseHeldWeaponSourceInspectionV1(
+                  JSON.parse(response.inspectionJson) as unknown,
+                );
+              }}
+              onHeldEquipmentRuntimeChange={setHeldEquipmentRuntime}
+              onApplyAnimationWorkbenchOperation={async (request) => {
+                const worker = workerRef.current;
+                if (!worker) {
+                  throw new Error("The exact Animation Studio core is unavailable.");
+                }
+                const response = await worker.applyAnimationWorkbenchOperationV1(
+                  JSON.stringify(request),
+                );
+                if (
+                  !response.ok
+                  || response.type !== "ANIMATION_WORKBENCH_OPERATION_V1_APPLIED"
+                ) {
+                  throw new Error("The exact Core rejected this animation workbench operation.");
+                }
+                return parseAnimationWorkbenchResultV1(response.resultJson);
+              }}
+              animationWorkbenchProjectState={project.animationWorkbench}
+              onAnimationWorkbenchProjectStateChange={(animationWorkbench) => {
+                const current = projectRef.current;
+                const revised = reviseMeshy2AuroraProjectV1(current, { animationWorkbench });
+                projectRef.current = revised;
+                setProject(revised);
+                setProjectPersistence("DIRTY");
+              }}
               onDocumentChange={(document) => {
                 setAnimationStudioState((current) => current
                   ? commitAnimationStudioDocumentV1(current, document)
@@ -2951,7 +3283,11 @@ export function App({
                   revision: 1,
                 };
               }}
-              onInspectAnimationModel={async (file) => {
+              onInspectAnimationModel={async (
+                file,
+                overrides = [],
+                manualMappingConfirmed = false,
+              ) => {
                 const worker = workerRef.current;
                 if (!worker) {
                   throw new Error("The exact Animation Studio core is unavailable.");
@@ -2966,15 +3302,66 @@ export function App({
                   throw new Error("The donor GLB could not be inspected.");
                 }
                 const parsed = parseEditableAnimationSourceV1(response.inspectionJson);
+                const compatibilityResponse = await worker
+                  .inspectAnimationTransferCompatibility(
+                    await animationStudioSourceFile.arrayBuffer(),
+                    await file.arrayBuffer(),
+                  );
+                if (
+                  !compatibilityResponse.ok
+                  || compatibilityResponse.type
+                    !== "ANIMATION_TRANSFER_COMPATIBILITY_INSPECTED"
+                ) {
+                  throw new Error("The donor/target rig compatibility could not be inspected.");
+                }
+                const transferCompatibility = parseAnimationTransferCompatibilityV1(
+                  compatibilityResponse.compatibilityJson,
+                );
+                const semanticResponse = await worker
+                  .inspectHumanoidRetargetCompatibilityV2(
+                    await animationStudioSourceFile.arrayBuffer(),
+                    await file.arrayBuffer(),
+                    JSON.stringify(overrides),
+                    manualMappingConfirmed,
+                  );
+                if (
+                  !semanticResponse.ok
+                  || semanticResponse.type
+                    !== "HUMANOID_RETARGET_COMPATIBILITY_V2_INSPECTED"
+                ) {
+                  throw new Error(
+                    "The donor/target humanoid semantic mapping could not be inspected.",
+                  );
+                }
+                const semanticCompatibility = parseHumanoidSemanticBoneMapV2(
+                  semanticResponse.compatibilityJson,
+                );
+                if (
+                  transferCompatibility.donorSourceRevision !== parsed.sourceRevision
+                  || transferCompatibility.targetSourceRevision
+                    !== animationStudioSourceRevision
+                  || semanticCompatibility.donorSourceRevision !== parsed.sourceRevision
+                  || semanticCompatibility.targetSourceRevision
+                    !== animationStudioSourceRevision
+                ) {
+                  throw new Error(
+                    "Core compatibility report does not match the exact donor/target lineage.",
+                  );
+                }
                 return {
                   sourceRevision: parsed.sourceRevision,
                   rig: parsed.rig,
                   clips: parsed.clips,
+                  transferCompatibility,
+                  semanticCompatibility,
                 };
               }}
               onImportAnimationModelClip={async (
                 file,
                 clipName,
+                donorSourceRevision,
+                mode: AnimationTransferModeV1,
+                semanticMap: HumanoidSemanticBoneMapV2 | undefined,
                 newId,
                 newName,
               ) => {
@@ -2982,37 +3369,202 @@ export function App({
                 if (!worker) {
                   throw new Error("The exact Animation Studio core is unavailable.");
                 }
-                const response = await worker.inspectEditableAnimationSource(
+                const parsed = mode === "HUMANOID_SEMANTIC_RETARGET_V2"
+                  ? await (async () => {
+                      if (!semanticMap || semanticMap.status !== "COMPATIBLE") {
+                        throw new Error(
+                          "Semantic retarget requires a compatible, source-bound Core map.",
+                        );
+                      }
+                      const response = await worker.retargetAnimationClipHumanoidV2(
+                        await animationStudioSourceFile.arrayBuffer(),
+                        await file.arrayBuffer(),
+                        clipName,
+                        JSON.stringify(semanticMap),
+                        newId,
+                        newName,
+                      );
+                      if (
+                        !response.ok
+                        || response.type !== "ANIMATION_CLIP_HUMANOID_V2_RETARGETED"
+                      ) {
+                        throw new Error(
+                          `The donor clip ${clipName} could not be semantically retargeted.`,
+                        );
+                      }
+                      return parseAnimationTransferResultV1(response.resultJson);
+                    })()
+                  : await (async () => {
+                      const response = await worker.retargetAnimationModelClip(
+                        await animationStudioSourceFile.arrayBuffer(),
+                        await file.arrayBuffer(),
+                        clipName,
+                        JSON.stringify({
+                          mode,
+                          clipId: newId,
+                          outputName: newName,
+                        }),
+                      );
+                      if (
+                        !response.ok
+                        || response.type !== "ANIMATION_MODEL_CLIP_RETARGETED"
+                      ) {
+                        throw new Error(
+                          `The donor clip ${clipName} could not be transferred.`,
+                        );
+                      }
+                      return parseAnimationTransferResultV1(response.resultJson);
+                    })();
+                if (
+                  parsed.compatibility.donorSourceRevision !== donorSourceRevision
+                  || parsed.compatibility.targetSourceRevision
+                    !== animationStudioSourceRevision
+                ) {
+                  throw new Error(
+                    "The donor or target GLB changed after inspection; choose the exact models again.",
+                  );
+                }
+                const requiredSchema = mode === "EXACT_RIG_COPY_V1" ? 1 : 3;
+                if (parsed.requiredDocumentSchemaVersion !== requiredSchema) {
+                  throw new Error(
+                    "Core returned an unexpected document schema requirement.",
+                  );
+                }
+                return parsed.clip;
+              }}
+              onPrepareAnimationModelBatch={async (
+                file,
+                inspection,
+                clipNames,
+                mode,
+                semanticMap,
+              ) => {
+                const worker = workerRef.current;
+                if (!worker) throw new Error("The exact Animation Studio core is unavailable.");
+                const usedNames = new Set(
+                  (animationStudioStateRef.current?.document.authoredClips ?? [])
+                    .map(({ name }) => name.toLowerCase()),
+                );
+                const clips = clipNames.map((donorClipName, index) => {
+                  const slug = donorClipName.replace(/[^a-z0-9]+/giu, "_").replace(/^_+|_+$/g, "").slice(0, 10) || "motion";
+                  let outputName = `b${index + 1}_${slug}`.slice(0, 16);
+                  let suffix = 2;
+                  while (usedNames.has(outputName.toLowerCase())) {
+                    const ending = `_${suffix++}`;
+                    outputName = `${`b${index + 1}_${slug}`.slice(0, 16 - ending.length)}${ending}`;
+                  }
+                  usedNames.add(outputName.toLowerCase());
+                  return {
+                    donorClipName,
+                    mode,
+                    clipId: `batch-${crypto.randomUUID()}`,
+                    outputName,
+                  };
+                });
+                const response = await worker.prepareAnimationTransferBatchV2(
+                  await animationStudioSourceFile.arrayBuffer(),
                   await file.arrayBuffer(),
-                  clipName,
+                  JSON.stringify({
+                    schemaVersion: 2,
+                    commit: "ALL_OR_NOTHING",
+                    donorSourceRevision: inspection.sourceRevision,
+                    targetSourceRevision: animationStudioSourceRevision,
+                    clips,
+                    semanticMap: mode === "HUMANOID_SEMANTIC_RETARGET_V2"
+                      ? semanticMap ?? null
+                      : null,
+                  }),
+                );
+                if (!response.ok || response.type !== "ANIMATION_TRANSFER_BATCH_V2_PREPARED") {
+                  throw new Error("The exact Core could not prepare this animation batch.");
+                }
+                return parseAnimationTransferBatchResultV2(response.resultJson);
+              }}
+              onBuildAnimationSequencePreview={async (request, availableClips) => {
+                const worker = workerRef.current;
+                if (!worker) {
+                  throw new Error("The exact Animation Studio core is unavailable.");
+                }
+                const response = await worker.buildAnimationSequencePreview(
+                  JSON.stringify(request),
+                  JSON.stringify(availableClips),
                 );
                 if (
                   !response.ok
-                  || response.type !== "EDITABLE_ANIMATION_SOURCE_INSPECTED"
+                  || response.type !== "ANIMATION_SEQUENCE_PREVIEW_BUILT"
                 ) {
-                  throw new Error(`The donor clip ${clipName} could not be projected.`);
+                  throw new Error("The animation sequence preview could not be built.");
                 }
-                const parsed = parseEditableAnimationSourceV1(response.inspectionJson);
-                const compatibility = compareAnimationImportRigsV1(
-                  editableAnimationRig,
-                  parsed.rig,
-                );
-                if (!compatibility.compatible) {
-                  throw new Error(
-                    `[${ANIMATION_IMPORT_RIG_MISMATCH_V1}] ${compatibility.message} ${
-                      compatibility.mismatches[0] ?? ""
-                    }`.trim(),
-                  );
-                }
-                if (!parsed.clip) {
-                  throw new Error(`No editable tracks were returned for ${clipName}.`);
-                }
-                return createImportedModelClipV1(parsed.clip, {
-                  id: newId,
-                  name: newName,
-                  donorSourceRevision: parsed.sourceRevision,
-                });
+                return parseAnimationSequencePreviewV1(response.previewJson);
               }}
+              onResampleAnimationCurve={async (curve, policy) => {
+                const worker = workerRef.current;
+                if (!worker) {
+                  throw new Error("The exact Animation Studio core is unavailable.");
+                }
+                const response = await worker.resampleAnimationCurveToLinear(
+                  JSON.stringify(curve),
+                  JSON.stringify(policy),
+                );
+                if (
+                  !response.ok
+                  || response.type !== "ANIMATION_CURVE_RESAMPLED_TO_LINEAR"
+                ) {
+                  throw new Error("The selected animation curve could not be resampled.");
+                }
+                return parseAnimationCurveResampleReportV1(response.reportJson);
+              }}
+              onBakeAnimationLayers={async (layers, rigWire) => {
+                const worker = workerRef.current;
+                if (!worker) {
+                  throw new Error("The exact Animation Studio core is unavailable.");
+                }
+                const response = await worker.bakeAnimationLayers(
+                  JSON.stringify(layers),
+                  JSON.stringify(rigWire),
+                );
+                if (!response.ok || response.type !== "ANIMATION_LAYERS_BAKED") {
+                  throw new Error("The animation correction layers could not be baked.");
+                }
+                return parseAnimationLayerBakeReportV1(response.reportJson);
+              }}
+              renderAnimationTransferPreview={(
+                clip,
+                donorFile,
+                donorClipName,
+                donorSourceRevision,
+              ) => (
+                <div className="animation-import-dialog__preview-comparison">
+                  <section aria-label="Donor animation preview">
+                    <strong>Donor · {donorClipName}</strong>
+                    <SourceViewport
+                      input={{
+                        provenance: "SOURCE",
+                        file: donorFile,
+                        sourceSha256: donorSourceRevision,
+                      }}
+                      initialAnimationName={donorClipName}
+                      initialAnimationLoop
+                      hideAnimationControls={false}
+                      onError={setSourceError}
+                    />
+                  </section>
+                  <section aria-label="Retargeted animation preview">
+                    <strong>Current model · {clip.name}</strong>
+                    <SourceViewport
+                      input={{
+                        provenance: "SOURCE",
+                        file: animationStudioSourceFile,
+                        sourceSha256: animationStudioSourceRevision,
+                      }}
+                      authoredClip={clip}
+                      authoredRig={editableAnimationRig}
+                      hideAnimationControls={false}
+                      onError={setSourceError}
+                    />
+                  </section>
+                </div>
+              )}
               onValidateClip={async (candidate, prospectiveDocument) => {
                 const worker = workerRef.current;
                 if (!worker) {
@@ -3045,6 +3597,52 @@ export function App({
                   ...validateAnimationStudioSchemaV1(prospectiveDocument),
                   ...coreDiagnostics,
                 ];
+              }}
+              onInspectLibraryPreset={async (preset) => {
+                const worker = workerRef.current;
+                if (!worker) throw new Error("The exact Animation Studio core is unavailable.");
+                const { inspectAnimationLibraryPresetV1 } = await import(
+                  "./features/animation-library/workerBoundary"
+                );
+                return inspectAnimationLibraryPresetV1(
+                  worker,
+                  animationStudioSourceFile,
+                  preset,
+                );
+              }}
+              onInstantiateLibraryPreset={async (
+                preset,
+                newId,
+                newName,
+              ) => {
+                const worker = workerRef.current;
+                if (!worker) throw new Error("The exact Animation Studio core is unavailable.");
+                const { instantiateAnimationLibraryPresetV1 } = await import(
+                  "./features/animation-library/workerBoundary"
+                );
+                return instantiateAnimationLibraryPresetV1(
+                  worker,
+                  animationStudioSourceFile,
+                  preset,
+                  newId,
+                  newName,
+                );
+              }}
+              onExportAnimationContribution={async (
+                clip,
+                metadata,
+              ) => {
+                const worker = workerRef.current;
+                if (!worker) throw new Error("The exact Animation Studio core is unavailable.");
+                const { exportAnimationLibraryContributionV1 } = await import(
+                  "./features/animation-library/workerBoundary"
+                );
+                return exportAnimationLibraryContributionV1(
+                  worker,
+                  animationStudioSourceFile,
+                  clip,
+                  metadata,
+                );
               }}
               onUndo={() => setAnimationStudioState((current) => current
                 ? undoAnimationStudioEditV1(current)
@@ -3219,6 +3817,9 @@ export function App({
               }
               reconciliation={currentResult.animationStudioReconciliation}
               evidence={currentResult.canonical.animationStudioEvidence}
+              animationPlaybackAcceptance={
+                currentResult.canonical.animationPlaybackAcceptance
+              }
               readback={currentResult.readback}
               onOpenMismatch={(path) => {
                 const clipId = /^authoredClips\.([^.]+)/.exec(path)?.[1];

@@ -2,13 +2,14 @@
 //!
 //! No retail, CEP, decompiled or third-party payload is embedded here.
 
-use std::fmt;
+use std::{collections::BTreeMap, fmt};
 
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
 use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::{
+    animation_library::AnimationRigProfileV1,
     direct_creature_animation::FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1,
     profile_a::{
         Bounds3V1, CreatureRigNodeV1, CreatureRigProfileV1, CreatureRigSegmentV1,
@@ -307,6 +308,151 @@ pub fn synthetic_owned_m6_full_native_42_glb_v1() -> Result<Vec<u8>, OwnedFixtur
     root["asset"]["generator"] =
         Value::String("meshy2aurora-owned-synthetic-m6-full-native-42-v1".to_owned());
     root["animations"] = Value::Array(animations);
+    root["bufferViews"] = Value::Array(views);
+    root["accessors"] = Value::Array(accessors);
+    root["buffers"][0]["byteLength"] = json!(bin.len());
+    make_glb(root, bin)
+}
+
+/// Rebinds the repository-owned Full-42 fixture to an exact portable animation
+/// library rig profile. The geometry and native clips remain synthetic; no
+/// Meshy, retail or third-party model/animation payload is copied.
+pub fn synthetic_owned_animation_library_full_native_42_glb_v1(
+    profile: &AnimationRigProfileV1,
+) -> Result<Vec<u8>, OwnedFixtureErrorV1> {
+    if profile.schema_version != 1 || profile.nodes.is_empty() {
+        return Err(owned_fixture_layout_error(
+            "animation library rig profile must be non-empty schema V1",
+        ));
+    }
+    let glb = synthetic_owned_m6_full_native_42_glb_v1()?;
+    let json_length = u32::from_le_bytes(
+        glb.get(12..16)
+            .and_then(|bytes| bytes.try_into().ok())
+            .ok_or_else(|| owned_fixture_layout_error("owned GLB JSON header is truncated"))?,
+    ) as usize;
+    let json_end = 20usize.checked_add(json_length).ok_or_else(|| {
+        owned_fixture_layout_error("owned GLB JSON range overflows the input length")
+    })?;
+    let bin_header_end = json_end
+        .checked_add(8)
+        .ok_or_else(|| owned_fixture_layout_error("owned GLB BIN header overflows"))?;
+    let bin_length = u32::from_le_bytes(
+        glb.get(json_end..json_end + 4)
+            .and_then(|bytes| bytes.try_into().ok())
+            .ok_or_else(|| owned_fixture_layout_error("owned GLB BIN header is truncated"))?,
+    ) as usize;
+    let bin_end = bin_header_end
+        .checked_add(bin_length)
+        .ok_or_else(|| owned_fixture_layout_error("owned GLB BIN range overflows"))?;
+    let mut root: Value = serde_json::from_slice(
+        glb.get(20..json_end)
+            .ok_or_else(|| owned_fixture_layout_error("owned GLB JSON range is invalid"))?,
+    )
+    .map_err(|error| OwnedFixtureErrorV1 {
+        schema_version: 1,
+        code: "M6-FIXTURE-JSON-FAILED".to_owned(),
+        message: error.to_string(),
+    })?;
+    let mut bin = glb
+        .get(bin_header_end..bin_end)
+        .ok_or_else(|| owned_fixture_layout_error("owned GLB BIN range is invalid"))?
+        .to_vec();
+    let mut views = root["bufferViews"]
+        .take()
+        .as_array()
+        .cloned()
+        .ok_or_else(|| owned_fixture_layout_error("owned GLB bufferViews are missing"))?;
+    let mut accessors = root["accessors"]
+        .take()
+        .as_array()
+        .cloned()
+        .ok_or_else(|| owned_fixture_layout_error("owned GLB accessors are missing"))?;
+
+    let mut indices = BTreeMap::new();
+    for (index, node) in profile.nodes.iter().enumerate() {
+        if indices.insert(node.name.as_str(), index).is_some() {
+            return Err(owned_fixture_layout_error(
+                "animation library rig profile contains a duplicate bone name",
+            ));
+        }
+    }
+    let root_index = *indices
+        .get(profile.animation_root_bone_name.as_str())
+        .ok_or_else(|| owned_fixture_layout_error("animation root bone is missing"))?;
+    let deformation_index = (0..profile.nodes.len())
+        .find(|index| *index != root_index)
+        .ok_or_else(|| {
+            owned_fixture_layout_error(
+                "animation library proof rig requires a non-root deformation bone",
+            )
+        })?;
+    let mesh_index = profile.nodes.len();
+    let mut children = vec![Vec::<usize>::new(); profile.nodes.len()];
+    let mut scene_roots = Vec::new();
+    for (index, node) in profile.nodes.iter().enumerate() {
+        if let Some(parent_name) = node.parent_name.as_deref() {
+            let parent_index = *indices.get(parent_name).ok_or_else(|| {
+                owned_fixture_layout_error("animation library rig parent bone is missing")
+            })?;
+            children[parent_index].push(index);
+        } else {
+            scene_roots.push(index);
+        }
+    }
+    children[root_index].push(mesh_index);
+    let mut nodes = profile
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(index, node)| {
+            let translation = [
+                node.translation[0],
+                node.translation[2],
+                node.translation[1],
+            ];
+            let rotation = [
+                -node.rotation[0],
+                -node.rotation[2],
+                -node.rotation[1],
+                node.rotation[3],
+            ];
+            let mut value = json!({
+                "name": node.name,
+                "translation": translation,
+                "rotation": rotation
+            });
+            if !children[index].is_empty() {
+                value["children"] = json!(children[index]);
+            }
+            value
+        })
+        .collect::<Vec<_>>();
+    nodes.push(json!({
+        "name": "m2a-library-synthetic-mesh",
+        "mesh": 0,
+        "skin": 0
+    }));
+
+    let inverse_bind_matrices = vec![identity(); profile.nodes.len()];
+    let inverse_bind_accessor =
+        push_f32x16_accessor(&mut bin, &mut views, &mut accessors, &inverse_bind_matrices);
+    root["nodes"] = Value::Array(nodes);
+    root["scenes"][0]["nodes"] = json!(scene_roots);
+    root["skins"][0]["name"] = Value::String("m2a-library-synthetic-rig".to_owned());
+    root["skins"][0]["joints"] = json!((0..profile.nodes.len()).collect::<Vec<_>>());
+    root["skins"][0]["skeleton"] = json!(root_index);
+    root["skins"][0]["inverseBindMatrices"] = json!(inverse_bind_accessor);
+    if let Some(animations) = root["animations"].as_array_mut() {
+        for animation in animations {
+            // Keep the synthetic base-42 clips observably non-rigid. Animating
+            // the root would move the mesh and every joint together, which is
+            // a rigid transform rather than a skin-deformation proof.
+            animation["channels"][0]["target"]["node"] = json!(deformation_index);
+        }
+    }
+    root["asset"]["generator"] =
+        Value::String("meshy2aurora-owned-animation-library-full42-v1".to_owned());
     root["bufferViews"] = Value::Array(views);
     root["accessors"] = Value::Array(accessors);
     root["buffers"][0]["byteLength"] = json!(bin.len());

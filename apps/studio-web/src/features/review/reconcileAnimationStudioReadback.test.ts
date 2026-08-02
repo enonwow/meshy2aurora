@@ -124,6 +124,37 @@ function readbackFixture(): BinaryMdlInspectionReport {
   };
 }
 
+function materializedClipFixture(
+  animation: ReadbackAnimation,
+): CanonicalAnimationStudioEvidenceV1["animationStudioReadback"]["clips"][number]["materializedClip"] {
+  return {
+    name: animation.name,
+    animationRoot: animation.animationRoot,
+    lengthSeconds: animation.length,
+    transitionSeconds: animation.transition,
+    events: animation.events.map(({ time, name }) => ({
+      timeSeconds: time,
+      name,
+    })),
+    tracks: animation.nodeTree.roots.flatMap((node) => (
+      node.controllers.flatMap((controller) => {
+        const path = controller.controllerName === "position"
+          ? "TRANSLATION" as const
+          : controller.controllerName === "orientation"
+            ? "ROTATION" as const
+            : null;
+        return path ? [{
+          targetNodeId: node.number,
+          path,
+          interpolation: "LINEAR" as const,
+          timesSeconds: [...controller.times],
+          values: controller.values.map((row) => [...row]),
+        }] : [];
+      })
+    )),
+  };
+}
+
 describe("animation Studio binary readback reconciliation", () => {
   it("matches metadata, sorted events, target/path, times and canonical XYZW quaternions", () => {
     const result = reconcileAnimationStudioReadbackV1(
@@ -140,17 +171,27 @@ describe("animation Studio binary readback reconciliation", () => {
     });
     expect(getAnimationStudioDownloadGateV1(result)).toEqual({
       allowed: true,
-      status: "READY",
+      status: "BINARY_READY",
       code: "M2A-ANIMATION-READBACK-MATCH",
-      reason: "All valid authored animations match canonical binary MDL readback.",
+      reason:
+        "All valid authored animations match canonical binary MDL readback. Runtime playback still requires separate owner proof.",
     });
   });
 
-  it("uses manifest stable-ID usage when an authored clip is renamed", () => {
+  it("uses canonical materialization evidence when an authored clip is routed to a base slot", () => {
     const studio = studioFixture();
     studio.authoredClips[0].name = "renamed_editor_label";
     const readback = readbackFixture();
     readback.animations[0].name = "custom_runtime_output";
+    readback.animations[0].animationRoot = "materialized_root";
+    readback.animations[0].events = [{ time: 0.25, name: "hit" }];
+    readback.animations[0].nodeTree.roots[0].number = 900;
+    readback.animations[0].nodeTree.roots[0].controllers[0].times = [0, 0.5, 1];
+    readback.animations[0].nodeTree.roots[0].controllers[0].values = [
+      [0, 0, 0],
+      [0.1, 0, 0],
+      [0, 0, 0],
+    ];
     const sourceRevision = "a".repeat(64);
     const studioFingerprint = "b".repeat(64);
     const evidence: CanonicalAnimationStudioEvidenceV1 = {
@@ -164,6 +205,13 @@ describe("animation Studio binary readback reconciliation", () => {
       authoredClipOutputNames: ["renamed_editor_label"],
       authoredEventCount: 2,
       customAssignmentCount: 1,
+      customRuntimeExposures: [{
+        schemaVersion: 1,
+        customAnimationId: "custom-wave",
+        status: "BASE42_ROUTED",
+        libraryOutputClipNames: ["custom_runtime_output"],
+        runtimeBaseSlots: ["ca1slashl"],
+      }],
       sourceRevision,
       readbackStatus: "MATCH",
       animationStudioReadback: {
@@ -175,6 +223,7 @@ describe("animation Studio binary readback reconciliation", () => {
           authoredClipId: "clip-wave",
           outputClipName: "custom_runtime_output",
           materializedFingerprint: "d".repeat(64),
+          materializedClip: materializedClipFixture(readback.animations[0]!),
         }],
         diagnostics: [],
       },
@@ -213,6 +262,19 @@ describe("animation Studio binary readback reconciliation", () => {
       status: "MATCH",
       matchedClipIds: ["clip-wave"],
       diagnostics: [],
+    });
+
+    readback.animations[0]!.length = 9;
+    expect(reconcileAnimationStudioReadbackV1(
+      studio,
+      readback,
+      evidence,
+    )).toMatchObject({
+      status: "MISMATCH",
+      matchedClipIds: [],
+      diagnostics: [expect.objectContaining({
+        code: "M2A-ANIMATION-READBACK-LENGTH-MISMATCH",
+      })],
     });
   });
 

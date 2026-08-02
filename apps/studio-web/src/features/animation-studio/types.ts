@@ -9,6 +9,8 @@ import {
 } from "../animation-mapping/types";
 
 export const ANIMATION_STUDIO_SCHEMA_VERSION_V1 = 1 as const;
+export const ANIMATION_STUDIO_SCHEMA_VERSION_V2 = 2 as const;
+export const ANIMATION_STUDIO_SCHEMA_VERSION_V3 = 3 as const;
 /**
  * The V2 schema changes reference shape, not the audited Base-42 profile.
  * Migration therefore preserves the V1 profile literal byte-for-byte.
@@ -30,7 +32,9 @@ export type AuthoredAnimationSourceKindV1 =
   | "BLANK_POSE"
   | "SOURCE_CLIP_COPY"
   | "IMPORTED_MODEL_COPY"
-  | "PROCEDURAL_TEMPLATE";
+  | "PROCEDURAL_TEMPLATE"
+  | "LIBRARY_PRESET_COPY"
+  | "RETARGETED_MODEL_COPY";
 export type AuthoredAnimationTrackPathV1 = "TRANSLATION" | "ROTATION";
 export type AuthoredAnimationInterpolationV1 = "LINEAR";
 
@@ -40,6 +44,35 @@ export interface AuthoredAnimationSourceV1 {
   sourceClipName: string | null;
   sourceClipFingerprint: string | null;
   proceduralTemplate: string | null;
+  libraryPreset?: AnimationLibraryPresetProvenanceV1;
+  retarget?: AnimationRetargetProvenanceV1;
+}
+
+export interface AnimationRetargetProvenanceV1 {
+  donorSourceRevision: string;
+  targetSourceRevision: string;
+  donorClipName: string;
+  donorClipFingerprint: string;
+  donorRigSignatureSha256: string;
+  targetRigSignatureSha256: string;
+  compatibilityFingerprintSha256: string;
+  mode: "SAME_HIERARCHY_RETARGET_V1" | "HUMANOID_SEMANTIC_RETARGET_V2";
+  rootMotionScale: number;
+  outputMotionFingerprintSha256: string;
+  algorithmVersion: string;
+  algorithmLimits: string;
+}
+
+export interface AnimationLibraryPresetProvenanceV1 {
+  presetId: string;
+  presetVersion: number;
+  presetMotionSha256: string;
+  catalogSha256: string;
+  source: "BUILT_IN" | "COMMUNITY";
+  authors: string[];
+  license: string;
+  rigSignatureSha256: string;
+  instantiationMode: "STRICT_RIG_V1";
 }
 
 export interface AnimationKeyframeV1 {
@@ -77,7 +110,10 @@ export interface AuthoredAnimationClipV1 {
 }
 
 export interface AnimationStudioDocumentV1 {
-  schemaVersion: typeof ANIMATION_STUDIO_SCHEMA_VERSION_V1;
+  schemaVersion:
+    | typeof ANIMATION_STUDIO_SCHEMA_VERSION_V1
+    | typeof ANIMATION_STUDIO_SCHEMA_VERSION_V2
+    | typeof ANIMATION_STUDIO_SCHEMA_VERSION_V3;
   sourceRevision: string;
   authoringRevision: number;
   status: AnimationStudioDocumentStatusV1;
@@ -147,6 +183,20 @@ export interface AnimationStudioReadbackClipV1 {
   authoredClipId: string;
   outputClipName: string;
   materializedFingerprint: string;
+  materializedClip: {
+    name: string;
+    animationRoot: string;
+    lengthSeconds: number;
+    transitionSeconds: number;
+    events: Array<{ timeSeconds: number; name: string }>;
+    tracks: Array<{
+      targetNodeId: number;
+      path: "TRANSLATION" | "ROTATION" | "SCALE" | "WEIGHTS";
+      interpolation: "LINEAR" | "STEP" | "CUBIC_SPLINE";
+      timesSeconds: number[];
+      values: number[][];
+    }>;
+  };
 }
 
 export interface AnimationStudioReadbackV1 {

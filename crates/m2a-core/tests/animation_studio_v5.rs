@@ -7,9 +7,9 @@ use m2a_core::{
         AuthoredAnimationClipStatusV1, AuthoredAnimationEventV1, AuthoredAnimationSourceKindV1,
         CustomAnimationClipReferenceKindV2, CustomAnimationClipReferenceV2,
         CustomAnimationDefinitionV2, ProceduralAnimationTemplateV1,
-        create_procedural_template_clip_v1, evaluate_edited_animation_conformance_v1,
-        materialize_authored_animation_library_v1, migrate_creature_animation_authoring_v1_to_v2,
-        reconcile_animation_studio_readback_v1,
+        apply_custom_attack_demo_route_v1, create_procedural_template_clip_v1,
+        evaluate_edited_animation_conformance_v1, materialize_authored_animation_library_v1,
+        migrate_creature_animation_authoring_v1_to_v2, reconcile_animation_studio_readback_v1,
     },
     creature_animation_mapping::{
         AnimationMappingProvenanceV1, AnimationOwnershipV1, AnimationProviderV1,
@@ -18,14 +18,30 @@ use m2a_core::{
         CustomAnimationPlaybackV1, DirectCreatureBaseSlotV1, DirectCreatureModelTypeV1,
     },
     direct_creature_animation::FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1,
+    held_weapon::{
+        HeldWeaponHandV1, HeldWeaponLocalTransformV1, HeldWeaponPivotPolicyV1,
+        compose_held_weapon_attachment_v1, inspect_held_weapon_source_v1,
+    },
     inspect_binary_mdl,
     model_pipeline::{
+        ProceduralCreaturePackageIdentityV1, ProjectBuildIdentityV1,
         build_meshy_h1_model_package_v4, build_meshy_h1_model_package_v5,
+        build_meshy_h1_model_package_v5_with_identity,
+        build_meshy_h1_model_package_v6_with_held_weapon_project_identity,
         inspect_editable_animation_source_v1,
+        write_animation_studio_v5_demo_packet_with_identity_v1,
     },
     owned_fixture::synthetic_owned_m6_full_native_42_glb_v1,
+    proof_module::{
+        BinaryCreatureModuleIdentityV1, BinaryCreatureRuntimeProfileV2,
+        inspect_binary_creature_profile_matrix_module_v2,
+    },
 };
 use sha2::{Digest, Sha256};
+
+#[path = "fixtures/build_synthetic_glb.rs"]
+#[allow(dead_code)]
+mod build_synthetic_glb;
 
 #[path = "support/canonical_workspace.rs"]
 mod canonical_workspace;
@@ -129,6 +145,72 @@ fn additive_v5_without_authored_clips_preserves_every_v4_binary() {
 }
 
 #[test]
+fn held_weapon_v6_is_present_in_final_mdl_and_reconciled_from_hak() {
+    let source = synthetic_owned_m6_full_native_42_glb_v1().unwrap();
+    let appearance = appearance_fixture();
+    let v2 = migrate_creature_animation_authoring_v1_to_v2(&v1_authoring(&source));
+    let studio = empty_studio(&source);
+    let inspection = inspect_editable_animation_source_v1(&source).unwrap();
+    let target = inspection
+        .rig
+        .nodes
+        .iter()
+        .find(|node| node.parent_id.is_some())
+        .expect("owned humanoid fixture has an attachable child node");
+    let weapon = build_synthetic_glb::axis_hierarchy_asymmetric();
+    let weapon_source =
+        inspect_held_weapon_source_v1("owned-sword.glb", &weapon, "LOCAL_FILE").unwrap();
+    let attachment = compose_held_weapon_attachment_v1(
+        weapon_source.clone(),
+        &inspection.rig,
+        HeldWeaponHandV1::Right,
+        target.node_id,
+        HeldWeaponLocalTransformV1::default(),
+        HeldWeaponPivotPolicyV1::SourceOrigin,
+        None,
+        None,
+        4,
+    )
+    .unwrap();
+    let project = ProjectBuildIdentityV1 {
+        schema_version: 1,
+        project_id: "held-weapon-v6-test".to_owned(),
+        project_name: "Held Weapon V6 Test".to_owned(),
+        project_revision: 4,
+    };
+
+    let artifact = build_meshy_h1_model_package_v6_with_held_weapon_project_identity(
+        &source,
+        &appearance,
+        &v2,
+        &studio,
+        None,
+        &project,
+        &weapon,
+        &attachment,
+    )
+    .unwrap();
+
+    let evidence = artifact.report.base.held_weapon.as_ref().unwrap();
+    assert_eq!(evidence.status, "MATCH");
+    assert_eq!(evidence.source_sha256, weapon_source.sha256);
+    assert!(evidence.attachment_node_present_in_binary_mdl);
+    assert!(evidence.combined_triangle_count_match);
+    assert!(evidence.texture_payload_match_in_hak);
+    assert_eq!(evidence.bake.weapon_triangle_count, 1);
+    assert_eq!(
+        artifact.report.base.geometry.triangle_count,
+        evidence.bake.target_triangle_count_after
+    );
+    assert!(
+        artifact
+            .report_json
+            .windows(b"\"heldWeapon\"".len())
+            .any(|window| window == b"\"heldWeapon\"")
+    );
+}
+
+#[test]
 fn imported_model_copy_materializes_without_reopening_the_donor_glb() {
     let source = synthetic_owned_m6_full_native_42_glb_v1().unwrap();
     let inspection = inspect_editable_animation_source_v1(&source).unwrap();
@@ -224,6 +306,7 @@ fn v5_routes_stable_authored_id_to_base_and_custom_outputs_with_events() {
             ownership: AnimationOwnershipV1::UserOwned,
         },
     });
+    let custom_provenance = v2.custom_animations.last().unwrap().provenance.clone();
     let assignment = v2
         .assignments
         .iter_mut()
@@ -232,6 +315,7 @@ fn v5_routes_stable_authored_id_to_base_and_custom_outputs_with_events() {
     assignment.source_kind = AnimationSourceKindV1::Custom;
     assignment.source_clip_name = None;
     assignment.custom_animation_id = Some("custom-stable-id".to_owned());
+    assignment.provenance = custom_provenance;
 
     let artifact = build_meshy_h1_model_package_v5(&source, &appearance, &v2, &studio).unwrap();
     let readback = inspect_binary_mdl(&artifact.model).unwrap();
@@ -262,6 +346,14 @@ fn v5_routes_stable_authored_id_to_base_and_custom_outputs_with_events() {
     assert_eq!(
         artifact.manifest.animation_studio.custom_assignment_count,
         1
+    );
+    assert_eq!(
+        artifact.manifest.animation_studio.custom_runtime_exposures[0].status,
+        m2a_core::animation_studio::CustomAnimationRuntimeExposureStatusV1::Base42Routed
+    );
+    assert_eq!(
+        artifact.manifest.animation_studio.custom_runtime_exposures[0].runtime_base_slots,
+        ["cpause1"]
     );
     assert_eq!(
         artifact.animation_studio_readback.status,
@@ -543,6 +635,200 @@ fn v5_uses_the_same_procedural_library_for_build_and_authored_readback() {
             .iter()
             .any(|usage| usage.output_clip_name == "custoverride")
     );
+}
+
+#[test]
+#[ignore = "requires canonical local Void Crystal Knight source.glb"]
+fn exact_void_crystal_knight_v5_preserves_geometry_and_stabilizes_accessories() {
+    let source = fs::read(
+        canonical_workspace::canonical_repository_root()
+            .join("sample-3d/void-crystal-knight-h1-v1/source.glb"),
+    )
+    .expect("canonical local Void Crystal Knight source");
+    let appearance = appearance_fixture();
+    let v2 = migrate_creature_animation_authoring_v1_to_v2(&procedural_v1_authoring(&source));
+    let studio = empty_studio(&source);
+
+    let artifact = build_meshy_h1_model_package_v5(&source, &appearance, &v2, &studio).unwrap();
+
+    assert_eq!(
+        artifact.report.base.ingest.statistics.triangle_count,
+        19_704
+    );
+    assert_eq!(artifact.report.base.geometry.triangle_count, 19_704);
+    let stabilization = artifact
+        .report
+        .base
+        .skin_accessory_stabilization
+        .as_ref()
+        .expect("V5 stabilization report");
+    assert_eq!(stabilization.component_count, 5);
+    assert_eq!(stabilization.stabilized_component_count, 4);
+    assert_eq!(stabilization.changed_vertex_count, 341);
+}
+
+#[test]
+#[ignore = "requires canonical local Void Crystal Knight source.glb"]
+fn exact_void_crystal_knight_v5_materializes_a_real_authored_sword_attack() {
+    let source = fs::read(
+        canonical_workspace::canonical_repository_root()
+            .join("sample-3d/void-crystal-knight-h1-v1/source.glb"),
+    )
+    .expect("canonical local Void Crystal Knight source");
+    let appearance = appearance_fixture();
+    let inspection = inspect_editable_animation_source_v1(&source).unwrap();
+    let mut clip = create_procedural_template_clip_v1(
+        &inspection.rig,
+        ProceduralAnimationTemplateV1::HumanoidSwordSlash,
+        AuthoredAnimationClipInputV1 {
+            id: "vck-authored-sword-slash-v1".to_owned(),
+            name: "vck_cryslash".to_owned(),
+            source_revision: inspection.source_revision.clone(),
+            length_seconds: 1.0,
+            transition_seconds: 0.1,
+            animation_root: inspection.rig.animation_root.clone(),
+        },
+    )
+    .unwrap();
+    clip.status = AuthoredAnimationClipStatusV1::Valid;
+    let studio = AnimationStudioDocumentV1 {
+        schema_version: 1,
+        source_revision: inspection.source_revision.clone(),
+        authoring_revision: 1,
+        status: AnimationStudioDocumentStatusV1::Valid,
+        authored_clips: vec![clip],
+    };
+    let mut authoring =
+        migrate_creature_animation_authoring_v1_to_v2(&procedural_v1_authoring(&source));
+    authoring
+        .custom_animations
+        .push(CustomAnimationDefinitionV2 {
+            id: "vck-custom-sword-slash-v1".to_owned(),
+            name: "vck_cryslash".to_owned(),
+            playback: CustomAnimationPlaybackV1::OneShot,
+            clip_reference: Some(CustomAnimationClipReferenceV2 {
+                source_kind: CustomAnimationClipReferenceKindV2::AuthoredClip,
+                source_clip_name: None,
+                authored_clip_id: Some("vck-authored-sword-slash-v1".to_owned()),
+            }),
+            phases: vec![],
+            provenance: AnimationMappingProvenanceV1 {
+                provider: AnimationProviderV1::UserCustom,
+                asset_id: "vck-authored-sword-slash-v1".to_owned(),
+                ownership: AnimationOwnershipV1::UserOwned,
+            },
+        });
+    let demo = apply_custom_attack_demo_route_v1(&authoring, "vck-custom-sword-slash-v1").unwrap();
+
+    let identity = ProceduralCreaturePackageIdentityV1 {
+        model_resref: "vckattack1".to_owned(),
+        texture_resref: "vckattack1".to_owned(),
+        module: BinaryCreatureModuleIdentityV1 {
+            module_resref: "vckattack1".to_owned(),
+            area_resref: "vckattack1".to_owned(),
+            hak_resref: "vckattack1".to_owned(),
+        },
+        creature_resref: "vckattack1".to_owned(),
+    };
+    let artifact = build_meshy_h1_model_package_v5_with_identity(
+        &source,
+        &appearance,
+        &demo.authoring,
+        &studio,
+        None,
+        &identity,
+    )
+    .unwrap();
+    assert_eq!(artifact.report.base.geometry.triangle_count, 19_704);
+    assert_eq!(
+        artifact
+            .report
+            .base
+            .skin_accessory_stabilization
+            .as_ref()
+            .unwrap()
+            .changed_vertex_count,
+        341
+    );
+    assert_eq!(
+        artifact.animation_studio_readback.status,
+        AnimationStudioReadbackStatusV1::Match
+    );
+    assert!(demo.contract.production_idle_slot_preserved);
+    assert!(demo.contract.all_native_attack_variants_routed);
+
+    let behavior = artifact.report.base.animation_behavior.as_ref().unwrap();
+    let attack_clips = ["ca1slashl", "ca1slashr", "ca1stab", "vck_cryslash"].map(|name| {
+        behavior
+            .clips
+            .iter()
+            .find(|clip| clip.name == name)
+            .unwrap()
+    });
+    assert!(
+        attack_clips
+            .iter()
+            .all(|clip| clip.changing_controller_count >= 12)
+    );
+    assert!(
+        attack_clips
+            .windows(2)
+            .all(|pair| pair[0].motion_sha256 == pair[1].motion_sha256)
+    );
+    let production_idle = behavior
+        .clips
+        .iter()
+        .find(|clip| clip.name == "cpause1")
+        .unwrap();
+    assert_ne!(production_idle.motion_sha256, attack_clips[0].motion_sha256);
+
+    let binary_readback = inspect_binary_mdl(&artifact.model).unwrap();
+    for name in ["ca1slashl", "ca1slashr", "ca1stab"] {
+        let readback = binary_readback
+            .animations
+            .iter()
+            .find(|clip| clip.name == name)
+            .unwrap();
+        assert!(
+            readback.events.iter().any(|event| event.name == "hit"),
+            "{name} must expose the native hit event"
+        );
+    }
+    let module = inspect_binary_creature_profile_matrix_module_v2(&artifact.proof_module).unwrap();
+    assert_eq!(module.scene.module_resref, identity.module.module_resref);
+    assert_eq!(module.scene.area_resref, identity.module.area_resref);
+    assert_eq!(
+        module.scene.ordered_hak_resrefs.as_slice(),
+        std::slice::from_ref(&identity.module.hak_resref)
+    );
+    assert_eq!(
+        module.scene.fixtures[0].template_resref,
+        identity.creature_resref
+    );
+    assert_eq!(
+        module.fixtures[0].runtime_profile,
+        BinaryCreatureRuntimeProfileV2::ActiveMonsterBaseline
+    );
+
+    let packet = std::env::temp_dir().join(format!(
+        "m2a-vck-authored-sword-attack-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&packet);
+    write_animation_studio_v5_demo_packet_with_identity_v1(&packet, &artifact, &identity).unwrap();
+    assert_eq!(
+        fs::read(packet.join("generated/vckattack1.mod")).unwrap(),
+        artifact.proof_module
+    );
+    assert_eq!(
+        fs::read(packet.join("generated/vckattack1.hak")).unwrap(),
+        artifact.hak
+    );
+    assert_eq!(
+        fs::read(packet.join("generated/vckattack1.mdl")).unwrap(),
+        artifact.model
+    );
+    fs::remove_dir_all(packet).unwrap();
 }
 
 #[test]

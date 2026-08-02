@@ -17,5 +17,8 @@ wasm-bindgen = "0.2"
 sha2.workspace = true
 wasm-bindgen-test = "0.3"
 
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Oz", "--converge"]
+
 [lints]
 workspace = true

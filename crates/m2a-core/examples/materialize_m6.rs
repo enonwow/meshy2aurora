@@ -1,6 +1,7 @@
 use std::{env, fs, path::PathBuf, process::ExitCode};
 
 use m2a_core::{
+    animation_library::AnimationRigProfileV1,
     erf::{ErfArchive, ErfFileType},
     model_pipeline::{
         DirectCreatureAnimationProfileV1, build_m6_model_package_v1,
@@ -8,7 +9,10 @@ use m2a_core::{
         build_meshy_h1_rigid_runtime_diagnostic_package_v1, build_meshy_m0_static_rigid_package_v1,
         write_m0_proof_packet_v1, write_m6_proof_packet_v1,
     },
-    owned_fixture::{synthetic_owned_m6_full_native_42_glb_v1, synthetic_owned_m6_glb_v1},
+    owned_fixture::{
+        synthetic_owned_animation_library_full_native_42_glb_v1,
+        synthetic_owned_m6_full_native_42_glb_v1, synthetic_owned_m6_glb_v1,
+    },
 };
 
 #[derive(Debug)]
@@ -22,6 +26,7 @@ enum SourceInput {
     SyntheticOwned,
     SyntheticOwnedH1,
     SyntheticOwnedH1Full42,
+    SyntheticOwnedH1Full42RigProfile(PathBuf),
     MeshyH1(PathBuf),
     MeshyH1RigidRuntimeDiagnostic(PathBuf),
     MeshyM0StaticIsolated(PathBuf),
@@ -87,6 +92,22 @@ fn run() -> Result<(), String> {
                 None,
             )
         }
+        SourceInput::SyntheticOwnedH1Full42RigProfile(path) => {
+            let profile_bytes =
+                fs::read(&path).map_err(|error| format!("M6-INPUT-READ-FAILED: {error}"))?;
+            let profile: AnimationRigProfileV1 = serde_json::from_slice(&profile_bytes)
+                .map_err(|error| format!("M6-RIG-PROFILE-INVALID: {error}"))?;
+            let source_glb = synthetic_owned_animation_library_full_native_42_glb_v1(&profile)
+                .map_err(|error| error.to_string())?;
+            (
+                build_meshy_h1_model_package_v2(
+                    &source_glb,
+                    &appearance,
+                    DirectCreatureAnimationProfileV1::FullNative42ExplicitV1,
+                ),
+                None,
+            )
+        }
         SourceInput::MeshyH1(path) => {
             let source_glb =
                 fs::read(&path).map_err(|error| format!("M6-INPUT-READ-FAILED: {error}"))?;
@@ -135,6 +156,14 @@ fn parse_arguments(arguments: impl IntoIterator<Item = String>) -> Result<Argume
             "--synthetic-owned-h1" => set_source(&mut source, SourceInput::SyntheticOwnedH1)?,
             "--synthetic-owned-h1-full-42" => {
                 set_source(&mut source, SourceInput::SyntheticOwnedH1Full42)?
+            }
+            "--synthetic-owned-h1-full-42-rig-profile" => {
+                let path =
+                    required_value(&mut iterator, "--synthetic-owned-h1-full-42-rig-profile")?;
+                set_source(
+                    &mut source,
+                    SourceInput::SyntheticOwnedH1Full42RigProfile(path.into()),
+                )?;
             }
             "--meshy-h1-source" => {
                 let path = required_value(&mut iterator, "--meshy-h1-source")?;
@@ -216,7 +245,7 @@ fn set_appearance(
 }
 
 fn usage() -> String {
-    "usage: materialize_m6 (--synthetic-owned | --synthetic-owned-h1 | --synthetic-owned-h1-full-42 | --meshy-h1-source <path> | --meshy-h1-rigid-runtime-diagnostic-source <path> | --meshy-m0-static-isolated-source <path>) (--appearance-hak <path> | --appearance-2da <path>) --output-dir <path>".to_owned()
+    "usage: materialize_m6 (--synthetic-owned | --synthetic-owned-h1 | --synthetic-owned-h1-full-42 | --synthetic-owned-h1-full-42-rig-profile <profile.json> | --meshy-h1-source <path> | --meshy-h1-rigid-runtime-diagnostic-source <path> | --meshy-m0-static-isolated-source <path>) (--appearance-hak <path> | --appearance-2da <path>) --output-dir <path>".to_owned()
 }
 
 #[cfg(test)]

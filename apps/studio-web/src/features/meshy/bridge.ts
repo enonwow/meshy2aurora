@@ -1,3 +1,8 @@
+import {
+  MESHY_ANIMATION_ACTION_IDS_V1,
+  MESHY_ANIMATION_CATALOG_V1,
+} from "./animationCatalog";
+
 export const MESHY_BRIDGE_PROTOCOL_VERSION = 1 as const;
 
 export type MeshyProfileId =
@@ -5,7 +10,12 @@ export type MeshyProfileId =
   | "N1-quadruped/v1"
   | "S1-static-prop/v1";
 
-export type MeshyArtifactProfileId = MeshyProfileId | "RECOVERED-text-to-3d/v1" | "RETEXTURED-model/v1";
+export type MeshyArtifactProfileId =
+  | MeshyProfileId
+  | "RECOVERED-text-to-3d/v1"
+  | "RECOVERED-rigging/v1"
+  | "RECOVERED-animation/v1"
+  | "RETEXTURED-model/v1";
 
 export type MeshyPipelineStage = "PREVIEW" | "REFINE" | "RIG" | "ANIMATE";
 export type MeshyGeometryTarget = "AURORA_PROOF" | "LOWER_DETAIL" | "BALANCED" | "HIGHER_DETAIL";
@@ -14,6 +24,7 @@ export type MeshyModelType = "standard" | "lowpoly" | "smart-topology";
 export type MeshyTopology = "triangle" | "quad";
 export type MeshyPoseMode = "" | "a-pose" | "t-pose";
 export type MeshyTargetFormat = "glb" | "obj" | "fbx" | "stl" | "usdz" | "3mf";
+export type MeshyTextureResolution = "2k" | "4k" | "8k";
 export type MeshyGenerationSource = "TEXT" | "IMAGE" | "MULTI_IMAGE";
 
 export const MESHY_GEOMETRY_TARGETS: readonly MeshyGeometryTarget[] = [
@@ -29,14 +40,20 @@ export type MeshyRunStatus =
   | "RIGGING"
   | "ANIMATING"
   | "VERIFYING"
+  | "PARTIAL"
   | "READY"
   | "FAILED"
-  | "CANCELED";
+  | "CANCELED"
+  | "STOPPED_LOCAL";
 
 export type MeshyImageAiModel = "nano-banana" | "nano-banana-2" | "nano-banana-pro" | "gpt-image-2";
 export type MeshyImageRunMode = "TEXT_TO_IMAGE" | "IMAGE_TO_IMAGE";
-export type MeshyImageRunStatus = "QUEUED" | "GENERATING" | "READY" | "FAILED" | "CANCELED";
-export type MeshyRetextureRunStatus = "QUEUED" | "TEXTURING" | "VERIFYING" | "READY" | "FAILED" | "CANCELED";
+export type MeshyImageRunStatus =
+  | "QUEUED" | "GENERATING" | "READY" | "FAILED" | "CANCELED"
+  | "STOPPED_LOCAL";
+export type MeshyRetextureRunStatus =
+  | "QUEUED" | "TEXTURING" | "VERIFYING" | "READY" | "FAILED"
+  | "CANCELED" | "STOPPED_LOCAL";
 
 /** A ReTexture source is always a task identity held by the local Bridge, never a signed model URL. */
 export interface MeshyRetexturePreviewRequest {
@@ -45,7 +62,7 @@ export interface MeshyRetexturePreviewRequest {
   readonly aiModel: "meshy-5" | "meshy-6";
   readonly enableOriginalUv: boolean;
   readonly enablePbr: boolean;
-  readonly hdTexture: boolean;
+  readonly textureResolution: MeshyTextureResolution;
   readonly removeLighting: boolean;
   readonly alphaThumbnail: boolean;
 }
@@ -141,7 +158,12 @@ export type MeshyBridgeErrorCode =
   | "PREVIEW_NOT_FOUND"
   | "RUN_NOT_FOUND"
   | "ARTIFACT_NOT_READY"
-  | "ARTIFACT_INVALID";
+  | "ARTIFACT_INVALID"
+  | "TASK_REJECTED"
+  | "TASK_FAILED"
+  | "TASK_CANCELED"
+  | "PARTIAL_FAILURE"
+  | "STOPPED_LOCAL";
 
 export class MeshyBridgeError extends Error {
   readonly code: MeshyBridgeErrorCode;
@@ -182,9 +204,10 @@ export interface MeshyRunPreviewRequest {
   readonly inputTaskId?: string;
   readonly apiOptions?: MeshyTextTo3DOptions;
   readonly h1Preflight?: {
-    readonly standardHumanoid: true;
-    readonly clearLimbs: true;
-    readonly noWeapon: true;
+    readonly standardHumanoid: boolean;
+    readonly clearLimbs: boolean;
+    readonly noWeapon: boolean;
+    readonly aOrTPose: boolean;
   };
 }
 
@@ -203,7 +226,7 @@ export interface MeshyTextTo3DOptions {
   readonly originAt: "bottom" | "center";
   readonly enablePbr: boolean;
   readonly shouldTexture: boolean;
-  readonly hdTexture: boolean;
+  readonly textureResolution: MeshyTextureResolution;
   readonly texturePrompt: string;
   readonly textureImageUrl: string;
   readonly removeLighting: boolean;
@@ -211,17 +234,35 @@ export interface MeshyTextTo3DOptions {
   readonly multiViewThumbnails: boolean;
   readonly rigHumanoid: boolean;
   readonly rigHeightMeters: number;
+  /** @deprecated Accepted only for backward-compatible Bridge requests. */
   readonly animationActionId?: number;
+  readonly animationActionIds?: readonly number[];
+  readonly animationCatalogSnapshotId: string;
+  readonly animationCatalogSha256: string;
 }
 
-export const AURORA_MODEL_TRIANGLE_BUDGET_V1 = 20_000;
+export const AURORA_MODEL_TRIANGLE_BUDGET_V1 = 300_000;
+/** Meshy's current input-task rigging ceiling equals the shared product budget. */
+export const MESHY_HUMANOID_RIG_TRIANGLE_LIMIT_V1 =
+  AURORA_MODEL_TRIANGLE_BUDGET_V1;
+
+export function selectedMeshyAnimationActionIds(
+  options: Pick<MeshyTextTo3DOptions, "animationActionId" | "animationActionIds">,
+): readonly number[] {
+  if (options.animationActionIds !== undefined) return options.animationActionIds;
+  if (options.animationActionId !== undefined) return [options.animationActionId];
+  return [0];
+}
 
 export function maximumMeshyTargetPolycount(
-  options: Pick<MeshyTextTo3DOptions, "modelType" | "aiModel">,
+  options: Pick<MeshyTextTo3DOptions, "modelType" | "aiModel" | "rigHumanoid">,
 ): number {
-  return options.modelType === "smart-topology" && options.aiModel === "meshy-t2"
+  const providerLimit = options.modelType === "smart-topology" && options.aiModel === "meshy-t2"
     ? 15_000
     : AURORA_MODEL_TRIANGLE_BUDGET_V1;
+  return options.rigHumanoid
+    ? Math.min(providerLimit, MESHY_HUMANOID_RIG_TRIANGLE_LIMIT_V1)
+    : providerLimit;
 }
 
 export const DEFAULT_MESHY_TEXT_TO_3D_OPTIONS: MeshyTextTo3DOptions = {
@@ -241,7 +282,7 @@ export const DEFAULT_MESHY_TEXT_TO_3D_OPTIONS: MeshyTextTo3DOptions = {
   originAt: "bottom",
   enablePbr: true,
   shouldTexture: true,
-  hdTexture: false,
+  textureResolution: "2k",
   texturePrompt: "",
   textureImageUrl: "",
   removeLighting: true,
@@ -249,7 +290,9 @@ export const DEFAULT_MESHY_TEXT_TO_3D_OPTIONS: MeshyTextTo3DOptions = {
   multiViewThumbnails: false,
   rigHumanoid: false,
   rigHeightMeters: 1.7,
-  animationActionId: 0,
+  animationActionIds: [0],
+  animationCatalogSnapshotId: MESHY_ANIMATION_CATALOG_V1.snapshotId,
+  animationCatalogSha256: MESHY_ANIMATION_CATALOG_V1.curatedActionsSha256,
 };
 
 export interface MeshyRunPreview {
@@ -266,10 +309,19 @@ export interface MeshyRun {
   readonly geometryTarget: MeshyGeometryTarget;
   readonly status: MeshyRunStatus;
   readonly progress: number;
-  readonly taskIds: Readonly<Partial<Record<MeshyPipelineStage, string>>>;
+  readonly taskIds: Readonly<Record<string, string>>;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly error?: { readonly code: MeshyBridgeErrorCode; readonly message: string };
+  readonly animationOutcomes?: readonly {
+    readonly actionId: number;
+    readonly taskId?: string;
+    readonly status: "READY" | "FAILED" | "CANCELED";
+    readonly error?: {
+      readonly code: MeshyBridgeErrorCode;
+      readonly message: string;
+    };
+  }[];
 }
 
 export interface MeshyArtifactProvenance {
@@ -277,8 +329,112 @@ export interface MeshyArtifactProvenance {
   readonly bridgeProtocolVersion: typeof MESHY_BRIDGE_PROTOCOL_VERSION;
   readonly sha256: string;
   readonly byteLength: number;
-  readonly taskIds: Readonly<Partial<Record<MeshyPipelineStage, string>>>;
+  readonly taskIds: Readonly<Record<string, string>>;
+  readonly sourceTaskId?: string;
+  readonly sourceModelSha256?: string;
+  readonly rigTaskId?: string;
+  readonly riggedBaseSha256?: string;
+  readonly rigHeightMeters?: number;
+  readonly poseMode?: MeshyPoseMode;
+  readonly createdAt?: string;
+  readonly updatedAt?: string;
+  readonly apiVersions?: readonly string[];
+  readonly consumedCredits?: number;
+  readonly taskLedger?: readonly MeshyRunTaskLedgerEntryV1[];
+  readonly animationCatalog?: {
+    readonly snapshotId: string;
+    readonly sourceCatalogSha256: string;
+    readonly curatedActionsSha256: string;
+    readonly sourceUrl: string;
+    readonly capturedAt: string;
+  };
+  readonly artifacts?: readonly MeshyArtifactIdentityV1[];
+  readonly animationArtifacts?: readonly MeshyAnimationArtifactProvenance[];
+  readonly selectedAnimationActionId?: number;
+  readonly selectedArtifactKey?: string;
 }
+
+export type MeshyArtifactRoleV1 =
+  | "MODEL"
+  | "RIGGED_CHARACTER"
+  | "BASIC_WALKING"
+  | "BASIC_RUNNING"
+  | "ANIMATION";
+
+export interface MeshyArtifactIdentityV1 {
+  readonly key: string;
+  readonly role: MeshyArtifactRoleV1;
+  readonly taskId: string;
+  readonly sha256: string;
+  readonly byteLength: number;
+  readonly actionId?: number;
+  readonly glbReadback?: MeshyGlbArtifactReadbackV1;
+  readonly task?: MeshyTaskArtifactMetadataV1;
+}
+
+export interface MeshyAnimationArtifactProvenance {
+  readonly actionId: number;
+  readonly actionName?: string;
+  readonly actionCategory?: string;
+  readonly auroraCandidate?: string;
+  readonly taskId?: string;
+  readonly sha256: string;
+  readonly byteLength: number;
+  readonly glbReadback?: MeshyGlbArtifactReadbackV1;
+  readonly task?: MeshyTaskArtifactMetadataV1;
+}
+
+export interface MeshyTaskArtifactMetadataV1 {
+  readonly apiVersion?: string;
+  readonly createdAt?: string;
+  readonly finishedAt?: string;
+  readonly expiresAt?: string;
+  readonly consumedCredits?: number;
+}
+
+export interface MeshyRunTaskLedgerEntryV1
+  extends MeshyTaskArtifactMetadataV1 {
+  readonly stage: "PREVIEW" | "REFINE" | "RIG" | "ANIMATE";
+  readonly taskId: string;
+  readonly actionId?: number;
+  readonly status: string;
+}
+
+export type MeshyGlbArtifactReadbackV1 = {
+    readonly schemaVersion: 1;
+    readonly status: "PARSED";
+    readonly geometry: {
+      readonly meshCount: number;
+      readonly primitiveCount: number;
+      readonly triangleCount: number;
+    };
+    readonly skeleton: {
+      readonly jointCount: number;
+      readonly signatureSha256: string;
+      readonly joints: readonly {
+        readonly nodeId: number;
+        readonly name: string;
+        readonly parentNodeId: number | null;
+      }[];
+    };
+    readonly clipInventory: {
+      readonly clipCount: number;
+      readonly clips: readonly {
+        readonly name: string;
+        readonly durationSeconds: number;
+        readonly channelCount: number;
+        readonly samplerCount: number;
+        readonly channelPaths: Readonly<Record<string, number>>;
+        readonly rootMotion: {
+          readonly assessed: boolean;
+          readonly rootTranslationChannelCount: number;
+          readonly maximumTranslationDelta: number;
+          readonly classification:
+            | "IN_PLACE" | "ROOT_MOTION" | "UNASSESSED";
+        };
+      }[];
+    };
+  };
 
 export interface MeshyRunArtifact {
   readonly file: File;
@@ -287,7 +443,7 @@ export interface MeshyRunArtifact {
 
 export interface MeshyHistoryItem {
   readonly taskId: string;
-  readonly stage: "PREVIEW" | "REFINE";
+  readonly stage: "PREVIEW" | "REFINE" | "RIG" | "ANIMATE";
   readonly status: string;
   readonly prompt: string;
   readonly createdAt?: string;
@@ -295,6 +451,12 @@ export interface MeshyHistoryItem {
   readonly consumedCredits?: number;
   readonly glbAvailable: boolean;
   readonly thumbnailAvailable?: boolean;
+  readonly actionId?: number;
+  readonly artifacts?: readonly {
+    readonly key: string;
+    readonly role: MeshyArtifactRoleV1;
+    readonly actionId?: number;
+  }[];
 }
 
 export interface MeshyHistoryPage {
@@ -324,8 +486,22 @@ export interface MeshyBridgeClient {
   cancelRun(sessionToken: string, runId: string): Promise<MeshyRun>;
   provenance(sessionToken: string, runId: string): Promise<MeshyArtifactProvenance>;
   downloadArtifact(sessionToken: string, runId: string): Promise<MeshyRunArtifact>;
+  downloadAnimationArtifact(
+    sessionToken: string,
+    runId: string,
+    actionId: number,
+  ): Promise<MeshyRunArtifact>;
+  downloadRunArtifact(
+    sessionToken: string,
+    runId: string,
+    artifactKey: string,
+  ): Promise<MeshyRunArtifact>;
   listHistory(sessionToken: string, pageNum?: number): Promise<MeshyHistoryPage>;
-  downloadHistoryArtifact(sessionToken: string, taskId: string): Promise<MeshyRunArtifact>;
+  downloadHistoryArtifact(
+    sessionToken: string,
+    item: Pick<MeshyHistoryItem, "taskId" | "stage">,
+    artifactKey?: string,
+  ): Promise<MeshyRunArtifact>;
   downloadHistoryThumbnail(sessionToken: string, taskId: string): Promise<MeshyHistoryThumbnail>;
   previewRetexture(sessionToken: string, input: MeshyRetexturePreviewRequest): Promise<MeshyRetexturePreview>;
   createRetexture(sessionToken: string, input: { readonly previewId: string; readonly confirmationNonce: string }): Promise<MeshyRetextureRun>;
@@ -343,6 +519,8 @@ interface StoredPreview extends MeshyRunPreviewRequest, MeshyRunPreview {}
 interface StoredRun {
   run: MeshyRun;
   artifact?: MeshyRunArtifact;
+  animationArtifacts?: ReadonlyMap<number, MeshyRunArtifact>;
+  artifactsByKey?: ReadonlyMap<string, MeshyRunArtifact>;
 }
 
 interface StoredHistoryItem {
@@ -458,6 +636,53 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
         `Target polycount must be between 100 and ${maximumMeshyTargetPolycount(input.apiOptions)}.`,
       );
     }
+    if (
+      input.apiOptions
+      && (
+        !["2k", "4k", "8k"].includes(input.apiOptions.textureResolution)
+        || (
+          input.apiOptions.aiModel === "meshy-5"
+          && input.apiOptions.textureResolution !== "2k"
+        )
+        || (
+          input.apiOptions.textureResolution === "8k"
+          && input.apiOptions.topology !== "triangle"
+        )
+        || (source === "TEXT" && !input.apiOptions.shouldTexture)
+      )
+    ) {
+      throw new MeshyBridgeError(
+        "PREVIEW_NOT_FOUND",
+        "Choose a supported texture contract: Text-to-3D requires Refine, Meshy 5 accepts 2K only, and 8K requires triangle topology.",
+      );
+    }
+    if (input.apiOptions?.rigHumanoid) {
+      const actionIds = selectedMeshyAnimationActionIds(input.apiOptions);
+      if (
+        actionIds.length < 1
+        || actionIds.length > 10
+        || actionIds.some((value) => !MESHY_ANIMATION_ACTION_IDS_V1.has(value))
+        || new Set(actionIds).size !== actionIds.length
+        || input.apiOptions.animationCatalogSnapshotId
+          !== MESHY_ANIMATION_CATALOG_V1.snapshotId
+        || input.apiOptions.animationCatalogSha256
+          !== MESHY_ANIMATION_CATALOG_V1.curatedActionsSha256
+      ) {
+        throw new MeshyBridgeError(
+          "PREVIEW_NOT_FOUND",
+          "Choose one to ten distinct actions from the tracked Meshy animation catalog snapshot.",
+        );
+      }
+      if (
+        !["a-pose", "t-pose"].includes(input.apiOptions.poseMode)
+        || !input.apiOptions.shouldTexture
+      ) {
+        throw new MeshyBridgeError(
+          "H1_PREFLIGHT_REQUIRED",
+          "H1 rigging requires an A/T pose and a textured output.",
+        );
+      }
+    }
     if (source === "TEXT" && !input.prompt.trim()) {
       throw new MeshyBridgeError("PREVIEW_NOT_FOUND", "Text to 3D requires an asset prompt.");
     }
@@ -468,13 +693,17 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
       throw new MeshyBridgeError("PREVIEW_NOT_FOUND", "Multi-image to 3D requires one to four reference images.");
     }
     if (profile.id.startsWith("H1") && !isH1PreflightComplete(input.h1Preflight)) {
-      throw new MeshyBridgeError("H1_PREFLIGHT_REQUIRED", "Confirm standard humanoid, clear limbs, and no weapon before H1 rigging.");
+      throw new MeshyBridgeError("H1_PREFLIGHT_REQUIRED", "Confirm standard humanoid, clear limbs, no weapon, and a verified A/T pose before H1 rigging.");
     }
     const preview: StoredPreview = {
       ...input,
       previewId: identifier("meshy-preview"),
       profile,
-      maximumCredits: this.maximumCredits(profile),
+      maximumCredits: this.maximumCredits(
+        profile,
+        input.apiOptions,
+        source,
+      ),
       stages: profile.stages,
     };
     this.previews.set(preview.previewId, preview);
@@ -521,8 +750,8 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
   async cancelRun(sessionToken: string, runId: string): Promise<MeshyRun> {
     this.requireSession(sessionToken);
     const stored = this.storedRun(runId);
-    if (stored.run.status === "READY") return stored.run;
-    stored.run = { ...stored.run, status: "CANCELED", updatedAt: now() };
+    if (stored.run.status === "READY" || stored.run.status === "PARTIAL") return stored.run;
+    stored.run = { ...stored.run, status: "STOPPED_LOCAL", updatedAt: now() };
     return stored.run;
   }
 
@@ -530,6 +759,38 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
     this.requireSession(sessionToken);
     const artifact = this.storedRun(runId).artifact;
     if (!artifact) throw new MeshyBridgeError("ARTIFACT_NOT_READY", "The verified GLB is not ready to import.");
+    return artifact;
+  }
+
+  async downloadAnimationArtifact(
+    sessionToken: string,
+    runId: string,
+    actionId: number,
+  ): Promise<MeshyRunArtifact> {
+    this.requireSession(sessionToken);
+    const artifact = this.storedRun(runId).animationArtifacts?.get(actionId);
+    if (!artifact) {
+      throw new MeshyBridgeError(
+        "ARTIFACT_NOT_READY",
+        `The verified animation GLB for action ${actionId} is not ready to import.`,
+      );
+    }
+    return artifact;
+  }
+
+  async downloadRunArtifact(
+    sessionToken: string,
+    runId: string,
+    artifactKey: string,
+  ): Promise<MeshyRunArtifact> {
+    this.requireSession(sessionToken);
+    const artifact = this.storedRun(runId).artifactsByKey?.get(artifactKey);
+    if (!artifact) {
+      throw new MeshyBridgeError(
+        "ARTIFACT_NOT_READY",
+        `The verified run artifact ${artifactKey} is not ready to import.`,
+      );
+    }
     return artifact;
   }
 
@@ -553,9 +814,13 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
     };
   }
 
-  async downloadHistoryArtifact(sessionToken: string, taskId: string): Promise<MeshyRunArtifact> {
+  async downloadHistoryArtifact(
+    sessionToken: string,
+    item: Pick<MeshyHistoryItem, "taskId" | "stage">,
+    _artifactKey?: string,
+  ): Promise<MeshyRunArtifact> {
     this.requireSession(sessionToken);
-    const artifact = this.history.get(taskId)?.artifact;
+    const artifact = this.history.get(item.taskId)?.artifact;
     if (!artifact) throw new MeshyBridgeError("ARTIFACT_NOT_READY", "The selected Meshy history entry cannot be recovered as a GLB.");
     return artifact;
   }
@@ -572,7 +837,21 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(input.inputTaskId) || !input.textStylePrompt.trim() || input.textStylePrompt.length > 600) {
       throw new MeshyBridgeError("PREVIEW_NOT_FOUND", "ReTexture needs a verified Meshy task and a 1-600 character style prompt.");
     }
-    const preview: MeshyRetexturePreview = { ...input, textStylePrompt: input.textStylePrompt.trim(), previewId: identifier("meshy-retexture-preview"), maximumCredits: 10 };
+    if (
+      !["2k", "4k", "8k"].includes(input.textureResolution)
+      || (input.aiModel === "meshy-5" && input.textureResolution !== "2k")
+    ) {
+      throw new MeshyBridgeError(
+        "PREVIEW_NOT_FOUND",
+        "Meshy 5 ReTexture accepts 2K only; use Meshy 6 for 4K or 8K.",
+      );
+    }
+    const preview: MeshyRetexturePreview = {
+      ...input,
+      textStylePrompt: input.textStylePrompt.trim(),
+      previewId: identifier("meshy-retexture-preview"),
+      maximumCredits: input.textureResolution === "8k" ? 15 : 10,
+    };
     this.retexturePreviews.set(preview.previewId, preview);
     return preview;
   }
@@ -593,7 +872,19 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
   async cancelRetexture(sessionToken: string, runId: string): Promise<MeshyRetextureRun> {
     this.requireSession(sessionToken);
     const stored = this.storedRetextureRun(runId);
-    if (stored.run.status !== "READY") stored.run = { ...stored.run, status: "CANCELED" };
+    if (!["READY", "FAILED", "CANCELED", "STOPPED_LOCAL"].includes(
+      stored.run.status,
+    )) {
+      stored.run = {
+        ...stored.run,
+        status: "STOPPED_LOCAL",
+        error: {
+          code: "STOPPED_LOCAL",
+          message:
+            "Local tracking stopped. The Meshy ReTexture task may continue remotely and consume credits.",
+        },
+      };
+    }
     return stored.run;
   }
   async downloadRetextureArtifact(sessionToken: string, runId: string): Promise<MeshyRunArtifact> {
@@ -639,8 +930,18 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
   async cancelImageRun(sessionToken: string, runId: string): Promise<MeshyImageRun> {
     this.requireSession(sessionToken);
     const stored = this.storedImageRun(runId);
-    if (stored.run.status === "READY") return stored.run;
-    stored.run = { ...stored.run, status: "CANCELED" };
+    if (["READY", "FAILED", "CANCELED", "STOPPED_LOCAL"].includes(
+      stored.run.status,
+    )) return stored.run;
+    stored.run = {
+      ...stored.run,
+      status: "STOPPED_LOCAL",
+      error: {
+        code: "STOPPED_LOCAL",
+        message:
+          "Local tracking stopped. The Meshy image task may continue remotely and consume credits.",
+      },
+    };
     return stored.run;
   }
 
@@ -670,6 +971,92 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
         taskIds,
       },
     };
+    stored.artifactsByKey = new Map([["model", stored.artifact]]);
+    return stored.run;
+  }
+
+  async completeAnimationRunForTest(
+    runId: string,
+    animations: readonly {
+      readonly actionId: number;
+      readonly bytes: Uint8Array;
+    }[],
+  ): Promise<MeshyRun> {
+    if (
+      animations.length < 1
+      || animations.length > 10
+      || animations.some(({ actionId, bytes }) => (
+        !Number.isSafeInteger(actionId)
+        || actionId < 0
+        || bytes.byteLength === 0
+      ))
+      || new Set(animations.map(({ actionId }) => actionId)).size
+        !== animations.length
+    ) {
+      throw new MeshyBridgeError(
+        "ARTIFACT_INVALID",
+        "Animation test completion needs one to ten distinct non-negative action IDs with non-empty GLBs.",
+      );
+    }
+    const stored = this.storedRun(runId);
+    const staticTaskIds = Object.fromEntries(
+      stored.run.profile.stages
+        .filter((stage) => stage !== "ANIMATE")
+        .map((stage) => [stage, identifier(`task-${stage.toLowerCase()}`)]),
+    );
+    const animationTaskIds = Object.fromEntries(animations.map(({ actionId }) => [
+      animations.length === 1 ? "ANIMATE" : `ANIMATE_${actionId}`,
+      identifier(`task-animate-${actionId}`),
+    ]));
+    const taskIds: Readonly<Record<string, string>> = {
+      ...staticTaskIds,
+      ...animationTaskIds,
+    };
+    const identities = await Promise.all(animations.map(async ({
+      actionId,
+      bytes,
+    }) => ({
+      actionId,
+      sha256: await sha256(bytes),
+      byteLength: bytes.byteLength,
+    })));
+    const rootIdentity = identities[0]!;
+    const rootProvenance: MeshyArtifactProvenance = {
+      profileId: stored.run.profile.id,
+      bridgeProtocolVersion: MESHY_BRIDGE_PROTOCOL_VERSION,
+      sha256: rootIdentity.sha256,
+      byteLength: rootIdentity.byteLength,
+      taskIds,
+      animationArtifacts: identities,
+    };
+    stored.run = {
+      ...stored.run,
+      status: "READY",
+      progress: 100,
+      taskIds,
+      updatedAt: now(),
+    };
+    stored.animationArtifacts = new Map(animations.map(({ actionId, bytes }, index) => {
+      const identity = identities[index]!;
+      return [actionId, {
+        file: new File(
+          [bytes.slice()],
+          `meshy-animation-${actionId}.glb`,
+          { type: "model/gltf-binary" },
+        ),
+        provenance: {
+          ...rootProvenance,
+          sha256: identity.sha256,
+          byteLength: identity.byteLength,
+          selectedAnimationActionId: actionId,
+        },
+      }];
+    }));
+    stored.artifactsByKey = new Map(Array.from(
+      stored.animationArtifacts,
+      ([actionId, artifact]) => [`animation-${actionId}`, artifact],
+    ));
+    stored.artifact = stored.animationArtifacts.get(rootIdentity.actionId);
     return stored.run;
   }
 
@@ -718,13 +1105,40 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
     return run;
   }
 
-  private maximumCredits(profile: MeshyProfile) {
-    return profile.id.startsWith("H1") ? 38 : 30;
+  private maximumCredits(
+    profile: MeshyProfile,
+    options?: MeshyTextTo3DOptions,
+    source: MeshyGenerationSource = "TEXT",
+  ) {
+    const textureCredits = options?.textureResolution === "8k" ? 15 : 10;
+    let generationCredits: number;
+    if (source === "TEXT") {
+      const previewCredits = (
+        options?.aiModel === "meshy-5"
+        && options?.modelType !== "lowpoly"
+      ) ? 5 : 20;
+      generationCredits = previewCredits + textureCredits;
+    } else {
+      const geometryCredits = options?.aiModel === "meshy-t2"
+        || options?.aiModel === "meshy-5"
+        ? 5
+        : 20;
+      generationCredits = geometryCredits
+        + (options?.shouldTexture === false ? 0 : textureCredits);
+    }
+    return generationCredits + (
+      profile.id.startsWith("H1")
+        ? 5 + 3 * selectedMeshyAnimationActionIds(options ?? {}).length
+        : 0
+    );
   }
 }
 
 function isH1PreflightComplete(value: MeshyRunPreviewRequest["h1Preflight"]) {
-  return value?.standardHumanoid === true && value.clearLimbs === true && value.noWeapon === true;
+  return value?.standardHumanoid === true
+    && value.clearLimbs === true
+    && value.noWeapon === true
+    && value.aOrTPose === true;
 }
 
 export function resolveLocalMeshyBridgeOrigin(input: { readonly configured?: string; readonly development: boolean; readonly search: string }) {
@@ -788,16 +1202,63 @@ export class LocalMeshyBridgeClient implements MeshyBridgeClient {
     return this.downloadVerifiedArtifact(sessionToken, `/v1/runs/${encodeURIComponent(runId)}`);
   }
 
+  async downloadAnimationArtifact(
+    sessionToken: string,
+    runId: string,
+    actionId: number,
+  ): Promise<MeshyRunArtifact> {
+    if (!Number.isSafeInteger(actionId) || actionId < 0) {
+      throw new MeshyBridgeError(
+        "ARTIFACT_INVALID",
+        "Animation action ID must be a non-negative integer.",
+      );
+    }
+    return this.downloadVerifiedArtifact(
+      sessionToken,
+      `/v1/runs/${encodeURIComponent(runId)}`,
+      actionId,
+    );
+  }
+
+  async downloadRunArtifact(
+    sessionToken: string,
+    runId: string,
+    artifactKey: string,
+  ): Promise<MeshyRunArtifact> {
+    if (!/^[a-z0-9-]{1,80}$/.test(artifactKey)) {
+      throw new MeshyBridgeError(
+        "ARTIFACT_INVALID",
+        "Run artifact key is invalid.",
+      );
+    }
+    return this.downloadVerifiedArtifact(
+      sessionToken,
+      `/v1/runs/${encodeURIComponent(runId)}`,
+      undefined,
+      artifactKey,
+    );
+  }
+
   async listHistory(sessionToken: string, pageNum = 1): Promise<MeshyHistoryPage> {
     return this.json(`/v1/history?page_num=${encodeURIComponent(pageNum)}&page_size=50`, { sessionToken }) as Promise<MeshyHistoryPage>;
   }
 
-  async downloadHistoryArtifact(sessionToken: string, taskId: string): Promise<MeshyRunArtifact> {
-    return this.downloadVerifiedArtifact(sessionToken, `/v1/history/${encodeURIComponent(taskId)}`);
+  async downloadHistoryArtifact(
+    sessionToken: string,
+    item: Pick<MeshyHistoryItem, "taskId" | "stage">,
+    artifactKey?: string,
+  ): Promise<MeshyRunArtifact> {
+    const base = `/v1/history/${item.stage.toLowerCase()}/${encodeURIComponent(item.taskId)}`;
+    return this.downloadVerifiedArtifact(
+      sessionToken,
+      base,
+      undefined,
+      artifactKey,
+    );
   }
 
   async downloadHistoryThumbnail(sessionToken: string, taskId: string): Promise<MeshyHistoryThumbnail> {
-    const response = await fetch(`${this.origin}/v1/history/${encodeURIComponent(taskId)}/thumbnail`, { headers: { "X-Meshy-Session": sessionToken } });
+    const response = await fetch(`${this.origin}/v1/history/refine/${encodeURIComponent(taskId)}/thumbnail`, { headers: { "X-Meshy-Session": sessionToken } });
     if (!response.ok) throw await this.toError(response);
     const type = response.headers.get("content-type")?.split(";", 1)[0] ?? "";
     if (!["image/png", "image/jpeg", "image/webp"].includes(type)) throw new MeshyBridgeError("ARTIFACT_INVALID", "The local Bridge returned an invalid thumbnail type.");
@@ -842,24 +1303,71 @@ export class LocalMeshyBridgeClient implements MeshyBridgeClient {
     return this.json(`/v1/image-runs/${encodeURIComponent(runId)}/cancel`, { method: "POST", sessionToken }) as Promise<MeshyImageRun>;
   }
 
-  private async downloadVerifiedArtifact(sessionToken: string, basePath: string): Promise<MeshyRunArtifact> {
-    const provenance = await this.json(`${basePath}/provenance`, { sessionToken }) as MeshyArtifactProvenance;
-    const response = await fetch(`${this.origin}${basePath}/artifact`, { headers: { "X-Meshy-Session": sessionToken } });
+  private async downloadVerifiedArtifact(
+    sessionToken: string,
+    basePath: string,
+    animationActionId?: number,
+    artifactKey?: string,
+  ): Promise<MeshyRunArtifact> {
+    const provenancePath = artifactKey
+      ? `${basePath}/provenance/${encodeURIComponent(artifactKey)}`
+      : `${basePath}/provenance`;
+    const provenance = await this.json(provenancePath, { sessionToken }) as MeshyArtifactProvenance;
+    const selectedIdentity = artifactKey
+      ? provenance.artifacts?.find(({ key }) => key === artifactKey)
+      : animationActionId === undefined
+        ? provenance
+        : provenance.animationArtifacts?.find(({ actionId }) => (
+            actionId === animationActionId
+          ));
+    if (!selectedIdentity) {
+      throw new MeshyBridgeError(
+        "ARTIFACT_NOT_READY",
+        artifactKey
+          ? `Bridge provenance has no verified artifact ${artifactKey}.`
+          : `Bridge provenance has no verified animation artifact for action ${animationActionId}.`,
+      );
+    }
+    const artifactPath = artifactKey
+      ? `${basePath}/artifact/${encodeURIComponent(artifactKey)}`
+      : animationActionId === undefined
+        ? `${basePath}/artifact`
+        : `${basePath}/artifact/${animationActionId}`;
+    const response = await fetch(`${this.origin}${artifactPath}`, { headers: { "X-Meshy-Session": sessionToken } });
     if (!response.ok) throw await this.toError(response);
     const bytes = await response.blob();
-    if (bytes.size !== provenance.byteLength) {
+    if (bytes.size !== selectedIdentity.byteLength) {
       throw new MeshyBridgeError("ARTIFACT_INVALID", "The downloaded artifact does not match Bridge provenance.");
     }
     const content = new Uint8Array(await bytes.arrayBuffer());
     if (new TextDecoder().decode(content.slice(0, 4)) !== "glTF") {
       throw new MeshyBridgeError("ARTIFACT_INVALID", "The downloaded artifact is not a binary glTF file.");
     }
-    if (await sha256(content) !== provenance.sha256) {
+    if (await sha256(content) !== selectedIdentity.sha256) {
       throw new MeshyBridgeError("ARTIFACT_INVALID", "The downloaded artifact SHA-256 does not match Bridge provenance.");
     }
+    const artifactProvenance: MeshyArtifactProvenance = animationActionId === undefined
+      && artifactKey === undefined
+      ? provenance
+      : {
+          ...provenance,
+          sha256: selectedIdentity.sha256,
+          byteLength: selectedIdentity.byteLength,
+          ...(animationActionId === undefined
+            ? { selectedArtifactKey: artifactKey }
+            : { selectedAnimationActionId: animationActionId }),
+        };
     return {
-      file: new File([bytes], `meshy-${provenance.profileId.split("/")[0].toLowerCase()}.glb`, { type: "model/gltf-binary" }),
-      provenance,
+      file: new File(
+        [bytes],
+        artifactKey
+          ? `meshy-${artifactKey}.glb`
+          : animationActionId === undefined
+            ? `meshy-${provenance.profileId.split("/")[0].toLowerCase()}.glb`
+            : `meshy-animation-${animationActionId}.glb`,
+        { type: "model/gltf-binary" },
+      ),
+      provenance: artifactProvenance,
     };
   }
 

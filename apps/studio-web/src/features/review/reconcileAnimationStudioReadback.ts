@@ -14,6 +14,7 @@ import type {
 } from "../preview/types";
 import type {
   CanonicalAnimationStudioEvidenceV1,
+  CanonicalMaterializedAnimationClipV1,
 } from "../results/projectCanonicalResult";
 
 const READBACK_EPSILON = 1e-5;
@@ -28,7 +29,7 @@ export interface AnimationStudioReadbackReconciliationV1 {
 
 export interface AnimationStudioDownloadGateV1 {
   allowed: boolean;
-  status: "READY" | "BLOCKED";
+  status: "BINARY_READY" | "BLOCKED";
   code:
     | "M2A-ANIMATION-READBACK-MATCH"
     | "M2A-ANIMATION-READBACK-MISMATCH";
@@ -127,6 +128,32 @@ export function reconcileAnimationStudioReadbackV1(
         ));
         continue;
       }
+      if (evidence) {
+        const canonicalMatches = evidence.animationStudioReadback.clips.filter(
+          (item) => item.authoredClipId === clip.id
+            && item.outputClipName === outputName,
+        );
+        if (canonicalMatches.length !== 1) {
+          diagnostics.push(diagnostic(
+            canonicalMatches.length === 0
+              ? "M2A-ANIMATION-READBACK-USAGE-MISSING"
+              : "M2A-ANIMATION-READBACK-CLIP-DUPLICATE",
+            `${clipPath}.id`,
+            canonicalMatches.length === 0
+              ? `Canonical core readback has no MATCH evidence for authored output ${outputName}.`
+              : `Canonical core readback contains duplicate MATCH evidence for authored output ${outputName}.`,
+            "Rebuild from the exact Studio document and inspect canonical materialization evidence.",
+          ));
+        } else {
+          compareMaterializedClip(
+            canonicalMatches[0]!.materializedClip,
+            candidates[0]!,
+            clipPath,
+            diagnostics,
+          );
+        }
+        continue;
+      }
       compareClip(clip, candidates[0]!, clipPath, diagnostics);
     }
     if (diagnostics.length === diagnosticStart) matchedClipIds.push(clip.id);
@@ -147,9 +174,10 @@ export function getAnimationStudioDownloadGateV1(
   return reconciliation.status === "MATCH" && reconciliation.diagnostics.length === 0
     ? {
         allowed: true,
-        status: "READY",
+        status: "BINARY_READY",
         code: "M2A-ANIMATION-READBACK-MATCH",
-        reason: "All valid authored animations match canonical binary MDL readback.",
+        reason:
+          "All valid authored animations match canonical binary MDL readback. Runtime playback still requires separate owner proof.",
       }
     : {
         allowed: false,
@@ -157,6 +185,126 @@ export function getAnimationStudioDownloadGateV1(
         code: "M2A-ANIMATION-READBACK-MISMATCH",
         reason: "Animation download is blocked because canonical binary MDL readback does not match the Studio document.",
       };
+}
+
+function compareMaterializedClip(
+  expected: CanonicalMaterializedAnimationClipV1,
+  actual: ReadbackAnimation,
+  path: string,
+  diagnostics: AnimationStudioDiagnosticV1[],
+) {
+  compareScalar(
+    expected.lengthSeconds,
+    actual.length,
+    "M2A-ANIMATION-READBACK-LENGTH-MISMATCH",
+    `${path}.lengthSeconds`,
+    "Materialized animation length differs from canonical core evidence.",
+    diagnostics,
+  );
+  compareScalar(
+    expected.transitionSeconds,
+    actual.transition,
+    "M2A-ANIMATION-READBACK-TRANSITION-MISMATCH",
+    `${path}.transitionSeconds`,
+    "Materialized animation transition differs from canonical core evidence.",
+    diagnostics,
+  );
+  if (expected.name !== actual.name) {
+    diagnostics.push(diagnostic(
+      "M2A-ANIMATION-READBACK-NAME-MISMATCH",
+      `${path}.name`,
+      "Materialized animation name differs from canonical core evidence.",
+      "Read back the exact binary emitted by the current build.",
+    ));
+  }
+  if (expected.animationRoot !== actual.animationRoot) {
+    diagnostics.push(diagnostic(
+      "M2A-ANIMATION-READBACK-ANIMROOT-MISMATCH",
+      `${path}.animationRoot`,
+      "Materialized animation root differs from canonical core evidence.",
+      "Read back the exact binary emitted by the current build.",
+    ));
+  }
+  if (
+    expected.events.length !== actual.events.length
+    || expected.events.some((event, index) => {
+      const readbackEvent = actual.events[index];
+      return !readbackEvent
+        || event.name !== readbackEvent.name
+        || !near(event.timeSeconds, readbackEvent.time);
+    })
+  ) {
+    diagnostics.push(diagnostic(
+      "M2A-ANIMATION-READBACK-EVENTS-MISMATCH",
+      `${path}.events`,
+      "Materialized animation events differ from canonical core evidence.",
+      "Read back the exact binary emitted by the current build.",
+    ));
+  }
+
+  const nodes = flattenNodes(actual.nodeTree.roots);
+  const expectedTrackKeys = new Set<string>();
+  expected.tracks.forEach((track, index) => {
+    const trackPath = `${path}.materializedTracks[${index}]`;
+    if (track.path !== "TRANSLATION" && track.path !== "ROTATION") {
+      diagnostics.push(diagnostic(
+        "M2A-ANIMATION-READBACK-TRACK-MISSING",
+        `${trackPath}.path`,
+        `Canonical materialized ${track.path} cannot be reconciled with the binary controller inventory.`,
+        "Block Download until the binary readback exposes this controller type.",
+      ));
+      return;
+    }
+    const key = trackKey(track.targetNodeId, track.path);
+    expectedTrackKeys.add(key);
+    const targetNodes = nodes.filter(({ number }) => (
+      number === track.targetNodeId
+    ));
+    const controllerName = controllerNameForPath(track.path);
+    const controllers = targetNodes.length === 1
+      ? targetNodes[0]!.controllers.filter((controller) => (
+          controller.controllerName === controllerName
+        ))
+      : [];
+    if (targetNodes.length !== 1 || controllers.length !== 1) {
+      diagnostics.push(diagnostic(
+        "M2A-ANIMATION-READBACK-TRACK-MISSING",
+        trackPath,
+        "Canonical materialized controller is missing or duplicated in binary readback.",
+        "Read back the exact binary emitted by the current build.",
+      ));
+      return;
+    }
+    if (!numberArraysMatch(track.timesSeconds, controllers[0]!.times)) {
+      diagnostics.push(diagnostic(
+        "M2A-ANIMATION-READBACK-TIMES-MISMATCH",
+        `${trackPath}.timesSeconds`,
+        "Materialized keyframe times differ from canonical core evidence.",
+        "Read back the exact binary emitted by the current build.",
+      ));
+    }
+    if (!valueRowsMatch(track.path, track.values, controllers[0]!.values)) {
+      diagnostics.push(diagnostic(
+        "M2A-ANIMATION-READBACK-VALUES-MISMATCH",
+        `${trackPath}.values`,
+        "Materialized keyframe values differ from canonical core evidence.",
+        "Read back the exact binary emitted by the current build.",
+      ));
+    }
+  });
+  for (const node of nodes) {
+    for (const controller of node.controllers) {
+      const pathKind = pathForControllerName(controller.controllerName);
+      if (pathKind && !expectedTrackKeys.has(trackKey(node.number, pathKind))) {
+        diagnostics.push(diagnostic(
+          "M2A-ANIMATION-READBACK-TRACK-UNEXPECTED",
+          `${path}.materializedTracks`,
+          `Binary readback contains an unexpected ${pathKind} controller for target ${node.number}.`,
+          "Read back the exact binary emitted by the current build.",
+        ));
+      }
+    }
+  }
 }
 
 function compareClip(

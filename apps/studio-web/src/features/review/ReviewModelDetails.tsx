@@ -177,6 +177,34 @@ export function ReviewModelDetails({
 
       <ConversionReadiness result={result} readback={readback} />
 
+      {result.heldWeaponEvidence ? (
+        <section className="review-model__held-weapon" aria-labelledby="review-held-weapon-heading">
+          <header>
+            <h3 id="review-held-weapon-heading">Held weapon</h3>
+            <strong data-status="pass">MATCH</strong>
+          </header>
+          <p>
+            The exact rigid weapon is baked into the final MDL, its attachment
+            node was read back, and texture <code>{result.heldWeaponEvidence.textureResref}</code>
+            {" "}matches the payload inside the HAK.
+          </p>
+          <dl>
+            <div>
+              <dt>Weapon triangles</dt>
+              <dd>{result.heldWeaponEvidence.weaponTriangleCount.toLocaleString("en-US")}</dd>
+            </div>
+            <div>
+              <dt>Combined triangles</dt>
+              <dd>{result.heldWeaponEvidence.targetTriangleCountAfter.toLocaleString("en-US")}</dd>
+            </div>
+            <div>
+              <dt>Attachment</dt>
+              <dd>{result.heldWeaponEvidence.attachmentFingerprintSha256.slice(0, 12)}â€¦</dd>
+            </div>
+          </dl>
+        </section>
+      ) : null}
+
       {result.animationMappingEvidence ? (
         <section className="review-model__animation-mapping" aria-labelledby="review-animation-mapping-heading">
           <header>

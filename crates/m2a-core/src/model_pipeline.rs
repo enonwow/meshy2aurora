@@ -26,10 +26,10 @@ use crate::{
         AnimationStudioDocumentV1, AnimationStudioReadbackStatusV1, AnimationStudioReadbackV1,
         AnimationStudioRigNodeV1, AnimationStudioRigV1, AuthoredAnimationClipKindV1,
         AuthoredAnimationClipStatusV1, AuthoredAnimationSourceV1, AuthoredAnimationUsageV1,
-        CreatureAnimationAuthoringV2, MaterializedCreatureAnimationAuthoringV2,
-        evaluate_edited_animation_conformance_v1, fingerprint_animation_studio_document_v1,
-        fingerprint_creature_animation_authoring_v2, materialize_creature_animation_authoring_v2,
-        validate_creature_animation_authoring_v2,
+        CreatureAnimationAuthoringV2, CustomAnimationRuntimeExposureV1,
+        MaterializedCreatureAnimationAuthoringV2, evaluate_edited_animation_conformance_v1,
+        fingerprint_animation_studio_document_v1, fingerprint_creature_animation_authoring_v2,
+        materialize_creature_animation_authoring_v2, validate_creature_animation_authoring_v2,
     },
     creature_animation_mapping::{
         AnimationSourceKindV1, AuthoredAnimationConformanceV1, CreatureAnimationAuthoringV1,
@@ -48,6 +48,10 @@ use crate::{
         ingest_glb,
     },
     hak::{HakResourceInputV1, HakWriterOptionsV1, HakWriterReportV1},
+    held_weapon::{
+        HeldWeaponAttachmentV1, HeldWeaponBakeReportV1, bake_held_weapon_attachment_v1,
+        inspect_held_weapon_source_v1,
+    },
     mdl::{
         DirectCreatureEngineEnvelopeV1, DirectCreatureStructuralSummaryV1, MdlAnimationClipV1,
         MdlAnimationInterpolationV1, MdlAnimationSetV1, MdlAnimationTrackPathV1,
@@ -63,6 +67,7 @@ use crate::{
     model_segmentation::segment_model_for_binary_mdl_v1,
     owned_fixture::{synthetic_owned_m6_animation_mapping_v1, synthetic_owned_m6_rig_v1},
     package::{PackageManifestV1, write_model_package_v1},
+    placeable::static_placeable_profile_a_options_v1,
     profile_a::{
         AuroraCreatureIrV1, CreatureRigProfileV1, ProfileAAnimationMappingV1,
         ProfileAConversionReportV1, RigProvenanceV1, RigSegmentDeformationV1,
@@ -89,8 +94,8 @@ use crate::{
         audit_and_stabilize_skin_accessories_v1,
     },
     tga::{
-        TextureArtifactCleanupOptionsV1, TextureArtifactCleanupReportV1, TgaWriterOptionsV1,
-        TgaWriterReportV1, cleanup_texture_artifacts_v1, write_tga_v1,
+        TextureArtifactCleanupOptionsV1, TextureArtifactCleanupReportV1, TgaArtifactV1,
+        TgaWriterOptionsV1, TgaWriterReportV1, cleanup_texture_artifacts_v1, write_tga_v1,
     },
     two_da::{
         TwoDaAppendReportV1, TwoDaAppendRequestV1, TwoDaCellAssignmentV1, TwoDaCellValueV1,
@@ -789,6 +794,21 @@ pub struct M6MaterializationSummaryV1 {
     pub m0_runtime_fixture_contract: Option<M0RuntimeFixtureContractV2>,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeldWeaponProductReadbackV1 {
+    pub schema_version: u32,
+    pub source_sha256: String,
+    pub attachment_fingerprint_sha256: String,
+    pub texture_resref: String,
+    pub texture: M6ByteIdentityV1,
+    pub bake: HeldWeaponBakeReportV1,
+    pub attachment_node_present_in_binary_mdl: bool,
+    pub combined_triangle_count_match: bool,
+    pub texture_payload_match_in_hak: bool,
+    pub status: String,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct M6MaterializationReportV1 {
@@ -827,6 +847,8 @@ pub struct M6MaterializationReportV1 {
     pub animation_authoring: Option<ResolvedCreatureAnimationMappingV1>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub authored_animation_conformance: Option<AuthoredAnimationConformanceV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub held_weapon: Option<HeldWeaponProductReadbackV1>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -914,6 +936,7 @@ pub struct AnimationStudioBuildAuditV1 {
     pub authored_clip_output_names: Vec<String>,
     pub authored_event_count: usize,
     pub custom_assignment_count: usize,
+    pub custom_runtime_exposures: Vec<CustomAnimationRuntimeExposureV1>,
     pub source_revision: String,
     pub readback_status: AnimationStudioReadbackStatusV1,
     pub animation_studio_readback: AnimationStudioReadbackV1,
@@ -1387,6 +1410,7 @@ pub fn build_meshy_procedural_humanoid_product_with_options_v3(
         None,
         None,
         None,
+        None,
     )? {
         M6BuildArtifactV2::ProceduralProduct(artifact) => Ok(*artifact),
         M6BuildArtifactV2::LegacyBundle(_) => unreachable!("product output mode is exact"),
@@ -1473,6 +1497,7 @@ pub fn build_meshy_procedural_humanoid_p100k_experiment_with_options_v2(
         None,
         None,
         None,
+        None,
     )? {
         M6BuildArtifactV2::LegacyBundle(built) => Ok(built.artifact),
         M6BuildArtifactV2::ProceduralProduct(_) => {
@@ -1555,6 +1580,7 @@ pub fn build_meshy_procedural_humanoid_p300k_experiment_with_options_v2(
         M6BuildOutputV2::LegacyBundle,
         M6GeometryPolicyV1::P300kSegmentedExperiment,
         build_options,
+        None,
         None,
         None,
         None,
@@ -1826,6 +1852,7 @@ fn build_meshy_h1_model_package_v4_internal(
         project_identity,
         Some(animation_authoring),
         None,
+        None,
     )? {
         M6BuildArtifactV2::LegacyBundle(built) => Ok(built.artifact),
         M6BuildArtifactV2::ProceduralProduct(_) => {
@@ -1864,6 +1891,32 @@ pub fn build_meshy_h1_model_package_v5_with_events(
         event_authoring,
         &ProceduralCreaturePackageIdentityV1::historical_default(),
         None,
+        None,
+    )
+}
+
+/// Builds the Animation Studio V5 package with one explicit, caller-owned
+/// runtime identity. This is the deterministic demo/proof counterpart of the
+/// project-identity entry point: the generated MDL, TGA, HAK, MOD, Area and
+/// UTC all use the exact supplied resrefs, while the V5 authored-animation
+/// validation and binary readback gates remain unchanged.
+pub fn build_meshy_h1_model_package_v5_with_identity(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring: &CreatureAnimationAuthoringV2,
+    animation_studio: &AnimationStudioDocumentV1,
+    event_authoring: Option<&DirectCreatureEventAuthoringV1>,
+    runtime_identity: &ProceduralCreaturePackageIdentityV1,
+) -> Result<M6ModelPackageArtifactV5, M6PipelineErrorV1> {
+    build_meshy_h1_model_package_v5_internal(
+        source_glb,
+        appearance_two_da,
+        animation_authoring,
+        animation_studio,
+        event_authoring,
+        runtime_identity,
+        None,
+        None,
     )
 }
 
@@ -1884,9 +1937,39 @@ pub fn build_meshy_h1_model_package_v5_with_project_identity(
         event_authoring,
         &runtime_identity,
         Some(project_identity),
+        None,
     )
 }
 
+/// Final Animation Studio build with one exact rigid held-weapon GLB. The
+/// weapon becomes ordinary rigid child geometry in the direct-creature MDL;
+/// its single embedded base-color texture is packaged under a deterministic
+/// companion resref and verified from HAK readback.
+#[allow(clippy::too_many_arguments)]
+pub fn build_meshy_h1_model_package_v6_with_held_weapon_project_identity(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    animation_authoring: &CreatureAnimationAuthoringV2,
+    animation_studio: &AnimationStudioDocumentV1,
+    event_authoring: Option<&DirectCreatureEventAuthoringV1>,
+    project_identity: &ProjectBuildIdentityV1,
+    weapon_glb: &[u8],
+    attachment: &HeldWeaponAttachmentV1,
+) -> Result<M6ModelPackageArtifactV5, M6PipelineErrorV1> {
+    let runtime_identity = project_identity.runtime_identity_v1()?;
+    build_meshy_h1_model_package_v5_internal(
+        source_glb,
+        appearance_two_da,
+        animation_authoring,
+        animation_studio,
+        event_authoring,
+        &runtime_identity,
+        Some(project_identity),
+        Some((weapon_glb, attachment)),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
 fn build_meshy_h1_model_package_v5_internal(
     source_glb: &[u8],
     appearance_two_da: &[u8],
@@ -1895,6 +1978,7 @@ fn build_meshy_h1_model_package_v5_internal(
     event_authoring: Option<&DirectCreatureEventAuthoringV1>,
     runtime_identity: &ProceduralCreaturePackageIdentityV1,
     project_identity: Option<&ProjectBuildIdentityV1>,
+    held_weapon: Option<(&[u8], &HeldWeaponAttachmentV1)>,
 ) -> Result<M6ModelPackageArtifactV5, M6PipelineErrorV1> {
     let source_identity = identity(source_glb);
     for (path, revision) in [
@@ -1948,8 +2032,8 @@ fn build_meshy_h1_model_package_v5_internal(
             error.message,
         )
     })?;
-    sanitize_meshy_h1_degenerate_triangles_v1(&mut source)?;
-    let (rig, mut mapping) = derive_meshy_h1_profile_and_mapping_v1(&source)
+    sanitize_meshy_h1_degenerate_triangles_exact_v1(&mut source)?;
+    let (rig, mut mapping) = derive_meshy_h1_profile_and_mapping_exact_v1(&source)
         .map_err(|error| pipeline_error("profile", error.code, error.path, error.message))?;
     let uses_procedural = animation_authoring
         .assignments
@@ -1983,6 +2067,7 @@ fn build_meshy_h1_model_package_v5_internal(
         project_identity,
         None,
         Some((animation_authoring, animation_studio)),
+        held_weapon,
     )? {
         M6BuildArtifactV2::LegacyBundle(built) => *built,
         M6BuildArtifactV2::ProceduralProduct(_) => {
@@ -2264,6 +2349,7 @@ fn finish_animation_studio_v5_artifact(
             .iter()
             .filter(|assignment| assignment.source_kind == AnimationSourceKindV1::Custom)
             .count(),
+        custom_runtime_exposures: materialized_animations.custom_runtime_exposures.clone(),
         source_revision: studio.source_revision.clone(),
         readback_status: animation_studio_readback.status,
         animation_studio_readback: animation_studio_readback.clone(),
@@ -2756,6 +2842,7 @@ fn build_meshy_m0_static_rigid_package_internal(
         m0_runtime_fixture_contract: m0_runtime_fixture_contract.clone(),
         animation_authoring: None,
         authored_animation_conformance: None,
+        held_weapon: None,
     };
     let report_json = json_bytes(&report, "report")?;
     let summary = M6MaterializationSummaryV1 {
@@ -3702,6 +3789,7 @@ fn build_m6_model_package_with_ingest_v4(
         None,
         None,
         None,
+        None,
     )? {
         M6BuildArtifactV2::LegacyBundle(built) => Ok(built.artifact),
         M6BuildArtifactV2::ProceduralProduct(_) => unreachable!("legacy output mode is exact"),
@@ -3713,6 +3801,14 @@ struct M6ModelPackageInternalV5 {
     animation_studio_materialization: Option<MaterializedCreatureAnimationAuthoringV2>,
     animation_studio_rig: Option<AnimationStudioRigV1>,
     writer_readback: crate::mdl::InspectionReport,
+}
+
+struct HeldWeaponBuildStateV1 {
+    source_sha256: String,
+    bake: HeldWeaponBakeReportV1,
+    texture_resref: String,
+    texture: Option<TgaArtifactV1>,
+    material_slots: Vec<u32>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3736,6 +3832,7 @@ fn build_m6_model_package_with_ingest_v5(
     project_identity: Option<&ProjectBuildIdentityV1>,
     animation_authoring: Option<&CreatureAnimationAuthoringV1>,
     animation_studio_authoring: Option<(&CreatureAnimationAuthoringV2, &AnimationStudioDocumentV1)>,
+    held_weapon: Option<(&[u8], &HeldWeaponAttachmentV1)>,
 ) -> Result<M6BuildArtifactV2, M6PipelineErrorV1> {
     validate_procedural_creature_product_identity_v2(product_identity)?;
     if build_options.schema_version != 1 {
@@ -3756,7 +3853,11 @@ fn build_m6_model_package_with_ingest_v5(
         M6GeometryPolicyV1::P100kSegmentedExperiment => p100k_experiment_glb_limits_v1(),
         M6GeometryPolicyV1::P300kSegmentedExperiment => p300k_experiment_glb_limits_v1(),
     };
-    let degeneracy_policy = triangle_degeneracy_policy_for_build_v1(output, geometry_policy);
+    let degeneracy_policy = if animation_studio_authoring.is_some() {
+        TriangleDegeneracyPolicyV1::ExactFiniteNonCollinear
+    } else {
+        triangle_degeneracy_policy_for_build_v1(output, geometry_policy)
+    };
     let animated = match (geometry_policy, degeneracy_policy) {
         (
             M6GeometryPolicyV1::ProductBudget,
@@ -3830,19 +3931,22 @@ fn build_m6_model_package_with_ingest_v5(
         let mut source_mapping = mapping.clone();
         apply_authored_h1_source_names_v1(&ingest, &mut source_mapping, false);
         Some(
-            convert_profile_a_with_animations_v1(&ingest, rig, profile_options, &source_mapping)
-                .map_err(|error| {
-                    pipeline_error("animation", error.code, error.path, error.message)
-                })?
-                .animations
-                .ok_or_else(|| {
-                    pipeline_error(
-                        "animation",
-                        "M6-ANIMATION-MISSING",
-                        "conversion.animations",
-                        "Animation Studio source projection has no mapped animations",
-                    )
-                })?,
+            convert_profile_a_with_animations_exact_v1(
+                &ingest,
+                rig,
+                profile_options,
+                &source_mapping,
+            )
+            .map_err(|error| pipeline_error("animation", error.code, error.path, error.message))?
+            .animations
+            .ok_or_else(|| {
+                pipeline_error(
+                    "animation",
+                    "M6-ANIMATION-MISSING",
+                    "conversion.animations",
+                    "Animation Studio source projection has no mapped animations",
+                )
+            })?,
         )
     } else {
         None
@@ -3853,6 +3957,140 @@ fn build_m6_model_package_with_ingest_v5(
         &build_options.skin_accessory_stabilization,
     )
     .map_err(|error| pipeline_error("profile", error.code, error.path, error.message))?;
+    let held_weapon_build = if let Some((weapon_glb, attachment)) = held_weapon {
+        let inspected_source = inspect_held_weapon_source_v1(
+            &attachment.source.filename,
+            weapon_glb,
+            &attachment.source.provenance,
+        )
+        .map_err(|message| {
+            pipeline_error(
+                "held_weapon",
+                "M2A-HELD-WEAPON-SOURCE",
+                "heldWeapon.source",
+                message,
+            )
+        })?;
+        if inspected_source != attachment.source {
+            return Err(pipeline_error(
+                "held_weapon",
+                "M2A-HELD-WEAPON-IDENTITY",
+                "heldWeapon.source",
+                "reconnected weapon bytes or metadata do not match the exact authored attachment",
+            ));
+        }
+        if inspected_source.texture_count > 1 {
+            return Err(pipeline_error(
+                "held_weapon",
+                "M2A-HELD-WEAPON-TEXTURE-COUNT",
+                "heldWeapon.source.textureCount",
+                "the V1 held-weapon product route supports zero or one embedded texture and never drops additional textures",
+            ));
+        }
+        let weapon_ingest = ingest_glb(weapon_glb, &glb_limits).map_err(|error| {
+            pipeline_error(
+                "held_weapon",
+                error.code,
+                error
+                    .json_path
+                    .unwrap_or_else(|| "heldWeapon.glb".to_owned()),
+                error.message,
+            )
+        })?;
+        let weapon_rig =
+            derive_meshy_m0_static_rigid_profile_v1(&weapon_ingest).map_err(|error| {
+                pipeline_error("held_weapon", error.code, error.path, error.message)
+            })?;
+        let weapon_conversion = convert_profile_a(
+            &weapon_ingest,
+            &weapon_rig,
+            &static_placeable_profile_a_options_v1(),
+        )
+        .map_err(|error| pipeline_error("held_weapon", error.code, error.path, error.message))?;
+        if !weapon_conversion.report.conversion_eligible {
+            return Err(pipeline_error(
+                "held_weapon",
+                "M2A-HELD-WEAPON-CONVERSION",
+                "heldWeapon.conversion",
+                "held weapon did not pass the shared rigid Profile A conversion gates",
+            ));
+        }
+        let weapon_model = weapon_conversion.creature.ok_or_else(|| {
+            pipeline_error(
+                "held_weapon",
+                "M2A-HELD-WEAPON-CONVERSION",
+                "heldWeapon.conversion.creature",
+                "eligible held-weapon conversion has no rigid model output",
+            )
+        })?;
+        let weapon_texture = if inspected_source.texture_count == 1 {
+            let selection = resolve_base_color_image_index_v1(&weapon_ingest, &weapon_model)?;
+            let image = decode_embedded_image_to_tga_v1(
+                weapon_glb,
+                selection.source_image_index,
+                &glb_limits,
+                &EmbeddedImageDecodeLimitsV1::default(),
+            )
+            .map_err(|error| {
+                pipeline_error(
+                    "held_weapon",
+                    error.code,
+                    error
+                        .json_path
+                        .unwrap_or_else(|| "heldWeapon.images".to_owned()),
+                    error.message,
+                )
+            })?;
+            let cleanup = cleanup_texture_artifacts_v1(
+                &image,
+                &TextureArtifactCleanupOptionsV1 {
+                    schema_version: 1,
+                    enabled: build_options.texture_artifact_cleanup,
+                },
+            )
+            .map_err(|error| {
+                pipeline_error("held_weapon", error.code, error.path, error.message)
+            })?;
+            Some(
+                write_tga_v1(&cleanup.image, &TgaWriterOptionsV1::default()).map_err(|error| {
+                    pipeline_error("held_weapon", error.code, error.path, error.message)
+                })?,
+            )
+        } else {
+            None
+        };
+        let bake = bake_held_weapon_attachment_v1(&creature, &weapon_model, attachment).map_err(
+            |message| {
+                pipeline_error(
+                    "held_weapon",
+                    "M2A-HELD-WEAPON-BAKE",
+                    "heldWeapon.attachment",
+                    message,
+                )
+            },
+        )?;
+        let material_slots = bake.model.segments[bake.segment_count_before..]
+            .iter()
+            .map(|segment| segment.material_slot)
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let texture_resref = if weapon_texture.is_some() {
+            held_weapon_texture_resref_v1(&product_identity.texture_resref)?
+        } else {
+            product_identity.texture_resref.clone()
+        };
+        creature = bake.model.clone();
+        Some(HeldWeaponBuildStateV1 {
+            source_sha256: inspected_source.sha256,
+            bake,
+            texture_resref,
+            texture: weapon_texture,
+            material_slots,
+        })
+    } else {
+        None
+    };
     let procedural_rig = (animation_profile
         == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1)
         .then(|| procedural_humanoid_rig_from_creature_v1(&creature))
@@ -4077,6 +4315,18 @@ fn build_m6_model_package_with_ingest_v5(
     let tga = write_tga_v1(&texture_cleanup.image, &TgaWriterOptionsV1::default())
         .map_err(|error| pipeline_error("texture", error.code, error.path, error.message))?;
 
+    let mut texture_bindings = vec![MdlMaterialTextureBindingV1 {
+        material_slot: texture_selection.material_slot,
+        resref: product_identity.texture_resref.clone(),
+    }];
+    if let Some(weapon) = held_weapon_build.as_ref() {
+        texture_bindings.extend(weapon.material_slots.iter().copied().map(|material_slot| {
+            MdlMaterialTextureBindingV1 {
+                material_slot,
+                resref: weapon.texture_resref.clone(),
+            }
+        }));
+    }
     let writer_options = MdlWriterOptionsV1 {
         schema_version: 1,
         format_profile: if animation_profile
@@ -4089,10 +4339,7 @@ fn build_m6_model_package_with_ingest_v5(
         state_projection_profile: MdlStateProjectionProfileV1::RetailDirectCreatureType5DummyV1,
         state_projection_provenance: None,
         model_resource_resref: product_identity.model_resref.clone(),
-        diffuse_texture_resref_by_material_slot: vec![MdlMaterialTextureBindingV1 {
-            material_slot: texture_selection.material_slot,
-            resref: product_identity.texture_resref.clone(),
-        }],
+        diffuse_texture_resref_by_material_slot: texture_bindings,
     };
     let mdl = match degeneracy_policy {
         TriangleDegeneracyPolicyV1::LegacyAbsoluteEpsilon => {
@@ -4229,7 +4476,7 @@ fn build_m6_model_package_with_ingest_v5(
     )
     .map_err(|error| pipeline_error("appearance", error.code, error.path, error.message))?;
 
-    let resources = vec![
+    let mut resources = vec![
         HakResourceInputV1 {
             resref: product_identity.model_resref.clone(),
             resource_type: 2002,
@@ -4246,6 +4493,15 @@ fn build_m6_model_package_with_ingest_v5(
             payload: appearance.payload.clone(),
         },
     ];
+    if let Some(weapon) = held_weapon_build.as_ref()
+        && let Some(texture) = weapon.texture.as_ref()
+    {
+        resources.push(HakResourceInputV1 {
+            resref: weapon.texture_resref.clone(),
+            resource_type: 3,
+            payload: texture.payload.clone(),
+        });
+    }
     let package = write_model_package_v1(&resources, &HakWriterOptionsV1::default())
         .map_err(|error| pipeline_error("package", error.code, error.path, error.message))?;
 
@@ -4271,6 +4527,57 @@ fn build_m6_model_package_with_ingest_v5(
         .to_vec();
     let hak = package.hak.payload.clone();
     let package_manifest = package.manifest;
+    let held_weapon_readback = held_weapon_build
+        .as_ref()
+        .map(|weapon| {
+            let attachment_node_name = format!("held_weapon_{}", weapon.bake.attachment_node_id);
+            let attachment_node_present_in_binary_mdl = mdl
+                .inspection
+                .node_tree
+                .roots
+                .iter()
+                .any(|root| node_tree_contains_name_v1(root, &attachment_node_name));
+            let combined_triangle_count_match =
+                mdl.report.projection.triangle_count == weapon.bake.target_triangle_count_after;
+            let expected_texture = weapon
+                .texture
+                .as_ref()
+                .map(|artifact| artifact.payload.as_slice())
+                .unwrap_or(tga.payload.as_slice());
+            let packaged_texture = archive
+                .find(&weapon.texture_resref, 3)
+                .map_err(map_erf_readback)?;
+            let texture_payload_match_in_hak = packaged_texture == expected_texture;
+            if !attachment_node_present_in_binary_mdl
+                || !combined_triangle_count_match
+                || !texture_payload_match_in_hak
+            {
+                return Err(pipeline_error(
+                    "held_weapon",
+                    "M2A-HELD-WEAPON-READBACK",
+                    "heldWeapon.readback",
+                    format!(
+                        "final held-weapon readback mismatch (node={attachment_node_present_in_binary_mdl}, triangles={combined_triangle_count_match}, texture={texture_payload_match_in_hak})"
+                    ),
+                ));
+            }
+            Ok(HeldWeaponProductReadbackV1 {
+                schema_version: 1,
+                source_sha256: weapon.source_sha256.clone(),
+                attachment_fingerprint_sha256: weapon
+                    .bake
+                    .attachment_fingerprint_sha256
+                    .clone(),
+                texture_resref: weapon.texture_resref.clone(),
+                texture: identity(packaged_texture),
+                bake: weapon.bake.clone(),
+                attachment_node_present_in_binary_mdl,
+                combined_triangle_count_match,
+                texture_payload_match_in_hak,
+                status: "MATCH".to_owned(),
+            })
+        })
+        .transpose()?;
 
     let output_segment = creature.segments.first().ok_or_else(|| {
         pipeline_error(
@@ -4537,6 +4844,7 @@ fn build_m6_model_package_with_ingest_v5(
         m0_runtime_fixture_contract: None,
         animation_authoring: resolved_animation_authoring.clone(),
         authored_animation_conformance: authored_animation_conformance.clone(),
+        held_weapon: held_weapon_readback,
     };
     let report_json = json_bytes(&report, "report")?;
     let summary = M6MaterializationSummaryV1 {
@@ -4566,7 +4874,7 @@ fn build_m6_model_package_with_ingest_v5(
         m0_runtime_fixture_contract: None,
     };
     let summary_json = json_bytes(&summary, "summary")?;
-    let generated_files = vec![
+    let mut generated_file_inputs = vec![
         ("generated/source.glb".to_owned(), source_glb),
         (
             format!("generated/{}.mdl", product_identity.model_resref),
@@ -4593,17 +4901,26 @@ fn build_m6_model_package_with_ingest_v5(
             report_json.as_slice(),
         ),
         ("reports/summary.json".to_owned(), summary_json.as_slice()),
-    ]
-    .into_iter()
-    .map(|(relative_path, bytes)| {
-        let identity = identity(bytes);
-        M6GeneratedFileV1 {
-            relative_path,
-            byte_length: identity.byte_length,
-            sha256: identity.sha256,
-        }
-    })
-    .collect();
+    ];
+    if let Some(weapon) = held_weapon_build.as_ref()
+        && let Some(texture) = weapon.texture.as_ref()
+    {
+        generated_file_inputs.push((
+            format!("generated/{}.tga", weapon.texture_resref),
+            texture.payload.as_slice(),
+        ));
+    }
+    let generated_files = generated_file_inputs
+        .into_iter()
+        .map(|(relative_path, bytes)| {
+            let identity = identity(bytes);
+            M6GeneratedFileV1 {
+                relative_path,
+                byte_length: identity.byte_length,
+                sha256: identity.sha256,
+            }
+        })
+        .collect();
     let manifest = M6MaterializationManifestV1 {
         schema_version: 1,
         status: "M6_MODEL_PACKAGE_MATERIALIZED".to_owned(),
@@ -5915,6 +6232,216 @@ pub fn write_procedural_creature_proof_packet_with_identity_v1(
     )
 }
 
+/// Writes an immutable Animation Studio V5 demo packet after independently
+/// re-reading the HAK, binary MDL and active-monster MOD identities. Authored
+/// library clips may extend the native 42-state inventory, but every native
+/// state must remain present and the V5 authored readback must be `MATCH`.
+pub fn write_animation_studio_v5_demo_packet_with_identity_v1(
+    output_dir: &Path,
+    artifact: &M6ModelPackageArtifactV5,
+    identity: &ProceduralCreaturePackageIdentityV1,
+) -> Result<(), M6PipelineErrorV1> {
+    let archive = ErfArchive::parse(&artifact.hak).map_err(|error| {
+        pipeline_error(
+            "output",
+            error.code,
+            format!("artifact.hak@{}", error.offset),
+            error.context,
+        )
+    })?;
+    for (resref, resource_type, expected) in [
+        (
+            identity.model_resref.as_str(),
+            2002,
+            artifact.model.as_slice(),
+        ),
+        (
+            identity.texture_resref.as_str(),
+            3,
+            artifact.texture.as_slice(),
+        ),
+        ("appearance", 2017, artifact.appearance_two_da.as_slice()),
+    ] {
+        let actual = archive.find(resref, resource_type).map_err(|error| {
+            pipeline_error(
+                "output",
+                error.code,
+                format!("artifact.hak.{resref}"),
+                error.context,
+            )
+        })?;
+        if actual != expected {
+            return Err(pipeline_error(
+                "output",
+                "M2A-ANIMATION-STUDIO-DEMO-HAK-RESOURCE-DIFF",
+                format!("artifact.hak.{resref}"),
+                "the HAK resource does not equal the independently held V5 payload",
+            ));
+        }
+    }
+
+    if artifact.animation_studio_readback.status != AnimationStudioReadbackStatusV1::Match {
+        return Err(pipeline_error(
+            "output",
+            "M2A-ANIMATION-STUDIO-DEMO-READBACK-MISMATCH",
+            "artifact.animationStudioReadback",
+            "a V5 demo packet requires an exact authored-animation MATCH readback",
+        ));
+    }
+    let model = inspect_binary_mdl(&artifact.model).map_err(|error| {
+        pipeline_error(
+            "output",
+            error.code,
+            format!("artifact.model@{}", error.offset),
+            error.context,
+        )
+    })?;
+    let model_root = model.node_tree.roots.first().ok_or_else(|| {
+        pipeline_error(
+            "output",
+            "M2A-ANIMATION-STUDIO-DEMO-MODEL-ROOT-MISSING",
+            "artifact.model.nodeTree.roots",
+            "the V5 model must contain one dedicated Aurora root",
+        )
+    })?;
+    let animation_roots_match = model.animations.iter().all(|animation| {
+        animation.animation_type == 5
+            && animation.node_tree.roots.len() == 1
+            && animation.node_tree.roots[0].name == identity.model_resref
+            && animation.node_tree.roots[0].number == 0
+    });
+    let native_inventory_complete = FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1.iter().all(|name| {
+        model
+            .animations
+            .iter()
+            .filter(|animation| animation.name.eq_ignore_ascii_case(name))
+            .count()
+            == 1
+    });
+    if model_root.name != identity.model_resref
+        || model_root.number != 0
+        || !native_inventory_complete
+        || !animation_roots_match
+    {
+        return Err(pipeline_error(
+            "output",
+            "M2A-ANIMATION-STUDIO-DEMO-MODEL-IDENTITY-DIFF",
+            "artifact.model",
+            "model root, all native states and all type-5 animation roots must match the caller-owned identity",
+        ));
+    }
+
+    let module = inspect_binary_creature_profile_matrix_module_v2(&artifact.proof_module).map_err(
+        |error| {
+            pipeline_error(
+                "output",
+                error.code,
+                format!("artifact.proofModule.{}", error.path),
+                error.message,
+            )
+        },
+    )?;
+    if module.scene.module_resref != identity.module.module_resref
+        || module.scene.area_resref != identity.module.area_resref
+        || module.scene.ordered_hak_resrefs != [identity.module.hak_resref.clone()]
+        || module.fixtures.len() != 1
+        || module.fixtures[0].runtime_profile
+            != BinaryCreatureRuntimeProfileV2::ActiveMonsterBaseline
+        || module.scene.fixtures.len() != 1
+        || module.scene.fixtures[0].template_resref != identity.creature_resref
+        || module.scene.fixtures[0].appearance_row
+            != artifact.report.base.appearance.appended_row_index
+    {
+        return Err(pipeline_error(
+            "output",
+            "M2A-ANIMATION-STUDIO-DEMO-MODULE-IDENTITY-DIFF",
+            "artifact.proofModule",
+            "MOD, Area, ordered HAK, hostile runtime profile, creature and appearance identities must match the V5 artifact",
+        ));
+    }
+
+    if output_dir.exists() {
+        return Err(pipeline_error(
+            "output",
+            "M6-OUTPUT-EXISTS",
+            "outputDir",
+            "output directory must not already exist",
+        ));
+    }
+    let parent = output_dir.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)
+        .map_err(|error| io_error("output", "M6-OUTPUT-CREATE-FAILED", parent, error))?;
+    let name = output_dir
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("animation-studio-v5-demo");
+    let staging = parent.join(format!(".{name}.m2a-stage-{}", std::process::id()));
+    if staging.exists() {
+        return Err(pipeline_error(
+            "output",
+            "M6-STAGING-EXISTS",
+            logical_path(&staging),
+            "pre-existing staging directory is never deleted",
+        ));
+    }
+    let write_result = (|| {
+        let generated = staging.join("generated");
+        let reports = staging.join("reports");
+        for path in [&generated, &reports, &staging.join("live")] {
+            fs::create_dir_all(path)
+                .map_err(|error| io_error("output", "M6-OUTPUT-CREATE-FAILED", path, error))?;
+        }
+        for (path, bytes) in [
+            (generated.join("source.glb"), artifact.source_glb.as_slice()),
+            (
+                generated.join(format!("{}.mdl", identity.model_resref)),
+                artifact.model.as_slice(),
+            ),
+            (
+                generated.join(format!("{}.tga", identity.texture_resref)),
+                artifact.texture.as_slice(),
+            ),
+            (
+                generated.join("appearance.2da"),
+                artifact.appearance_two_da.as_slice(),
+            ),
+            (
+                generated.join(format!("{}.hak", identity.module.hak_resref)),
+                artifact.hak.as_slice(),
+            ),
+            (
+                generated.join(format!("{}.mod", identity.module.module_resref)),
+                artifact.proof_module.as_slice(),
+            ),
+            (
+                reports.join("materialization-report.json"),
+                artifact.report_json.as_slice(),
+            ),
+            (
+                reports.join("summary.json"),
+                artifact.summary_json.as_slice(),
+            ),
+            (
+                reports.join(M6_MANIFEST_FILE_NAME),
+                artifact.manifest_json.as_slice(),
+            ),
+        ] {
+            fs::write(&path, bytes)
+                .map_err(|error| io_error("output", "M6-OUTPUT-WRITE-FAILED", &path, error))?;
+        }
+        Ok::<(), M6PipelineErrorV1>(())
+    })();
+    if let Err(error) = write_result {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(error);
+    }
+    fs::rename(&staging, output_dir).map_err(|error| {
+        let _ = fs::remove_dir_all(&staging);
+        io_error("output", "M6-OUTPUT-RENAME-FAILED", output_dir, error)
+    })?;
+    Ok(())
+}
+
 /// Writes an immutable owner-proof packet around the active product V2
 /// artifact and its independently built demo V2 module. The product bytes are
 /// never rebuilt, and the independently supplied source must match the
@@ -6371,6 +6898,33 @@ fn identity(bytes: &[u8]) -> M6ByteIdentityV1 {
         byte_length: bytes.len() as u64,
         sha256: hex_sha256(bytes),
     }
+}
+
+fn held_weapon_texture_resref_v1(base_texture_resref: &str) -> Result<String, M6PipelineErrorV1> {
+    let prefix = base_texture_resref.chars().take(13).collect::<String>();
+    let resref = format!("{prefix}_w1");
+    if resref.len() > 16
+        || resref == base_texture_resref
+        || !resref
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    {
+        return Err(pipeline_error(
+            "held_weapon",
+            "M2A-HELD-WEAPON-TEXTURE-RESREF",
+            "productIdentity.textureResref",
+            "could not derive a distinct <=16 character weapon texture resref",
+        ));
+    }
+    Ok(resref)
+}
+
+fn node_tree_contains_name_v1(node: &NodeReport, expected_name: &str) -> bool {
+    node.name == expected_name
+        || node
+            .children
+            .iter()
+            .any(|child| node_tree_contains_name_v1(child, expected_name))
 }
 
 fn json_bytes<T: Serialize>(value: &T, path: &str) -> Result<Vec<u8>, M6PipelineErrorV1> {

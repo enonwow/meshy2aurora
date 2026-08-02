@@ -61,4 +61,32 @@ describe("AnimationPlaybackRuntime", () => {
     expect(runtime.stop()).toMatchObject({ playing: false, timeSeconds: 0, playbackRate: 2 });
     expect(() => runtime.setPlaybackRate(0)).toThrow(/positive finite/);
   });
+
+  it("replaces authored clips without replacing the model root", () => {
+    const root = new THREE.Object3D();
+    const first = new THREE.AnimationClip("first", 1, [
+      new THREE.NumberKeyframeTrack(".position[x]", [0, 1], [0, 1]),
+    ]);
+    const second = new THREE.AnimationClip("second", 2, [
+      new THREE.NumberKeyframeTrack(".position[x]", [0, 2], [1, 3]),
+    ]);
+    const runtime = new AnimationPlaybackRuntime(root, [first]);
+
+    runtime.selectClip(0);
+    runtime.seek(0.75);
+    expect(runtime.replaceClips([second])).toMatchObject({
+      selectedClipIndex: null,
+      playing: false,
+      timeSeconds: 0,
+    });
+    expect(inventoryAnimationClips(runtime.clipsSnapshot())).toEqual([{
+      index: 0,
+      name: "second",
+      durationSeconds: 2,
+    }]);
+    expect(runtime.selectClip(0)).toMatchObject({
+      selectedClipIndex: 0,
+      durationSeconds: 2,
+    });
+  });
 });

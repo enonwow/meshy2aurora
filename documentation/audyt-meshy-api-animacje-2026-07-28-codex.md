@@ -89,10 +89,10 @@ Udokumentowane granice:
   moze sie nie udac;
 - pose estimation moze zakonczyc sie `422`.
 
-Limit 300 000 jest granica Meshy API. Nie jest budzetem produktu
-Meshy2Aurora. Projekt nadal ma wspolny limit:
+Limit 300 000 jest granica Meshy API. Od decyzji wlasciciela z 2026-07-29
+wspolny budzet produktu ma te sama wartosc, ale pozostaje osobnym kontraktem:
 
-`AURORA_MODEL_TRIANGLE_BUDGET_V1 = 20_000`
+`AURORA_MODEL_TRIANGLE_BUDGET_V1 = 300_000`
 
 ### 3.2 Odczyt i wynik
 
@@ -409,15 +409,16 @@ jednym task ID per etap. Brakuje:
 Wymagane: `MeshyAnimationArtifactManifestV1` bez signed URL, z osobna rola dla
 rigged base i kazdego klipu.
 
-#### P0-8: domyslny target przekracza produktowy budzet
+#### P0-8: domyslny target przekraczal dawny produktowy budzet — zamkniete
 
 **Fakt repo:** domyslne `targetPolycount` i UI `BALANCED` prowadza do 30 000.
 
-**Fakt decyzji wlasciciela:** wspolny budzet render-model wynosi 20 000
-trojkatow, a wartosc 20 000 jest akceptowana.
+**Aktualna decyzja wlasciciela z 2026-07-29:** wspolny budzet render-model
+wynosi 300 000 trojkatow, a wartosc 300 000 jest akceptowana.
 
-Wymagane: H1/animation route musi generowac najwyzej 20 000 i pokazac ten limit
-w review. Meshy limit 300 000 nie moze zastapic budzetu produktu.
+Zaimplementowane: H1/animation route i Review dopuszczaja najwyzej 300 000.
+Limit input task Meshy i limit produktu maja obecnie ta sama liczbe, ale sa
+sprawdzane jako dwa niezalezne kontrakty.
 
 ### 8.3 Luki P1
 
@@ -518,7 +519,7 @@ Zasady:
 1. Dodac tracked, kuratorowany `MeshyAnimationCatalogSnapshotV1` z data, URL,
    normalizowanym SHA-256 i wybranymi akcjami.
 2. Zastapic pole numeryczne selektorem akcji.
-3. Dodac prawdziwy H1 preflight i limit 20 000.
+3. Dodac prawdziwy H1 preflight i aktualny limit 300 000.
 4. Wprowadzic `AnimationSelectionV1[]` i dynamiczny kalkulator
    `base + rig + 3*N`.
 5. Rozszerzyc fake transport o rigged base, optional basic clips, wiele
@@ -539,7 +540,7 @@ szkieletu albo mappingu Aurory.
 
 ### Faza C - jeden owner-approved real lineage
 
-1. Dokladnie jeden teksturowany humanoid w A/T pose, <= 20 000 trojkatow.
+1. Dokladnie jeden teksturowany humanoid w A/T pose, <= 300 000 trojkatow.
 2. Jeden Rigging task; natychmiastowy download base i basic clips.
 3. Jeden `Idle` (`action_id=0`).
 4. Offline GLB identity/skeleton/motion report.
@@ -562,24 +563,26 @@ Pelne 42 stanow jest oddzielna decyzja kosztowa i semantyczna.
 
 ## 12. Definition of Done dla integracji Meshy Animation
 
-- [ ] surowy `action_id` nie jest wpisywany recznie;
-- [ ] snapshot katalogu ma date, URL i hash;
-- [ ] H1 preflight jest rzeczywistym potwierdzeniem;
-- [ ] H1 nie przekracza 20 000 trojkatow;
-- [ ] jeden rig moze miec wiele action taskow;
-- [ ] rigged base i optional basic clips sa zachowane;
-- [ ] koszt jest liczony dla dokladnej listy klipow;
-- [ ] kazdy create zapisuje task ID natychmiast;
-- [ ] restart Bridge pozwala odzyskac Rig/Animation taski;
-- [ ] `CANCELED` jest terminalne;
-- [ ] lokalny stop nie udaje zdalnego anulowania;
-- [ ] provenance zawiera action/catalog/API/skeleton/clip identity;
-- [ ] wszystkie GLB maja own readback i zgodny szkielet;
-- [ ] mapping Meshy -> Aurora jest jawny i wersjonowany;
-- [ ] partial failure nie usuwa udanych artefaktow;
-- [ ] fake transport i dummy-key contract sa zielone;
-- [ ] platny E2E wymaga osobnej, jawnej zgody wlasciciela;
-- [ ] finalny wizualny proof wykonuje wlasciciel.
+- [x] surowy `action_id` nie jest wpisywany recznie;
+- [x] snapshot katalogu ma date, URL i hash;
+- [x] H1 preflight jest rzeczywistym potwierdzeniem;
+- [x] H1 nie przekracza limitu input task Meshy ani produktu 300 000 trojkatow;
+- [x] jeden rig moze miec wiele action taskow;
+- [x] rigged base i optional basic clips sa zachowane;
+- [x] koszt jest liczony dla dokladnej listy klipow;
+- [x] kazdy create zapisuje task ID natychmiast;
+- [x] restart Bridge pozwala odzyskac Rig/Animation taski;
+- [x] `CANCELED` jest terminalne;
+- [x] lokalny stop nie udaje zdalnego anulowania;
+- [x] provenance zawiera action/catalog/API/skeleton/clip identity;
+- [x] wszystkie pobrane GLB maja own readback, a H1 wymaga zgodnego szkieletu;
+- [x] mapping Meshy -> Aurora jest jawny i wersjonowany;
+- [x] partial failure nie usuwa udanych artefaktow;
+- [x] fake transport jest zielony;
+- [-] zewnetrzny dummy-key contract pozostaje opt-in i nie byl uruchamiany
+  podczas implementacji offline;
+- [x] platny E2E wymaga osobnej, jawnej zgody wlasciciela;
+- [x] finalny wizualny proof wykonuje wlasciciel.
 
 ## 13. Odrzucone wnioski
 
@@ -593,8 +596,8 @@ Pelne 42 stanow jest oddzielna decyzja kosztowa i semantyczna.
   kontrakt profilu A.
 - "Cancel w Studio anuluje koszt Meshy" - odrzucone; obecny kod tylko zatrzymuje
   lokalne sledzenie.
-- "Limit rigu 300 000 jest budzetem produktu" - odrzucone; produkt ma wspolny
-  limit 20 000.
+- "Ta sama wartosc 300 000 oznacza jeden kontrakt" - odrzucone; provider input
+  task i wspolny budzet produktu maja odrebne znaczenie oraz bramki.
 - "Nazwa presetu wystarcza do mapowania stanu NWN" - odrzucone; wymagany jest
   readback ruchu, szkieletu, root motion i terminalnej pozy.
 

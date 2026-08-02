@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ANIMATION_STUDIO_PRODUCT_LIMITS_V1,
   type AuthoredAnimationClipV1,
@@ -56,6 +56,16 @@ export function AnimationDopeSheet({
     offsetSeconds: 0,
   });
   const timelineViewportRef = useRef<HTMLDivElement>(null);
+  const selectKeyRef = useRef(onSelectKey);
+  const selectEventRef = useRef(onSelectEvent);
+  selectKeyRef.current = onSelectKey;
+  selectEventRef.current = onSelectEvent;
+  const selectKey = useCallback((id: string, additive: boolean) => {
+    selectKeyRef.current(id, additive);
+  }, []);
+  const selectEvent = useCallback((id: string) => {
+    selectEventRef.current(id);
+  }, []);
   useEffect(() => {
     setRangeStart(0);
     setRangeEnd(clip.lengthSeconds);
@@ -70,13 +80,12 @@ export function AnimationDopeSheet({
         view.offsetSeconds * view.pixelsPerSecond;
     }
   }, [view]);
-  const keyTimes = [
+  const keyTimes = useMemo(() => [
     ...new Set(clip.tracks.flatMap((track) => (
       track.keyframes.map(({ timeSeconds }) => timeSeconds)
     ))),
-  ].sort((left, right) => left - right);
-  const markerProjection = useMemo(() => {
-    const candidates = [
+  ].sort((left, right) => left - right), [clip.tracks]);
+  const markerCandidates = useMemo(() => [
       ...clip.tracks.flatMap((track) => track.keyframes.map((keyframe) => ({
         id: animationKeySelectionIdV1(track.id, keyframe.id),
         kind: "KEY" as const,
@@ -87,20 +96,24 @@ export function AnimationDopeSheet({
         kind: "EVENT" as const,
         timeSeconds: event.timeSeconds,
       })),
-    ];
-    const rendered = candidates
-      .sort((left, right) => {
-        const leftSelected = left.kind === "KEY" && selectedKeyIds.has(left.id);
-        const rightSelected = right.kind === "KEY" && selectedKeyIds.has(right.id);
-        if (leftSelected !== rightSelected) return leftSelected ? -1 : 1;
-        return Math.abs(left.timeSeconds - playheadSeconds)
-          - Math.abs(right.timeSeconds - playheadSeconds)
-          || left.timeSeconds - right.timeSeconds
-          || left.id.localeCompare(right.id);
-      })
-      .slice(0, ANIMATION_STUDIO_PRODUCT_LIMITS_V1.maxTimelineDomMarkers);
+    ].sort((left, right) => (
+      left.timeSeconds - right.timeSeconds || left.id.localeCompare(right.id)
+    )), [clip.events, clip.tracks]);
+  const markerWindowAnchor = markerCandidates.length
+    <= ANIMATION_STUDIO_PRODUCT_LIMITS_V1.maxTimelineDomMarkers
+    ? -1
+    : playing
+      ? Math.floor(playheadSeconds * 2) / 2
+      : playheadSeconds;
+  const markerProjection = useMemo(() => {
+    const rendered = projectTimelineMarkersV1(
+      markerCandidates,
+      selectedKeyIds,
+      markerWindowAnchor,
+      ANIMATION_STUDIO_PRODUCT_LIMITS_V1.maxTimelineDomMarkers,
+    );
     return {
-      total: candidates.length,
+      total: markerCandidates.length,
       rendered: rendered.length,
       keyIds: new Set(
         rendered.filter(({ kind }) => kind === "KEY").map(({ id }) => id),
@@ -109,7 +122,7 @@ export function AnimationDopeSheet({
         rendered.filter(({ kind }) => kind === "EVENT").map(({ id }) => id),
       ),
     };
-  }, [clip.events, clip.tracks, playheadSeconds, selectedKeyIds]);
+  }, [markerCandidates, markerWindowAnchor, selectedKeyIds]);
   const visibleTracks = useMemo(() => clip.tracks.map((track) => ({
     ...track,
     keyframes: track.keyframes.filter(({ id }) => markerProjection.keyIds.has(
@@ -334,12 +347,13 @@ export function AnimationDopeSheet({
           <div className="animation-dope-sheet__grid" role="grid" aria-label="Animation keyframes">
             <div
               className="animation-playhead"
+              data-playing={playing}
               style={{
-                left: clip.lengthSeconds <= 0
-                  ? "10.5rem"
-                  : `calc(10.5rem + ${
-                    playheadSeconds / clip.lengthSeconds * timeAreaWidth
-                  }px)`,
+                left: "10.5rem",
+                transform: `translateX(${clip.lengthSeconds <= 0
+                  ? 0
+                  : playheadSeconds / clip.lengthSeconds * timeAreaWidth}px)`,
+                transition: playing ? "transform 80ms linear" : "none",
               }}
               aria-hidden="true"
             />
@@ -350,13 +364,13 @@ export function AnimationDopeSheet({
                 rig={rig}
                 lengthSeconds={clip.lengthSeconds}
                 selectedKeyIds={selectedKeyIds}
-                onSelectKey={onSelectKey}
+                onSelectKey={selectKey}
               />
             ))}
             <AnimationEventTrack
               events={visibleEvents}
               lengthSeconds={clip.lengthSeconds}
-              onSelect={onSelectEvent}
+              onSelect={selectEvent}
             />
           </div>
         </div>
@@ -378,6 +392,53 @@ export function AnimationDopeSheet({
       />
     </section>
   );
+}
+
+interface TimelineMarkerV1 {
+  readonly id: string;
+  readonly kind: "KEY" | "EVENT";
+  readonly timeSeconds: number;
+}
+
+export function projectTimelineMarkersV1(
+  candidates: readonly TimelineMarkerV1[],
+  selectedKeyIds: ReadonlySet<string>,
+  anchorSeconds: number,
+  limit: number,
+): readonly TimelineMarkerV1[] {
+  if (candidates.length <= limit) return candidates;
+  const selected = candidates.filter(({ id, kind }) => (
+    kind === "KEY" && selectedKeyIds.has(id)
+  )).slice(0, limit);
+  if (selected.length >= limit) return selected;
+  const selectedIds = new Set(selected.map(({ id }) => id));
+  let low = 0;
+  let high = candidates.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if ((candidates[middle]?.timeSeconds ?? Infinity) < anchorSeconds) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+  let left = low - 1;
+  let right = low;
+  const rendered = [...selected];
+  while (rendered.length < limit && (left >= 0 || right < candidates.length)) {
+    const leftCandidate = candidates[left];
+    const rightCandidate = candidates[right];
+    const takeLeft = leftCandidate !== undefined && (
+      rightCandidate === undefined
+      || anchorSeconds - leftCandidate.timeSeconds
+        <= rightCandidate.timeSeconds - anchorSeconds
+    );
+    const candidate = takeLeft ? leftCandidate : rightCandidate;
+    if (takeLeft) left -= 1;
+    else right += 1;
+    if (candidate && !selectedIds.has(candidate.id)) rendered.push(candidate);
+  }
+  return rendered;
 }
 
 function isEditableTargetV1(target: EventTarget | null) {

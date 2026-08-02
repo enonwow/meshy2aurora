@@ -89,6 +89,20 @@
   gap: .5rem;
 }
 
+.custom-animation-attack-demo {
+  display: grid;
+  gap: .45rem;
+  padding: .7rem;
+  border: 1px solid rgba(163, 230, 53, .28);
+  border-radius: .45rem;
+  background: rgba(163, 230, 53, .06);
+}
+
+.custom-animation-attack-demo h3,
+.custom-animation-attack-demo p {
+  margin: 0;
+}
+
 .custom-animation-provenance {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -149,4 +163,60 @@
   animation-iteration-count: 1 !important;
   scroll-behavior: auto !important;
   transition: none !important;
+}
+
+.animation-contribution-dialog { max-width: 48rem; }
+.animation-dialog-backdrop {
+  align-items: center;
+  background: rgb(2 8 14 / 82%);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 1rem;
+  position: fixed;
+  z-index: 120;
+}
+.animation-dialog {
+  background: #0b1726;
+  border: 1px solid #334155;
+  border-radius: .55rem;
+  box-shadow: 0 1rem 4rem rgb(0 0 0 / 55%);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  padding: 1rem;
+  width: min(100%, 48rem);
+}
+.animation-dialog > header {
+  align-items: start;
+  display: flex;
+  justify-content: space-between;
+}
+.animation-dialog > header h2,
+.animation-dialog > header p { margin: 0; }
+.animation-contribution-dialog form,
+.animation-contribution-dialog label { display: grid; gap: .4rem; }
+.animation-contribution-dialog form { gap: .8rem; }
+.animation-contribution-dialog__grid {
+  display: grid;
+  gap: .65rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.animation-contribution-dialog textarea { min-height: 5rem; resize: vertical; }
+.animation-contribution-dialog fieldset {
+  border: 1px solid #28465a;
+  border-radius: .4rem;
+  margin: 0;
+  padding: .65rem;
+}
+.animation-contribution-dialog__rights { align-items: start; grid-template-columns: auto 1fr; }
+.animation-contribution-dialog__notice {
+  border-left: 3px solid #f59e0b;
+  color: #fde68a;
+  margin: 0;
+  padding-left: .65rem;
+}
+.animation-contribution-dialog footer { display: flex; gap: .55rem; justify-content: flex-end; }
+
+@media (max-width: 700px) {
+  .animation-contribution-dialog__grid { grid-template-columns: 1fr; }
 }

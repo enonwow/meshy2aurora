@@ -1,4 +1,6 @@
-export function AnimationKeyframeMarker({
+import { memo } from "react";
+
+export const AnimationKeyframeMarker = memo(function AnimationKeyframeMarker({
   id,
   timeSeconds,
   selected,
@@ -28,4 +30,4 @@ export function AnimationKeyframeMarker({
       ◆
     </button>
   );
-}
+});

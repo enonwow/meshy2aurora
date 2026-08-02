@@ -643,10 +643,13 @@ describe("Studio workflow", () => {
       ));
       await Promise.resolve();
     });
+    await settle();
+    await vi.waitFor(() => {
+      expect(container.querySelector(".studio-header__context")?.textContent)
+        .toBe("Placeable · Review");
+    });
 
     expect(container.querySelector(".studio-shell--workflow-rail")).not.toBeNull();
-    expect(container.querySelector(".studio-header__context")?.textContent)
-      .toBe("Placeable · Review");
   });
 
   it("offers Tile authoring and reviews the Worker package with WOK/AABB bindings", async () => {
@@ -853,9 +856,12 @@ describe("Studio workflow", () => {
       ));
       await Promise.resolve();
     });
+    await settle();
+    await vi.waitFor(() => {
+      expect(container.querySelector("#placeable-review-heading")?.textContent)
+        .toBe("Meshy2Aurora S1 Placeable Proof");
+    });
 
-    expect(container.querySelector("#placeable-review-heading")?.textContent)
-      .toBe("Meshy2Aurora S1 Placeable Proof");
     expect(container.textContent).toContain("Owner visual proof not performed");
     expect(container.textContent).toContain("16500");
     expect(container.textContent).not.toContain("Aurora compatible");

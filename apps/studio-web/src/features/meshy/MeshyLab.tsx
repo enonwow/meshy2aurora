@@ -16,9 +16,16 @@ import {
   type MeshyRunArtifact,
   type MeshyRunPreview,
   type MeshyTextTo3DOptions,
+  AURORA_MODEL_TRIANGLE_BUDGET_V1,
   DEFAULT_MESHY_TEXT_TO_3D_OPTIONS,
+  MESHY_HUMANOID_RIG_TRIANGLE_LIMIT_V1,
   maximumMeshyTargetPolycount,
 } from "./bridge";
+import {
+  MESHY_ANIMATION_ACTION_IDS_V1,
+  MESHY_ANIMATION_CATALOG_V1,
+  meshAnimationActionV1,
+} from "./animationCatalog";
 import { MeshyModelViewport } from "./MeshyModelViewport";
 
 type LabScreen = "CONNECT" | "CONFIGURE" | "REVIEW" | "RUN" | "HISTORY" | "IMAGE_CONFIGURE" | "IMAGE_REVIEW" | "IMAGE_RUN";
@@ -28,10 +35,17 @@ export interface MeshyLabProps {
   readonly bridge: MeshyBridgeClient;
   readonly onBack: () => void;
   readonly onImport: (file: File, provenance: MeshyArtifactProvenance) => void;
+  readonly onImportAnimation?: (
+    file: File,
+    provenance: MeshyArtifactProvenance,
+    actionId: number,
+  ) => void;
 }
 
 function canRecoverHistoryItem(item: MeshyHistoryItem) {
-  return item.stage === "REFINE" && item.status === "SUCCEEDED" && item.glbAvailable;
+  return item.stage !== "PREVIEW"
+    && item.status === "SUCCEEDED"
+    && item.glbAvailable;
 }
 
 function errorMessage(error: unknown) {
@@ -43,6 +57,33 @@ function errorMessage(error: unknown) {
 
 function profileCode(profile: MeshyProfile) {
   return profile.id.slice(0, 2);
+}
+
+function artifactRoleLabel(
+  role: NonNullable<MeshyHistoryItem["artifacts"]>[number]["role"],
+) {
+  return {
+    MODEL: "Generated model",
+    RIGGED_CHARACTER: "Rigged character",
+    BASIC_WALKING: "Basic walking",
+    BASIC_RUNNING: "Basic running",
+    ANIMATION: "Animation",
+  }[role];
+}
+
+export function parseMeshyAnimationActionIdsV1(value: string): number[] | null {
+  const tokens = value.split(",").map((token) => token.trim());
+  if (tokens.length < 1 || tokens.length > 10 || tokens.some((token) => !token)) {
+    return null;
+  }
+  const actionIds = tokens.map(Number);
+  if (
+    actionIds.some((actionId) => !MESHY_ANIMATION_ACTION_IDS_V1.has(actionId))
+    || new Set(actionIds).size !== actionIds.length
+  ) {
+    return null;
+  }
+  return actionIds;
 }
 
 function readDataUrl(file: File) {
@@ -128,7 +169,12 @@ function MeshyLibraryPanel({ bridge, sessionToken, items, query, busy, page, has
   </aside>;
 }
 
-export function MeshyLab({ bridge, onBack, onImport }: MeshyLabProps) {
+export function MeshyLab({
+  bridge,
+  onBack,
+  onImport,
+  onImportAnimation,
+}: MeshyLabProps) {
   const [screen, setScreen] = useState<LabScreen>("CONNECT");
   const [pairingCode, setPairingCode] = useState("");
   const [sessionToken, setSessionToken] = useState<string>();
@@ -141,8 +187,18 @@ export function MeshyLab({ bridge, onBack, onImport }: MeshyLabProps) {
   const [referenceImages, setReferenceImages] = useState<File[]>([]);
   const [imageInputTaskId, setImageInputTaskId] = useState<string>();
   const [apiOptions, setApiOptions] = useState<MeshyTextTo3DOptions>(DEFAULT_MESHY_TEXT_TO_3D_OPTIONS);
+  const [h1Preflight, setH1Preflight] = useState({
+    standardHumanoid: false,
+    clearLimbs: false,
+    noWeapon: false,
+    aOrTPose: false,
+  });
   const [preview, setPreview] = useState<MeshyRunPreview>();
   const [run, setRun] = useState<MeshyRun>();
+  const [runProvenance, setRunProvenance] =
+    useState<MeshyArtifactProvenance>();
+  const [importedAnimationActionIds, setImportedAnimationActionIds] =
+    useState<ReadonlySet<number>>(new Set());
   const [imageMode, setImageMode] = useState<MeshyImageRunMode>("TEXT_TO_IMAGE");
   const [imagePrompt, setImagePrompt] = useState("");
   const [imageModel, setImageModel] = useState<MeshyImageAiModel>("nano-banana");
@@ -204,13 +260,60 @@ export function MeshyLab({ bridge, onBack, onImport }: MeshyLabProps) {
     setRestartNotice("Bridge is restarting. When it is ready, enter the fresh pairing code from your local terminal.");
   });
 
-  const patchApiOptions = (patch: Partial<MeshyTextTo3DOptions>) => setApiOptions((current) => ({ ...current, ...patch }));
+  const patchApiOptions = (patch: Partial<MeshyTextTo3DOptions>) => {
+    setApiOptions((current) => {
+      const next = { ...current, ...patch };
+      if (next.aiModel === "meshy-5" && next.textureResolution !== "2k") {
+        return { ...next, textureResolution: "2k" };
+      }
+      if (next.textureResolution === "8k" && next.topology !== "triangle") {
+        return { ...next, topology: "triangle" };
+      }
+      return next;
+    });
+  };
+  const toggleAnimationAction = (actionId: number) => {
+    const current = apiOptions.animationActionIds ?? [];
+    patchApiOptions({
+      animationActionIds: current.includes(actionId)
+        ? current.filter((id) => id !== actionId)
+        : [...current, actionId],
+    });
+  };
+  const toggleHumanoidRigging = (enabled: boolean) => {
+    patchApiOptions({
+      rigHumanoid: enabled,
+      ...(enabled ? {
+        poseMode: apiOptions.poseMode || "a-pose",
+        targetPolycount: Math.min(
+          apiOptions.targetPolycount,
+          MESHY_HUMANOID_RIG_TRIANGLE_LIMIT_V1,
+        ),
+        shouldTexture: true,
+      } : {}),
+    });
+    if (!enabled) {
+      setH1Preflight({
+        standardHumanoid: false,
+        clearLimbs: false,
+        noWeapon: false,
+        aOrTPose: false,
+      });
+    }
+  };
   const chooseSource = (source: MeshyGenerationSource) => {
     setGenerationSource(source);
     setImageInputTaskId(undefined);
-    if (source === "TEXT") setReferenceImages([]);
+    if (source === "TEXT") {
+      setReferenceImages([]);
+      patchApiOptions({
+        shouldTexture: true,
+        ...(apiOptions.modelType === "smart-topology"
+          ? { modelType: "standard", aiModel: "meshy-6" }
+          : {}),
+      });
+    }
     if (source === "MULTI_IMAGE") patchApiOptions({ modelType: "standard", aiModel: "meshy-6" });
-    if (source === "TEXT" && apiOptions.modelType === "smart-topology") patchApiOptions({ modelType: "standard", aiModel: "meshy-6" });
   };
   const chooseModelType = (modelType: MeshyTextTo3DOptions["modelType"]) => {
     patchApiOptions({
@@ -240,7 +343,7 @@ export function MeshyLab({ bridge, onBack, onImport }: MeshyLabProps) {
       imageDataUrls,
       ...(imageInputTaskId ? { inputTaskId: imageInputTaskId } : {}),
       apiOptions,
-      ...(apiOptions.rigHumanoid ? { h1Preflight: { standardHumanoid: true as const, clearLimbs: true as const, noWeapon: true as const } } : {}),
+      ...(apiOptions.rigHumanoid ? { h1Preflight } : {}),
     });
     setPreview(nextPreview);
     setScreen("REVIEW");
@@ -248,10 +351,19 @@ export function MeshyLab({ bridge, onBack, onImport }: MeshyLabProps) {
 
   const generate = () => void perform(async () => {
     if (!sessionToken || !preview) return;
+    setRunProvenance(undefined);
+    setImportedAnimationActionIds(new Set());
     setRun(await bridge.createRun(sessionToken, { previewId: preview.previewId, confirmationNonce: crypto.randomUUID() }));
     setScreen("RUN");
   });
-  const refresh = () => void perform(async () => { if (sessionToken && run) setRun(await bridge.getRun(sessionToken, run.id)); });
+  const refresh = () => void perform(async () => {
+    if (!sessionToken || !run) return;
+    const nextRun = await bridge.getRun(sessionToken, run.id);
+    setRun(nextRun);
+    if (nextRun.status === "READY" || nextRun.status === "PARTIAL") {
+      setRunProvenance(await bridge.provenance(sessionToken, run.id));
+    }
+  });
   const cancel = () => void perform(async () => { if (sessionToken && run) setRun(await bridge.cancelRun(sessionToken, run.id)); });
   const importArtifact = () => void perform(async () => { if (sessionToken && run) { const artifact = await bridge.downloadArtifact(sessionToken, run.id); onImport(artifact.file, artifact.provenance); } });
   const downloadProvenance = () => void perform(async () => {
@@ -261,6 +373,30 @@ export function MeshyLab({ bridge, onBack, onImport }: MeshyLabProps) {
     const anchor = document.createElement("a");
     anchor.href = url; anchor.download = `meshy-${run.id}-provenance.json`; anchor.click(); URL.revokeObjectURL(url);
   });
+  const importAnimationArtifact = (actionId: number) => void perform(async () => {
+    if (!sessionToken || !run || !onImportAnimation) return;
+    const artifact = await bridge.downloadAnimationArtifact(
+      sessionToken,
+      run.id,
+      actionId,
+    );
+    onImportAnimation(artifact.file, artifact.provenance, actionId);
+    setImportedAnimationActionIds((current) => new Set(current).add(actionId));
+  });
+  const downloadRunArtifact = (artifactKey: string) => void perform(async () => {
+    if (!sessionToken || !run) return;
+    const artifact = await bridge.downloadRunArtifact(
+      sessionToken,
+      run.id,
+      artifactKey,
+    );
+    const url = URL.createObjectURL(artifact.file);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = artifact.file.name;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  });
   const browseHistory = (pageNum = 1, resetFilter = false, openHistory = true) => void perform(async () => {
     if (!sessionToken) return;
     setHistory(await bridge.listHistory(sessionToken, pageNum));
@@ -268,9 +404,43 @@ export function MeshyLab({ bridge, onBack, onImport }: MeshyLabProps) {
     if (resetFilter) setHistoryFilter("READY");
     if (openHistory) setScreen("HISTORY");
   });
-  const recoverHistoryArtifact = (taskId: string) => void perform(async () => {
+  const recoverHistoryArtifact = (
+    item: MeshyHistoryItem,
+    artifactKey?: string,
+  ) => void perform(async () => {
     if (!sessionToken) return;
-    const artifact = await bridge.downloadHistoryArtifact(sessionToken, taskId);
+    const artifact = await bridge.downloadHistoryArtifact(
+      sessionToken,
+      item,
+      artifactKey,
+    );
+    const selectedHistoryArtifact = item.artifacts?.find(
+      ({ key }) => key === artifactKey,
+    );
+    if (
+      selectedHistoryArtifact?.role === "BASIC_WALKING"
+      || selectedHistoryArtifact?.role === "BASIC_RUNNING"
+    ) {
+      const url = URL.createObjectURL(artifact.file);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = artifact.file.name;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+    if (
+      item.stage === "ANIMATE"
+      && (selectedHistoryArtifact?.actionId ?? item.actionId) !== undefined
+      && onImportAnimation
+    ) {
+      onImportAnimation(
+        artifact.file,
+        artifact.provenance,
+        (selectedHistoryArtifact?.actionId ?? item.actionId)!,
+      );
+      return;
+    }
     onImport(artifact.file, artifact.provenance);
   });
   const openHistoryViewer = (item: MeshyHistoryItem) => void perform(async () => {
@@ -281,13 +451,13 @@ export function MeshyLab({ bridge, onBack, onImport }: MeshyLabProps) {
       setScreen("HISTORY");
       return;
     }
-    const artifact = await bridge.downloadHistoryArtifact(sessionToken, item.taskId);
+    const artifact = await bridge.downloadHistoryArtifact(sessionToken, item);
     setViewerArtifact(artifact);
     setViewerLabel(item.prompt || "Meshy model");
     setScreen("CONFIGURE");
   });
   const openCurrentViewer = () => void perform(async () => {
-    if (!sessionToken || !run || run.status !== "READY") return;
+    if (!sessionToken || !run || !["READY", "PARTIAL"].includes(run.status)) return;
     const artifact = await bridge.downloadArtifact(sessionToken, run.id);
     setViewerArtifact(artifact);
     setViewerLabel(run.prompt || "Meshy model");
@@ -307,7 +477,7 @@ export function MeshyLab({ bridge, onBack, onImport }: MeshyLabProps) {
       aiModel: "meshy-6",
       enableOriginalUv: true,
       enablePbr: true,
-      hdTexture: false,
+      textureResolution: "2k",
       removeLighting: true,
       alphaThumbnail: false,
     }));
@@ -326,6 +496,13 @@ export function MeshyLab({ bridge, onBack, onImport }: MeshyLabProps) {
       setViewerLabel(`${viewerLabel || "Meshy model"} — ReTexture`);
       setRetextureInputTaskId(undefined);
     }
+  });
+  const stopRetextureTracking = () => void perform(async () => {
+    if (!sessionToken || !retextureRun) return;
+    setRetextureRun(await bridge.cancelRetexture(
+      sessionToken,
+      retextureRun.id,
+    ));
   });
   const reviewImage = () => void perform(async () => {
     if (!sessionToken) return;
@@ -350,7 +527,11 @@ export function MeshyLab({ bridge, onBack, onImport }: MeshyLabProps) {
     setScreen("IMAGE_RUN");
   });
   const refreshImage = () => void perform(async () => { if (sessionToken && imageRun) setImageRun(await bridge.getImageRun(sessionToken, imageRun.id)); });
-  const cancelImage = () => void perform(async () => { if (sessionToken && imageRun) setImageRun(await bridge.cancelImageRun(sessionToken, imageRun.id)); });
+  const stopImageTracking = () => void perform(async () => {
+    if (sessionToken && imageRun) {
+      setImageRun(await bridge.cancelImageRun(sessionToken, imageRun.id));
+    }
+  });
   const useImageFor3d = () => {
     if (!imageRun?.taskId || imageRun.status !== "READY") return;
     setGenerationSource(imageRun.generateMultiView ? "MULTI_IMAGE" : "IMAGE");
@@ -367,7 +548,27 @@ export function MeshyLab({ bridge, onBack, onImport }: MeshyLabProps) {
   const targetPolycountIsValid = Number.isInteger(apiOptions.targetPolycount)
     && apiOptions.targetPolycount >= 100
     && apiOptions.targetPolycount <= maximumMeshyTargetPolycount(apiOptions);
+  const selectedActionIds = apiOptions.animationActionIds ?? [];
+  const animationActionIdsAreValid = !apiOptions.rigHumanoid
+    || (
+      selectedActionIds.length >= 1
+      && selectedActionIds.length <= 10
+      && selectedActionIds.every((actionId) => (
+        MESHY_ANIMATION_ACTION_IDS_V1.has(actionId)
+      ))
+      && new Set(selectedActionIds).size === selectedActionIds.length
+    );
+  const h1PreflightComplete = !apiOptions.rigHumanoid || (
+    Object.values(h1Preflight).every(Boolean)
+    && ["a-pose", "t-pose"].includes(apiOptions.poseMode)
+    && apiOptions.shouldTexture
+  );
+  const textureResolutionIsValid = apiOptions.aiModel !== "meshy-5"
+    || apiOptions.textureResolution === "2k";
   const canReview = targetPolycountIsValid
+    && animationActionIdsAreValid
+    && h1PreflightComplete
+    && textureResolutionIsValid
     && (generationSource === "TEXT" ? Boolean(prompt.trim()) : Boolean(imageInputTaskId || referenceImages.length > 0));
 
   return <section className="meshy-lab" aria-labelledby="meshy-lab-heading">
@@ -400,9 +601,96 @@ export function MeshyLab({ bridge, onBack, onImport }: MeshyLabProps) {
             {generationSource === "TEXT" ? <label className="meshy-lab__field" htmlFor="meshy-asset-prompt">Prompt<textarea id="meshy-asset-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={600} placeholder="Describe the model you want to generate" /></label> : <div className="meshy-lab__reference-upload"><strong className="meshy-lab__reference-title">Reference image{generationSource === "MULTI_IMAGE" ? "s" : ""}</strong><label className="meshy-lab__reference-dropzone" htmlFor="meshy-reference-images" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); chooseReferenceImages(event.dataTransfer.files); }}><input className="meshy-lab__reference-input" id="meshy-reference-images" type="file" accept="image/png,image/jpeg" multiple={generationSource === "MULTI_IMAGE"} onChange={(event) => chooseReferenceImages(event.currentTarget.files ?? [])} /><i className="meshy-lab__reference-dropzone-icon"><MeshySourceIcon source="IMAGE" /></i><strong>{generationSource === "MULTI_IMAGE" ? "Choose up to four reference images" : "Choose a reference image"}</strong><span>PNG or JPEG · stays local until confirmation</span></label><p>{referenceImages.length ? referenceImages.map((file) => file.name).join(", ") : generationSource === "MULTI_IMAGE" ? "One to four images are required." : "One image is required."}</p></div>}
             <div className="meshy-lab__api-grid"><fieldset className="meshy-lab__segmented-control meshy-lab__segmented-control--model-type"><legend>Typ modelu</legend><label><input type="radio" name="meshy-model-type" checked={apiOptions.modelType !== "smart-topology"} onChange={() => chooseModelType("standard")} />Standard</label><label><input type="radio" name="meshy-model-type" checked={apiOptions.modelType === "smart-topology"} onChange={() => chooseModelType("smart-topology")} disabled={generationSource !== "IMAGE"} />Smart topology</label></fieldset><label>Model AI<select value={apiOptions.aiModel} onChange={(event) => patchApiOptions({ aiModel: event.target.value as MeshyTextTo3DOptions["aiModel"] })}>{apiOptions.modelType === "smart-topology" ? <><option value="meshy-t2">Meshy T2</option><option value="meshy-t1">Meshy T1</option></> : <><option value="meshy-6">Meshy 6</option><option value="meshy-5">Meshy 5</option></>}</select></label><label className="meshy-lab__inline-toggle"><span>Automatyczne dzielenie <i className="meshy-lab__setting-info" title="Uses Meshy API decimation_mode when enabled." aria-label="Uses Meshy API decimation mode when enabled.">i</i></span><input className="meshy-lab__switch-input" type="checkbox" checked={apiOptions.decimationMode !== undefined} onChange={(event) => patchApiOptions({ decimationMode: event.target.checked ? 2 : undefined })} disabled={!apiOptions.shouldRemesh || apiOptions.modelType !== "standard"} /><i className="meshy-lab__switch-track" aria-hidden="true" /></label><fieldset className="meshy-lab__segmented-control"><legend>Pozować</legend><label><input type="radio" name="meshy-pose" checked={apiOptions.poseMode === ""} onChange={() => patchApiOptions({ poseMode: "" })} />Bez pozy</label><label><input type="radio" name="meshy-pose" checked={apiOptions.poseMode === "a-pose"} onChange={() => patchApiOptions({ poseMode: "a-pose" })} />A-Pozycja</label><label><input type="radio" name="meshy-pose" checked={apiOptions.poseMode === "t-pose"} onChange={() => patchApiOptions({ poseMode: "t-pose" })} />T-Pozycja</label></fieldset></div>
             {generationSource !== "TEXT" ? <label className="meshy-lab__inline-toggle meshy-lab__inline-toggle--image-enhancement"><span>Ulepszanie obrazu <i className="meshy-lab__setting-info" title="Enhances the reference image before the paid task." aria-label="Enhances the reference image before the paid task.">i</i></span><input className="meshy-lab__switch-input" type="checkbox" checked={apiOptions.imageEnhancement} onChange={(event) => patchApiOptions({ imageEnhancement: event.target.checked })} disabled={!(["latest", "meshy-6"] as const).includes(apiOptions.aiModel as "latest" | "meshy-6")} /><i className="meshy-lab__switch-track" aria-hidden="true" /></label> : null}
-            <details className="meshy-lab__advanced"><summary>Geometry</summary><div className="meshy-lab__api-grid"><label>Target polycount<input type="number" min="100" max={maximumMeshyTargetPolycount(apiOptions)} value={apiOptions.targetPolycount} onChange={(event) => patchApiOptions({ targetPolycount: Number(event.target.value) })} disabled={apiOptions.modelType === "lowpoly" || apiOptions.aiModel === "meshy-t1" || (apiOptions.modelType === "standard" && !apiOptions.shouldRemesh)} /></label><p className="meshy-lab__hint">Aurora accepts at most 20,000 triangles for every render model.</p><label>Topology<select value={apiOptions.topology} onChange={(event) => patchApiOptions({ topology: event.target.value as MeshyTextTo3DOptions["topology"] })} disabled={!apiOptions.shouldRemesh || apiOptions.modelType !== "standard"}><option value="triangle">Triangle</option><option value="quad">Quad dominant</option></select></label>{generationSource !== "MULTI_IMAGE" ? <label>Legacy model type<select value={apiOptions.modelType === "lowpoly" ? "lowpoly" : "standard"} onChange={(event) => chooseModelType(event.target.value as "standard" | "lowpoly")}><option value="standard">Current standard</option><option value="lowpoly">Low poly (legacy)</option></select></label> : null}{apiOptions.decimationMode !== undefined ? <label>Adaptive decimation<select aria-label="Adaptive decimation level" value={apiOptions.decimationMode} onChange={(event) => patchApiOptions({ decimationMode: Number(event.target.value) as 1 | 2 | 3 | 4 })} disabled={!apiOptions.shouldRemesh || apiOptions.modelType !== "standard"}><option value="1">Ultra</option><option value="2">High</option><option value="3">Medium</option><option value="4">Low</option></select></label> : <p className="meshy-lab__hint">Adaptive decimation is off: Meshy uses the exact target polycount.</p>}</div><div className="meshy-lab__api-toggles"><label><input type="checkbox" checked={apiOptions.shouldRemesh} onChange={(event) => patchApiOptions({ shouldRemesh: event.target.checked })} disabled={apiOptions.modelType !== "standard"} />Remesh</label><label><input type="checkbox" checked={apiOptions.moderation} onChange={(event) => patchApiOptions({ moderation: event.target.checked })} />Moderation</label><label><input type="checkbox" checked={apiOptions.autoSize} onChange={(event) => patchApiOptions({ autoSize: event.target.checked })} />Auto-size</label><label>Origin<select value={apiOptions.originAt} onChange={(event) => patchApiOptions({ originAt: event.target.value as "bottom" | "center" })} disabled={!apiOptions.autoSize}><option value="bottom">Bottom</option><option value="center">Center</option></select></label></div></details>
-            <details className="meshy-lab__advanced"><summary>Texture & output</summary><div className="meshy-lab__api-grid"><label>Texture prompt<textarea value={apiOptions.texturePrompt} onChange={(event) => patchApiOptions({ texturePrompt: event.target.value })} maxLength={600} placeholder="Optional texture guidance" /></label><label>Texture image URL<input type="url" value={apiOptions.textureImageUrl} onChange={(event) => patchApiOptions({ textureImageUrl: event.target.value })} placeholder="Optional public image or data URI" /></label></div><div className="meshy-lab__api-toggles"><label><input type="checkbox" checked={apiOptions.shouldTexture} onChange={(event) => patchApiOptions({ shouldTexture: event.target.checked })} />Generate texture</label><label><input type="checkbox" checked={apiOptions.enablePbr} onChange={(event) => patchApiOptions({ enablePbr: event.target.checked })} disabled={!apiOptions.shouldTexture} />PBR maps</label><label><input type="checkbox" checked={apiOptions.hdTexture} onChange={(event) => patchApiOptions({ hdTexture: event.target.checked })} disabled={!apiOptions.shouldTexture} />4K texture</label><label><input type="checkbox" checked={apiOptions.removeLighting} onChange={(event) => patchApiOptions({ removeLighting: event.target.checked })} disabled={!apiOptions.shouldTexture} />Remove baked lighting</label>{generationSource !== "TEXT" ? <label><input type="checkbox" checked={apiOptions.imageEnhancement} onChange={(event) => patchApiOptions({ imageEnhancement: event.target.checked })} disabled={!(["latest", "meshy-6"] as const).includes(apiOptions.aiModel as "latest" | "meshy-6")} />Enhance reference image</label> : null}<label><input type="checkbox" checked={apiOptions.alphaThumbnail} onChange={(event) => patchApiOptions({ alphaThumbnail: event.target.checked })} />Transparent thumbnail</label><label><input type="checkbox" checked={apiOptions.multiViewThumbnails} onChange={(event) => patchApiOptions({ multiViewThumbnails: event.target.checked })} />Four-view thumbnails</label></div><p className="meshy-lab__hint">Studio requests and imports GLB only. Other Meshy export formats need a separate, verified Bridge artifact contract.</p></details>
-            <details className="meshy-lab__advanced"><summary>Humanoid post-processing</summary><div className="meshy-lab__api-grid"><label>Height (m)<input type="number" min="0.5" max="3" step="0.01" value={apiOptions.rigHeightMeters} onChange={(event) => patchApiOptions({ rigHeightMeters: Number(event.target.value) })} disabled={!apiOptions.rigHumanoid} /></label><label>Animation action ID<input type="number" min="0" value={apiOptions.animationActionId ?? ""} onChange={(event) => patchApiOptions({ animationActionId: event.target.value ? Number(event.target.value) : undefined })} disabled={!apiOptions.rigHumanoid} placeholder="Optional Meshy ID" /></label></div><div className="meshy-lab__api-toggles"><label><input type="checkbox" checked={apiOptions.rigHumanoid} onChange={(event) => patchApiOptions({ rigHumanoid: event.target.checked })} />Rig as standard humanoid</label></div></details>
+            <details className="meshy-lab__advanced"><summary>Geometry</summary><div className="meshy-lab__api-grid"><label>Target polycount<input type="number" min="100" max={maximumMeshyTargetPolycount(apiOptions)} value={apiOptions.targetPolycount} onChange={(event) => patchApiOptions({ targetPolycount: Number(event.target.value) })} disabled={apiOptions.modelType === "lowpoly" || apiOptions.aiModel === "meshy-t1" || (apiOptions.modelType === "standard" && !apiOptions.shouldRemesh)} /></label><p className="meshy-lab__hint">Shared Aurora product budget: at most {AURORA_MODEL_TRIANGLE_BUDGET_V1.toLocaleString("en-US")} triangles. Smart Topology T2 keeps its separate Meshy API target cap.</p><label>Topology<select value={apiOptions.topology} onChange={(event) => patchApiOptions({ topology: event.target.value as MeshyTextTo3DOptions["topology"] })} disabled={!apiOptions.shouldRemesh || apiOptions.modelType !== "standard"}><option value="triangle">Triangle</option><option value="quad">Quad dominant</option></select></label>{generationSource !== "MULTI_IMAGE" ? <label>Legacy model type<select value={apiOptions.modelType === "lowpoly" ? "lowpoly" : "standard"} onChange={(event) => chooseModelType(event.target.value as "standard" | "lowpoly")}><option value="standard">Current standard</option><option value="lowpoly">Low poly (legacy)</option></select></label> : null}{apiOptions.decimationMode !== undefined ? <label>Adaptive decimation<select aria-label="Adaptive decimation level" value={apiOptions.decimationMode} onChange={(event) => patchApiOptions({ decimationMode: Number(event.target.value) as 1 | 2 | 3 | 4 })} disabled={!apiOptions.shouldRemesh || apiOptions.modelType !== "standard"}><option value="1">Ultra</option><option value="2">High</option><option value="3">Medium</option><option value="4">Low</option></select></label> : <p className="meshy-lab__hint">Adaptive decimation is off: Meshy uses the exact target polycount.</p>}</div><div className="meshy-lab__api-toggles"><label><input type="checkbox" checked={apiOptions.shouldRemesh} onChange={(event) => patchApiOptions({ shouldRemesh: event.target.checked })} disabled={apiOptions.modelType !== "standard"} />Remesh</label><label><input type="checkbox" checked={apiOptions.moderation} onChange={(event) => patchApiOptions({ moderation: event.target.checked })} />Moderation</label><label><input type="checkbox" checked={apiOptions.autoSize} onChange={(event) => patchApiOptions({ autoSize: event.target.checked })} />Auto-size</label><label>Origin<select value={apiOptions.originAt} onChange={(event) => patchApiOptions({ originAt: event.target.value as "bottom" | "center" })} disabled={!apiOptions.autoSize}><option value="bottom">Bottom</option><option value="center">Center</option></select></label></div></details>
+            <details className="meshy-lab__advanced"><summary>Texture & output</summary><div className="meshy-lab__api-grid"><label>Texture prompt<textarea value={apiOptions.texturePrompt} onChange={(event) => patchApiOptions({ texturePrompt: event.target.value })} maxLength={600} placeholder="Optional texture guidance" /></label><label>Texture image URL<input type="url" value={apiOptions.textureImageUrl} onChange={(event) => patchApiOptions({ textureImageUrl: event.target.value })} placeholder="Optional public image or data URI" /></label><label>Texture resolution<select value={apiOptions.textureResolution} disabled={!apiOptions.shouldTexture} onChange={(event) => patchApiOptions({ textureResolution: event.target.value as MeshyTextTo3DOptions["textureResolution"] })}><option value="2k">2K</option><option value="4k" disabled={apiOptions.aiModel === "meshy-5"}>4K</option><option value="8k" disabled={apiOptions.aiModel === "meshy-5"}>8K</option></select></label></div><div className="meshy-lab__api-toggles"><label><input type="checkbox" checked={apiOptions.shouldTexture} onChange={(event) => patchApiOptions({ shouldTexture: event.target.checked })} disabled={generationSource === "TEXT"} />Generate texture</label><label><input type="checkbox" checked={apiOptions.enablePbr} onChange={(event) => patchApiOptions({ enablePbr: event.target.checked })} disabled={!apiOptions.shouldTexture} />PBR maps</label><label><input type="checkbox" checked={apiOptions.removeLighting} onChange={(event) => patchApiOptions({ removeLighting: event.target.checked })} disabled={!apiOptions.shouldTexture || apiOptions.aiModel === "meshy-5"} />Remove baked lighting</label>{generationSource !== "TEXT" ? <label><input type="checkbox" checked={apiOptions.imageEnhancement} onChange={(event) => patchApiOptions({ imageEnhancement: event.target.checked })} disabled={!(["latest", "meshy-6"] as const).includes(apiOptions.aiModel as "latest" | "meshy-6")} />Enhance reference image</label> : null}<label><input type="checkbox" checked={apiOptions.alphaThumbnail} onChange={(event) => patchApiOptions({ alphaThumbnail: event.target.checked })} />Transparent thumbnail</label><label><input type="checkbox" checked={apiOptions.multiViewThumbnails} onChange={(event) => patchApiOptions({ multiViewThumbnails: event.target.checked })} />Four-view thumbnails</label></div><p className="meshy-lab__hint">Studio sends the current Meshy <code>texture_resolution</code> contract. Text-to-3D always includes the paid Refine texture stage; Meshy 5 is limited to 2K and 8K forces triangle topology.</p><p className="meshy-lab__hint">Studio requests and imports GLB only. Other Meshy export formats need a separate, verified Bridge artifact contract.</p></details>
+            <details className="meshy-lab__advanced">
+              <summary>Humanoid post-processing</summary>
+              <div className="meshy-lab__api-toggles">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={apiOptions.rigHumanoid}
+                    onChange={(event) => toggleHumanoidRigging(event.target.checked)}
+                  />
+                  Rig as standard humanoid
+                </label>
+              </div>
+              <div className="meshy-lab__api-grid">
+                <label>
+                  Height (m)
+                  <input
+                    type="number"
+                    min="0.5"
+                    max="3"
+                    step="0.01"
+                    value={apiOptions.rigHeightMeters}
+                    onChange={(event) => patchApiOptions({
+                      rigHeightMeters: Number(event.target.value),
+                    })}
+                    disabled={!apiOptions.rigHumanoid}
+                  />
+                </label>
+              </div>
+              {apiOptions.rigHumanoid ? (
+                <>
+                  <fieldset className="meshy-lab__animation-catalog">
+                    <legend>Animation presets</legend>
+                    <p>
+                      Curated snapshot {MESHY_ANIMATION_CATALOG_V1.capturedAt}
+                      {" · "}
+                      {MESHY_ANIMATION_CATALOG_V1.curatedActionsSha256.slice(0, 12)}…
+                    </p>
+                    {MESHY_ANIMATION_CATALOG_V1.actions.map((action) => (
+                      <label key={action.id}>
+                        <input
+                          type="checkbox"
+                          checked={selectedActionIds.includes(action.id)}
+                          onChange={() => toggleAnimationAction(action.id)}
+                        />
+                        <span>
+                          <strong>{action.name}</strong>
+                          <small>
+                            ID {action.id} · {action.category}
+                            {" · Aurora candidate "}
+                            {action.auroraCandidate}
+                          </small>
+                        </span>
+                      </label>
+                    ))}
+                  </fieldset>
+                  <fieldset className="meshy-lab__h1-preflight">
+                    <legend>Required H1 preflight</legend>
+                    <p>
+                      Confirm the visible source model. These checks are not
+                      inferred by Studio.
+                    </p>
+                    {([
+                      ["standardHumanoid", "Standard two-arm, two-leg humanoid"],
+                      ["clearLimbs", "Arms and legs are clearly separated"],
+                      ["noWeapon", "No weapon or held prop is attached"],
+                      ["aOrTPose", "The model is visibly in the selected A/T pose"],
+                    ] as const).map(([key, label]) => (
+                      <label key={key}>
+                        <input
+                          type="checkbox"
+                          checked={h1Preflight[key]}
+                          onChange={(event) => setH1Preflight((current) => ({
+                            ...current,
+                            [key]: event.target.checked,
+                          }))}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                    <small>
+                      Meshy Rigging provider limit: at most{" "}
+                      {MESHY_HUMANOID_RIG_TRIANGLE_LIMIT_V1.toLocaleString("en-US")}
+                      {" "}triangles. Textured output and A/T pose are required.
+                    </small>
+                  </fieldset>
+                </>
+              ) : null}
+            </details>
             <div className="meshy-lab__review-cta"><small>Nothing is charged until the confirmation screen.</small><button type="button" className="button button--primary" onClick={review} disabled={busy || !canReview}>Review generation</button></div>
           </aside>
           <section className="panel meshy-lab__creator-canvas">{viewerArtifact ? <div className="meshy-lab__model-viewport"><MeshyModelViewport artifact={viewerArtifact} label={viewerLabel} onError={setError} onClose={() => setViewerArtifact(undefined)} /></div> : <div className="meshy-lab__canvas-empty"><p className="eyebrow">{generationSource.replaceAll("_", " ")} TO 3D</p><h2>What will you create?</h2><p>{generationSource === "TEXT" ? "Describe a model on the left, then review its exact generation settings." : "Add reference images on the left, then review the request before it reaches Meshy."}</p><small>Configure the request on the left. The review action remains visible at the bottom of that panel.</small></div>}</section>
@@ -410,7 +698,7 @@ export function MeshyLab({ bridge, onBack, onImport }: MeshyLabProps) {
             <p className="eyebrow">Material matching</p><h2>ReTexture</h2>
             {!retexturePreview ? <><p>Apply a new style to this verified Meshy model. The Bridge sends only its task identity; signed model URLs never reach Studio.</p><label>Style prompt<textarea value={retextureStylePrompt} onChange={(event) => setRetextureStylePrompt(event.target.value)} maxLength={600} placeholder="Describe the target material and finish" /></label><div className="meshy-lab__actions"><button type="button" className="button button--secondary" onClick={() => setRetextureInputTaskId(undefined)} disabled={busy}>Cancel</button><button type="button" className="button button--primary" onClick={previewRetexture} disabled={busy || !retextureStylePrompt.trim()}>Review ReTexture</button></div></> : null}
             {retexturePreview && !retextureRun ? <><dl><div><dt>Model</dt><dd>{retexturePreview.aiModel}</dd></div><div><dt>Original UV</dt><dd>{retexturePreview.enableOriginalUv ? "Keep" : "Regenerate"}</dd></div><div><dt>PBR maps</dt><dd>{retexturePreview.enablePbr ? "On" : "Off"}</dd></div><div><dt>Maximum cost</dt><dd>{retexturePreview.maximumCredits} credits maximum</dd></div></dl><p>Your account is charged only after confirmation. No ReTexture task exists yet.</p><div className="meshy-lab__actions"><button type="button" className="button button--secondary" onClick={() => setRetexturePreview(undefined)} disabled={busy}>Back</button><button type="button" className="button button--primary" onClick={createRetexture} disabled={busy}>Confirm ReTexture</button></div></> : null}
-            {retextureRun ? <><p>{retextureRun.status === "READY" ? "ReTexture is verified and loaded in the viewport." : retextureRun.status === "FAILED" ? "ReTexture failed." : `${retextureRun.status.toLowerCase()} · ${retextureRun.progress}%`}</p>{retextureRun.error ? <p className="meshy-lab__error">{retextureRun.error.message}</p> : null}{retextureRun.status !== "READY" && retextureRun.status !== "FAILED" && retextureRun.status !== "CANCELED" ? <button type="button" className="button button--secondary" onClick={refreshRetexture} disabled={busy}>Refresh ReTexture</button> : null}</> : null}
+            {retextureRun ? <><p>{retextureRun.status === "READY" ? "ReTexture is verified and loaded in the viewport." : retextureRun.status === "FAILED" ? "ReTexture failed." : retextureRun.status === "STOPPED_LOCAL" ? "Local ReTexture tracking stopped." : `${retextureRun.status.toLowerCase()} · ${retextureRun.progress}%`}</p>{retextureRun.error ? <p className="meshy-lab__error">{retextureRun.error.message}</p> : null}{!["READY", "FAILED", "CANCELED", "STOPPED_LOCAL"].includes(retextureRun.status) ? <div className="meshy-lab__actions"><button type="button" className="button button--secondary" onClick={refreshRetexture} disabled={busy}>Refresh ReTexture</button><button type="button" className="button button--quiet" onClick={stopRetextureTracking} disabled={busy}>Stop tracking locally</button></div> : null}</> : null}
           </section> : null}
           <MeshyLibraryPanel bridge={bridge} sessionToken={sessionToken} items={libraryItems} query={libraryQuery} busy={busy} page={history?.pageNum ?? 1} hasNext={history?.hasNext ?? false} newestFirst={libraryNewestFirst} retextureTaskId={viewerArtifact?.provenance.taskIds.REFINE ?? viewerArtifact?.provenance.taskIds.PREVIEW} onQueryChange={setLibraryQuery} onToggleSort={() => setLibraryNewestFirst((current) => !current)} onBrowse={() => browseHistory(1, true)} onPreviousPage={() => browseHistory(Math.max(1, (history?.pageNum ?? 1) - 1), false, false)} onNextPage={() => browseHistory((history?.pageNum ?? 1) + 1, false, false)} onOpen={openHistoryViewer} onRetexture={openRetexture} />
         </main> : null}
@@ -427,10 +715,352 @@ export function MeshyLab({ bridge, onBack, onImport }: MeshyLabProps) {
           <MeshyLibraryPanel bridge={bridge} sessionToken={sessionToken} items={libraryItems} query={libraryQuery} busy={busy} page={history?.pageNum ?? 1} hasNext={history?.hasNext ?? false} newestFirst={libraryNewestFirst} onQueryChange={setLibraryQuery} onToggleSort={() => setLibraryNewestFirst((current) => !current)} onBrowse={() => browseHistory(1, true)} onPreviousPage={() => browseHistory(Math.max(1, (history?.pageNum ?? 1) - 1), false, false)} onNextPage={() => browseHistory((history?.pageNum ?? 1) + 1, false, false)} onOpen={openHistoryViewer} />
         </main> : null}
         {screen === "IMAGE_REVIEW" && imagePreview ? <div className="meshy-lab__review panel"><p className="eyebrow">Explicit paid operation</p><h2>Review image generation</h2><dl><div><dt>Mode</dt><dd>{imagePreview.mode.replaceAll("_", " ")}</dd></div><div><dt>Model</dt><dd>{imagePreview.aiModel}</dd></div><div><dt>Multi-view</dt><dd>{imagePreview.generateMultiView ? "Yes" : "No"}</dd></div><div><dt>Maximum cost</dt><dd>{imagePreview.maximumCredits} credits maximum</dd></div></dl><p>Your Meshy account is charged only after confirmation. No task exists yet. The Bridge keeps the resulting signed image URL private.</p><div className="meshy-lab__actions"><button type="button" className="button button--secondary" onClick={() => setScreen("IMAGE_CONFIGURE")} disabled={busy}>Back to configuration</button><button type="button" className="button button--primary" onClick={generateImage} disabled={busy}>Generate image</button></div></div> : null}
-        {screen === "IMAGE_RUN" && imageRun ? <div className="meshy-lab__run panel"><p className="eyebrow">2D task</p><h2>{imageRun.status === "READY" ? "Image ready" : imageRun.status === "FAILED" ? "Image generation failed" : imageRun.status === "CANCELED" ? "Image generation canceled" : "Image generation queued"}</h2><p>{imageRun.progress}% complete</p>{imageRun.error ? <p className="meshy-lab__error">{imageRun.error.message}</p> : null}{imageRun.status === "READY" ? <p>The completed Meshy task is available as a private 3D input.</p> : null}<div className="meshy-lab__actions">{imageRun.status === "READY" ? <button type="button" className="button button--primary" onClick={useImageFor3d}>Use as 3D source</button> : null}<button type="button" className="button button--secondary" onClick={refreshImage} disabled={busy || imageRun.status === "READY" || imageRun.status === "FAILED" || imageRun.status === "CANCELED"}>Refresh status</button><button type="button" className="button button--quiet" onClick={cancelImage} disabled={busy || imageRun.status === "READY" || imageRun.status === "FAILED" || imageRun.status === "CANCELED"}>Cancel</button></div></div> : null}
-        {screen === "HISTORY" && history ? <div className="meshy-lab__history panel"><p className="eyebrow">No-cost recovery</p><h2>Meshy history</h2><p>Choose a finished refinement to recover its verified GLB. Preview records remain under All tasks for inspection.</p><div className="meshy-lab__history-toolbar"><p aria-live="polite">Page {history.pageNum} · showing {visibleHistoryItems.length} of {history.items.length} tasks</p><div className="meshy-lab__history-filters" role="group" aria-label="History filter"><button type="button" className={`button button--secondary meshy-lab__history-filter${historyFilter === "READY" ? " meshy-lab__history-filter--selected" : ""}`} onClick={() => { setHistoryFilter("READY"); setSelectedHistoryTaskId(undefined); }} aria-pressed={historyFilter === "READY"}>Ready to recover ({readyHistoryItems.length})</button><button type="button" className={`button button--secondary meshy-lab__history-filter${historyFilter === "ALL" ? " meshy-lab__history-filter--selected" : ""}`} onClick={() => { setHistoryFilter("ALL"); setSelectedHistoryTaskId(undefined); }} aria-pressed={historyFilter === "ALL"}>All tasks ({history.items.length})</button></div></div>{visibleHistoryItems.length ? <><div className="meshy-lab__history-selection" aria-live="polite"><div><strong>{selectedHistoryItem ? (selectedHistoryItem.prompt || "Selected Meshy task") : "Select a model to recover"}</strong><p>{selectedHistoryItem ? (canRecoverHistoryItem(selectedHistoryItem) ? "Its verified GLB is ready to import into Source." : "This preview has no recoverable GLB. Select its finished refinement instead.") : "Choose a card below. The recovery action stays here so the grid remains easy to scan."}</p></div><button type="button" className="button button--primary" onClick={() => selectedHistoryItem && recoverHistoryArtifact(selectedHistoryItem.taskId)} disabled={busy || !selectedHistoryItem || !canRecoverHistoryItem(selectedHistoryItem)}>Recover selected GLB</button></div><div className="meshy-lab__history-grid">{visibleHistoryItems.map((item) => <button key={item.taskId} type="button" className={`meshy-lab__history-card${selectedHistoryTaskId === item.taskId ? " meshy-lab__history-card--selected" : ""}`} data-history-task-id={item.taskId} onClick={() => setSelectedHistoryTaskId(item.taskId)} aria-pressed={selectedHistoryTaskId === item.taskId}><div className="meshy-lab__history-card-summary"><strong>{item.stage} · {item.status}</strong><p>{item.prompt || "No prompt returned by Meshy."}</p><small>{item.createdAt ? `Created ${new Date(item.createdAt).toLocaleString()}` : "Creation time unavailable"}{item.consumedCredits === undefined ? "" : ` · ${item.consumedCredits} credits`}</small></div><span className="meshy-lab__history-card-availability">{canRecoverHistoryItem(item) ? "Verified GLB ready" : "Preview only"}</span></button>)}</div></> : <p>{historyFilter === "READY" ? "No verified GLBs are ready to recover on this page." : "No Text-to-3D tasks are available on this Meshy account page."}</p>}<div className="meshy-lab__actions"><button type="button" className="button button--secondary" onClick={() => setScreen("CONFIGURE")} disabled={busy}>Back to generation</button><button type="button" className="button button--secondary" onClick={() => browseHistory(history.pageNum - 1)} disabled={busy || history.pageNum <= 1}>Previous page</button><button type="button" className="button button--secondary" onClick={() => browseHistory(history.pageNum + 1)} disabled={busy || !history.hasNext}>Next page</button></div></div> : null}
-        {screen === "REVIEW" && preview ? <div className="meshy-lab__review panel"><p className="eyebrow">Explicit paid operation</p><h2>Review generation</h2><dl><div><dt>Profile</dt><dd>{profileCode(preview.profile)} {preview.profile.label}</dd></div><div><dt>Source</dt><dd>{generationSource.replaceAll("_", " ")}</dd></div><div><dt>Output</dt><dd>{apiOptions.targetFormats.map((format) => format.toUpperCase()).join(", ")}</dd></div><div><dt>Pipeline</dt><dd>{preview.stages.join(" → ")}</dd></div><div><dt>Maximum cost</dt><dd>{preview.maximumCredits} credits maximum</dd></div></dl><p>Your Meshy account is charged only after confirmation. No task exists yet.</p><div className="meshy-lab__actions"><button type="button" className="button button--secondary" onClick={() => setScreen("CONFIGURE")} disabled={busy}>Back to configuration</button><button type="button" className="button button--primary" onClick={generate} disabled={busy}>Generate model</button></div></div> : null}
-        {screen === "RUN" && run ? <div className="meshy-lab__run panel"><p className="eyebrow">Meshy run</p><h2>{run.status === "QUEUED" ? "Generation queued" : `Run ${run.status.toLowerCase()}`}</h2><p>{profileCode(run.profile)} · {run.progress}% · {run.profile.stages.join(" → ")}</p><p>Task IDs remain in local provenance and are never used as credentials.</p><div className="meshy-lab__actions"><button type="button" className="button button--secondary" onClick={refresh} disabled={busy}>Refresh status</button>{run.status !== "READY" && run.status !== "CANCELED" && run.status !== "FAILED" ? <button type="button" className="button button--quiet" onClick={cancel} disabled={busy}>Cancel run</button> : null}{run.status === "READY" ? <><button type="button" className="button button--secondary" onClick={openCurrentViewer} disabled={busy}>Open in Meshy viewport</button><button type="button" className="button button--secondary" onClick={downloadProvenance} disabled={busy}>Download provenance</button><button type="button" className="button button--primary" onClick={importArtifact} disabled={busy}>Import verified GLB to Source</button></> : null}</div><details className="meshy-lab__technical"><summary>Technical details</summary><p>Run {run.id}</p><p>{Object.entries(run.taskIds).map(([stage, taskId]) => `${stage}: ${taskId}`).join(" · ") || "No Meshy task IDs yet."}</p></details></div> : null}
+        {screen === "IMAGE_RUN" && imageRun ? <div className="meshy-lab__run panel"><p className="eyebrow">2D task</p><h2>{imageRun.status === "READY" ? "Image ready" : imageRun.status === "FAILED" ? "Image generation failed" : imageRun.status === "CANCELED" ? "Image generation canceled remotely" : imageRun.status === "STOPPED_LOCAL" ? "Local image tracking stopped" : "Image generation queued"}</h2><p>{imageRun.progress}% complete</p>{imageRun.error ? <p className="meshy-lab__error">{imageRun.error.message}</p> : null}{imageRun.status === "READY" ? <p>The completed Meshy task is available as a private 3D input.</p> : null}<div className="meshy-lab__actions">{imageRun.status === "READY" ? <button type="button" className="button button--primary" onClick={useImageFor3d}>Use as 3D source</button> : null}<button type="button" className="button button--secondary" onClick={refreshImage} disabled={busy || ["READY", "FAILED", "CANCELED", "STOPPED_LOCAL"].includes(imageRun.status)}>Refresh status</button><button type="button" className="button button--quiet" onClick={stopImageTracking} disabled={busy || ["READY", "FAILED", "CANCELED", "STOPPED_LOCAL"].includes(imageRun.status)}>Stop tracking locally</button></div></div> : null}
+        {screen === "HISTORY" && history ? (
+          <div className="meshy-lab__history panel">
+            <p className="eyebrow">No-cost recovery</p>
+            <h2>Meshy history</h2>
+            <p>
+              Choose a finished Meshy task to recover its verified GLB.
+              Preview records remain under All tasks for inspection.
+            </p>
+            <div className="meshy-lab__history-toolbar">
+              <p aria-live="polite">
+                Page {history.pageNum} · showing {visibleHistoryItems.length}
+                {" "}of {history.items.length} tasks
+              </p>
+              <div
+                className="meshy-lab__history-filters"
+                role="group"
+                aria-label="History filter"
+              >
+                <button
+                  type="button"
+                  className={`button button--secondary meshy-lab__history-filter${historyFilter === "READY" ? " meshy-lab__history-filter--selected" : ""}`}
+                  onClick={() => {
+                    setHistoryFilter("READY");
+                    setSelectedHistoryTaskId(undefined);
+                  }}
+                  aria-pressed={historyFilter === "READY"}
+                >
+                  Ready to recover ({readyHistoryItems.length})
+                </button>
+                <button
+                  type="button"
+                  className={`button button--secondary meshy-lab__history-filter${historyFilter === "ALL" ? " meshy-lab__history-filter--selected" : ""}`}
+                  onClick={() => {
+                    setHistoryFilter("ALL");
+                    setSelectedHistoryTaskId(undefined);
+                  }}
+                  aria-pressed={historyFilter === "ALL"}
+                >
+                  All tasks ({history.items.length})
+                </button>
+              </div>
+            </div>
+            {visibleHistoryItems.length ? (
+              <>
+                <div
+                  className="meshy-lab__history-selection"
+                  aria-live="polite"
+                >
+                  <div>
+                    <strong>
+                      {selectedHistoryItem
+                        ? selectedHistoryItem.prompt || "Selected Meshy task"
+                        : "Select a task to recover"}
+                    </strong>
+                    <p>
+                      {selectedHistoryItem
+                        ? canRecoverHistoryItem(selectedHistoryItem)
+                          ? "Its verified GLB artifacts are ready to recover."
+                          : "This task has no recoverable GLB."
+                        : "Choose a card below. Recovery does not create a new paid task."}
+                    </p>
+                    {selectedHistoryItem?.artifacts?.length ? (
+                      <div
+                        className="meshy-lab__history-artifacts"
+                        role="group"
+                        aria-label="Recoverable task artifacts"
+                      >
+                        {selectedHistoryItem.artifacts.map((artifact) => (
+                          <button
+                            key={artifact.key}
+                            type="button"
+                            className="button button--secondary"
+                            disabled={busy}
+                            onClick={() => recoverHistoryArtifact(
+                              selectedHistoryItem,
+                              artifact.key,
+                            )}
+                          >
+                            {artifact.role === "BASIC_WALKING"
+                              || artifact.role === "BASIC_RUNNING"
+                              ? "Download"
+                              : artifact.role === "ANIMATION"
+                                ? "Add"
+                                : "Import"}
+                            {" "}
+                            {artifactRoleLabel(artifact.role)}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    className="button button--primary"
+                    onClick={() => selectedHistoryItem
+                      && recoverHistoryArtifact(selectedHistoryItem)}
+                    disabled={
+                      busy
+                      || !selectedHistoryItem
+                      || !canRecoverHistoryItem(selectedHistoryItem)
+                    }
+                  >
+                    Recover selected GLB
+                  </button>
+                </div>
+                <div className="meshy-lab__history-grid">
+                  {visibleHistoryItems.map((item) => (
+                    <button
+                      key={`${item.stage}:${item.taskId}`}
+                      type="button"
+                      className={`meshy-lab__history-card${selectedHistoryTaskId === item.taskId ? " meshy-lab__history-card--selected" : ""}`}
+                      data-history-task-id={item.taskId}
+                      onClick={() => setSelectedHistoryTaskId(item.taskId)}
+                      aria-pressed={selectedHistoryTaskId === item.taskId}
+                    >
+                      <div className="meshy-lab__history-card-summary">
+                        <strong>{item.stage} · {item.status}</strong>
+                        <p>{item.prompt || "No prompt returned by Meshy."}</p>
+                        <small>
+                          {item.createdAt
+                            ? `Created ${new Date(item.createdAt).toLocaleString()}`
+                            : "Creation time unavailable"}
+                          {item.consumedCredits === undefined
+                            ? ""
+                            : ` · ${item.consumedCredits} credits`}
+                        </small>
+                      </div>
+                      <span className="meshy-lab__history-card-availability">
+                        {canRecoverHistoryItem(item)
+                          ? `${item.artifacts?.length ?? 1} verified GLB artifact(s)`
+                          : "No GLB"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p>
+                {historyFilter === "READY"
+                  ? "No verified GLBs are ready to recover on this page."
+                  : "No Meshy tasks are available on this page."}
+              </p>
+            )}
+            <div className="meshy-lab__actions">
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={() => setScreen("CONFIGURE")}
+                disabled={busy}
+              >
+                Back to generation
+              </button>
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={() => browseHistory(history.pageNum - 1)}
+                disabled={busy || history.pageNum <= 1}
+              >
+                Previous page
+              </button>
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={() => browseHistory(history.pageNum + 1)}
+                disabled={busy || !history.hasNext}
+              >
+                Next page
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {screen === "REVIEW" && preview ? <div className="meshy-lab__review panel"><p className="eyebrow">Explicit paid operation</p><h2>Review generation</h2><dl><div><dt>Profile</dt><dd>{profileCode(preview.profile)} {preview.profile.label}</dd></div><div><dt>Source</dt><dd>{generationSource.replaceAll("_", " ")}</dd></div><div><dt>Output</dt><dd>{apiOptions.targetFormats.map((format) => format.toUpperCase()).join(", ")}</dd></div><div><dt>Pipeline</dt><dd>{preview.stages.join(" → ")}</dd></div>{apiOptions.rigHumanoid ? <><div><dt>Pose</dt><dd>{apiOptions.poseMode.toUpperCase()}</dd></div><div><dt>H1 preflight</dt><dd>4 owner confirmations</dd></div><div><dt>Animations</dt><dd>{selectedActionIds.map((id) => meshAnimationActionV1(id)?.name ?? `ID ${id}`).join(", ")}</dd></div><div><dt>Catalog</dt><dd>{MESHY_ANIMATION_CATALOG_V1.snapshotId}</dd></div></> : null}<div><dt>Maximum cost</dt><dd>{preview.maximumCredits} credits maximum</dd></div></dl><p>Your Meshy account is charged only after confirmation. No task exists yet.</p><div className="meshy-lab__actions"><button type="button" className="button button--secondary" onClick={() => setScreen("CONFIGURE")} disabled={busy}>Back to configuration</button><button type="button" className="button button--primary" onClick={generate} disabled={busy}>Generate model</button></div></div> : null}
+        {screen === "RUN" && run ? (
+          <div className="meshy-lab__run panel">
+            <p className="eyebrow">Meshy run</p>
+            <h2>
+              {run.status === "QUEUED"
+                ? "Generation queued"
+                : `Run ${run.status.toLowerCase()}`}
+            </h2>
+            <p>
+              {profileCode(run.profile)} · {run.progress}% ·{" "}
+              {run.profile.stages.join(" → ")}
+            </p>
+            <p>Task IDs remain in local provenance and are never used as credentials.</p>
+            <div className="meshy-lab__actions">
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={refresh}
+                disabled={busy}
+              >
+                Refresh status
+              </button>
+              {run.status !== "READY"
+                && run.status !== "PARTIAL"
+                && run.status !== "CANCELED"
+                && run.status !== "STOPPED_LOCAL"
+                && run.status !== "FAILED" ? (
+                  <button
+                    type="button"
+                    className="button button--quiet"
+                    onClick={cancel}
+                    disabled={busy}
+                  >
+                    Stop tracking locally
+                  </button>
+                ) : null}
+              {run.status === "READY" || run.status === "PARTIAL" ? (
+                <>
+                  <button
+                    type="button"
+                    className="button button--secondary"
+                    onClick={openCurrentViewer}
+                    disabled={busy}
+                  >
+                    Open in Meshy viewport
+                  </button>
+                  <button
+                    type="button"
+                    className="button button--secondary"
+                    onClick={downloadProvenance}
+                    disabled={busy}
+                  >
+                    Download provenance
+                  </button>
+                  <button
+                    type="button"
+                    className="button button--primary"
+                    onClick={importArtifact}
+                    disabled={busy}
+                  >
+                    Import verified GLB to Source
+                  </button>
+                </>
+              ) : null}
+            </div>
+            {run.error ? (
+              <p className="meshy-lab__error">{run.error.message}</p>
+            ) : null}
+            {runProvenance?.artifacts?.some(({ role }) => (
+              role === "BASIC_WALKING" || role === "BASIC_RUNNING"
+            )) ? (
+              <section className="meshy-lab__preserved-artifacts">
+                <h3>Preserved rig artifacts</h3>
+                <ul>
+                  {runProvenance.artifacts
+                    .filter(({ role }) => (
+                      role === "BASIC_WALKING" || role === "BASIC_RUNNING"
+                    ))
+                    .map((artifact) => (
+                      <li key={artifact.key}>
+                        <span>
+                          {artifact.role === "BASIC_WALKING"
+                            ? "Basic walking"
+                            : "Basic running"}
+                          {" · "}
+                          {artifact.byteLength.toLocaleString("en-US")} bytes
+                        </span>
+                        <button
+                          type="button"
+                          className="button button--secondary"
+                          disabled={busy}
+                          onClick={() => downloadRunArtifact(artifact.key)}
+                        >
+                          Download verified GLB
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              </section>
+            ) : null}
+            {run.animationOutcomes?.some(({ status }) => status !== "READY") ? (
+              <ul className="meshy-lab__animation-outcomes">
+                {run.animationOutcomes.map((outcome) => (
+                  <li key={outcome.actionId}>
+                    {meshAnimationActionV1(outcome.actionId)?.name
+                      ?? `Action ${outcome.actionId}`}
+                    : {outcome.status.toLowerCase()}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {(run.status === "READY" || run.status === "PARTIAL")
+              && runProvenance?.animationArtifacts?.length ? (
+                <section
+                  className="meshy-lab__animation-artifacts"
+                  aria-labelledby="meshy-animation-artifacts-title"
+                >
+                  <div>
+                    <p className="eyebrow">Animation donors</p>
+                    <h3 id="meshy-animation-artifacts-title">
+                      Verified animation GLBs
+                    </h3>
+                    <p>
+                      Add each action to Animation Studio without replacing the
+                      current source model. The import dialog will still verify
+                      rig compatibility before copying a clip.
+                    </p>
+                  </div>
+                  <ul>
+                    {runProvenance.animationArtifacts.map((artifact) => {
+                      const imported = importedAnimationActionIds.has(
+                        artifact.actionId,
+                      );
+                      return (
+                        <li key={artifact.actionId}>
+                          <div>
+                            <strong>
+                              {meshAnimationActionV1(artifact.actionId)?.name
+                                ?? `Meshy action ${artifact.actionId}`}
+                            </strong>
+                            <small>
+                              {artifact.byteLength.toLocaleString("en-US")} bytes
+                              {" · "}
+                              {artifact.sha256.slice(0, 12)}…
+                            </small>
+                          </div>
+                          <button
+                            type="button"
+                            className="button button--secondary"
+                            disabled={busy || imported || !onImportAnimation}
+                            onClick={() => importAnimationArtifact(artifact.actionId)}
+                          >
+                            {imported
+                              ? "Added to Animation Studio"
+                              : "Add to Animation Studio"}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              ) : null}
+            <details className="meshy-lab__technical">
+              <summary>Technical details</summary>
+              <p>Run {run.id}</p>
+              <p>
+                {Object.entries(run.taskIds)
+                  .map(([stage, taskId]) => `${stage}: ${taskId}`)
+                  .join(" · ") || "No Meshy task IDs yet."}
+              </p>
+            </details>
+          </div>
+        ) : null}
       </div>
     </div> : null}
   </section>;

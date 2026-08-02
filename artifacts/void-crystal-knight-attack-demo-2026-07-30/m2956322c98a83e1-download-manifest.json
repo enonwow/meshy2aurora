@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "projectIdentity": {
+    "schemaVersion": 1,
+    "projectId": "d744d6c5-3986-45e0-aec8-a952f573b964",
+    "projectName": "Untitled project",
+    "projectRevision": 27
+  },
+  "target": "CREATURE",
+  "buildStatus": "OFFLINE_READBACK_RECONCILED",
+  "inputs": [
+    {
+      "role": "ANIMATION_STUDIO_V1",
+      "fileName": "animation-studio-v1.json",
+      "byteLength": null,
+      "sha256": "bddf6a01ec366abcbcdbc14fee5ffb00f1e352396cc26db384bfa7c0b34a6bb4"
+    },
+    {
+      "role": "BASE_APPEARANCE_2DA",
+      "fileName": "appearance.2da",
+      "byteLength": 6901349,
+      "sha256": "3dc8505bb5848044659cf44f9fe60e3f7c401db772496c4571ec0fff62a761d6"
+    },
+    {
+      "role": "SOURCE_GLB",
+      "fileName": "source.glb",
+      "byteLength": 9951624,
+      "sha256": "d3d1e18adb652524a5b3459620fab278892859ffb86a7fbb38ac4c542e44d4f7"
+    }
+  ],
+  "outputs": [
+    {
+      "artifactId": "manifest-json",
+      "kind": "JSON_REPORT",
+      "fileName": "m2956322c98a83e1-conversion-manifest.json",
+      "mediaType": "application/json",
+      "byteLength": 6056,
+      "sha256": "1f0fa77675a7dd90c48610587859fc1e70ae82f541ad960781d260e41861062a",
+      "provenance": "M2A_WASM_WORKER"
+    },
+    {
+      "artifactId": "model-mdl",
+      "kind": "MODEL",
+      "fileName": "m2956322c98a83e1.mdl",
+      "mediaType": "application/octet-stream",
+      "byteLength": 2555116,
+      "sha256": "2e6dd9000c1e269ea6261aa9c686679467247d348139aa77da26227d033bd821",
+      "provenance": "M2A_WASM_WORKER"
+    },
+    {
+      "artifactId": "package-hak",
+      "kind": "HAK",
+      "fileName": "m2956322c98a83e1.hak",
+      "mediaType": "application/octet-stream",
+      "byteLength": 22039832,
+      "sha256": "c7d0e2db55019db04c08b1a14a9a03eaba963604bc1e3e0116dccda67daba313",
+      "provenance": "M2A_WASM_WORKER"
+    },
+    {
+      "artifactId": "proof-module",
+      "kind": "MODULE",
+      "fileName": "m2956322c98a83e1.mod",
+      "mediaType": "application/octet-stream",
+      "byteLength": 15209,
+      "sha256": "532e77da7494e01a2ef7e2001027da7e25db1159e8f889b2beeba09f33def304",
+      "provenance": "M2A_WASM_WORKER"
+    },
+    {
+      "artifactId": "report-json",
+      "kind": "JSON_REPORT",
+      "fileName": "m2956322c98a83e1-inspection.json",
+      "mediaType": "application/json",
+      "byteLength": 1093305,
+      "sha256": "638a33fd7c8cbd909daf3dcad53f79cc7734ba9e64fb35b48329b6e1f032825a",
+      "provenance": "M2A_WASM_WORKER"
+    },
+    {
+      "artifactId": "summary-json",
+      "kind": "JSON_REPORT",
+      "fileName": "m2956322c98a83e1-summary.json",
+      "mediaType": "application/json",
+      "byteLength": 4414,
+      "sha256": "f378313b3cdc909d946f93bbb46d22ba9d0d30b29942f6f47feed0edc79b0527",
+      "provenance": "M2A_WASM_WORKER"
+    }
+  ],
+  "ownerProof": {
+    "status": "PENDING_OWNER",
+    "modelVisibility": "not_tested",
+    "proofCompleteness": "missing"
+  },
+  "zipPolicy": "NOT_INCLUDED_IN_E4_CANONICAL_DELIVERY"
+}

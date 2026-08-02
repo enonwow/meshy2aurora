@@ -27,10 +27,16 @@ const budgets = {
   mainJsBytes: 460_000,
   mainJsGzipBytes: 130_000,
   maximumJsChunkBytes: 620_000,
-  totalJsBytes: 1_450_000,
-  totalCssBytes: 150_000,
+  // Bounded full-scope delta for the audited authoring workbench: semantic
+  // retarget/batch, weapon build/readback, pose/phase/graph/trail/sequence and
+  // procedural-variant UI. Startup/main and maximum chunk ceilings remain
+  // unchanged; the measured 2026-08-01 release is 1,579,819 JS and 158,908
+  // CSS bytes, leaving less than one percent headroom in either total.
+  totalJsBytes: 1_590_000,
+  totalCssBytes: 160_000,
+  animationPayloadJsBytes: 2_000,
   wasmBytes: 4_000_000,
-  wasmGzipBytes: 1_420_000,
+  wasmGzipBytes: 1_430_000,
 };
 
 const sum = (items, field) => items.reduce((total, item) => total + item[field], 0);
@@ -41,6 +47,9 @@ const measured = {
   maximumJsChunkBytes: maximum(js, "bytes"),
   totalJsBytes: sum(js, "bytes"),
   totalCssBytes: sum(css, "bytes"),
+  animationPayloadJsBytes: sum(js.filter(({ name }) => (
+    name.startsWith("animation-") && !name.startsWith("animation-studio-")
+  )), "bytes"),
   wasmBytes: sum(wasm, "bytes"),
   wasmGzipBytes: sum(wasm, "gzipBytes"),
 };

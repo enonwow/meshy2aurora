@@ -1,26 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { AuthoredAnimationClipV1 } from "../animation-studio/types";
-import type { AnimationRigNodeV1 } from "./AnimationBoneTree";
 import {
-  ANIMATION_IMPORT_RIG_MISMATCH_V1,
-  compareAnimationImportRigsV1,
   createImportedModelClipV1,
+  parseAnimationTransferCompatibilityV1,
+  parseHumanoidSemanticBoneMapV2,
 } from "./animationImport";
 
 const donorRevision = "b".repeat(64);
-const rig: AnimationRigNodeV1[] = [{
-  id: 0,
-  name: "root",
-  parentId: null,
-  translation: [0, 0, 0],
-  rotation: [0, 0, 0, 1],
-}, {
-  id: 1,
-  name: "torso",
-  parentId: 0,
-  translation: [0, 0, 1],
-  rotation: [0, 0, 0, 1],
-}];
+const targetRevision = "a".repeat(64);
 
 const projected: AuthoredAnimationClipV1 = {
   id: "source-clip-walk",
@@ -42,11 +29,7 @@ const projected: AuthoredAnimationClipV1 = {
     targetNodeId: 0,
     path: "TRANSLATION",
     interpolation: "LINEAR",
-    keyframes: [{
-      id: "key-0000",
-      timeSeconds: 0,
-      value: [0, 0, 0],
-    }, {
+    keyframes: [{ id: "key-0000", timeSeconds: 0, value: [0, 0, 0] }, {
       id: "key-0001",
       timeSeconds: 1,
       value: [1, 0, 0],
@@ -57,54 +40,98 @@ const projected: AuthoredAnimationClipV1 = {
 };
 
 describe("animation import from another model", () => {
-  it("accepts an exact rig match including quaternion sign equivalence", () => {
-    const donor = rig.map((node) => ({
-      ...node,
-      rotation: node.id === 1
-        ? [0, 0, 0, -1] as const
-        : node.rotation,
+  it("projects Core compatibility without maintaining a second rig algorithm", () => {
+    const compatibility = parseAnimationTransferCompatibilityV1(JSON.stringify({
+      schemaVersion: 1,
+      status: "RETARGETABLE_SAME_HIERARCHY",
+      donorSourceRevision: donorRevision,
+      targetSourceRevision: targetRevision,
+      donorRigSignatureSha256: "1".repeat(64),
+      targetRigSignatureSha256: "2".repeat(64),
+      compatibilityFingerprintSha256: "3".repeat(64),
+      allowedModes: ["SAME_HIERARCHY_RETARGET_V1"],
+      mapping: {
+        schemaVersion: 1,
+        rootName: "root",
+        entries: [{
+          boneName: "root",
+          parentName: null,
+          donorNodeId: 7,
+          targetNodeId: 0,
+        }],
+      },
+      diagnostics: [{
+        code: "M2A-ANIMATION-RETARGET-REST-TRANSLATION",
+        path: "rig.nodes[root].translation",
+        message: "rest translation differs for root",
+        action: "Preview the explicit retarget mode.",
+      }],
     }));
 
-    expect(compareAnimationImportRigsV1(rig, donor)).toEqual(
-      expect.objectContaining({
-        compatible: true,
-        code: null,
-        mismatches: [],
-      }),
-    );
-  });
-
-  it("fails closed when the donor rest rig differs", () => {
-    const donor = rig.map((node) => node.id === 1
-      ? { ...node, translation: [0, 0, 1.25] as const }
-      : node);
-
-    expect(compareAnimationImportRigsV1(rig, donor)).toEqual(
-      expect.objectContaining({
-        compatible: false,
-        code: ANIMATION_IMPORT_RIG_MISMATCH_V1,
-        mismatches: ["Rest translation differs for torso."],
-      }),
-    );
-  });
-
-  it("rejects the same bone count when the donor hierarchy differs", () => {
-    const donor = rig.map((node) => node.id === 1
-      ? { ...node, parentId: null }
-      : node);
-    const compatibility = compareAnimationImportRigsV1(rig, donor);
-
-    expect(donor).toHaveLength(rig.length);
-    expect(compatibility).toEqual(expect.objectContaining({
-      compatible: false,
-      code: ANIMATION_IMPORT_RIG_MISMATCH_V1,
+    expect(compatibility.status).toBe("RETARGETABLE_SAME_HIERARCHY");
+    expect(compatibility.allowedModes).toEqual(["SAME_HIERARCHY_RETARGET_V1"]);
+    expect(compatibility.mapping?.entries[0]).toEqual(expect.objectContaining({
+      donorNodeId: 7,
+      targetNodeId: 0,
     }));
-    expect(compatibility.mismatches).toContain(
-      "Parent differs for torso: current 0, donor null.",
-    );
   });
 
-  it("materializes a self-contained Custom draft with donor provenance", () => {
+  it("rejects an unbound Core compatibility response", () => {
+    expect(() => parseAnimationTransferCompatibilityV1(JSON.stringify({
+      schemaVersion: 1,
+      status: "RETARGETABLE_SAME_HIERARCHY",
+      donorSourceRevision: "not-a-sha",
+      targetSourceRevision: targetRevision,
+      compatibilityFingerprintSha256: "3".repeat(64),
+      allowedModes: ["AUTO"],
+      diagnostics: [],
+    }))).toThrow("invalid animation-transfer compatibility report");
+  });
+
+  it("accepts a source-bound humanoid semantic V2 map", () => {
+    const semanticMap = parseHumanoidSemanticBoneMapV2(JSON.stringify({
+      schemaVersion: 2,
+      aliasDictionaryVersion: "M2A_HUMANOID_ALIASES_2026_07_V1",
+      status: "COMPATIBLE",
+      donorSourceRevision: donorRevision,
+      targetSourceRevision: targetRevision,
+      manualMappingConfirmed: false,
+      entries: [{
+        semantic: "RIGHT_HAND",
+        required: true,
+        donorNodeId: 17,
+        donorNodeName: "mixamorig_RightHand",
+        targetNodeId: 42,
+        targetNodeName: "hand_r",
+        mappingSource: "VERSIONED_ALIAS",
+      }],
+      diagnostics: [],
+      fingerprintSha256: "4".repeat(64),
+    }));
+
+    expect(semanticMap.status).toBe("COMPATIBLE");
+    expect(semanticMap.entries[0]).toEqual(expect.objectContaining({
+      semantic: "RIGHT_HAND",
+      donorNodeId: 17,
+      targetNodeId: 42,
+    }));
+  });
+
+  it("rejects a semantic map without exact donor lineage", () => {
+    expect(() => parseHumanoidSemanticBoneMapV2(JSON.stringify({
+      schemaVersion: 2,
+      aliasDictionaryVersion: "M2A_HUMANOID_ALIASES_2026_07_V1",
+      status: "COMPATIBLE",
+      donorSourceRevision: "stale",
+      targetSourceRevision: targetRevision,
+      manualMappingConfirmed: false,
+      entries: [],
+      diagnostics: [],
+      fingerprintSha256: "4".repeat(64),
+    }))).toThrow("invalid humanoid semantic-retarget report");
+  });
+
+  it("materializes a self-contained exact-copy Custom draft with donor provenance", () => {
     const imported = createImportedModelClipV1(projected, {
       id: "authored-imported-walk",
       name: "walk_imported",
@@ -116,13 +143,12 @@ describe("animation import from another model", () => {
       name: "walk_imported",
       status: "DRAFT",
       revision: 1,
-      source: {
+      source: expect.objectContaining({
         kind: "IMPORTED_MODEL_COPY",
         sourceRevision: donorRevision,
         sourceClipName: "walk",
         sourceClipFingerprint: "c".repeat(64),
-        proceduralTemplate: null,
-      },
+      }),
     }));
     expect(imported.tracks).toEqual(projected.tracks);
   });

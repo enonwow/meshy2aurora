@@ -5,6 +5,15 @@ Branch: `animation`
 Baseline: `8bd5e0d` (`feat: implement creature animation mapping`)
 Status: `F1-F10 UKOŃCZONE / F11 ZABLOKOWANE BRAMĄ ITERACJI MODELU`
 
+Aktualizacja 2026-07-30: wdrożono fazę F13 — poprawki po audycie rozwiązań
+animacji. Arbitrary Custom jest teraz jawnie `LIBRARY_ONLY`, dopóki nie zostanie
+związany z Base 42; attack demo zachowuje `cpause1` i routuje ten sam Custom do
+`ca1slashl`, `ca1slashr`, `ca1stab`; binary readback i owner runtime proof są
+osobnymi osiami; Meshy Bridge zachowuje 1–10 osobnych animacji i przekazuje je
+do Studio jako zweryfikowanych donorów; UX inspektora, timeline i Save validation
+został domknięty. Pełny raport:
+[`audyt-poprawki-rozwiazan-animacji-2026-07-30.md`](audyt-poprawki-rozwiazan-animacji-2026-07-30.md).
+
 Aktualizacja 2026-07-28: implementacja offline została ukończona i
 zweryfikowana. F11 nie może otrzymać statusu `ready_for_owner_proof`, ponieważ
 aktywny dokładny kandydat r46 ma właścicielski wynik `visible`, a projekt nie
@@ -1022,6 +1031,21 @@ bez nowego kroku workflow i bez modyfikowania zrodlowych GLB.
 - [x] Browser: compatible 2-bone donor -> import -> Save -> `VALID`.
 - [x] Browser: real H1 donor 24-bone -> `Different rig` -> przycisk disabled.
 
+### F13. Poprawki po audycie rozwiązań animacji
+
+- [x] Rozdzielono Custom `LIBRARY_ONLY` i `BASE_42_ROUTED`.
+- [x] Demo ataku zachowuje `cpause1`.
+- [x] Demo routuje Custom do wszystkich trzech ogólnych wariantów melee.
+- [x] Oddzielono binary readback od owner runtime proof.
+- [x] Meshy Bridge zachowuje do 10 osobnych animation action GLB.
+- [x] Meshy Lab przekazuje zweryfikowanych donorów bezpośrednio do Studio.
+- [x] Ujednolicono budżet Studio/Bridge do 300 000 trójkątów.
+- [x] Inspektor używa wartości klucza albo próbki na playheadzie.
+- [x] Kliknięcie keyframe'u synchronizuje playhead.
+- [x] Exact validation blokuje edycję do zakończenia.
+- [x] Pełne bramki jakości są zielone.
+- [ ] Runtime playback potwierdza właściciel na dokładnej lineage.
+
 ## 10. Macierz scenariuszy akceptacyjnych
 
 | ID | Scenariusz | Oczekiwany wynik | Status |
@@ -1124,6 +1148,10 @@ Checkboxy w tej sekcji oznaczają przyszłe commity, nie status funkcji.
 | 2026-07-28 | F10 | Wszystkie offline gate'y, real Worker/WASM, persistence, accessibility i benchmark przeszły | [`raport-implementacji-animation-studio-2026-07-28.md`](raport-implementacji-animation-studio-2026-07-28.md) |
 | 2026-07-28 | F11 | Handoff zatrzymany fail-closed: r46 jest `visible`, więc brak uprawnienia do nowej lineage V5 | [`evidence/animation-studio-v5-owner-proof-gate-2026-07-28.md`](evidence/animation-studio-v5-owner-proof-gate-2026-07-28.md) |
 | 2026-07-28 | F12 | Dodano kopiowanie klipu z lokalnego GLB, exact rig gate i zapis do Custom | `animationImport.ts`, `ImportAnimationFromModelDialog.tsx`, `m2a-wasm/src/lib.rs` |
+| 2026-07-30 | F13 | Naprawiono runtime exposure Custom, trójslotowy attack demo bez `cpause1`, rozdzielenie binary/runtime proof, multi-action Meshy, budżet 300K oraz UX inspektora/timeline/Save | [`audyt-poprawki-rozwiazan-animacji-2026-07-30.md`](audyt-poprawki-rozwiazan-animacji-2026-07-30.md) |
+| 2026-07-30 | F13 | Pełne bramki offline są zielone; nowy audit-fixed MOD/HAK pozostaje zablokowany, a handoff wskazuje dokładny obecny kandydat sprzed poprawki | [`evidence/animation-audit-fixes-owner-proof-gate-2026-07-30.md`](evidence/animation-audit-fixes-owner-proof-gate-2026-07-30.md) |
+| 2026-07-30 | F14 | Ponowny audit domknął fallback-aware exposure i attack demo, pełny binary readback, owner-proof registry, Meshy allowlist/preflight/recovery/provenance/partial/local-stop oraz wyścigi Edit copy i multi-key inspector | [`audyt-poprawki-rozwiazan-animacji-2026-07-30.md`](audyt-poprawki-rozwiazan-animacji-2026-07-30.md) |
+| 2026-07-30 | F15 | Czwarty audit domknął donor lineage i async source race, weighted H1 GLB/active-scene/joint-channel readback, ledger wszystkich tasków i kosztów, ONE_SHOT demo, exact Custom provenance, evidence-hashed owner registry, curated allowlist hash, `texture_resolution`, wspólny limit 300K oraz 3 861 B zapasu CSS; pełne gate'y są zielone | [`audyt-poprawki-rozwiazan-animacji-2026-07-30.md`](audyt-poprawki-rozwiazan-animacji-2026-07-30.md) |
 
 ## 15. Źródła i dokumenty powiązane
 

@@ -5,6 +5,8 @@ import rustTypeScriptParityFixture from
 import {
   canonicalFloat32ForWireV1,
   fingerprintAnimationStudioDocumentV1,
+  migrateAnimationStudioDocumentV1ToV2,
+  migrateAnimationStudioDocumentToV3,
   migrateCreatureAnimationAuthoringV1ToV2,
   parseAnimationStudioDocumentV1,
   serializeAnimationStudioDocumentV1,
@@ -73,6 +75,67 @@ describe("Animation Studio V1 schema", () => {
     expect(json).toBe(JSON.stringify(rustTypeScriptParityFixture));
     await expect(fingerprintAnimationStudioDocumentV1(document)).resolves.toBe(
       "4a3b66cd909292c33e7eae7f4e881b359525cd0234b95098084a6d462311d36a",
+    );
+  });
+
+  it("round-trips strict library preset provenance without weakening unknown-field checks", () => {
+    const clip = animationStudioClipFixtureV1({
+      source: {
+        kind: "LIBRARY_PRESET_COPY",
+        sourceRevision: "a".repeat(64),
+        sourceClipName: null,
+        sourceClipFingerprint: "b".repeat(64),
+        proceduralTemplate: null,
+        libraryPreset: {
+          presetId: "m2a_right_cross",
+          presetVersion: 1,
+          presetMotionSha256: "b".repeat(64),
+          catalogSha256: "c".repeat(64),
+          source: "BUILT_IN",
+          authors: ["Meshy2Aurora contributors"],
+          license: "LicenseRef-Meshy2Aurora-Project-Generated",
+          rigSignatureSha256: "d".repeat(64),
+          instantiationMode: "STRICT_RIG_V1",
+        },
+      },
+    });
+    const legacyDocument = animationStudioDocumentFixtureV1({ authoredClips: [clip] });
+    expect(validateAnimationStudioSchemaV1(legacyDocument)).toEqual(
+      expect.arrayContaining([expect.objectContaining({
+        path: "$.authoredClips[0].source.kind",
+        message: "LIBRARY_PRESET_COPY requires Animation Studio schemaVersion 2.",
+      })]),
+    );
+    const document: AnimationStudioDocumentV1 = {
+      ...legacyDocument,
+      schemaVersion: 2,
+    };
+    const json = serializeAnimationStudioDocumentV1(document);
+    expect(parseAnimationStudioDocumentV1(json)).toEqual({
+      kind: "VALID",
+      value: document,
+    });
+    expect(json).toContain('"kind":"LIBRARY_PRESET_COPY"');
+    expect(json).toContain('"presetId":"m2a_right_cross"');
+
+    const invalid = JSON.parse(json) as {
+      authoredClips: Array<{ source: { libraryPreset: Record<string, unknown> } }>;
+    };
+    invalid.authoredClips[0]!.source.libraryPreset.futureField = true;
+    expect(parseAnimationStudioDocumentV1(JSON.stringify(invalid))).toMatchObject({
+      kind: "INVALID",
+      diagnostics: [expect.objectContaining({
+        path: "$.authoredClips[0].source.libraryPreset.futureField",
+      })],
+    });
+
+    const mismatched = structuredClone(document);
+    mismatched.authoredClips[0]!.source.sourceClipFingerprint = "e".repeat(64);
+    expect(validateAnimationStudioSchemaV1(mismatched)).toEqual(
+      expect.arrayContaining([expect.objectContaining({
+        path: "$.authoredClips[0].source.sourceClipFingerprint",
+        message: "Library motion fingerprint must match presetMotionSha256.",
+      })]),
     );
   });
 
@@ -160,15 +223,66 @@ describe("Animation Studio V1 schema", () => {
   });
 
   it("has an explicit version gate", () => {
-    expect(parseAnimationStudioDocumentV1(JSON.stringify({
-      ...animationStudioDocumentFixtureV1(),
+    const legacy = animationStudioDocumentFixtureV1();
+    expect(migrateAnimationStudioDocumentV1ToV2(legacy)).toEqual({
+      ...legacy,
       schemaVersion: 2,
+    });
+    expect(migrateAnimationStudioDocumentToV3(legacy)).toEqual({
+      ...legacy,
+      schemaVersion: 3,
+    });
+    expect(parseAnimationStudioDocumentV1(JSON.stringify({
+      ...legacy,
+      schemaVersion: 4,
     }))).toMatchObject({
       kind: "INVALID",
       diagnostics: [expect.objectContaining({
         path: "$.schemaVersion",
       })],
     });
+  });
+
+  it("round-trips V3 retarget provenance and rejects a stale target lineage", () => {
+    const document = animationStudioDocumentFixtureV1();
+    const donorRevision = "b".repeat(64);
+    document.schemaVersion = 3;
+    document.authoredClips[0] = animationStudioClipFixtureV1({
+      source: {
+        kind: "RETARGETED_MODEL_COPY",
+        sourceRevision: donorRevision,
+        sourceClipName: "ca1slashl",
+        sourceClipFingerprint: "c".repeat(64),
+        proceduralTemplate: null,
+        retarget: {
+          donorSourceRevision: donorRevision,
+          targetSourceRevision: document.sourceRevision,
+          donorClipName: "ca1slashl",
+          donorClipFingerprint: "c".repeat(64),
+          donorRigSignatureSha256: "d".repeat(64),
+          targetRigSignatureSha256: "e".repeat(64),
+          compatibilityFingerprintSha256: "f".repeat(64),
+          mode: "SAME_HIERARCHY_RETARGET_V1",
+          rootMotionScale: 1.125,
+          outputMotionFingerprintSha256: "1".repeat(64),
+          algorithmVersion: "M2A_SAME_HIERARCHY_REST_DELTA_V1",
+          algorithmLimits: "TR_ONLY",
+        },
+      },
+    });
+    const json = serializeAnimationStudioDocumentV1(document);
+    expect(parseAnimationStudioDocumentV1(json)).toEqual({
+      kind: "VALID",
+      value: document,
+    });
+
+    const stale = structuredClone(document);
+    stale.authoredClips[0]!.source.retarget!.targetSourceRevision = "9".repeat(64);
+    expect(validateAnimationStudioSchemaV1(stale)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        path: "$.authoredClips[0].source.retarget.targetSourceRevision",
+      }),
+    ]));
   });
 
   it("fails closed on STEP because the MVP wire contract is LINEAR-only", () => {

@@ -1,0 +1,4922 @@
+{
+  "schemaVersion": 1,
+  "status": "M6_MODEL_PACKAGE_MATERIALIZED",
+  "inputGlb": {
+    "byteLength": 9951624,
+    "sha256": "d3d1e18adb652524a5b3459620fab278892859ffb86a7fbb38ac4c542e44d4f7"
+  },
+  "inputAppearanceTwoDa": {
+    "byteLength": 6901349,
+    "sha256": "3dc8505bb5848044659cf44f9fe60e3f7c401db772496c4571ec0fff62a761d6"
+  },
+  "textureSelection": {
+    "materialSlot": 0,
+    "sourceMaterialId": 0,
+    "sourceTextureId": 1,
+    "sourceImageId": 0,
+    "sourceImageIndex": 0,
+    "sourceImageSha256": "f451354d22ceb7c0098fe0fe39982190a4e3e242bf2b878dcdda979da0f06fb8"
+  },
+  "appendedPhysicalRow": 15101,
+  "generatedFiles": [
+    {
+      "relativePath": "generated/source.glb",
+      "byteLength": 9951624,
+      "sha256": "d3d1e18adb652524a5b3459620fab278892859ffb86a7fbb38ac4c542e44d4f7"
+    },
+    {
+      "relativePath": "generated/vckattack1.mdl",
+      "byteLength": 2555168,
+      "sha256": "ebb173c9af65726972c909034e75391e55661a0b3bdf1f920c5a78cd4f5943d6"
+    },
+    {
+      "relativePath": "generated/vckattack1.tga",
+      "byteLength": 12582956,
+      "sha256": "5101483b93b6eb4e0aa39cc705dcbed9de1a70c1661f85eacffcb58793025e8a"
+    },
+    {
+      "relativePath": "generated/appearance.2da",
+      "byteLength": 6901498,
+      "sha256": "11b7e1da255d69272386cf4df2827e87bd9052427846940c4e4c3ac883b257cb"
+    },
+    {
+      "relativePath": "generated/vckattack1.hak",
+      "byteLength": 22039878,
+      "sha256": "a97605c6ba3df055a97ced5e4e3e8b7ec14b023dbe3e674c0f59a0ef1cb79414"
+    },
+    {
+      "relativePath": "generated/vckattack1.mod",
+      "byteLength": 15161,
+      "sha256": "e42152c6e714feb887c66cd2713de3215b727fcdfec5f3f96583f551b44b4d77"
+    },
+    {
+      "relativePath": "reports/materialization-report.json",
+      "byteLength": 1219392,
+      "sha256": "ccae1e96421032d956d1b4597aa5cceb809151cbe38ad261f40bca9d6fe86769"
+    },
+    {
+      "relativePath": "reports/summary.json",
+      "byteLength": 125599,
+      "sha256": "39711023c5751eb83d177f3c27ac36fc0768398624771611f6569520f5bb428d"
+    }
+  ],
+  "packageManifest": {
+    "schemaVersion": 1,
+    "packageSha256": "a97605c6ba3df055a97ced5e4e3e8b7ec14b023dbe3e674c0f59a0ef1cb79414",
+    "resources": [
+      {
+        "role": "APPEARANCE_TABLE",
+        "resref": "appearance",
+        "type": 2017,
+        "byteLength": 6901498,
+        "sha256": "11b7e1da255d69272386cf4df2827e87bd9052427846940c4e4c3ac883b257cb",
+        "hakResourceId": 0,
+        "hakPayloadOffset": 256
+      },
+      {
+        "role": "TEXTURE",
+        "resref": "vckattack1",
+        "type": 3,
+        "byteLength": 12582956,
+        "sha256": "5101483b93b6eb4e0aa39cc705dcbed9de1a70c1661f85eacffcb58793025e8a",
+        "hakResourceId": 1,
+        "hakPayloadOffset": 6901754
+      },
+      {
+        "role": "MODEL",
+        "resref": "vckattack1",
+        "type": 2002,
+        "byteLength": 2555168,
+        "sha256": "ebb173c9af65726972c909034e75391e55661a0b3bdf1f920c5a78cd4f5943d6",
+        "hakResourceId": 2,
+        "hakPayloadOffset": 19484710
+      }
+    ]
+  },
+  "appearancePayloadPolicy": "PRESERVED_AND_APPENDED",
+  "manifestSelfHashPolicy": "EXCLUDED_TO_AVOID_SELF_REFERENCE",
+  "animationStudioSchemaVersion": 1,
+  "animationStudioFingerprintSha256": "48a276d6cdfa2457f7129673c7733cbcca7271b7ab6fcb96ba6305962a8c032d",
+  "animationStudioRevision": 1,
+  "creatureAnimationAuthoringSchemaVersion": 2,
+  "creatureAnimationAuthoringFingerprintSha256": "dad24372688439453cedee72c2ce79189f3fd4004084e82d8d7956ead1ff9052",
+  "authoredClipCount": 1,
+  "authoredClipIds": [
+    "vck-authored-sword-slash-v1"
+  ],
+  "authoredClipOutputNames": [
+    "vck_cryslash"
+  ],
+  "authoredEventCount": 0,
+  "customAssignmentCount": 3,
+  "customRuntimeExposures": [
+    {
+      "schemaVersion": 1,
+      "customAnimationId": "vck-custom-sword-slash-v1",
+      "status": "BASE42_ROUTED",
+      "libraryOutputClipNames": [
+        "vck_cryslash"
+      ],
+      "runtimeBaseSlots": [
+        "ca1slashl",
+        "ca1slashr",
+        "ca1stab"
+      ]
+    }
+  ],
+  "sourceRevision": "d3d1e18adb652524a5b3459620fab278892859ffb86a7fbb38ac4c542e44d4f7",
+  "readbackStatus": "MATCH",
+  "animationStudioReadback": {
+    "schemaVersion": 1,
+    "studioFingerprint": "48a276d6cdfa2457f7129673c7733cbcca7271b7ab6fcb96ba6305962a8c032d",
+    "sourceRevision": "d3d1e18adb652524a5b3459620fab278892859ffb86a7fbb38ac4c542e44d4f7",
+    "status": "MATCH",
+    "clips": [
+      {
+        "authoredClipId": "vck-authored-sword-slash-v1",
+        "outputClipName": "ca1slashl",
+        "materializedFingerprint": "dcbb2c15c2173d3a1f555176623f4e4354b6633af47c56808c240e84d1221aed",
+        "materializedClip": {
+          "name": "ca1slashl",
+          "animationRoot": "vckattack1",
+          "lengthSeconds": 1.0,
+          "transitionSeconds": 0.1,
+          "events": [
+            {
+              "timeSeconds": 0.54,
+              "name": "hit"
+            }
+          ],
+          "tracks": [
+            {
+              "targetNodeId": 23,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.00054026284,
+                  -0.018242396,
+                  1.2187186
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 23,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  0.10412567,
+                  -0.0013976562,
+                  -0.0013976559,
+                  0.9945622
+                ],
+                [
+                  0.0864452,
+                  -0.070609525,
+                  -0.009891503,
+                  0.99370205
+                ],
+                [
+                  0.054971147,
+                  -0.16919993,
+                  -0.052526817,
+                  0.9826447
+                ],
+                [
+                  0.16000201,
+                  0.23902646,
+                  0.040912524,
+                  0.95686567
+                ],
+                [
+                  0.13576306,
+                  0.118924096,
+                  0.024390386,
+                  0.9832755
+                ],
+                [
+                  0.10412567,
+                  -0.0013976562,
+                  -0.0013976559,
+                  0.9945622
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 3,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.12279717,
+                  -0.013950297,
+                  -0.115318775
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 3,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.99545443,
+                  -0.047224183,
+                  0.058452792,
+                  0.058511958
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 2,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  2.3841856e-8,
+                  9.536743e-9,
+                  0.46630418
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 2,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.15478653,
+                  0.0017920815,
+                  -0.014572935,
+                  0.98783886
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 1,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  5.960464e-9,
+                  -7.152557e-9,
+                  0.47863647
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 1,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.49353433,
+                  -0.0008693345,
+                  0.052521374,
+                  0.8681386
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 0,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -2.8014183e-8,
+                  -4.7683715e-9,
+                  0.19661053
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 0,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.36229068,
+                  0.017845111,
+                  0.045846753,
+                  0.93076587
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 7,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.1230137,
+                  -0.014653019,
+                  -0.11483301
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 7,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.9951495,
+                  0.04976117,
+                  -0.061214395,
+                  0.058772184
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 6,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  1.7881393e-9,
+                  -8.34465e-9,
+                  0.46740764
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 6,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.15542851,
+                  -0.0045590615,
+                  0.012075633,
+                  0.9877628
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 5,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -8.940696e-9,
+                  -7.152557e-9,
+                  0.4740319
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 5,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.49164945,
+                  0.0018323377,
+                  -0.053964376,
+                  0.86911756
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 4,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -2.0861626e-9,
+                  -4.7683715e-9,
+                  0.19738051
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 4,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.3644662,
+                  -0.018828318,
+                  -0.048033077,
+                  0.9297864
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 22,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.00021650776,
+                  0.028603358,
+                  0.12299694
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 22,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.11399579,
+                  0.0010693494,
+                  0.0017993447,
+                  0.9934791
+                ],
+                [
+                  -0.14081566,
+                  -0.10462105,
+                  -0.0062792753,
+                  0.98447245
+                ],
+                [
+                  -0.1894735,
+                  -0.25957146,
+                  -0.037206445,
+                  0.9462231
+                ],
+                [
+                  -0.050725915,
+                  0.3643905,
+                  -0.0061339056,
+                  0.9298434
+                ],
+                [
+                  -0.07428555,
+                  0.17660354,
+                  -0.00010439695,
+                  0.9814749
+                ],
+                [
+                  -0.11399579,
+                  0.0010693494,
+                  0.0017993447,
+                  0.9934791
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 21,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -7.508788e-11,
+                  -3.7196457e-8,
+                  0.12627943
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 21,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  1.862702e-9,
+                  -2.1009325e-10,
+                  3.4742698e-10,
+                  1.0
+                ],
+                [
+                  -0.027593922,
+                  -0.086657494,
+                  -0.019661162,
+                  0.9956619
+                ],
+                [
+                  -0.068709716,
+                  -0.20472167,
+                  -0.055267245,
+                  0.9748403
+                ],
+                [
+                  0.05567298,
+                  0.3120452,
+                  0.033681657,
+                  0.94783646
+                ],
+                [
+                  0.030365534,
+                  0.15718792,
+                  0.020381305,
+                  0.9868914
+                ],
+                [
+                  1.862702e-9,
+                  -2.1009325e-10,
+                  3.4742698e-10,
+                  1.0
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 20,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -2.712477e-10,
+                  -6.439732e-9,
+                  0.12627925
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 20,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  0.028014133,
+                  -0.0069874674,
+                  0.006830467,
+                  0.99955976
+                ],
+                [
+                  -0.017638547,
+                  -0.12689203,
+                  -0.028190132,
+                  0.991359
+                ],
+                [
+                  -0.09081894,
+                  -0.2876857,
+                  -0.099090256,
+                  0.94824576
+                ],
+                [
+                  0.09809636,
+                  0.40503553,
+                  0.047900822,
+                  0.9077604
+                ],
+                [
+                  0.07817883,
+                  0.2023273,
+                  0.034281336,
+                  0.97559035
+                ],
+                [
+                  0.028014133,
+                  -0.0069874674,
+                  0.006830467,
+                  0.99955976
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 11,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.041612804,
+                  -0.0026987975,
+                  0.108472146
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 11,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.4992709,
+                  0.50711995,
+                  -0.5184196,
+                  0.4741298
+                ],
+                [
+                  -0.41925076,
+                  0.53122175,
+                  -0.5284619,
+                  0.5126016
+                ],
+                [
+                  -0.31071818,
+                  0.5624483,
+                  -0.5448715,
+                  0.53872174
+                ],
+                [
+                  -0.7125557,
+                  0.41615334,
+                  -0.47549805,
+                  0.30493024
+                ],
+                [
+                  -0.6000708,
+                  0.47449723,
+                  -0.49677292,
+                  0.4098588
+                ],
+                [
+                  -0.4992709,
+                  0.50711995,
+                  -0.5184196,
+                  0.4741298
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 10,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -1.8978426e-10,
+                  2.3404454e-9,
+                  0.16050263
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 10,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.086502135,
+                  0.03140119,
+                  -0.08981925,
+                  0.9916975
+                ],
+                [
+                  0.018778583,
+                  0.11945961,
+                  0.04842163,
+                  0.99147975
+                ],
+                [
+                  0.11226027,
+                  0.23770367,
+                  0.1767213,
+                  0.9485063
+                ],
+                [
+                  -0.3970733,
+                  -0.047609717,
+                  -0.48792785,
+                  0.77588177
+                ],
+                [
+                  -0.23013678,
+                  -0.03585946,
+                  -0.27483416,
+                  0.9328545
+                ],
+                [
+                  -0.086502135,
+                  0.03140119,
+                  -0.08981925,
+                  0.9916975
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 9,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -4.2915342e-8,
+                  5.4240225e-8,
+                  0.311122
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 9,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  0.04720543,
+                  -0.07539196,
+                  0.03809602,
+                  0.9953072
+                ],
+                [
+                  0.10507471,
+                  -0.03578287,
+                  0.12884364,
+                  0.98543304
+                ],
+                [
+                  0.16412888,
+                  0.037658248,
+                  0.22612244,
+                  0.9594333
+                ],
+                [
+                  -0.12859462,
+                  -0.1408691,
+                  -0.23818798,
+                  0.95230556
+                ],
+                [
+                  -0.0350853,
+                  -0.11549035,
+                  -0.079296775,
+                  0.98951656
+                ],
+                [
+                  0.04720543,
+                  -0.07539196,
+                  0.03809602,
+                  0.9953072
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 8,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  1.9073486e-8,
+                  -6.2584874e-8,
+                  0.30161804
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 8,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.05003983,
+                  -0.0044139745,
+                  -0.04792159,
+                  0.99758714
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 15,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.042662676,
+                  -0.0016822892,
+                  0.10170102
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 15,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.50023794,
+                  -0.49195752,
+                  0.5174865,
+                  0.48984447
+                ],
+                [
+                  -0.43742332,
+                  -0.66385466,
+                  0.39120033,
+                  0.463595
+                ],
+                [
+                  -0.3582303,
+                  -0.8189406,
+                  0.1369651,
+                  0.42690504
+                ],
+                [
+                  -0.7533307,
+                  -0.04730407,
+                  0.50794965,
+                  0.41502094
+                ],
+                [
+                  -0.6397105,
+                  -0.2470185,
+                  0.55934846,
+                  0.4657056
+                ],
+                [
+                  -0.50023794,
+                  -0.49195752,
+                  0.5174865,
+                  0.48984447
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 14,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  8.450297e-10,
+                  -1.5530736e-7,
+                  0.17641708
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 14,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.091077484,
+                  -0.033411413,
+                  0.09421835,
+                  0.99081355
+                ],
+                [
+                  -0.32997397,
+                  -0.13245225,
+                  -0.19228777,
+                  0.9146579
+                ],
+                [
+                  -0.57263017,
+                  -0.012217592,
+                  -0.5614063,
+                  0.5973009
+                ],
+                [
+                  -0.08062594,
+                  0.4694291,
+                  0.5606397,
+                  0.6773617
+                ],
+                [
+                  -0.0060025924,
+                  0.23656118,
+                  0.39687347,
+                  0.8868451
+                ],
+                [
+                  -0.091077484,
+                  -0.033411413,
+                  0.09421835,
+                  0.99081355
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 13,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  5.2452087e-8,
+                  -1.0728836e-7,
+                  0.3038597
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 13,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  0.053504344,
+                  0.074586585,
+                  -0.044514984,
+                  0.9947827
+                ],
+                [
+                  -0.16202025,
+                  0.056226697,
+                  -0.21199176,
+                  0.96210575
+                ],
+                [
+                  -0.411256,
+                  0.1489038,
+                  -0.45107296,
+                  0.77796495
+                ],
+                [
+                  0.23391142,
+                  0.32636172,
+                  0.29815564,
+                  0.8659542
+                ],
+                [
+                  0.18497373,
+                  0.18616162,
+                  0.14498399,
+                  0.9539959
+                ],
+                [
+                  0.053504344,
+                  0.074586585,
+                  -0.044514984,
+                  0.9947827
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 12,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  1.4305114e-8,
+                  8.195639e-8,
+                  0.29021358
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 12,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.020342326,
+                  0.014888324,
+                  0.020638164,
+                  0.99946916
+                ],
+                [
+                  -0.093650356,
+                  -0.08844882,
+                  -0.035576306,
+                  0.99103016
+                ],
+                [
+                  -0.19672194,
+                  -0.21130507,
+                  -0.1276137,
+                  0.9488759
+                ],
+                [
+                  0.04938294,
+                  0.357936,
+                  0.12907837,
+                  0.923462
+                ],
+                [
+                  0.032803625,
+                  0.17866777,
+                  0.091135144,
+                  0.97913027
+                ],
+                [
+                  -0.020342326,
+                  0.014888324,
+                  0.020638164,
+                  0.99946916
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 19,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.0010498624,
+                  0.004381078,
+                  0.0782129
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 19,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.028014675,
+                  0.006525368,
+                  -0.00635133,
+                  0.9995661
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 18,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  2.4621831e-9,
+                  -5.966541e-10,
+                  0.08401605
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 18,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.24869089,
+                  0.00043008462,
+                  -0.000015916086,
+                  0.9685828
+                ],
+                [
+                  -0.2484535,
+                  0.04267866,
+                  -0.010863645,
+                  0.9676422
+                ],
+                [
+                  -0.24732687,
+                  0.1016722,
+                  -0.026011106,
+                  0.96323186
+                ],
+                [
+                  -0.24656539,
+                  -0.12599902,
+                  0.032444898,
+                  0.9603526
+                ],
+                [
+                  -0.2483509,
+                  -0.050262216,
+                  0.012999583,
+                  0.96727794
+                ],
+                [
+                  -0.24869089,
+                  0.00043008462,
+                  -0.000015916086,
+                  0.9685828
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 16,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.00020575832,
+                  -0.12711352,
+                  0.2700685
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 16,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.21818572,
+                  -0.00035317676,
+                  3.8769035e-10,
+                  0.9759072
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 17,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.00020575771,
+                  0.1271131,
+                  0.07320603
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 17,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.5004672,
+                  0.0008101265,
+                  3.8222186e-8,
+                  0.86575514
+                ]
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "authoredClipId": "vck-authored-sword-slash-v1",
+        "outputClipName": "ca1slashr",
+        "materializedFingerprint": "074625645d3751497de2c09f796b1e864b02c05673f4b095bceabf82940aadc2",
+        "materializedClip": {
+          "name": "ca1slashr",
+          "animationRoot": "vckattack1",
+          "lengthSeconds": 1.0,
+          "transitionSeconds": 0.1,
+          "events": [
+            {
+              "timeSeconds": 0.54,
+              "name": "hit"
+            }
+          ],
+          "tracks": [
+            {
+              "targetNodeId": 23,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.00054026284,
+                  -0.018242396,
+                  1.2187186
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 23,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  0.10412567,
+                  -0.0013976562,
+                  -0.0013976559,
+                  0.9945622
+                ],
+                [
+                  0.0864452,
+                  -0.070609525,
+                  -0.009891503,
+                  0.99370205
+                ],
+                [
+                  0.054971147,
+                  -0.16919993,
+                  -0.052526817,
+                  0.9826447
+                ],
+                [
+                  0.16000201,
+                  0.23902646,
+                  0.040912524,
+                  0.95686567
+                ],
+                [
+                  0.13576306,
+                  0.118924096,
+                  0.024390386,
+                  0.9832755
+                ],
+                [
+                  0.10412567,
+                  -0.0013976562,
+                  -0.0013976559,
+                  0.9945622
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 3,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.12279717,
+                  -0.013950297,
+                  -0.115318775
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 3,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.99545443,
+                  -0.047224183,
+                  0.058452792,
+                  0.058511958
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 2,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  2.3841856e-8,
+                  9.536743e-9,
+                  0.46630418
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 2,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.15478653,
+                  0.0017920815,
+                  -0.014572935,
+                  0.98783886
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 1,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  5.960464e-9,
+                  -7.152557e-9,
+                  0.47863647
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 1,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.49353433,
+                  -0.0008693345,
+                  0.052521374,
+                  0.8681386
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 0,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -2.8014183e-8,
+                  -4.7683715e-9,
+                  0.19661053
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 0,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.36229068,
+                  0.017845111,
+                  0.045846753,
+                  0.93076587
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 7,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.1230137,
+                  -0.014653019,
+                  -0.11483301
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 7,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.9951495,
+                  0.04976117,
+                  -0.061214395,
+                  0.058772184
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 6,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  1.7881393e-9,
+                  -8.34465e-9,
+                  0.46740764
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 6,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.15542851,
+                  -0.0045590615,
+                  0.012075633,
+                  0.9877628
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 5,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -8.940696e-9,
+                  -7.152557e-9,
+                  0.4740319
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 5,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.49164945,
+                  0.0018323377,
+                  -0.053964376,
+                  0.86911756
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 4,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -2.0861626e-9,
+                  -4.7683715e-9,
+                  0.19738051
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 4,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.3644662,
+                  -0.018828318,
+                  -0.048033077,
+                  0.9297864
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 22,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.00021650776,
+                  0.028603358,
+                  0.12299694
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 22,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.11399579,
+                  0.0010693494,
+                  0.0017993447,
+                  0.9934791
+                ],
+                [
+                  -0.14081566,
+                  -0.10462105,
+                  -0.0062792753,
+                  0.98447245
+                ],
+                [
+                  -0.1894735,
+                  -0.25957146,
+                  -0.037206445,
+                  0.9462231
+                ],
+                [
+                  -0.050725915,
+                  0.3643905,
+                  -0.0061339056,
+                  0.9298434
+                ],
+                [
+                  -0.07428555,
+                  0.17660354,
+                  -0.00010439695,
+                  0.9814749
+                ],
+                [
+                  -0.11399579,
+                  0.0010693494,
+                  0.0017993447,
+                  0.9934791
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 21,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -7.508788e-11,
+                  -3.7196457e-8,
+                  0.12627943
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 21,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  1.862702e-9,
+                  -2.1009325e-10,
+                  3.4742698e-10,
+                  1.0
+                ],
+                [
+                  -0.027593922,
+                  -0.086657494,
+                  -0.019661162,
+                  0.9956619
+                ],
+                [
+                  -0.068709716,
+                  -0.20472167,
+                  -0.055267245,
+                  0.9748403
+                ],
+                [
+                  0.05567298,
+                  0.3120452,
+                  0.033681657,
+                  0.94783646
+                ],
+                [
+                  0.030365534,
+                  0.15718792,
+                  0.020381305,
+                  0.9868914
+                ],
+                [
+                  1.862702e-9,
+                  -2.1009325e-10,
+                  3.4742698e-10,
+                  1.0
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 20,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -2.712477e-10,
+                  -6.439732e-9,
+                  0.12627925
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 20,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  0.028014133,
+                  -0.0069874674,
+                  0.006830467,
+                  0.99955976
+                ],
+                [
+                  -0.017638547,
+                  -0.12689203,
+                  -0.028190132,
+                  0.991359
+                ],
+                [
+                  -0.09081894,
+                  -0.2876857,
+                  -0.099090256,
+                  0.94824576
+                ],
+                [
+                  0.09809636,
+                  0.40503553,
+                  0.047900822,
+                  0.9077604
+                ],
+                [
+                  0.07817883,
+                  0.2023273,
+                  0.034281336,
+                  0.97559035
+                ],
+                [
+                  0.028014133,
+                  -0.0069874674,
+                  0.006830467,
+                  0.99955976
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 11,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.041612804,
+                  -0.0026987975,
+                  0.108472146
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 11,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.4992709,
+                  0.50711995,
+                  -0.5184196,
+                  0.4741298
+                ],
+                [
+                  -0.41925076,
+                  0.53122175,
+                  -0.5284619,
+                  0.5126016
+                ],
+                [
+                  -0.31071818,
+                  0.5624483,
+                  -0.5448715,
+                  0.53872174
+                ],
+                [
+                  -0.7125557,
+                  0.41615334,
+                  -0.47549805,
+                  0.30493024
+                ],
+                [
+                  -0.6000708,
+                  0.47449723,
+                  -0.49677292,
+                  0.4098588
+                ],
+                [
+                  -0.4992709,
+                  0.50711995,
+                  -0.5184196,
+                  0.4741298
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 10,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -1.8978426e-10,
+                  2.3404454e-9,
+                  0.16050263
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 10,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.086502135,
+                  0.03140119,
+                  -0.08981925,
+                  0.9916975
+                ],
+                [
+                  0.018778583,
+                  0.11945961,
+                  0.04842163,
+                  0.99147975
+                ],
+                [
+                  0.11226027,
+                  0.23770367,
+                  0.1767213,
+                  0.9485063
+                ],
+                [
+                  -0.3970733,
+                  -0.047609717,
+                  -0.48792785,
+                  0.77588177
+                ],
+                [
+                  -0.23013678,
+                  -0.03585946,
+                  -0.27483416,
+                  0.9328545
+                ],
+                [
+                  -0.086502135,
+                  0.03140119,
+                  -0.08981925,
+                  0.9916975
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 9,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -4.2915342e-8,
+                  5.4240225e-8,
+                  0.311122
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 9,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  0.04720543,
+                  -0.07539196,
+                  0.03809602,
+                  0.9953072
+                ],
+                [
+                  0.10507471,
+                  -0.03578287,
+                  0.12884364,
+                  0.98543304
+                ],
+                [
+                  0.16412888,
+                  0.037658248,
+                  0.22612244,
+                  0.9594333
+                ],
+                [
+                  -0.12859462,
+                  -0.1408691,
+                  -0.23818798,
+                  0.95230556
+                ],
+                [
+                  -0.0350853,
+                  -0.11549035,
+                  -0.079296775,
+                  0.98951656
+                ],
+                [
+                  0.04720543,
+                  -0.07539196,
+                  0.03809602,
+                  0.9953072
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 8,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  1.9073486e-8,
+                  -6.2584874e-8,
+                  0.30161804
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 8,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.05003983,
+                  -0.0044139745,
+                  -0.04792159,
+                  0.99758714
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 15,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.042662676,
+                  -0.0016822892,
+                  0.10170102
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 15,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.50023794,
+                  -0.49195752,
+                  0.5174865,
+                  0.48984447
+                ],
+                [
+                  -0.43742332,
+                  -0.66385466,
+                  0.39120033,
+                  0.463595
+                ],
+                [
+                  -0.3582303,
+                  -0.8189406,
+                  0.1369651,
+                  0.42690504
+                ],
+                [
+                  -0.7533307,
+                  -0.04730407,
+                  0.50794965,
+                  0.41502094
+                ],
+                [
+                  -0.6397105,
+                  -0.2470185,
+                  0.55934846,
+                  0.4657056
+                ],
+                [
+                  -0.50023794,
+                  -0.49195752,
+                  0.5174865,
+                  0.48984447
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 14,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  8.450297e-10,
+                  -1.5530736e-7,
+                  0.17641708
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 14,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.091077484,
+                  -0.033411413,
+                  0.09421835,
+                  0.99081355
+                ],
+                [
+                  -0.32997397,
+                  -0.13245225,
+                  -0.19228777,
+                  0.9146579
+                ],
+                [
+                  -0.57263017,
+                  -0.012217592,
+                  -0.5614063,
+                  0.5973009
+                ],
+                [
+                  -0.08062594,
+                  0.4694291,
+                  0.5606397,
+                  0.6773617
+                ],
+                [
+                  -0.0060025924,
+                  0.23656118,
+                  0.39687347,
+                  0.8868451
+                ],
+                [
+                  -0.091077484,
+                  -0.033411413,
+                  0.09421835,
+                  0.99081355
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 13,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  5.2452087e-8,
+                  -1.0728836e-7,
+                  0.3038597
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 13,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  0.053504344,
+                  0.074586585,
+                  -0.044514984,
+                  0.9947827
+                ],
+                [
+                  -0.16202025,
+                  0.056226697,
+                  -0.21199176,
+                  0.96210575
+                ],
+                [
+                  -0.411256,
+                  0.1489038,
+                  -0.45107296,
+                  0.77796495
+                ],
+                [
+                  0.23391142,
+                  0.32636172,
+                  0.29815564,
+                  0.8659542
+                ],
+                [
+                  0.18497373,
+                  0.18616162,
+                  0.14498399,
+                  0.9539959
+                ],
+                [
+                  0.053504344,
+                  0.074586585,
+                  -0.044514984,
+                  0.9947827
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 12,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  1.4305114e-8,
+                  8.195639e-8,
+                  0.29021358
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 12,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.020342326,
+                  0.014888324,
+                  0.020638164,
+                  0.99946916
+                ],
+                [
+                  -0.093650356,
+                  -0.08844882,
+                  -0.035576306,
+                  0.99103016
+                ],
+                [
+                  -0.19672194,
+                  -0.21130507,
+                  -0.1276137,
+                  0.9488759
+                ],
+                [
+                  0.04938294,
+                  0.357936,
+                  0.12907837,
+                  0.923462
+                ],
+                [
+                  0.032803625,
+                  0.17866777,
+                  0.091135144,
+                  0.97913027
+                ],
+                [
+                  -0.020342326,
+                  0.014888324,
+                  0.020638164,
+                  0.99946916
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 19,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.0010498624,
+                  0.004381078,
+                  0.0782129
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 19,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.028014675,
+                  0.006525368,
+                  -0.00635133,
+                  0.9995661
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 18,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  2.4621831e-9,
+                  -5.966541e-10,
+                  0.08401605
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 18,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.24869089,
+                  0.00043008462,
+                  -0.000015916086,
+                  0.9685828
+                ],
+                [
+                  -0.2484535,
+                  0.04267866,
+                  -0.010863645,
+                  0.9676422
+                ],
+                [
+                  -0.24732687,
+                  0.1016722,
+                  -0.026011106,
+                  0.96323186
+                ],
+                [
+                  -0.24656539,
+                  -0.12599902,
+                  0.032444898,
+                  0.9603526
+                ],
+                [
+                  -0.2483509,
+                  -0.050262216,
+                  0.012999583,
+                  0.96727794
+                ],
+                [
+                  -0.24869089,
+                  0.00043008462,
+                  -0.000015916086,
+                  0.9685828
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 16,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.00020575832,
+                  -0.12711352,
+                  0.2700685
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 16,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.21818572,
+                  -0.00035317676,
+                  3.8769035e-10,
+                  0.9759072
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 17,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.00020575771,
+                  0.1271131,
+                  0.07320603
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 17,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.5004672,
+                  0.0008101265,
+                  3.8222186e-8,
+                  0.86575514
+                ]
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "authoredClipId": "vck-authored-sword-slash-v1",
+        "outputClipName": "ca1stab",
+        "materializedFingerprint": "30dfdb2dfcd9bcf24ac9400e8fa673a26c308d1b922e16e577a957c628be7de0",
+        "materializedClip": {
+          "name": "ca1stab",
+          "animationRoot": "vckattack1",
+          "lengthSeconds": 1.0,
+          "transitionSeconds": 0.1,
+          "events": [
+            {
+              "timeSeconds": 0.54,
+              "name": "hit"
+            },
+            {
+              "timeSeconds": 0.54,
+              "name": "snd_footstep"
+            }
+          ],
+          "tracks": [
+            {
+              "targetNodeId": 23,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.00054026284,
+                  -0.018242396,
+                  1.2187186
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 23,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  0.10412567,
+                  -0.0013976562,
+                  -0.0013976559,
+                  0.9945622
+                ],
+                [
+                  0.0864452,
+                  -0.070609525,
+                  -0.009891503,
+                  0.99370205
+                ],
+                [
+                  0.054971147,
+                  -0.16919993,
+                  -0.052526817,
+                  0.9826447
+                ],
+                [
+                  0.16000201,
+                  0.23902646,
+                  0.040912524,
+                  0.95686567
+                ],
+                [
+                  0.13576306,
+                  0.118924096,
+                  0.024390386,
+                  0.9832755
+                ],
+                [
+                  0.10412567,
+                  -0.0013976562,
+                  -0.0013976559,
+                  0.9945622
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 3,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.12279717,
+                  -0.013950297,
+                  -0.115318775
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 3,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.99545443,
+                  -0.047224183,
+                  0.058452792,
+                  0.058511958
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 2,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  2.3841856e-8,
+                  9.536743e-9,
+                  0.46630418
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 2,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.15478653,
+                  0.0017920815,
+                  -0.014572935,
+                  0.98783886
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 1,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  5.960464e-9,
+                  -7.152557e-9,
+                  0.47863647
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 1,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.49353433,
+                  -0.0008693345,
+                  0.052521374,
+                  0.8681386
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 0,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -2.8014183e-8,
+                  -4.7683715e-9,
+                  0.19661053
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 0,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.36229068,
+                  0.017845111,
+                  0.045846753,
+                  0.93076587
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 7,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.1230137,
+                  -0.014653019,
+                  -0.11483301
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 7,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.9951495,
+                  0.04976117,
+                  -0.061214395,
+                  0.058772184
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 6,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  1.7881393e-9,
+                  -8.34465e-9,
+                  0.46740764
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 6,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.15542851,
+                  -0.0045590615,
+                  0.012075633,
+                  0.9877628
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 5,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -8.940696e-9,
+                  -7.152557e-9,
+                  0.4740319
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 5,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.49164945,
+                  0.0018323377,
+                  -0.053964376,
+                  0.86911756
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 4,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -2.0861626e-9,
+                  -4.7683715e-9,
+                  0.19738051
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 4,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.3644662,
+                  -0.018828318,
+                  -0.048033077,
+                  0.9297864
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 22,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.00021650776,
+                  0.028603358,
+                  0.12299694
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 22,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.11399579,
+                  0.0010693494,
+                  0.0017993447,
+                  0.9934791
+                ],
+                [
+                  -0.14081566,
+                  -0.10462105,
+                  -0.0062792753,
+                  0.98447245
+                ],
+                [
+                  -0.1894735,
+                  -0.25957146,
+                  -0.037206445,
+                  0.9462231
+                ],
+                [
+                  -0.050725915,
+                  0.3643905,
+                  -0.0061339056,
+                  0.9298434
+                ],
+                [
+                  -0.07428555,
+                  0.17660354,
+                  -0.00010439695,
+                  0.9814749
+                ],
+                [
+                  -0.11399579,
+                  0.0010693494,
+                  0.0017993447,
+                  0.9934791
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 21,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -7.508788e-11,
+                  -3.7196457e-8,
+                  0.12627943
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 21,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  1.862702e-9,
+                  -2.1009325e-10,
+                  3.4742698e-10,
+                  1.0
+                ],
+                [
+                  -0.027593922,
+                  -0.086657494,
+                  -0.019661162,
+                  0.9956619
+                ],
+                [
+                  -0.068709716,
+                  -0.20472167,
+                  -0.055267245,
+                  0.9748403
+                ],
+                [
+                  0.05567298,
+                  0.3120452,
+                  0.033681657,
+                  0.94783646
+                ],
+                [
+                  0.030365534,
+                  0.15718792,
+                  0.020381305,
+                  0.9868914
+                ],
+                [
+                  1.862702e-9,
+                  -2.1009325e-10,
+                  3.4742698e-10,
+                  1.0
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 20,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -2.712477e-10,
+                  -6.439732e-9,
+                  0.12627925
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 20,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  0.028014133,
+                  -0.0069874674,
+                  0.006830467,
+                  0.99955976
+                ],
+                [
+                  -0.017638547,
+                  -0.12689203,
+                  -0.028190132,
+                  0.991359
+                ],
+                [
+                  -0.09081894,
+                  -0.2876857,
+                  -0.099090256,
+                  0.94824576
+                ],
+                [
+                  0.09809636,
+                  0.40503553,
+                  0.047900822,
+                  0.9077604
+                ],
+                [
+                  0.07817883,
+                  0.2023273,
+                  0.034281336,
+                  0.97559035
+                ],
+                [
+                  0.028014133,
+                  -0.0069874674,
+                  0.006830467,
+                  0.99955976
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 11,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.041612804,
+                  -0.0026987975,
+                  0.108472146
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 11,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.4992709,
+                  0.50711995,
+                  -0.5184196,
+                  0.4741298
+                ],
+                [
+                  -0.41925076,
+                  0.53122175,
+                  -0.5284619,
+                  0.5126016
+                ],
+                [
+                  -0.31071818,
+                  0.5624483,
+                  -0.5448715,
+                  0.53872174
+                ],
+                [
+                  -0.7125557,
+                  0.41615334,
+                  -0.47549805,
+                  0.30493024
+                ],
+                [
+                  -0.6000708,
+                  0.47449723,
+                  -0.49677292,
+                  0.4098588
+                ],
+                [
+                  -0.4992709,
+                  0.50711995,
+                  -0.5184196,
+                  0.4741298
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 10,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -1.8978426e-10,
+                  2.3404454e-9,
+                  0.16050263
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 10,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.086502135,
+                  0.03140119,
+                  -0.08981925,
+                  0.9916975
+                ],
+                [
+                  0.018778583,
+                  0.11945961,
+                  0.04842163,
+                  0.99147975
+                ],
+                [
+                  0.11226027,
+                  0.23770367,
+                  0.1767213,
+                  0.9485063
+                ],
+                [
+                  -0.3970733,
+                  -0.047609717,
+                  -0.48792785,
+                  0.77588177
+                ],
+                [
+                  -0.23013678,
+                  -0.03585946,
+                  -0.27483416,
+                  0.9328545
+                ],
+                [
+                  -0.086502135,
+                  0.03140119,
+                  -0.08981925,
+                  0.9916975
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 9,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -4.2915342e-8,
+                  5.4240225e-8,
+                  0.311122
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 9,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  0.04720543,
+                  -0.07539196,
+                  0.03809602,
+                  0.9953072
+                ],
+                [
+                  0.10507471,
+                  -0.03578287,
+                  0.12884364,
+                  0.98543304
+                ],
+                [
+                  0.16412888,
+                  0.037658248,
+                  0.22612244,
+                  0.9594333
+                ],
+                [
+                  -0.12859462,
+                  -0.1408691,
+                  -0.23818798,
+                  0.95230556
+                ],
+                [
+                  -0.0350853,
+                  -0.11549035,
+                  -0.079296775,
+                  0.98951656
+                ],
+                [
+                  0.04720543,
+                  -0.07539196,
+                  0.03809602,
+                  0.9953072
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 8,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  1.9073486e-8,
+                  -6.2584874e-8,
+                  0.30161804
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 8,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.05003983,
+                  -0.0044139745,
+                  -0.04792159,
+                  0.99758714
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 15,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.042662676,
+                  -0.0016822892,
+                  0.10170102
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 15,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.50023794,
+                  -0.49195752,
+                  0.5174865,
+                  0.48984447
+                ],
+                [
+                  -0.43742332,
+                  -0.66385466,
+                  0.39120033,
+                  0.463595
+                ],
+                [
+                  -0.3582303,
+                  -0.8189406,
+                  0.1369651,
+                  0.42690504
+                ],
+                [
+                  -0.7533307,
+                  -0.04730407,
+                  0.50794965,
+                  0.41502094
+                ],
+                [
+                  -0.6397105,
+                  -0.2470185,
+                  0.55934846,
+                  0.4657056
+                ],
+                [
+                  -0.50023794,
+                  -0.49195752,
+                  0.5174865,
+                  0.48984447
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 14,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  8.450297e-10,
+                  -1.5530736e-7,
+                  0.17641708
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 14,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.091077484,
+                  -0.033411413,
+                  0.09421835,
+                  0.99081355
+                ],
+                [
+                  -0.32997397,
+                  -0.13245225,
+                  -0.19228777,
+                  0.9146579
+                ],
+                [
+                  -0.57263017,
+                  -0.012217592,
+                  -0.5614063,
+                  0.5973009
+                ],
+                [
+                  -0.08062594,
+                  0.4694291,
+                  0.5606397,
+                  0.6773617
+                ],
+                [
+                  -0.0060025924,
+                  0.23656118,
+                  0.39687347,
+                  0.8868451
+                ],
+                [
+                  -0.091077484,
+                  -0.033411413,
+                  0.09421835,
+                  0.99081355
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 13,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  5.2452087e-8,
+                  -1.0728836e-7,
+                  0.3038597
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 13,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  0.053504344,
+                  0.074586585,
+                  -0.044514984,
+                  0.9947827
+                ],
+                [
+                  -0.16202025,
+                  0.056226697,
+                  -0.21199176,
+                  0.96210575
+                ],
+                [
+                  -0.411256,
+                  0.1489038,
+                  -0.45107296,
+                  0.77796495
+                ],
+                [
+                  0.23391142,
+                  0.32636172,
+                  0.29815564,
+                  0.8659542
+                ],
+                [
+                  0.18497373,
+                  0.18616162,
+                  0.14498399,
+                  0.9539959
+                ],
+                [
+                  0.053504344,
+                  0.074586585,
+                  -0.044514984,
+                  0.9947827
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 12,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  1.4305114e-8,
+                  8.195639e-8,
+                  0.29021358
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 12,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.020342326,
+                  0.014888324,
+                  0.020638164,
+                  0.99946916
+                ],
+                [
+                  -0.093650356,
+                  -0.08844882,
+                  -0.035576306,
+                  0.99103016
+                ],
+                [
+                  -0.19672194,
+                  -0.21130507,
+                  -0.1276137,
+                  0.9488759
+                ],
+                [
+                  0.04938294,
+                  0.357936,
+                  0.12907837,
+                  0.923462
+                ],
+                [
+                  0.032803625,
+                  0.17866777,
+                  0.091135144,
+                  0.97913027
+                ],
+                [
+                  -0.020342326,
+                  0.014888324,
+                  0.020638164,
+                  0.99946916
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 19,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.0010498624,
+                  0.004381078,
+                  0.0782129
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 19,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.028014675,
+                  0.006525368,
+                  -0.00635133,
+                  0.9995661
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 18,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  2.4621831e-9,
+                  -5.966541e-10,
+                  0.08401605
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 18,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.24869089,
+                  0.00043008462,
+                  -0.000015916086,
+                  0.9685828
+                ],
+                [
+                  -0.2484535,
+                  0.04267866,
+                  -0.010863645,
+                  0.9676422
+                ],
+                [
+                  -0.24732687,
+                  0.1016722,
+                  -0.026011106,
+                  0.96323186
+                ],
+                [
+                  -0.24656539,
+                  -0.12599902,
+                  0.032444898,
+                  0.9603526
+                ],
+                [
+                  -0.2483509,
+                  -0.050262216,
+                  0.012999583,
+                  0.96727794
+                ],
+                [
+                  -0.24869089,
+                  0.00043008462,
+                  -0.000015916086,
+                  0.9685828
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 16,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.00020575832,
+                  -0.12711352,
+                  0.2700685
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 16,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.21818572,
+                  -0.00035317676,
+                  3.8769035e-10,
+                  0.9759072
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 17,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.00020575771,
+                  0.1271131,
+                  0.07320603
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 17,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.5004672,
+                  0.0008101265,
+                  3.8222186e-8,
+                  0.86575514
+                ]
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "authoredClipId": "vck-authored-sword-slash-v1",
+        "outputClipName": "vck_cryslash",
+        "materializedFingerprint": "1cfd22953ac4bad63fcc2107348f7b62169a99bb250435649fa5538675e8697b",
+        "materializedClip": {
+          "name": "vck_cryslash",
+          "animationRoot": "vckattack1",
+          "lengthSeconds": 1.0,
+          "transitionSeconds": 0.1,
+          "events": [],
+          "tracks": [
+            {
+              "targetNodeId": 23,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.00054026284,
+                  -0.018242396,
+                  1.2187186
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 23,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  0.10412567,
+                  -0.0013976562,
+                  -0.0013976559,
+                  0.9945622
+                ],
+                [
+                  0.0864452,
+                  -0.070609525,
+                  -0.009891503,
+                  0.99370205
+                ],
+                [
+                  0.054971147,
+                  -0.16919993,
+                  -0.052526817,
+                  0.9826447
+                ],
+                [
+                  0.16000201,
+                  0.23902646,
+                  0.040912524,
+                  0.95686567
+                ],
+                [
+                  0.13576306,
+                  0.118924096,
+                  0.024390386,
+                  0.9832755
+                ],
+                [
+                  0.10412567,
+                  -0.0013976562,
+                  -0.0013976559,
+                  0.9945622
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 3,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.12279717,
+                  -0.013950297,
+                  -0.115318775
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 3,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.99545443,
+                  -0.047224183,
+                  0.058452792,
+                  0.058511958
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 2,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  2.3841856e-8,
+                  9.536743e-9,
+                  0.46630418
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 2,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.15478653,
+                  0.0017920815,
+                  -0.014572935,
+                  0.98783886
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 1,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  5.960464e-9,
+                  -7.152557e-9,
+                  0.47863647
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 1,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.49353433,
+                  -0.0008693345,
+                  0.052521374,
+                  0.8681386
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 0,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -2.8014183e-8,
+                  -4.7683715e-9,
+                  0.19661053
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 0,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.36229068,
+                  0.017845111,
+                  0.045846753,
+                  0.93076587
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 7,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.1230137,
+                  -0.014653019,
+                  -0.11483301
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 7,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.9951495,
+                  0.04976117,
+                  -0.061214395,
+                  0.058772184
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 6,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  1.7881393e-9,
+                  -8.34465e-9,
+                  0.46740764
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 6,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.15542851,
+                  -0.0045590615,
+                  0.012075633,
+                  0.9877628
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 5,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -8.940696e-9,
+                  -7.152557e-9,
+                  0.4740319
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 5,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.49164945,
+                  0.0018323377,
+                  -0.053964376,
+                  0.86911756
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 4,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -2.0861626e-9,
+                  -4.7683715e-9,
+                  0.19738051
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 4,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.3644662,
+                  -0.018828318,
+                  -0.048033077,
+                  0.9297864
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 22,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.00021650776,
+                  0.028603358,
+                  0.12299694
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 22,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.11399579,
+                  0.0010693494,
+                  0.0017993447,
+                  0.9934791
+                ],
+                [
+                  -0.14081566,
+                  -0.10462105,
+                  -0.0062792753,
+                  0.98447245
+                ],
+                [
+                  -0.1894735,
+                  -0.25957146,
+                  -0.037206445,
+                  0.9462231
+                ],
+                [
+                  -0.050725915,
+                  0.3643905,
+                  -0.0061339056,
+                  0.9298434
+                ],
+                [
+                  -0.07428555,
+                  0.17660354,
+                  -0.00010439695,
+                  0.9814749
+                ],
+                [
+                  -0.11399579,
+                  0.0010693494,
+                  0.0017993447,
+                  0.9934791
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 21,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -7.508788e-11,
+                  -3.7196457e-8,
+                  0.12627943
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 21,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  1.862702e-9,
+                  -2.1009325e-10,
+                  3.4742698e-10,
+                  1.0
+                ],
+                [
+                  -0.027593922,
+                  -0.086657494,
+                  -0.019661162,
+                  0.9956619
+                ],
+                [
+                  -0.068709716,
+                  -0.20472167,
+                  -0.055267245,
+                  0.9748403
+                ],
+                [
+                  0.05567298,
+                  0.3120452,
+                  0.033681657,
+                  0.94783646
+                ],
+                [
+                  0.030365534,
+                  0.15718792,
+                  0.020381305,
+                  0.9868914
+                ],
+                [
+                  1.862702e-9,
+                  -2.1009325e-10,
+                  3.4742698e-10,
+                  1.0
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 20,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -2.712477e-10,
+                  -6.439732e-9,
+                  0.12627925
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 20,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  0.028014133,
+                  -0.0069874674,
+                  0.006830467,
+                  0.99955976
+                ],
+                [
+                  -0.017638547,
+                  -0.12689203,
+                  -0.028190132,
+                  0.991359
+                ],
+                [
+                  -0.09081894,
+                  -0.2876857,
+                  -0.099090256,
+                  0.94824576
+                ],
+                [
+                  0.09809636,
+                  0.40503553,
+                  0.047900822,
+                  0.9077604
+                ],
+                [
+                  0.07817883,
+                  0.2023273,
+                  0.034281336,
+                  0.97559035
+                ],
+                [
+                  0.028014133,
+                  -0.0069874674,
+                  0.006830467,
+                  0.99955976
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 11,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.041612804,
+                  -0.0026987975,
+                  0.108472146
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 11,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.4992709,
+                  0.50711995,
+                  -0.5184196,
+                  0.4741298
+                ],
+                [
+                  -0.41925076,
+                  0.53122175,
+                  -0.5284619,
+                  0.5126016
+                ],
+                [
+                  -0.31071818,
+                  0.5624483,
+                  -0.5448715,
+                  0.53872174
+                ],
+                [
+                  -0.7125557,
+                  0.41615334,
+                  -0.47549805,
+                  0.30493024
+                ],
+                [
+                  -0.6000708,
+                  0.47449723,
+                  -0.49677292,
+                  0.4098588
+                ],
+                [
+                  -0.4992709,
+                  0.50711995,
+                  -0.5184196,
+                  0.4741298
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 10,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -1.8978426e-10,
+                  2.3404454e-9,
+                  0.16050263
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 10,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.086502135,
+                  0.03140119,
+                  -0.08981925,
+                  0.9916975
+                ],
+                [
+                  0.018778583,
+                  0.11945961,
+                  0.04842163,
+                  0.99147975
+                ],
+                [
+                  0.11226027,
+                  0.23770367,
+                  0.1767213,
+                  0.9485063
+                ],
+                [
+                  -0.3970733,
+                  -0.047609717,
+                  -0.48792785,
+                  0.77588177
+                ],
+                [
+                  -0.23013678,
+                  -0.03585946,
+                  -0.27483416,
+                  0.9328545
+                ],
+                [
+                  -0.086502135,
+                  0.03140119,
+                  -0.08981925,
+                  0.9916975
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 9,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -4.2915342e-8,
+                  5.4240225e-8,
+                  0.311122
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 9,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  0.04720543,
+                  -0.07539196,
+                  0.03809602,
+                  0.9953072
+                ],
+                [
+                  0.10507471,
+                  -0.03578287,
+                  0.12884364,
+                  0.98543304
+                ],
+                [
+                  0.16412888,
+                  0.037658248,
+                  0.22612244,
+                  0.9594333
+                ],
+                [
+                  -0.12859462,
+                  -0.1408691,
+                  -0.23818798,
+                  0.95230556
+                ],
+                [
+                  -0.0350853,
+                  -0.11549035,
+                  -0.079296775,
+                  0.98951656
+                ],
+                [
+                  0.04720543,
+                  -0.07539196,
+                  0.03809602,
+                  0.9953072
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 8,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  1.9073486e-8,
+                  -6.2584874e-8,
+                  0.30161804
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 8,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.05003983,
+                  -0.0044139745,
+                  -0.04792159,
+                  0.99758714
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 15,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.042662676,
+                  -0.0016822892,
+                  0.10170102
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 15,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.50023794,
+                  -0.49195752,
+                  0.5174865,
+                  0.48984447
+                ],
+                [
+                  -0.43742332,
+                  -0.66385466,
+                  0.39120033,
+                  0.463595
+                ],
+                [
+                  -0.3582303,
+                  -0.8189406,
+                  0.1369651,
+                  0.42690504
+                ],
+                [
+                  -0.7533307,
+                  -0.04730407,
+                  0.50794965,
+                  0.41502094
+                ],
+                [
+                  -0.6397105,
+                  -0.2470185,
+                  0.55934846,
+                  0.4657056
+                ],
+                [
+                  -0.50023794,
+                  -0.49195752,
+                  0.5174865,
+                  0.48984447
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 14,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  8.450297e-10,
+                  -1.5530736e-7,
+                  0.17641708
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 14,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.091077484,
+                  -0.033411413,
+                  0.09421835,
+                  0.99081355
+                ],
+                [
+                  -0.32997397,
+                  -0.13245225,
+                  -0.19228777,
+                  0.9146579
+                ],
+                [
+                  -0.57263017,
+                  -0.012217592,
+                  -0.5614063,
+                  0.5973009
+                ],
+                [
+                  -0.08062594,
+                  0.4694291,
+                  0.5606397,
+                  0.6773617
+                ],
+                [
+                  -0.0060025924,
+                  0.23656118,
+                  0.39687347,
+                  0.8868451
+                ],
+                [
+                  -0.091077484,
+                  -0.033411413,
+                  0.09421835,
+                  0.99081355
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 13,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  5.2452087e-8,
+                  -1.0728836e-7,
+                  0.3038597
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 13,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  0.053504344,
+                  0.074586585,
+                  -0.044514984,
+                  0.9947827
+                ],
+                [
+                  -0.16202025,
+                  0.056226697,
+                  -0.21199176,
+                  0.96210575
+                ],
+                [
+                  -0.411256,
+                  0.1489038,
+                  -0.45107296,
+                  0.77796495
+                ],
+                [
+                  0.23391142,
+                  0.32636172,
+                  0.29815564,
+                  0.8659542
+                ],
+                [
+                  0.18497373,
+                  0.18616162,
+                  0.14498399,
+                  0.9539959
+                ],
+                [
+                  0.053504344,
+                  0.074586585,
+                  -0.044514984,
+                  0.9947827
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 12,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  1.4305114e-8,
+                  8.195639e-8,
+                  0.29021358
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 12,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.020342326,
+                  0.014888324,
+                  0.020638164,
+                  0.99946916
+                ],
+                [
+                  -0.093650356,
+                  -0.08844882,
+                  -0.035576306,
+                  0.99103016
+                ],
+                [
+                  -0.19672194,
+                  -0.21130507,
+                  -0.1276137,
+                  0.9488759
+                ],
+                [
+                  0.04938294,
+                  0.357936,
+                  0.12907837,
+                  0.923462
+                ],
+                [
+                  0.032803625,
+                  0.17866777,
+                  0.091135144,
+                  0.97913027
+                ],
+                [
+                  -0.020342326,
+                  0.014888324,
+                  0.020638164,
+                  0.99946916
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 19,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.0010498624,
+                  0.004381078,
+                  0.0782129
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 19,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.028014675,
+                  0.006525368,
+                  -0.00635133,
+                  0.9995661
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 18,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  2.4621831e-9,
+                  -5.966541e-10,
+                  0.08401605
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 18,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0,
+                0.16,
+                0.38,
+                0.54,
+                0.72,
+                1.0
+              ],
+              "values": [
+                [
+                  -0.24869089,
+                  0.00043008462,
+                  -0.000015916086,
+                  0.9685828
+                ],
+                [
+                  -0.2484535,
+                  0.04267866,
+                  -0.010863645,
+                  0.9676422
+                ],
+                [
+                  -0.24732687,
+                  0.1016722,
+                  -0.026011106,
+                  0.96323186
+                ],
+                [
+                  -0.24656539,
+                  -0.12599902,
+                  0.032444898,
+                  0.9603526
+                ],
+                [
+                  -0.2483509,
+                  -0.050262216,
+                  0.012999583,
+                  0.96727794
+                ],
+                [
+                  -0.24869089,
+                  0.00043008462,
+                  -0.000015916086,
+                  0.9685828
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 16,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.00020575832,
+                  -0.12711352,
+                  0.2700685
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 16,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.21818572,
+                  -0.00035317676,
+                  3.8769035e-10,
+                  0.9759072
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 17,
+              "path": "TRANSLATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  0.00020575771,
+                  0.1271131,
+                  0.07320603
+                ]
+              ]
+            },
+            {
+              "targetNodeId": 17,
+              "path": "ROTATION",
+              "interpolation": "LINEAR",
+              "timesSeconds": [
+                0.0
+              ],
+              "values": [
+                [
+                  -0.5004672,
+                  0.0008101265,
+                  3.8222186e-8,
+                  0.86575514
+                ]
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "diagnostics": []
+  },
+  "sourceGlbUnchanged": true,
+  "authoredClips": [
+    {
+      "id": "vck-authored-sword-slash-v1",
+      "outputName": "vck_cryslash",
+      "kind": "MOTION",
+      "status": "VALID",
+      "revision": 1,
+      "source": {
+        "kind": "PROCEDURAL_TEMPLATE",
+        "sourceRevision": "d3d1e18adb652524a5b3459620fab278892859ffb86a7fbb38ac4c542e44d4f7",
+        "sourceClipName": null,
+        "sourceClipFingerprint": null,
+        "proceduralTemplate": "HUMANOID_SWORD_SLASH"
+      },
+      "keyframeCount": 108,
+      "eventCount": 0,
+      "usages": [
+        {
+          "authoredClipId": "vck-authored-sword-slash-v1",
+          "outputClipName": "ca1slashl",
+          "usageKind": "BASE_SLOT",
+          "baseSlot": "ca1slashl",
+          "customAnimationId": "vck-custom-sword-slash-v1",
+          "phase": null
+        },
+        {
+          "authoredClipId": "vck-authored-sword-slash-v1",
+          "outputClipName": "ca1slashr",
+          "usageKind": "BASE_SLOT",
+          "baseSlot": "ca1slashr",
+          "customAnimationId": "vck-custom-sword-slash-v1",
+          "phase": null
+        },
+        {
+          "authoredClipId": "vck-authored-sword-slash-v1",
+          "outputClipName": "ca1stab",
+          "usageKind": "BASE_SLOT",
+          "baseSlot": "ca1stab",
+          "customAnimationId": "vck-custom-sword-slash-v1",
+          "phase": null
+        },
+        {
+          "authoredClipId": "vck-authored-sword-slash-v1",
+          "outputClipName": "vck_cryslash",
+          "usageKind": "CUSTOM_ONE_SHOT",
+          "baseSlot": null,
+          "customAnimationId": "vck-custom-sword-slash-v1",
+          "phase": null
+        }
+      ]
+    }
+  ]
+}

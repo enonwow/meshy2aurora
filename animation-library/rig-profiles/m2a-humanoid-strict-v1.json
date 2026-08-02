@@ -1,0 +1,367 @@
+{
+  "schemaVersion": 1,
+  "animationRootBoneName": "Hips",
+  "nodes": [
+    {
+      "name": "Head",
+      "parentName": "neck",
+      "translation": [
+        0.0,
+        0.0,
+        0.084016
+      ],
+      "rotation": [
+        -0.248691,
+        0.00043,
+        -0.000016,
+        0.968583
+      ]
+    },
+    {
+      "name": "Hips",
+      "parentName": null,
+      "translation": [
+        0.00054,
+        -0.018242,
+        1.218719
+      ],
+      "rotation": [
+        0.104126,
+        -0.001398,
+        -0.001398,
+        0.994562
+      ]
+    },
+    {
+      "name": "LeftArm",
+      "parentName": "LeftShoulder",
+      "translation": [
+        0.0,
+        0.0,
+        0.160503
+      ],
+      "rotation": [
+        -0.086502,
+        0.031401,
+        -0.089819,
+        0.991697
+      ]
+    },
+    {
+      "name": "LeftFoot",
+      "parentName": "LeftLeg",
+      "translation": [
+        0.0,
+        0.0,
+        0.478636
+      ],
+      "rotation": [
+        0.493534,
+        -0.000869,
+        0.052521,
+        0.868139
+      ]
+    },
+    {
+      "name": "LeftForeArm",
+      "parentName": "LeftArm",
+      "translation": [
+        0.0,
+        0.0,
+        0.311122
+      ],
+      "rotation": [
+        0.047205,
+        -0.075392,
+        0.038096,
+        0.995307
+      ]
+    },
+    {
+      "name": "LeftHand",
+      "parentName": "LeftForeArm",
+      "translation": [
+        0.0,
+        0.0,
+        0.301618
+      ],
+      "rotation": [
+        -0.05004,
+        -0.004414,
+        -0.047922,
+        0.997587
+      ]
+    },
+    {
+      "name": "LeftLeg",
+      "parentName": "LeftUpLeg",
+      "translation": [
+        0.0,
+        0.0,
+        0.466304
+      ],
+      "rotation": [
+        -0.154787,
+        0.001792,
+        -0.014573,
+        0.987839
+      ]
+    },
+    {
+      "name": "LeftShoulder",
+      "parentName": "Spine",
+      "translation": [
+        0.041613,
+        -0.002699,
+        0.108472
+      ],
+      "rotation": [
+        -0.499271,
+        0.50712,
+        -0.51842,
+        0.47413
+      ]
+    },
+    {
+      "name": "LeftToeBase",
+      "parentName": "LeftFoot",
+      "translation": [
+        0.0,
+        0.0,
+        0.196611
+      ],
+      "rotation": [
+        0.362291,
+        0.017845,
+        0.045847,
+        0.930766
+      ]
+    },
+    {
+      "name": "LeftUpLeg",
+      "parentName": "Hips",
+      "translation": [
+        0.122797,
+        -0.01395,
+        -0.115319
+      ],
+      "rotation": [
+        0.995454,
+        -0.047224,
+        0.058453,
+        0.058512
+      ]
+    },
+    {
+      "name": "RightArm",
+      "parentName": "RightShoulder",
+      "translation": [
+        0.0,
+        0.0,
+        0.176417
+      ],
+      "rotation": [
+        -0.091077,
+        -0.033411,
+        0.094218,
+        0.990814
+      ]
+    },
+    {
+      "name": "RightFoot",
+      "parentName": "RightLeg",
+      "translation": [
+        0.0,
+        0.0,
+        0.474032
+      ],
+      "rotation": [
+        0.491649,
+        0.001832,
+        -0.053964,
+        0.869118
+      ]
+    },
+    {
+      "name": "RightForeArm",
+      "parentName": "RightArm",
+      "translation": [
+        0.0,
+        0.0,
+        0.30386
+      ],
+      "rotation": [
+        0.053504,
+        0.074587,
+        -0.044515,
+        0.994783
+      ]
+    },
+    {
+      "name": "RightHand",
+      "parentName": "RightForeArm",
+      "translation": [
+        0.0,
+        0.0,
+        0.290214
+      ],
+      "rotation": [
+        -0.020342,
+        0.014888,
+        0.020638,
+        0.999469
+      ]
+    },
+    {
+      "name": "RightLeg",
+      "parentName": "RightUpLeg",
+      "translation": [
+        0.0,
+        0.0,
+        0.467408
+      ],
+      "rotation": [
+        -0.155429,
+        -0.004559,
+        0.012076,
+        0.987763
+      ]
+    },
+    {
+      "name": "RightShoulder",
+      "parentName": "Spine",
+      "translation": [
+        -0.042663,
+        -0.001682,
+        0.101701
+      ],
+      "rotation": [
+        -0.500238,
+        -0.491958,
+        0.517487,
+        0.489844
+      ]
+    },
+    {
+      "name": "RightToeBase",
+      "parentName": "RightFoot",
+      "translation": [
+        0.0,
+        0.0,
+        0.197381
+      ],
+      "rotation": [
+        0.364466,
+        -0.018828,
+        -0.048033,
+        0.929786
+      ]
+    },
+    {
+      "name": "RightUpLeg",
+      "parentName": "Hips",
+      "translation": [
+        -0.123014,
+        -0.014653,
+        -0.114833
+      ],
+      "rotation": [
+        0.995149,
+        0.049761,
+        -0.061214,
+        0.058772
+      ]
+    },
+    {
+      "name": "Spine",
+      "parentName": "Spine01",
+      "translation": [
+        0.0,
+        0.0,
+        0.126279
+      ],
+      "rotation": [
+        0.028014,
+        -0.006987,
+        0.00683,
+        0.99956
+      ]
+    },
+    {
+      "name": "Spine01",
+      "parentName": "Spine02",
+      "translation": [
+        0.0,
+        0.0,
+        0.126279
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Spine02",
+      "parentName": "Hips",
+      "translation": [
+        0.000217,
+        0.028603,
+        0.122997
+      ],
+      "rotation": [
+        -0.113996,
+        0.001069,
+        0.001799,
+        0.993479
+      ]
+    },
+    {
+      "name": "head_end",
+      "parentName": "Head",
+      "translation": [
+        -0.000206,
+        -0.127114,
+        0.270068
+      ],
+      "rotation": [
+        0.218186,
+        -0.000353,
+        0.0,
+        0.975907
+      ]
+    },
+    {
+      "name": "headfront",
+      "parentName": "Head",
+      "translation": [
+        0.000206,
+        0.127113,
+        0.073206
+      ],
+      "rotation": [
+        -0.500467,
+        0.00081,
+        0.0,
+        0.865755
+      ]
+    },
+    {
+      "name": "neck",
+      "parentName": "Spine",
+      "translation": [
+        0.00105,
+        0.004381,
+        0.078213
+      ],
+      "rotation": [
+        -0.028015,
+        0.006525,
+        -0.006351,
+        0.999566
+      ]
+    }
+  ],
+  "signatureSha256": "e5b907dc8d0c86e62232744fc593ec6655ea2cb560fced56706e5a57c8fe2a5e"
+}

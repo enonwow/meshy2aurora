@@ -5,6 +5,23 @@ on:
   pull_request:
 
 jobs:
+  animation-library:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.96.1 --profile minimal
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate deterministic animation library and immutability
+        run: node scripts/generate-community-animation-catalog.mjs --check && node scripts/check-community-animation-immutability.mjs
+
   native-quality:
     strategy:
       matrix:

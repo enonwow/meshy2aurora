@@ -16,10 +16,13 @@ import type {
 } from "../animation-studio/types";
 import {
   assignCustomAnimationToBaseSlotV2,
+  applyCustomAttackDemoRouteV1,
+  cloneSourceClipForEditingV1,
   collectAnimationKeyTimesV1,
   createAnimationEventDraftV1,
   createBlankPoseClipV1,
   createCustomDefinitionFromAuthoredClipV1,
+  createHumanoidSwordSlashFromSourceClipV1,
   createPhasedCustomDefinitionFromAuthoredClipsV1,
   createProceduralTemplateClipV1,
   deleteSelectedKeysV1,
@@ -287,6 +290,239 @@ describe("animation editor projections", () => {
     ]);
   });
 
+  it("creates a humanoid sword slash across the torso and both arm chains", () => {
+    const rig = [
+      "Hips",
+      "Spine02",
+      "Spine01",
+      "Spine",
+      "RightShoulder",
+      "RightArm",
+      "RightForeArm",
+      "RightHand",
+      "LeftShoulder",
+      "LeftArm",
+      "LeftForeArm",
+      "Head",
+      "LeftUpLeg",
+      "LeftLeg",
+      "LeftFoot",
+      "RightUpLeg",
+      "RightLeg",
+      "RightFoot",
+    ].map((name, id) => ({
+      id,
+      name,
+      parentId: id === 0 ? null : id - 1,
+      translation: [0, id, 0] as [number, number, number],
+      rotation: [0, 0, 0, 1] as [number, number, number, number],
+    }));
+    const created = createProceduralTemplateClipV1({
+      id: "authored-sword-slash",
+      name: "humanoid_slash",
+      sourceRevision: SOURCE_REVISION,
+      animationRoot: "Hips",
+      lengthSeconds: 1,
+      rig,
+    }, "HUMANOID_SWORD_SLASH");
+
+    expect(created).toMatchObject({
+      kind: "MOTION",
+      status: "DRAFT",
+      source: {
+        kind: "PROCEDURAL_TEMPLATE",
+        proceduralTemplate: "HUMANOID_SWORD_SLASH",
+      },
+    });
+    const changingRotations = created.tracks.filter((track) => (
+      track.path === "ROTATION"
+      && track.keyframes.length === 7
+      && track.keyframes.some((key, index) => (
+        index > 0
+        && JSON.stringify(key.value)
+          !== JSON.stringify(track.keyframes[index - 1]?.value)
+      ))
+    ));
+    expect(changingRotations).toHaveLength(18);
+    expect(changingRotations.every((track) => (
+      JSON.stringify(track.keyframes[0]?.value)
+        === JSON.stringify(track.keyframes.at(-1)?.value)
+    ))).toBe(true);
+    expect(changingRotations.flatMap(({ keyframes }) => keyframes).every(({ value }) => (
+      Math.abs(value.reduce((sum, component) => (
+        sum + component * component
+      ), 0) - 1) < 1e-5
+    ))).toBe(true);
+    expect(
+      changingRotations.find(({ targetNodeId }) => targetNodeId === 5)
+        ?.keyframes.map(({ timeSeconds }) => timeSeconds),
+    ).toEqual([0, 0.18, 0.34, 0.5, 0.66, 0.82, 1]);
+    const rightArm = changingRotations.find(
+      ({ targetNodeId }) => targetNodeId === 5,
+    )!;
+    const anticipation = rightArm.keyframes[1]!.value;
+    const impact = rightArm.keyframes[2]!.value;
+    const quaternionDot = Math.abs(anticipation.reduce(
+      (sum, component, index) => sum + component * impact[index]!,
+      0,
+    ));
+    const attackArcDegrees = 2 * Math.acos(Math.min(1, quaternionDot))
+      * 180 / Math.PI;
+    expect(attackArcDegrees).toBeGreaterThan(20);
+    expect(attackArcDegrees).toBeLessThan(150);
+    expect(changingRotations.filter(({ targetNodeId }) => (
+      targetNodeId >= 12 && targetNodeId <= 17
+    ))).toHaveLength(6);
+
+    const hipsTranslation = created.tracks.find((track) => (
+      track.targetNodeId === 0 && track.path === "TRANSLATION"
+    ))!;
+    expect(hipsTranslation.keyframes).toHaveLength(7);
+    expect(hipsTranslation.keyframes[0]?.value).toEqual(
+      hipsTranslation.keyframes.at(-1)?.value,
+    );
+    const forwardTravel = hipsTranslation.keyframes.map(({ value }) => value[1]!);
+    const verticalTravel = hipsTranslation.keyframes.map(({ value }) => value[2]!);
+    expect(Math.max(...forwardTravel) - Math.min(...forwardTravel))
+      .toBeGreaterThan(0.1);
+    expect(Math.max(...forwardTravel) - Math.min(...forwardTravel))
+      .toBeLessThan(0.15);
+    expect(Math.max(...verticalTravel) - Math.min(...verticalTravel))
+      .toBeGreaterThan(0.02);
+    expect(Math.max(...verticalTravel) - Math.min(...verticalTravel))
+      .toBeLessThan(0.05);
+  });
+
+  it("fails closed when the sword slash preset is used on a non-humanoid rig", () => {
+    expect(() => createProceduralTemplateClipV1({
+      id: "authored-sword-slash",
+      name: "humanoid_slash",
+      sourceRevision: SOURCE_REVISION,
+      animationRoot: "root",
+      rig: [{
+        id: 7,
+        name: "root",
+        parentId: null,
+        translation: [0, 0, 0],
+        rotation: [0, 0, 0, 1],
+      }],
+    }, "HUMANOID_SWORD_SLASH")).toThrow(/Hips/);
+  });
+
+  it("uses a sampled source pose as the base for the sword slash", () => {
+    const rig = [
+      "Hips",
+      "Spine02",
+      "Spine01",
+      "Spine",
+      "RightShoulder",
+      "RightArm",
+      "RightForeArm",
+      "RightHand",
+      "LeftShoulder",
+      "LeftArm",
+      "LeftForeArm",
+      "Head",
+      "LeftUpLeg",
+      "LeftLeg",
+      "LeftFoot",
+      "RightUpLeg",
+      "RightLeg",
+      "RightFoot",
+    ].map((name, id) => ({
+      id,
+      name,
+      parentId: id === 0 ? null : id - 1,
+      translation: [0, id, 0] as [number, number, number],
+      rotation: [0, 0, 0, 1] as [number, number, number, number],
+    }));
+    const source = createBlankPoseClipV1({
+      id: "source-cpause",
+      name: "m2a_sword_slash",
+      sourceRevision: SOURCE_REVISION,
+      animationRoot: "Hips",
+      lengthSeconds: 2,
+      rig,
+    });
+    const halfTurn = Math.SQRT1_2;
+    const sourceCopy: AuthoredAnimationClipV1 = {
+      ...source,
+      source: {
+        kind: "SOURCE_CLIP_COPY",
+        sourceRevision: SOURCE_REVISION,
+        sourceClipName: "cpause1",
+        sourceClipFingerprint: "b".repeat(64),
+        proceduralTemplate: null,
+      },
+      tracks: source.tracks.map((track) => (
+        track.targetNodeId === 0 && track.path === "ROTATION"
+          ? {
+              ...track,
+              keyframes: [
+                { id: "k0", timeSeconds: 0, value: [0, 0, 0, 1] },
+                { id: "k1", timeSeconds: 1, value: [0, 0, halfTurn, halfTurn] },
+              ],
+            }
+          : track
+      )),
+    };
+    const attack = createHumanoidSwordSlashFromSourceClipV1(
+      sourceCopy,
+      rig,
+      0.5,
+    );
+    const hips = attack.tracks.find((track) => (
+      track.targetNodeId === 0 && track.path === "ROTATION"
+    ));
+
+    expect(attack.source).toMatchObject({
+      kind: "SOURCE_CLIP_COPY",
+      sourceClipName: "cpause1",
+    });
+    expect(hips?.keyframes).toHaveLength(7);
+    expect(hips?.keyframes[0]?.value[2]).toBeCloseTo(Math.sin(Math.PI / 8), 6);
+    expect(hips?.keyframes[0]?.value[3]).toBeCloseTo(Math.cos(Math.PI / 8), 6);
+  });
+
+  it("duplicates an authored procedural clip without corrupting its source lineage", () => {
+    const source = createProceduralTemplateClipV1({
+      id: "authored-procedural",
+      name: "procedural_root_pulse",
+      sourceRevision: SOURCE_REVISION,
+      animationRoot: "root",
+      rig: [{
+        id: 7,
+        name: "root",
+        parentId: null,
+        translation: [1, 2, 3],
+        rotation: [0, 0, 0, 1],
+      }],
+    }, "ROOT_TRANSLATION_PULSE");
+
+    const duplicate = cloneSourceClipForEditingV1(source, {
+      id: "authored-procedural-copy",
+      name: "procedural_copy",
+    });
+
+    expect(duplicate).toMatchObject({
+      id: "authored-procedural-copy",
+      name: "procedural_copy",
+      status: "DRAFT",
+      revision: 1,
+      source: {
+        kind: "PROCEDURAL_TEMPLATE",
+        sourceRevision: SOURCE_REVISION,
+        sourceClipName: null,
+        sourceClipFingerprint: null,
+        proceduralTemplate: "ROOT_TRANSLATION_PULSE",
+      },
+    });
+    expect(() => serializeAnimationStudioDocumentV1({
+      ...document(),
+      authoredClips: [duplicate],
+    })).not.toThrow();
+  });
+
   it("edits keys deterministically and keeps strict time", () => {
     const inserted = insertKeyAtPlayheadV1(
       clip(),
@@ -381,9 +617,122 @@ describe("animation editor projections", () => {
     expect(assigned.assignments[0]).toMatchObject({
       sourceKind: "CUSTOM",
       customAnimationId: "custom-1",
+      provenance: mapping.customAnimations[0]!.provenance,
     });
     expect(assigned.customAnimations).toHaveLength(1);
     expect(getAuthoredClipUsageV1("authored-1", assigned)).toEqual(["ca1slashl"]);
+  });
+
+  it("routes attack demos through all native attack variants without modifying cpause1", () => {
+    const mapping = authoring();
+    mapping.assignments = ["cpause1", "ca1slashl", "ca1slashr", "ca1stab"].map(
+      (targetSlot) => ({
+        targetSlot: targetSlot as "cpause1" | "ca1slashl" | "ca1slashr" | "ca1stab",
+        sourceKind: "SOURCE_CLIP" as const,
+        sourceClipName: targetSlot,
+        customAnimationId: null,
+        provenance: {
+          provider: "SOURCE_GLB" as const,
+          assetId: SOURCE_REVISION,
+          ownership: "USER_OWNED" as const,
+        },
+      }),
+    );
+    const idleBefore = structuredClone(mapping.assignments[0]);
+
+    const demo = applyCustomAttackDemoRouteV1(
+      mapping,
+      "custom-1",
+      document(),
+    );
+
+    expect(demo.contract).toEqual({
+      schemaVersion: 1,
+      customAnimationId: "custom-1",
+      runtimeBaseSlots: ["ca1slashl", "ca1slashr", "ca1stab"],
+      allNativeAttackVariantsRouted: true,
+      runtimeTriggerProfile: "ACTIVE_MONSTER_COMBAT_AI",
+      productionIdleSlotPreserved: true,
+    });
+    expect(demo.authoring.assignments.find(
+      ({ targetSlot }) => targetSlot === "cpause1",
+    )).toEqual(idleBefore);
+    expect(demo.authoring.assignments.filter(
+      ({ targetSlot }) => targetSlot.startsWith("ca1"),
+    )).toEqual([
+      expect.objectContaining({
+        targetSlot: "ca1slashl",
+        sourceKind: "CUSTOM",
+        customAnimationId: "custom-1",
+      }),
+      expect.objectContaining({
+        targetSlot: "ca1slashr",
+        sourceKind: "CUSTOM",
+        customAnimationId: "custom-1",
+      }),
+      expect.objectContaining({
+        targetSlot: "ca1stab",
+        sourceKind: "CUSTOM",
+        customAnimationId: "custom-1",
+      }),
+    ]);
+
+    const phased = structuredClone(mapping);
+    phased.customAnimations[0] = {
+      ...phased.customAnimations[0]!,
+      playback: "LOOPING_PHASED",
+      clipReference: null,
+      phases: [],
+    };
+    expect(() => applyCustomAttackDemoRouteV1(
+      phased,
+      "custom-1",
+      document(),
+    )).toThrow(/requires a ONE_SHOT Custom animation/);
+  });
+
+  it("routes attack demos when the required slots are supplied by accepted fallbacks", () => {
+    const mapping = authoring();
+    mapping.assignments = [{
+      targetSlot: "cwalk",
+      sourceKind: "SOURCE_CLIP",
+      sourceClipName: "walk",
+      customAnimationId: null,
+      provenance: {
+        provider: "SOURCE_GLB",
+        assetId: SOURCE_REVISION,
+        ownership: "USER_OWNED",
+      },
+    }];
+    mapping.fallbacks = [
+      "cpause1",
+      "ca1slashl",
+      "ca1slashr",
+      "ca1stab",
+    ].map((targetSlot) => ({
+      id: `fallback:${targetSlot}:cwalk`,
+      targetSlot: targetSlot as "cpause1" | "ca1slashl" | "ca1slashr" | "ca1stab",
+      sourceSlot: "cwalk" as const,
+      reason: "Owner-approved Base 42 fallback.",
+      review: "ACCEPTED" as const,
+    }));
+
+    const demo = applyCustomAttackDemoRouteV1(
+      mapping,
+      "custom-1",
+      document(),
+    );
+
+    expect(demo.authoring.assignments.find(
+      ({ targetSlot }) => targetSlot === "cpause1",
+    )).toMatchObject({
+      targetSlot: "cpause1",
+      sourceKind: "SOURCE_CLIP",
+      sourceClipName: "walk",
+    });
+    expect(demo.authoring.assignments.filter(({ targetSlot }) => (
+      targetSlot.startsWith("ca1")
+    ))).toHaveLength(3);
   });
 
   it("keeps a migrated source-backed Custom assignable but not openable in the authored editor", () => {

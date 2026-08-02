@@ -33,3 +33,19 @@
 .animation-editor-gizmo label {
   display: grid;
 }
+
+.animation-editor-gizmo__space {
+  display: flex;
+  gap: .25rem;
+  margin-bottom: .25rem;
+}
+
+.animation-editor-gizmo__space button[aria-pressed="true"] {
+  border-color: #51cbe8;
+  color: #8ee9ff;
+}
+
+.animation-editor-gizmo__hint {
+  display: block;
+  margin-bottom: .25rem;
+}

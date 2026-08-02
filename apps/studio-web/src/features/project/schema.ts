@@ -11,6 +11,11 @@ import type {
 } from "../animation-studio/types";
 import type { PlaceableAuthoringDocument } from "../placeable-authoring/types";
 import type { TileAuthoringOptions } from "../source/InputsPanel";
+import {
+  emptyAnimationWorkbenchProjectStateV1,
+  parseAnimationWorkbenchProjectStateV1,
+  type AnimationWorkbenchProjectStateV1,
+} from "../animation-editor/animationWorkbench";
 
 export const MESHY2AURORA_PROJECT_SCHEMA_VERSION = 1 as const;
 
@@ -50,6 +55,7 @@ export interface Meshy2AuroraProjectV1 {
   readonly files: Meshy2AuroraProjectFilesV1;
   readonly animationMappingV2: CreatureAnimationAuthoringV2 | null;
   readonly animationStudio: AnimationStudioDocumentV1 | null;
+  readonly animationWorkbench: AnimationWorkbenchProjectStateV1;
   readonly placeableAuthoring: PlaceableAuthoringDocument | null;
   readonly tileOptions: TileAuthoringOptions;
 }
@@ -104,6 +110,7 @@ export function createMeshy2AuroraProjectV1(
     },
     animationMappingV2: null,
     animationStudio: null,
+    animationWorkbench: emptyAnimationWorkbenchProjectStateV1(),
     placeableAuthoring: null,
     tileOptions: { ...DEFAULT_TILE_OPTIONS },
   };
@@ -232,6 +239,14 @@ export function parseMeshy2AuroraProjectV1(
     );
   }
   try {
+    if (
+      typeof value === "object"
+      && value !== null
+      && !Array.isArray(value)
+      && !("animationWorkbench" in value)
+    ) {
+      value = { ...value, animationWorkbench: emptyAnimationWorkbenchProjectStateV1() };
+    }
     assertExactObject(value, [
       "schemaVersion",
       "identity",
@@ -240,6 +255,7 @@ export function parseMeshy2AuroraProjectV1(
       "files",
       "animationMappingV2",
       "animationStudio",
+      "animationWorkbench",
       "placeableAuthoring",
       "tileOptions",
     ], "$");
@@ -260,6 +276,7 @@ export function parseMeshy2AuroraProjectV1(
     const files = parseFiles(value.files);
     const animationMappingV2 = parseAnimationMapping(value.animationMappingV2);
     const animationStudio = parseAnimationStudio(value.animationStudio);
+    const animationWorkbench = parseAnimationWorkbenchProjectStateV1(value.animationWorkbench);
     const placeableAuthoring = parsePlaceableAuthoring(value.placeableAuthoring);
     const tileOptions = parseTileOptions(value.tileOptions);
     if (
@@ -321,6 +338,17 @@ export function parseMeshy2AuroraProjectV1(
       );
     }
     if (
+      animationWorkbench.sourceRevision !== null
+      && animationWorkbench.sourceRevision !== files.sourceGlb?.sha256
+    ) {
+      throw projectError(
+        "M2A-PROJECT-WORKBENCH-SOURCE-MISMATCH",
+        "$.animationWorkbench.sourceRevision",
+        "Animation Workbench sourceRevision does not match the referenced source GLB.",
+        "Rebind the exact source model or restore its matching workbench state.",
+      );
+    }
+    if (
       placeableAuthoring !== null
       && files.sourceGlb !== null
       && placeableAuthoring.sourceSha256 !== files.sourceGlb.sha256
@@ -342,6 +370,7 @@ export function parseMeshy2AuroraProjectV1(
         files,
         animationMappingV2,
         animationStudio,
+        animationWorkbench,
         placeableAuthoring,
         tileOptions,
       },

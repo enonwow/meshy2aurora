@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryMeshyBridgeClient, MeshyBridgeError } from "./bridge";
-import { MeshyLab } from "./MeshyLab";
+import { MeshyLab, parseMeshyAnimationActionIdsV1 } from "./MeshyLab";
 
 vi.mock("./MeshyModelViewport", () => ({
   MeshyModelViewport: ({ label, onClose }: { readonly label: string; readonly onClose?: () => void }) => <div data-testid="meshy-model-viewport">{label}<button type="button" aria-label="Close Meshy viewport" onClick={onClose}>Close</button></div>,
@@ -53,6 +53,17 @@ afterEach(async () => {
 });
 
 describe("MeshyLab", () => {
+  it("parses one to ten distinct Meshy animation action IDs", () => {
+    expect(parseMeshyAnimationActionIdsV1("0, 92, 178")).toEqual([0, 92, 178]);
+    expect(parseMeshyAnimationActionIdsV1("198")).toBeNull();
+    expect(parseMeshyAnimationActionIdsV1("0, 0")).toBeNull();
+    expect(parseMeshyAnimationActionIdsV1("-1")).toBeNull();
+    expect(parseMeshyAnimationActionIdsV1("")).toBeNull();
+    expect(parseMeshyAnimationActionIdsV1(
+      "0,1,2,3,4,5,6,7,8,9,10",
+    )).toBeNull();
+  });
+
   it("connects without exposing a pairing code when the local Bridge offers same-origin automatic pairing", async () => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     const bridge = new InMemoryMeshyBridgeClient({ availableCredits: 120, automaticPairingSupported: true });
@@ -122,6 +133,11 @@ describe("MeshyLab", () => {
       const rig = Array.from(container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
         .find((checkbox) => checkbox.parentElement?.textContent?.includes("Rig as standard humanoid"));
       rig?.click();
+    });
+    await settle();
+    await act(async () => {
+      Array.from(container.querySelectorAll<HTMLInputElement>(".meshy-lab__h1-preflight input"))
+        .forEach((checkbox) => checkbox.click());
       button(container, "Review generation")?.click();
     });
     await settle();
@@ -211,6 +227,87 @@ describe("MeshyLab", () => {
     expect(provenance.sha256).toMatch(/^[a-f0-9]{64}$/);
   });
 
+  it("adds every verified Meshy action to Animation Studio as a separate donor", async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean })
+      .IS_REACT_ACT_ENVIRONMENT = true;
+    const bridge = new InMemoryMeshyBridgeClient({ availableCredits: 120 });
+    const onImportAnimation = vi.fn();
+    const container = await render(
+      <MeshyLab
+        bridge={bridge}
+        onBack={vi.fn()}
+        onImport={vi.fn()}
+        onImportAnimation={onImportAnimation}
+      />,
+    );
+
+    await act(async () => {
+      setValue(
+        container.querySelector<HTMLInputElement>("#meshy-pairing-code")!,
+        "local-proof",
+      );
+      button(container, "Connect local bridge")?.click();
+    });
+    await settle();
+    await act(async () => {
+      setValue(
+        container.querySelector<HTMLTextAreaElement>("#meshy-asset-prompt")!,
+        "A humanoid with idle and attack animations",
+      );
+      const rig = Array.from(
+        container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'),
+      ).find((checkbox) => checkbox.parentElement?.textContent?.includes(
+        "Rig as standard humanoid",
+      ));
+      rig?.click();
+    });
+    await settle();
+    await act(async () => {
+      Array.from(container.querySelectorAll<HTMLInputElement>(".meshy-lab__h1-preflight input"))
+        .forEach((checkbox) => checkbox.click());
+      const attack = Array.from(
+        container.querySelectorAll<HTMLInputElement>(".meshy-lab__animation-catalog input"),
+      ).find((checkbox) => checkbox.parentElement?.textContent?.includes(
+        "Double Combo Attack",
+      ));
+      attack?.click();
+    });
+    await act(async () => button(container, "Review generation")?.click());
+    await settle();
+    expect(container.textContent).toContain("41 credits maximum");
+    await act(async () => button(container, "Generate model")?.click());
+    await settle();
+
+    await bridge.completeAnimationRunForTest(
+      bridge.latestRunIdForTest()!,
+      [{
+        actionId: 0,
+        bytes: new Uint8Array([0x67, 0x6c, 0x54, 0x46, 0]),
+      }, {
+        actionId: 92,
+        bytes: new Uint8Array([0x67, 0x6c, 0x54, 0x46, 92]),
+      }],
+    );
+    await act(async () => button(container, "Refresh status")?.click());
+    await settle();
+
+    expect(container.textContent).toContain("Idle");
+    expect(container.textContent).toContain("Double Combo Attack");
+    await act(async () => button(container, "Add to Animation Studio")?.click());
+    await settle();
+    await act(async () => button(container, "Add to Animation Studio")?.click());
+    await settle();
+
+    expect(onImportAnimation).toHaveBeenCalledTimes(2);
+    expect(onImportAnimation.mock.calls.map(([, provenance, actionId]) => ({
+      actionId,
+      selectedActionId: provenance.selectedAnimationActionId,
+    }))).toEqual([
+      { actionId: 0, selectedActionId: 0 },
+      { actionId: 92, selectedActionId: 92 },
+    ]);
+  });
+
   it("shows prior Meshy work and imports a recovered refined GLB without creating a paid run", async () => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     const bridge = new InMemoryMeshyBridgeClient({ availableCredits: 120 });
@@ -233,6 +330,7 @@ describe("MeshyLab", () => {
       finishedAt: "2026-07-18T15:01:00.000Z",
       consumedCredits: 20,
       glbAvailable: true,
+      artifacts: [{ key: "model", role: "MODEL" }],
     }, new Uint8Array([0x67, 0x6c, 0x54, 0x46]));
     const onImport = vi.fn();
     const container = await render(<MeshyLab bridge={bridge} onBack={vi.fn()} onImport={onImport} />);
@@ -257,13 +355,14 @@ describe("MeshyLab", () => {
     expect(button(container, "Ready to recover (1)")?.getAttribute("aria-pressed")).toBe("true");
     await act(async () => button(container, "All tasks (2)")?.click());
     expect(container.textContent).toContain("Preview of the stone golem");
-    expect(container.textContent).toContain("Preview only");
+    expect(container.textContent).toContain("No GLB");
     await act(async () => navigationButton(container, "New model")?.click());
     expect(container.textContent).toContain("Meshy API generation");
     await act(async () => navigationButton(container, "Generated models")?.click());
     await settle();
     await act(async () => historyCard(container, "refine-history-task")?.click());
     expect(historyCard(container, "refine-history-task")?.getAttribute("aria-pressed")).toBe("true");
+    expect(button(container, "Import Generated model")).not.toBeNull();
     await act(async () => button(container, "Recover selected GLB")?.click());
     await settle();
 

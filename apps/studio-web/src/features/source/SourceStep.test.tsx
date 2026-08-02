@@ -38,6 +38,32 @@ afterEach(async () => {
 });
 
 describe("SourceStep", () => {
+  it("exposes the opt-in visual QA fixture without changing the regular source screen", async () => {
+    const regular = await render(
+      <SourceStep {...handlers()} onContinue={vi.fn()} />,
+    );
+    expect(regular.textContent).not.toContain("Developer visual QA");
+
+    const onLoad = vi.fn();
+    const fixture = await render(
+      <SourceStep
+        {...handlers()}
+        onContinue={vi.fn()}
+        visualQaFixture={{
+          label: "Load Void Crystal Knight visual QA fixture",
+          state: "IDLE",
+          onLoad,
+        }}
+      />,
+    );
+    const loadButton = Array.from(fixture.querySelectorAll("button"))
+      .find((candidate) => candidate.textContent?.includes("Load Void Crystal Knight"));
+
+    expect(fixture.textContent).toContain("Developer visual QA");
+    await act(async () => loadButton?.click());
+    expect(onLoad).toHaveBeenCalledOnce();
+  });
+
   it("hides Tile by default and exposes it only when explicitly enabled", async () => {
     const callbacks = { ...handlers(), onTargetChange: vi.fn() };
     const hidden = await render(

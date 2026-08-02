@@ -188,6 +188,68 @@ describe("canonical result projector", () => {
     ]);
   });
 
+  it("projects held-weapon MATCH only when its exact texture exists in the HAK manifest", () => {
+    const value = fixture();
+    const weaponTexture = id(32, "8");
+    (value.report as typeof value.report & { heldWeapon: unknown }).heldWeapon = {
+      schemaVersion: 1,
+      sourceSha256: "6".repeat(64),
+      attachmentFingerprintSha256: "5".repeat(64),
+      textureResref: "m2a_weapon",
+      texture: weaponTexture,
+      bake: {
+        targetTriangleCountBefore: 12,
+        weaponTriangleCount: 3,
+        targetTriangleCountAfter: 15,
+      },
+      attachmentNodePresentInBinaryMdl: true,
+      combinedTriangleCountMatch: true,
+      texturePayloadMatchInHak: true,
+      status: "MATCH",
+    };
+    value.report.hak.entryCount = 4;
+    value.manifest.packageManifest.resources.push({
+      role: "TEXTURE",
+      resref: "m2a_weapon",
+      type: 3,
+      ...weaponTexture,
+    });
+    const reportJson = JSON.stringify(value.report);
+    const manifestJson = JSON.stringify(value.manifest);
+    value.summary.outputs.report.byteLength = bytes(reportJson).byteLength;
+    const summaryJson = JSON.stringify(value.summary);
+    for (const [artifactId, json] of [["report-json", reportJson], ["manifest-json", manifestJson], ["summary-json", summaryJson]] as const) {
+      const artifact = value.artifacts.find((candidate) => candidate.artifactId === artifactId)!;
+      artifact.bytes = bytes(json);
+      artifact.byteLength = artifact.bytes.byteLength;
+    }
+    const result = projectCanonicalResult(
+      reportJson,
+      summaryJson,
+      manifestJson,
+      value.artifacts,
+    );
+    expect(result.heldWeaponEvidence).toMatchObject({
+      status: "MATCH",
+      sourceSha256: "6".repeat(64),
+      textureResref: "m2a_weapon",
+      weaponTriangleCount: 3,
+      targetTriangleCountAfter: 15,
+    });
+
+    value.manifest.packageManifest.resources.pop();
+    const missingManifestJson = JSON.stringify(value.manifest);
+    const manifestArtifact = value.artifacts.find(({ artifactId }) => artifactId === "manifest-json")!;
+    manifestArtifact.bytes = bytes(missingManifestJson);
+    manifestArtifact.byteLength = manifestArtifact.bytes.byteLength;
+    expect(() => projectCanonicalResult(
+      reportJson,
+      summaryJson,
+      missingManifestJson,
+      value.artifacts,
+    )).toThrow(/HAK resource count|heldWeaponEvidence\.texture/);
+  });
+
   it("projects the caller-owned build identity from the manifest", () => {
     const value = fixture();
     const projectIdentity = {
@@ -493,6 +555,7 @@ describe("canonical result projector", () => {
   it("reconciles complete V5 Studio evidence and stable-ID binary readback", () => {
     const value = fixture();
     const sourceRevision = "1".repeat(64);
+    const donorRevision = "9".repeat(64);
     const studioFingerprint = "2".repeat(64);
     const studioEvidence = {
       animationStudioSchemaVersion: 1,
@@ -505,6 +568,13 @@ describe("canonical result projector", () => {
       authoredClipOutputNames: ["authored_editor_name"],
       authoredEventCount: 0,
       customAssignmentCount: 1,
+      customRuntimeExposures: [{
+        schemaVersion: 1,
+        customAnimationId: "custom-stable",
+        status: "BASE42_ROUTED",
+        libraryOutputClipNames: ["custom_runtime"],
+        runtimeBaseSlots: ["ca1slashl"],
+      }],
       sourceRevision,
       readbackStatus: "MATCH",
       animationStudioReadback: {
@@ -516,6 +586,20 @@ describe("canonical result projector", () => {
           authoredClipId: "clip-stable",
           outputClipName: "custom_runtime",
           materializedFingerprint: "4".repeat(64),
+          materializedClip: {
+            name: "custom_runtime",
+            animationRoot: "root",
+            lengthSeconds: 1,
+            transitionSeconds: 0.1,
+            events: [],
+            tracks: [{
+              targetNodeId: 7,
+              path: "TRANSLATION",
+              interpolation: "LINEAR",
+              timesSeconds: [0, 1],
+              values: [[0, 0, 0], [0.25, 0, 0]],
+            }],
+          },
         }],
         diagnostics: [],
       },
@@ -527,10 +611,10 @@ describe("canonical result projector", () => {
         status: "VALID",
         revision: 5,
         source: {
-          kind: "BLANK_POSE",
-          sourceRevision,
-          sourceClipName: null,
-          sourceClipFingerprint: null,
+          kind: "IMPORTED_MODEL_COPY",
+          sourceRevision: donorRevision,
+          sourceClipName: "donor_attack",
+          sourceClipFingerprint: "5".repeat(64),
           proceduralTemplate: null,
         },
         keyframeCount: 3,
@@ -575,6 +659,11 @@ describe("canonical result projector", () => {
       animationStudioFingerprintSha256: studioFingerprint,
       sourceRevision,
       readbackStatus: "MATCH",
+      customRuntimeExposures: [{
+        customAnimationId: "custom-stable",
+        status: "BASE42_ROUTED",
+        runtimeBaseSlots: ["ca1slashl"],
+      }],
       animationStudioReadback: {
         status: "MATCH",
         clips: [{
@@ -582,6 +671,18 @@ describe("canonical result projector", () => {
           outputClipName: "custom_runtime",
         }],
       },
+    });
+    expect(projectCanonicalResult(
+      reportJson,
+      summaryJson,
+      manifestJson,
+      value.artifacts,
+    ).animationStudioEvidence?.authoredClips[0]?.source).toEqual({
+      kind: "IMPORTED_MODEL_COPY",
+      sourceRevision: donorRevision,
+      sourceClipName: "donor_attack",
+      sourceClipFingerprint: "5".repeat(64),
+      proceduralTemplate: null,
     });
 
     (

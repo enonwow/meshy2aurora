@@ -14,9 +14,13 @@ if (generatedDirectory !== expectedGeneratedDirectory) {
 rmSync(generatedDirectory, { force: true, recursive: true });
 
 const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
-for (const [sourceFlag, outputDirectory] of [
-  ["--synthetic-owned-h1", "tests/.generated/owned-package"],
-  ["--synthetic-owned-h1-full-42", "tests/.generated/owned-full42-package"],
+for (const [sourceArguments, outputDirectory] of [
+  [["--synthetic-owned-h1"], "tests/.generated/owned-package"],
+  [["--synthetic-owned-h1-full-42"], "tests/.generated/owned-full42-package"],
+  [[
+    "--synthetic-owned-h1-full-42-rig-profile",
+    "../../animation-library/rig-profiles/m2a-humanoid-strict-v1.json",
+  ], "tests/.generated/owned-library-humanoid-full42-package"],
 ]) {
   const result = spawnSync(cargo, [
     "run",
@@ -28,7 +32,7 @@ for (const [sourceFlag, outputDirectory] of [
     "--example",
     "materialize_m6",
     "--",
-    sourceFlag,
+    ...sourceArguments,
     "--appearance-2da",
     "tests/fixtures/appearance.2da",
     "--output-dir",

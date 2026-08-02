@@ -35,6 +35,12 @@ function resultFixture(): CanonicalResultSnapshot {
       status: "OPEN_M6",
       reason: "No exact owner-verified Aurora/NWN lineage matches these output hashes.",
     },
+    animationPlaybackAcceptance: {
+      status: "OWNER_PROOF_REQUIRED",
+      playbackProofStatus: "not_tested",
+      proofCompleteness: "missing",
+      reason: "No exact owner animation playback proof.",
+    },
     artifacts: [],
     reportJson: "{}",
     summaryJson: "{}",

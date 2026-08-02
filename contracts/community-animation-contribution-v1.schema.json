@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://meshy2aurora.local/contracts/community-animation-contribution-v1.schema.json",
+  "title": "Meshy2Aurora animation contribution V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion","presetId","presetVersion","outputName","label","summary","authors","license","tags","playback","rigProfile","rigSignatureSha256","requiredBones","motionSha256","validationStatus","animation"],
+  "properties": {
+    "schemaVersion": {"const":1},
+    "presetId": {"type":"string","pattern":"^[A-Za-z0-9_-]{1,64}$"},
+    "presetVersion": {"type":"integer","minimum":1},
+    "outputName": {"type":"string","pattern":"^[A-Za-z0-9_]{1,16}$"},
+    "label": {"type":"string","minLength":1,"maxLength":120},
+    "summary": {"type":"string","minLength":1,"maxLength":500},
+    "authors": {"type":"array","minItems":1,"maxItems":16,"items":{"type":"object","additionalProperties":false,"required":["name"],"properties":{"name":{"type":"string","minLength":1,"maxLength":120}}}},
+    "license": {"enum":["CC0-1.0","CC-BY-4.0","LicenseRef-Meshy2Aurora-Project-Generated"]},
+    "tags": {"type":"array","minItems":1,"maxItems":16,"uniqueItems":true,"items":{"type":"string"}},
+    "playback": {"enum":["ONE_SHOT","LOOP"]},
+    "rigProfile": {"type":"string","pattern":"^[A-Za-z0-9_-]{1,64}$"},
+    "rigSignatureSha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+    "requiredBones": {"type":"array","minItems":1,"maxItems":257,"uniqueItems":true,"items":{"type":"string","minLength":1,"maxLength":120}},
+    "motionSha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+    "validationStatus": {"const":"PIPELINE_VERIFIED"},
+    "animation": {"$ref":"community-animation-payload-v1.schema.json"}
+  }
+}

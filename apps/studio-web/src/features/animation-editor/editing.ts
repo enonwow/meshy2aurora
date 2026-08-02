@@ -2,6 +2,7 @@ import type {
   AnimationMappingProvenanceV1,
   DirectCreatureBaseSlotV1,
 } from "../animation-mapping/types";
+import { resolveEffectiveAnimationSourceV1 } from "../animation-mapping/fallbacks";
 import { canonicalFloat32ForWireV1 } from "../animation-studio/schema";
 import type {
   AnimationKeyframeV1,
@@ -67,7 +68,8 @@ export interface CreateBlankPoseClipInputV1 {
 
 export type ProceduralAnimationTemplateV1 =
   | "BIND_POSE"
-  | "ROOT_TRANSLATION_PULSE";
+  | "ROOT_TRANSLATION_PULSE"
+  | "HUMANOID_SWORD_SLASH";
 
 export function createBlankPoseClipV1(
   input: CreateBlankPoseClipInputV1,
@@ -131,6 +133,9 @@ export function createProceduralTemplateClipV1(
     proceduralTemplate: template,
   };
   if (template === "BIND_POSE") return { ...clip, source };
+  if (template === "HUMANOID_SWORD_SLASH") {
+    return createHumanoidSwordSlashClipV1(clip, source, input.rig ?? []);
+  }
 
   const rig = input.rig ?? [];
   const root = rig.find(({ name }) => name === input.animationRoot) ?? rig[0];
@@ -173,6 +178,310 @@ export function createProceduralTemplateClipV1(
   };
 }
 
+const SWORD_SLASH_PHASES_V1 = [0, 0.18, 0.34, 0.5, 0.66, 0.82, 1] as const;
+const SWORD_SLASH_HIPS_TRANSLATION_DELTAS_V1 = [
+  [0, 0, 0],
+  [-0.01, -0.015, -0.025],
+  [0, 0.1, 0.01],
+  [0.005, 0.07, 0.005],
+  [0, 0.025, -0.005],
+  [0, 0, 0],
+  [0, 0, 0],
+] as const;
+
+const SWORD_SLASH_BONE_MOTIONS_V1 = [
+  {
+    boneName: "Hips",
+    eulerDegrees: [
+      [0, 0, 0], [0, 0, 6], [0, 0, -12],
+      [0, 0, -7], [0, 0, -1], [0, 0, 0], [0, 0, 0],
+    ],
+  },
+  {
+    boneName: "Spine02",
+    eulerDegrees: [
+      [0, 0, 0], [0, 0, 3], [0, 0, -5],
+      [0, 0, -2], [0, 0, 0], [0, 0, 0], [0, 0, 0],
+    ],
+  },
+  {
+    boneName: "Spine01",
+    eulerDegrees: [
+      [0, 0, 0], [0, 0, 4], [0, 0, -6],
+      [0, 0, -3], [0, 0, 0], [0, 0, 0], [0, 0, 0],
+    ],
+  },
+  {
+    boneName: "Spine",
+    eulerDegrees: [
+      [0, 0, 0], [0, 0, 5], [0, 0, -8],
+      [0, 0, -4], [0, 0, 0], [0, 0, 0], [0, 0, 0],
+    ],
+  },
+  {
+    boneName: "RightShoulder",
+    eulerDegrees: [
+      [17.82, -0.24, -24.35], [8.4, 0.7, -16.33], [-9.22, 3, 8.19],
+      [-24.68, -13.81, 18.46], [17.82, -0.24, -24.35],
+      [17.82, -0.24, -24.35], [17.82, -0.24, -24.35],
+    ],
+  },
+  {
+    boneName: "RightArm",
+    eulerDegrees: [
+      [-26.29, 34.25, 6.99], [-2, 25.87, 14.66],
+      [134.14, -14.21, 97.91], [111.7, -3.96, 92.99],
+      [-26.29, 34.25, 6.99], [-26.29, 34.25, 6.99],
+      [-26.29, 34.25, 6.99],
+    ],
+  },
+  {
+    boneName: "RightForeArm",
+    eulerDegrees: [
+      [-107.62, 39.05, -60.51], [-125.38, 32.38, -74.73],
+      [4.89, -14.69, -1.21], [70.27, 43.75, 43.6],
+      [-107.62, 39.05, -60.51], [-107.62, 39.05, -60.51],
+      [-107.62, 39.05, -60.51],
+    ],
+  },
+  {
+    boneName: "RightHand",
+    eulerDegrees: [
+      [0, 0, 0], [0, 5, 0], [0, -10, 0],
+      [0, 2, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0],
+    ],
+  },
+  {
+    boneName: "LeftShoulder",
+    eulerDegrees: [
+      [1.95, 22.07, 5.88], [1, 22, 6],
+      [3, 20, 7], [2, 21, 6],
+      [1.95, 22.07, 5.88], [1.95, 22.07, 5.88],
+      [1.95, 22.07, 5.88],
+    ],
+  },
+  {
+    boneName: "LeftArm",
+    eulerDegrees: [
+      [-3.47, -16.89, -17.19], [-3.5, -16, -17],
+      [-5, -14, -18], [-4, -16, -17],
+      [-3.47, -16.89, -17.19], [-3.47, -16.89, -17.19],
+      [-3.47, -16.89, -17.19],
+    ],
+  },
+  {
+    boneName: "LeftForeArm",
+    eulerDegrees: [
+      [118.12, -72.88, -107.77], [118, -73, -105],
+      [118, -73, -102], [118, -73, -105],
+      [118.12, -72.88, -107.77], [118.12, -72.88, -107.77],
+      [118.12, -72.88, -107.77],
+    ],
+  },
+  {
+    boneName: "Head",
+    eulerDegrees: [
+      [0, 0, 0], [0, 0, -5], [0, 0, 6],
+      [0, 0, 3], [0, 0, 0], [0, 0, 0], [0, 0, 0],
+    ],
+  },
+  {
+    boneName: "LeftUpLeg",
+    eulerDegrees: [
+      [0, 0, 0], [3, 0, 3], [-2, 0, -4],
+      [-1, 0, -2], [0, 0, 0], [0, 0, 0], [0, 0, 0],
+    ],
+  },
+  {
+    boneName: "LeftLeg",
+    eulerDegrees: [
+      [0, 0, 0], [-6, 0, 0], [2, 0, 0],
+      [1, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0],
+    ],
+  },
+  {
+    boneName: "LeftFoot",
+    eulerDegrees: [
+      [0, 0, 0], [3, 0, 0], [0, 0, -5],
+      [0, 0, -3], [0, 0, 0], [0, 0, 0], [0, 0, 0],
+    ],
+  },
+  {
+    boneName: "RightUpLeg",
+    eulerDegrees: [
+      [0, 0, 0], [-3, 0, -4], [-1, 0, 6],
+      [0, 0, 3], [0, 0, 0], [0, 0, 0], [0, 0, 0],
+    ],
+  },
+  {
+    boneName: "RightLeg",
+    eulerDegrees: [
+      [0, 0, 0], [-6, 0, 0], [2, 0, 0],
+      [1, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0],
+    ],
+  },
+  {
+    boneName: "RightFoot",
+    eulerDegrees: [
+      [0, 0, 0], [3, 0, 0], [0, 0, 10],
+      [0, 0, 5], [0, 0, 0], [0, 0, 0], [0, 0, 0],
+    ],
+  },
+] as const;
+
+export function createHumanoidSwordSlashFromSourceClipV1(
+  sourceClip: AuthoredAnimationClipV1,
+  rig: readonly AnimationRigNodeV1[],
+  poseTimeSeconds = 0.54,
+): AuthoredAnimationClipV1 {
+  const poseTime = clamp(poseTimeSeconds, 0, sourceClip.lengthSeconds);
+  const posedClip: AuthoredAnimationClipV1 = {
+    ...sourceClip,
+    kind: "STATIC_POSE",
+    status: "DRAFT",
+    lengthSeconds: 1,
+    transitionSeconds: 0.1,
+    events: [],
+    tracks: sourceClip.tracks.map((track) => ({
+      ...track,
+      interpolation: "LINEAR",
+      keyframes: [{
+        id: "key-0000",
+        timeSeconds: 0,
+        value: sampleAnimationTrackLinearV1(track, poseTime),
+      }],
+    })),
+    revision: 1,
+  };
+  return createHumanoidSwordSlashClipV1(
+    posedClip,
+    posedClip.source,
+    rig,
+  );
+}
+
+function createHumanoidSwordSlashClipV1(
+  clip: AuthoredAnimationClipV1,
+  source: AuthoredAnimationClipV1["source"],
+  rig: readonly AnimationRigNodeV1[],
+): AuthoredAnimationClipV1 {
+  const animatedTracks = new Map<string, AuthoredAnimationTrackV1>();
+  for (const motion of SWORD_SLASH_BONE_MOTIONS_V1) {
+    const node = rig.find(({ name }) => (
+      name.toLowerCase() === motion.boneName.toLowerCase()
+    ));
+    if (!node) {
+      throw new Error(
+        `HUMANOID_SWORD_SLASH requires the ${motion.boneName} bone.`,
+      );
+    }
+    const track = clip.tracks.find(({ targetNodeId, path }) => (
+      targetNodeId === node.id && path === "ROTATION"
+    ));
+    const base = track?.keyframes[0]?.value;
+    if (!track || !base || base.length !== 4) {
+      throw new Error(
+        `HUMANOID_SWORD_SLASH requires a rotation track for ${motion.boneName}.`,
+      );
+    }
+    animatedTracks.set(track.id, {
+      ...track,
+      interpolation: "LINEAR",
+      keyframes: SWORD_SLASH_PHASES_V1.map((phase, index) => ({
+        id: `key-${String(index).padStart(4, "0")}`,
+        timeSeconds: canonicalFloat32ForWireV1(clip.lengthSeconds * phase),
+        value: quaternionWithEulerDeltaV1(
+          base,
+          motion.eulerDegrees[index] ?? [0, 0, 0],
+        ),
+      })),
+    });
+  }
+  const hips = rig.find(({ name }) => name.toLowerCase() === "hips");
+  const hipsTranslation = hips
+    ? clip.tracks.find(({ targetNodeId, path }) => (
+        targetNodeId === hips.id && path === "TRANSLATION"
+      ))
+    : undefined;
+  const hipsBase = hipsTranslation?.keyframes[0]?.value;
+  if (!hipsTranslation || !hipsBase || hipsBase.length !== 3) {
+    throw new Error(
+      "HUMANOID_SWORD_SLASH requires a translation track for Hips.",
+    );
+  }
+  animatedTracks.set(hipsTranslation.id, {
+    ...hipsTranslation,
+    interpolation: "LINEAR",
+    keyframes: SWORD_SLASH_PHASES_V1.map((phase, index) => ({
+      id: `key-${String(index).padStart(4, "0")}`,
+      timeSeconds: canonicalFloat32ForWireV1(clip.lengthSeconds * phase),
+      value: hipsBase.map((component, axis) => canonicalFloat32ForWireV1(
+        component
+          + (SWORD_SLASH_HIPS_TRANSLATION_DELTAS_V1[index]?.[axis] ?? 0),
+      )),
+    })),
+  });
+  return {
+    ...clip,
+    kind: "MOTION",
+    source,
+    tracks: clip.tracks.map((track) => animatedTracks.get(track.id) ?? track),
+  };
+}
+
+function quaternionWithEulerDeltaV1(
+  baseValue: readonly number[],
+  eulerDegrees: readonly [number, number, number],
+): number[] {
+  const base = normalizeQuaternionV1(baseValue);
+  const radians = eulerDegrees.map((degrees) => degrees * Math.PI / 180) as [
+    number,
+    number,
+    number,
+  ];
+  const qx = quaternionAxisAngleV1([1, 0, 0], radians[0]);
+  const qy = quaternionAxisAngleV1([0, 1, 0], radians[1]);
+  const qz = quaternionAxisAngleV1([0, 0, 1], radians[2]);
+  const delta = quaternionMultiplyXyzwV1(
+    quaternionMultiplyXyzwV1(qz, qy),
+    qx,
+  );
+  return normalizeQuaternionV1(quaternionMultiplyXyzwV1(
+    [base[0]!, base[1]!, base[2]!, base[3]!],
+    delta,
+  )).map(canonicalFloat32ForWireV1);
+}
+
+function quaternionAxisAngleV1(
+  axis: readonly [number, number, number],
+  angle: number,
+): [number, number, number, number] {
+  const half = angle * 0.5;
+  const sine = Math.sin(half);
+  return [
+    axis[0] * sine,
+    axis[1] * sine,
+    axis[2] * sine,
+    Math.cos(half),
+  ];
+}
+
+function quaternionMultiplyXyzwV1(
+  left: readonly [number, number, number, number],
+  right: readonly [number, number, number, number],
+): [number, number, number, number] {
+  return [
+    left[3] * right[0] + left[0] * right[3]
+      + left[1] * right[2] - left[2] * right[1],
+    left[3] * right[1] - left[0] * right[2]
+      + left[1] * right[3] + left[2] * right[0],
+    left[3] * right[2] + left[0] * right[1]
+      - left[1] * right[0] + left[2] * right[3],
+    left[3] * right[3] - left[0] * right[0]
+      - left[1] * right[1] - left[2] * right[2],
+  ];
+}
+
 export function cloneSourceClipForEditingV1(
   source: AuthoredAnimationClipV1,
   input: { readonly id: string; readonly name: string },
@@ -182,10 +491,6 @@ export function cloneSourceClipForEditingV1(
     id: input.id,
     name: input.name,
     status: "DRAFT",
-    source: {
-      ...source.source,
-      kind: "SOURCE_CLIP_COPY",
-    },
     revision: 1,
   };
 }
@@ -807,6 +1112,8 @@ export function assignCustomAnimationToBaseSlotV2(
     sourceInventory,
   );
   if (diagnostics.length > 0) throw new Error(diagnostics[0]!.message);
+  const custom = authoring.customAnimations.find(({ id }) => id === customId);
+  if (!custom) throw new Error("The selected Custom animation does not exist.");
   return {
     ...authoring,
     authoringRevision: authoring.authoringRevision + 1,
@@ -817,13 +1124,123 @@ export function assignCustomAnimationToBaseSlotV2(
         sourceKind: "CUSTOM",
         sourceClipName: null,
         customAnimationId: customId,
-        provenance: {
-          provider: "USER_CUSTOM",
-          assetId: customId,
-          ownership: "USER_OWNED",
-        },
+        provenance: custom.provenance,
       },
     ],
+  };
+}
+
+export const CUSTOM_ATTACK_DEMO_BASE_SLOTS_V1 = [
+  "ca1slashl",
+  "ca1slashr",
+  "ca1stab",
+] as const satisfies readonly DirectCreatureBaseSlotV1[];
+
+export interface CustomAttackDemoContractV1 {
+  schemaVersion: 1;
+  customAnimationId: string;
+  runtimeBaseSlots: DirectCreatureBaseSlotV1[];
+  allNativeAttackVariantsRouted: true;
+  runtimeTriggerProfile: "ACTIVE_MONSTER_COMBAT_AI";
+  productionIdleSlotPreserved: true;
+}
+
+export function applyCustomAttackDemoRouteV1(
+  authoring: CreatureAnimationAuthoringV2,
+  customId: string,
+  studio: AnimationStudioDocumentV1,
+  sourceInventory: readonly AnimationStudioLibrarySourceV1[] = [],
+): {
+  authoring: CreatureAnimationAuthoringV2;
+  contract: CustomAttackDemoContractV1;
+} {
+  const custom = authoring.customAnimations.find(({ id }) => id === customId);
+  if (!custom) throw new Error("The selected Custom animation does not exist.");
+  if (custom.playback !== "ONE_SHOT") {
+    throw new Error(
+      "Attack demo requires a ONE_SHOT Custom animation. Choose one exact phase as a separate ONE_SHOT Custom before routing it to native attack slots.",
+    );
+  }
+  const effectiveBefore = new Map(
+    ["cpause1", ...CUSTOM_ATTACK_DEMO_BASE_SLOTS_V1].map((slot) => {
+      const typedSlot = slot as DirectCreatureBaseSlotV1;
+      return [
+        typedSlot,
+        resolveEffectiveAnimationSourceV1(
+          typedSlot,
+          authoring.assignments,
+          authoring.fallbacks,
+        ),
+      ] as const;
+    }),
+  );
+  for (const slot of CUSTOM_ATTACK_DEMO_BASE_SLOTS_V1) {
+    const diagnostics = validateCustomAnimationAssignmentV2(
+      slot,
+      customId,
+      authoring,
+      studio,
+      sourceInventory,
+    );
+    if (diagnostics.length > 0) throw new Error(diagnostics[0]!.message);
+  }
+  const idleSourceBefore = effectiveBefore.get("cpause1")!;
+  const attackSlots = new Set<DirectCreatureBaseSlotV1>(
+    CUSTOM_ATTACK_DEMO_BASE_SLOTS_V1,
+  );
+  const idleDirect = authoring.assignments.some(
+    ({ targetSlot }) => targetSlot === "cpause1",
+  )
+    ? []
+    : [{
+        ...idleSourceBefore.assignment,
+        targetSlot: "cpause1" as const,
+      }];
+  const attackAssignments = CUSTOM_ATTACK_DEMO_BASE_SLOTS_V1.map((targetSlot) => ({
+    targetSlot,
+    sourceKind: "CUSTOM" as const,
+    sourceClipName: null,
+    customAnimationId: custom.id,
+    provenance: custom.provenance,
+  }));
+  const nextAuthoring: CreatureAnimationAuthoringV2 = {
+    ...authoring,
+    authoringRevision: authoring.authoringRevision + 1,
+    assignments: [
+      ...authoring.assignments.filter(
+        ({ targetSlot }) => !attackSlots.has(targetSlot),
+      ),
+      ...idleDirect,
+      ...attackAssignments,
+    ],
+  };
+  const idleSourceAfter = resolveEffectiveAnimationSourceV1(
+    "cpause1",
+    nextAuthoring.assignments,
+    nextAuthoring.fallbacks,
+  );
+  const withoutTargetSlot = (
+    assignment: CreatureAnimationAuthoringV2["assignments"][number],
+  ) => {
+    const { targetSlot: _targetSlot, ...source } = assignment;
+    return source;
+  };
+  if (
+    JSON.stringify(withoutTargetSlot(idleSourceAfter.assignment))
+    !== JSON.stringify(withoutTargetSlot(idleSourceBefore.assignment))
+  ) {
+    throw new Error("Attack demo must not modify the production cpause1 assignment.");
+  }
+  return {
+    authoring: nextAuthoring,
+    contract: {
+      schemaVersion: 1,
+      customAnimationId: custom.id,
+      runtimeBaseSlots: [...CUSTOM_ATTACK_DEMO_BASE_SLOTS_V1],
+      allNativeAttackVariantsRouted: true,
+      runtimeTriggerProfile: "ACTIVE_MONSTER_COMBAT_AI",
+      productionIdleSlotPreserved: true,
+    },
   };
 }
 

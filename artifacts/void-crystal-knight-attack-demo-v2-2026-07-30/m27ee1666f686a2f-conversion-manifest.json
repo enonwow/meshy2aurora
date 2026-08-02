@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "status": "M6_MODEL_PACKAGE_MATERIALIZED",
+  "inputGlb": {
+    "byteLength": 9951624,
+    "sha256": "d3d1e18adb652524a5b3459620fab278892859ffb86a7fbb38ac4c542e44d4f7"
+  },
+  "inputAppearanceTwoDa": {
+    "byteLength": 6901349,
+    "sha256": "3dc8505bb5848044659cf44f9fe60e3f7c401db772496c4571ec0fff62a761d6"
+  },
+  "textureSelection": {
+    "materialSlot": 0,
+    "sourceMaterialId": 0,
+    "sourceTextureId": 1,
+    "sourceImageId": 0,
+    "sourceImageIndex": 0,
+    "sourceImageSha256": "f451354d22ceb7c0098fe0fe39982190a4e3e242bf2b878dcdda979da0f06fb8"
+  },
+  "appendedPhysicalRow": 15101,
+  "generatedFiles": [
+    {
+      "relativePath": "generated/source.glb",
+      "byteLength": 9951624,
+      "sha256": "d3d1e18adb652524a5b3459620fab278892859ffb86a7fbb38ac4c542e44d4f7"
+    },
+    {
+      "relativePath": "generated/m27ee1666f686a2f.mdl",
+      "byteLength": 2558064,
+      "sha256": "6bf6135f32fa44fe4c66c258a830ed3898e5ca4e0afecc0fa749b7aac9bc9bdb"
+    },
+    {
+      "relativePath": "generated/m27ee1666f686a2f.tga",
+      "byteLength": 12582956,
+      "sha256": "5101483b93b6eb4e0aa39cc705dcbed9de1a70c1661f85eacffcb58793025e8a"
+    },
+    {
+      "relativePath": "generated/appearance.2da",
+      "byteLength": 6901504,
+      "sha256": "5ea9acb06854e90c1e55f0ceb48068e61ff49cbf47cc7febcfe1b1e887527535"
+    },
+    {
+      "relativePath": "generated/m27ee1666f686a2f.hak",
+      "byteLength": 22042780,
+      "sha256": "518f6d55d6882114aec28ad0f3650c90a4704a3ae9c69a97b46637bef513070b"
+    },
+    {
+      "relativePath": "generated/m27ee1666f686a2f.mod",
+      "byteLength": 15209,
+      "sha256": "2fcbd4f49beccd6926c29521a1074b331d2c169b5d61049a8ab608fb96c97d4c"
+    },
+    {
+      "relativePath": "reports/materialization-report.json",
+      "byteLength": 1098368,
+      "sha256": "3e6d9fcd125ae06866a7e7e265e508888dd6248d78d88c7e3412eab40c345be8"
+    },
+    {
+      "relativePath": "reports/summary.json",
+      "byteLength": 4414,
+      "sha256": "887201afb287793cc3d023cf7347aced07de500a9b3f41d72d5d50f8adba592b"
+    }
+  ],
+  "packageManifest": {
+    "schemaVersion": 1,
+    "packageSha256": "518f6d55d6882114aec28ad0f3650c90a4704a3ae9c69a97b46637bef513070b",
+    "resources": [
+      {
+        "role": "APPEARANCE_TABLE",
+        "resref": "appearance",
+        "type": 2017,
+        "byteLength": 6901504,
+        "sha256": "5ea9acb06854e90c1e55f0ceb48068e61ff49cbf47cc7febcfe1b1e887527535",
+        "hakResourceId": 0,
+        "hakPayloadOffset": 256
+      },
+      {
+        "role": "TEXTURE",
+        "resref": "m27ee1666f686a2f",
+        "type": 3,
+        "byteLength": 12582956,
+        "sha256": "5101483b93b6eb4e0aa39cc705dcbed9de1a70c1661f85eacffcb58793025e8a",
+        "hakResourceId": 1,
+        "hakPayloadOffset": 6901760
+      },
+      {
+        "role": "MODEL",
+        "resref": "m27ee1666f686a2f",
+        "type": 2002,
+        "byteLength": 2558064,
+        "sha256": "6bf6135f32fa44fe4c66c258a830ed3898e5ca4e0afecc0fa749b7aac9bc9bdb",
+        "hakResourceId": 2,
+        "hakPayloadOffset": 19484716
+      }
+    ]
+  },
+  "appearancePayloadPolicy": "PRESERVED_AND_APPENDED",
+  "projectIdentity": {
+    "schemaVersion": 1,
+    "projectId": "d744d6c5-3986-45e0-aec8-a952f573b964",
+    "projectName": "Untitled project",
+    "projectRevision": 35
+  },
+  "manifestSelfHashPolicy": "EXCLUDED_TO_AVOID_SELF_REFERENCE",
+  "animationStudioSchemaVersion": 1,
+  "animationStudioFingerprintSha256": "b9ff082e5180901ec93c88c447e13826ac6239f1b139d7c827d74a1571ec1bad",
+  "animationStudioRevision": 23,
+  "creatureAnimationAuthoringSchemaVersion": 2,
+  "creatureAnimationAuthoringFingerprintSha256": "bb8721d88401e16e57576a808beebcf04d1bd40b9dca1edb5d67d2bc9418a0d7",
+  "authoredClipCount": 1,
+  "authoredClipIds": [
+    "authored-eff6b4bd-d513-4495-8aef-2e2aabf19308"
+  ],
+  "authoredClipOutputNames": [
+    "vck_cryslash"
+  ],
+  "authoredEventCount": 0,
+  "customAssignmentCount": 1,
+  "sourceRevision": "d3d1e18adb652524a5b3459620fab278892859ffb86a7fbb38ac4c542e44d4f7",
+  "readbackStatus": "MATCH",
+  "animationStudioReadback": {
+    "schemaVersion": 1,
+    "studioFingerprint": "b9ff082e5180901ec93c88c447e13826ac6239f1b139d7c827d74a1571ec1bad",
+    "sourceRevision": "d3d1e18adb652524a5b3459620fab278892859ffb86a7fbb38ac4c542e44d4f7",
+    "status": "MATCH",
+    "clips": [
+      {
+        "authoredClipId": "authored-eff6b4bd-d513-4495-8aef-2e2aabf19308",
+        "outputClipName": "ca1slashl",
+        "materializedFingerprint": "ed885fbc49e96ef8c2e763badfe8e0fc73ea55b9ee405a1387f75171c5e301db"
+      },
+      {
+        "authoredClipId": "authored-eff6b4bd-d513-4495-8aef-2e2aabf19308",
+        "outputClipName": "vck_cryslash",
+        "materializedFingerprint": "cb6084cae9f105eb41f72888928bf14ab5d6dc69ed5c0b2f1dda59f2594ae3dd"
+      }
+    ],
+    "diagnostics": []
+  },
+  "sourceGlbUnchanged": true,
+  "authoredClips": [
+    {
+      "id": "authored-eff6b4bd-d513-4495-8aef-2e2aabf19308",
+      "outputName": "vck_cryslash",
+      "kind": "MOTION",
+      "status": "VALID",
+      "revision": 22,
+      "source": {
+        "kind": "PROCEDURAL_TEMPLATE",
+        "sourceRevision": "d3d1e18adb652524a5b3459620fab278892859ffb86a7fbb38ac4c542e44d4f7",
+        "sourceClipName": null,
+        "sourceClipFingerprint": null,
+        "proceduralTemplate": "ROOT_TRANSLATION_PULSE"
+      },
+      "keyframeCount": 68,
+      "eventCount": 0,
+      "usages": [
+        {
+          "authoredClipId": "authored-eff6b4bd-d513-4495-8aef-2e2aabf19308",
+          "outputClipName": "ca1slashl",
+          "usageKind": "BASE_SLOT",
+          "baseSlot": "ca1slashl",
+          "customAnimationId": "custom-e2d626bc-88e2-4ee5-8f2e-c3879f3b006c",
+          "phase": null
+        },
+        {
+          "authoredClipId": "authored-eff6b4bd-d513-4495-8aef-2e2aabf19308",
+          "outputClipName": "vck_cryslash",
+          "usageKind": "CUSTOM_ONE_SHOT",
+          "baseSlot": null,
+          "customAnimationId": "custom-e2d626bc-88e2-4ee5-8f2e-c3879f3b006c",
+          "phase": null
+        }
+      ]
+    }
+  ]
+}

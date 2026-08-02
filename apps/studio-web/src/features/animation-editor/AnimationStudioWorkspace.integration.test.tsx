@@ -21,7 +21,10 @@ import {
 } from "../animation-studio/testFixtures";
 import type { DirectCreatureBaseSlotV1 } from "../animation-mapping/types";
 import type { AnimationRigNodeV1 } from "./AnimationBoneTree";
-import { AnimationDopeSheet } from "./AnimationDopeSheet";
+import {
+  AnimationDopeSheet,
+  projectTimelineMarkersV1,
+} from "./AnimationDopeSheet";
 import { AnimationStudioWorkspace } from "./AnimationStudioWorkspace";
 import { CustomAnimationMappingPanel } from "./CustomAnimationMappingPanel";
 import { createCustomDefinitionFromAuthoredClipV1 } from "./editing";
@@ -43,6 +46,42 @@ const rig: readonly AnimationRigNodeV1[] = [{
   translation: [0, 0, 1],
   rotation: [0, 0, 0, 1],
 }];
+
+function exactTransferCompatibility(donorSourceRevision: string) {
+  return {
+    schemaVersion: 1 as const,
+    status: "EXACT_COPY" as const,
+    donorSourceRevision,
+    targetSourceRevision: sourceRevision,
+    donorRigSignatureSha256: "1".repeat(64),
+    targetRigSignatureSha256: "1".repeat(64),
+    compatibilityFingerprintSha256: "2".repeat(64),
+    allowedModes: ["EXACT_RIG_COPY_V1" as const],
+    mapping: {
+      schemaVersion: 1 as const,
+      rootName: "root",
+      entries: [],
+    },
+    diagnostics: [],
+  };
+}
+
+function retargetTransferCompatibility(donorSourceRevision: string) {
+  return {
+    ...exactTransferCompatibility(donorSourceRevision),
+    status: "RETARGETABLE_SAME_HIERARCHY" as const,
+    donorRigSignatureSha256: "3".repeat(64),
+    targetRigSignatureSha256: "4".repeat(64),
+    compatibilityFingerprintSha256: "5".repeat(64),
+    allowedModes: ["SAME_HIERARCHY_RETARGET_V1" as const],
+    diagnostics: [{
+      code: "M2A-ANIMATION-RETARGET-REST-TRANSLATION",
+      path: "rig.nodes[root].translation",
+      message: "rest translation differs for root",
+      action: "Preview the explicit retarget mode.",
+    }],
+  };
+}
 
 afterEach(async () => {
   await act(async () => {
@@ -79,17 +118,22 @@ describe("AnimationStudioWorkspace integration", () => {
         proceduralTemplate: null,
       },
     });
+    const secondFile = new File(["glb-two"], "donor-two.glb", {
+      type: "model/gltf-binary",
+    });
     const inspect = vi.fn().mockImplementation(async (file: File) => (
       file.name === "donor-two.glb"
         ? {
             sourceRevision: secondDonorRevision,
             rig,
             clips: [{ name: "attack", durationSeconds: 0.75, trackCount: 9 }],
+            transferCompatibility: exactTransferCompatibility(secondDonorRevision),
           }
         : {
             sourceRevision: donorRevision,
             rig,
             clips: [{ name: "walk", durationSeconds: 1.25, trackCount: 8 }],
+            transferCompatibility: exactTransferCompatibility(donorRevision),
           }
     ));
     const importClip = vi.fn().mockImplementation(async (file: File) => (
@@ -116,6 +160,12 @@ describe("AnimationStudioWorkspace integration", () => {
           onAuthoringChange={vi.fn()}
           onInspectAnimationModel={inspect}
           onImportAnimationModelClip={importClip}
+          animationModelDonors={[{
+            id: "meshy-action-198",
+            file: secondFile,
+            label: "Meshy action 198",
+            detail: "Verified by Meshy Bridge",
+          }]}
           onUndo={vi.fn()}
           onRedo={vi.fn()}
           canUndo={false}
@@ -147,18 +197,23 @@ describe("AnimationStudioWorkspace integration", () => {
     });
 
     expect(inspect).toHaveBeenCalledWith(file);
-    expect(container.textContent).toContain("Compatible rig");
+    expect(container.textContent).toContain("Exact rig copy");
     expect(container.textContent).toContain("walk · 1.25 s · 8 tracks");
 
-    await click(buttonByText(container, "Copy to Custom"));
+    await click(buttonByText(container, "Preview exact copy"));
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
     });
+    expect(container.textContent).toContain("Preview ready");
+    await click(buttonByText(container, "Copy exact to Custom"));
 
     expect(importClip).toHaveBeenCalledWith(
       file,
       "walk",
+      donorRevision,
+      "EXACT_RIG_COPY_V1",
+      undefined,
       expect.stringMatching(/^authored-/),
       "imp_walk",
     );
@@ -168,27 +223,22 @@ describe("AnimationStudioWorkspace integration", () => {
 
     await click(buttonByText(container, "+ New animation"));
     await click(buttonByText(container, "Copy from another model…"));
-    const secondFile = new File(["glb-two"], "donor-two.glb", {
-      type: "model/gltf-binary",
-    });
-    const secondInput = required<HTMLInputElement>(
-      container.querySelector('.animation-import-dialog input[type="file"]'),
-    );
+    expect(container.textContent).toContain("Available from Meshy Bridge");
+    expect(container.textContent).toContain("Meshy action 198");
     await act(async () => {
-      Object.defineProperty(secondInput, "files", {
-        configurable: true,
-        value: [secondFile],
-      });
-      secondInput.dispatchEvent(new Event("change", { bubbles: true }));
+      required<HTMLButtonElement>(
+        container.querySelector(".animation-import-dialog__donors button"),
+      ).click();
       await Promise.resolve();
       await Promise.resolve();
     });
     expect(container.textContent).toContain("attack · 0.75 s · 9 tracks");
-    await click(buttonByText(container, "Copy to Custom"));
+    await click(buttonByText(container, "Preview exact copy"));
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
     });
+    await click(buttonByText(container, "Copy exact to Custom"));
 
     expect(latestDocument.authoredClips).toHaveLength(2);
     expect(latestDocument.authoredClips.map(({ source }) => (
@@ -197,6 +247,411 @@ describe("AnimationStudioWorkspace integration", () => {
     expect(latestDocument.authoredClips.map(({ source }) => (
       source.sourceClipFingerprint
     ))).toEqual(["c".repeat(64), "e".repeat(64)]);
+  });
+
+  it("previews a same-hierarchy retarget before committing a V3 Custom clip", async () => {
+    let latestDocument = emptyDocument();
+    const donorRevision = "b".repeat(64);
+    const retargeted = animationStudioClipFixtureV1({
+      id: "authored-retargeted-attack",
+      name: "imp_attack",
+      source: {
+        kind: "RETARGETED_MODEL_COPY",
+        sourceRevision: donorRevision,
+        sourceClipName: "attack",
+        sourceClipFingerprint: "6".repeat(64),
+        proceduralTemplate: null,
+        retarget: {
+          donorSourceRevision: donorRevision,
+          targetSourceRevision: sourceRevision,
+          donorClipName: "attack",
+          donorClipFingerprint: "6".repeat(64),
+          donorRigSignatureSha256: "3".repeat(64),
+          targetRigSignatureSha256: "4".repeat(64),
+          compatibilityFingerprintSha256: "5".repeat(64),
+          mode: "SAME_HIERARCHY_RETARGET_V1",
+          rootMotionScale: 1.25,
+          outputMotionFingerprintSha256: "7".repeat(64),
+          algorithmVersion: "M2A_SAME_HIERARCHY_REST_DELTA_V1",
+          algorithmLimits: "TR_ONLY",
+        },
+      },
+    });
+    const inspect = vi.fn().mockResolvedValue({
+      sourceRevision: donorRevision,
+      rig,
+      clips: [{ name: "attack", durationSeconds: 0.8, trackCount: 4 }],
+      transferCompatibility: retargetTransferCompatibility(donorRevision),
+    });
+    const prepare = vi.fn().mockResolvedValue(retargeted);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+
+    function Harness() {
+      const [studio, setStudio] = useState(emptyDocument());
+      latestDocument = studio;
+      return (
+        <AnimationStudioWorkspace
+          document={studio}
+          authoring={emptyAuthoring()}
+          sourceInventory={[]}
+          rig={rig}
+          viewport={<div />}
+          autosaveState={{ kind: "SAVED" }}
+          diagnostics={[]}
+          onDocumentChange={setStudio}
+          onAuthoringChange={vi.fn()}
+          onInspectAnimationModel={inspect}
+          onImportAnimationModelClip={prepare}
+          renderAnimationTransferPreview={() => <div>Target motion preview</div>}
+          onUndo={vi.fn()}
+          onRedo={vi.fn()}
+          canUndo={false}
+          canRedo={false}
+        />
+      );
+    }
+
+    await act(async () => root.render(<Harness />));
+    await click(buttonByText(container, "+ New animation"));
+    await click(buttonByText(container, "Copy from another model…"));
+    const file = new File(["donor"], "fogbound.glb", { type: "model/gltf-binary" });
+    const input = required<HTMLInputElement>(
+      container.querySelector('.animation-import-dialog input[type="file"]'),
+    );
+    await act(async () => {
+      Object.defineProperty(input, "files", { configurable: true, value: [file] });
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(container.textContent).toContain("Retargetable rig");
+    expect(container.textContent).toContain("1 rig difference");
+    await click(buttonByText(container, "Preview retarget"));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(latestDocument.authoredClips).toEqual([]);
+    expect(container.textContent).toContain("Preview ready");
+    expect(container.textContent).toContain("Target motion preview");
+    expect(container.textContent).toContain("1.2500");
+    await click(buttonByText(container, "Copy retargeted to Custom"));
+    expect(latestDocument.schemaVersion).toBe(3);
+    expect(latestDocument.authoredClips).toEqual([retargeted]);
+    expect(prepare).toHaveBeenCalledWith(
+      file,
+      "attack",
+      donorRevision,
+      "SAME_HIERARCHY_RETARGET_V1",
+      undefined,
+      expect.stringMatching(/^authored-/),
+      "imp_attack",
+    );
+  });
+
+  it("offers a source-bound humanoid semantic V2 transfer for differently named rigs", async () => {
+    let latestDocument = emptyDocument();
+    const donorRevision = "b".repeat(64);
+    const semanticMap = {
+      schemaVersion: 2 as const,
+      aliasDictionaryVersion: "M2A_HUMANOID_ALIASES_2026_07_V1",
+      status: "COMPATIBLE" as const,
+      donorSourceRevision: donorRevision,
+      targetSourceRevision: sourceRevision,
+      manualMappingConfirmed: false,
+      entries: [{
+        semantic: "RIGHT_HAND",
+        required: true,
+        donorNodeId: 7,
+        donorNodeName: "mixamorig_RightHand",
+        targetNodeId: 7,
+        targetNodeName: "hand_r",
+        mappingSource: "VERSIONED_ALIAS" as const,
+      }],
+      diagnostics: [],
+      fingerprintSha256: "8".repeat(64),
+    };
+    const semanticClip = animationStudioClipFixtureV1({
+      id: "authored-semantic-attack",
+      name: "imp_attack",
+      source: {
+        kind: "RETARGETED_MODEL_COPY",
+        sourceRevision: donorRevision,
+        sourceClipName: "attack",
+        sourceClipFingerprint: "6".repeat(64),
+        proceduralTemplate: null,
+        retarget: {
+          donorSourceRevision: donorRevision,
+          targetSourceRevision: sourceRevision,
+          donorClipName: "attack",
+          donorClipFingerprint: "6".repeat(64),
+          donorRigSignatureSha256: "3".repeat(64),
+          targetRigSignatureSha256: "4".repeat(64),
+          compatibilityFingerprintSha256: semanticMap.fingerprintSha256,
+          mode: "HUMANOID_SEMANTIC_RETARGET_V2",
+          rootMotionScale: 1,
+          outputMotionFingerprintSha256: "7".repeat(64),
+          algorithmVersion: "M2A_HUMANOID_SEMANTIC_CHAIN_V2",
+          algorithmLimits: "VERSIONED_ALIASES|TR_ONLY|LINEAR",
+        },
+      },
+    });
+    const inspect = vi.fn().mockResolvedValue({
+      sourceRevision: donorRevision,
+      rig,
+      clips: [{ name: "attack", durationSeconds: 0.8, trackCount: 4 }],
+      transferCompatibility: {
+        ...retargetTransferCompatibility(donorRevision),
+        status: "INCOMPATIBLE" as const,
+        allowedModes: [],
+      },
+      semanticCompatibility: semanticMap,
+    });
+    const prepare = vi.fn().mockResolvedValue(semanticClip);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+
+    function Harness() {
+      const [studio, setStudio] = useState(emptyDocument());
+      latestDocument = studio;
+      return (
+        <AnimationStudioWorkspace
+          document={studio}
+          authoring={emptyAuthoring()}
+          sourceInventory={[]}
+          rig={rig}
+          viewport={<div />}
+          autosaveState={{ kind: "SAVED" }}
+          diagnostics={[]}
+          onDocumentChange={setStudio}
+          onAuthoringChange={vi.fn()}
+          onInspectAnimationModel={inspect}
+          onImportAnimationModelClip={prepare}
+          onUndo={vi.fn()}
+          onRedo={vi.fn()}
+          canUndo={false}
+          canRedo={false}
+        />
+      );
+    }
+
+    await act(async () => root.render(<Harness />));
+    await click(buttonByText(container, "+ New animation"));
+    await click(required(Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.includes("Copy from another model"))));
+    const file = new File(["donor"], "semantic-donor.glb", {
+      type: "model/gltf-binary",
+    });
+    const input = required<HTMLInputElement>(
+      container.querySelector('.animation-import-dialog input[type="file"]'),
+    );
+    await act(async () => {
+      Object.defineProperty(input, "files", { configurable: true, value: [file] });
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(container.textContent).toContain("Semantic humanoid retarget");
+    expect(container.textContent).toContain("Humanoid semantic retarget V2");
+    await click(buttonByText(container, "Preview retarget"));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await click(buttonByText(container, "Copy retargeted to Custom"));
+
+    expect(prepare).toHaveBeenCalledWith(
+      file,
+      "attack",
+      donorRevision,
+      "HUMANOID_SEMANTIC_RETARGET_V2",
+      semanticMap,
+      expect.stringMatching(/^authored-/),
+      "imp_attack",
+    );
+    expect(latestDocument.schemaVersion).toBe(3);
+    expect(latestDocument.authoredClips).toEqual([semanticClip]);
+  });
+
+  it("fails closed when the current model or inspected donor lineage changes during an async import", async () => {
+    let latestDocument = emptyDocument();
+    let updateDocument:
+      | ((document: AnimationStudioDocumentV1) => void)
+      | null = null;
+    let resolveImport!: (clip: ReturnType<typeof animationStudioClipFixtureV1>) => void;
+    const donorRevision = "b".repeat(64);
+    const delayedImport = new Promise<
+      ReturnType<typeof animationStudioClipFixtureV1>
+    >((resolve) => {
+      resolveImport = resolve;
+    });
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+
+    function Harness() {
+      const [studio, setStudio] = useState(emptyDocument());
+      latestDocument = studio;
+      updateDocument = setStudio;
+      return (
+        <AnimationStudioWorkspace
+          document={studio}
+          authoring={emptyAuthoring()}
+          sourceInventory={[]}
+          rig={rig}
+          viewport={<div />}
+          autosaveState={{ kind: "SAVED" }}
+          diagnostics={[]}
+          onDocumentChange={setStudio}
+          onAuthoringChange={vi.fn()}
+          onInspectAnimationModel={async () => ({
+            sourceRevision: donorRevision,
+            rig,
+            clips: [{
+              name: "attack",
+              durationSeconds: 0.8,
+              trackCount: 4,
+            }],
+            transferCompatibility: exactTransferCompatibility(donorRevision),
+          })}
+          onImportAnimationModelClip={() => delayedImport}
+          onUndo={vi.fn()}
+          onRedo={vi.fn()}
+          canUndo={false}
+          canRedo={false}
+        />
+      );
+    }
+
+    await act(async () => root.render(<Harness />));
+    await click(buttonByText(container, "+ New animation"));
+    await click(buttonByText(container, "Copy from another model…"));
+    const file = new File(["donor"], "donor.glb", {
+      type: "model/gltf-binary",
+    });
+    const input = required<HTMLInputElement>(
+      container.querySelector('.animation-import-dialog input[type="file"]'),
+    );
+    await act(async () => {
+      Object.defineProperty(input, "files", {
+        configurable: true,
+        value: [file],
+      });
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+    });
+    await click(buttonByText(container, "Preview exact copy"));
+    await act(async () => {
+      updateDocument?.({
+        ...latestDocument,
+        sourceRevision: "f".repeat(64),
+      });
+    });
+    expect(latestDocument.sourceRevision).toBe("f".repeat(64));
+    await act(async () => {
+      resolveImport(animationStudioClipFixtureV1({
+        id: "imported-attack",
+        name: "imp_attack",
+        source: {
+          kind: "IMPORTED_MODEL_COPY",
+          sourceRevision: donorRevision,
+          sourceClipName: "attack",
+          sourceClipFingerprint: "c".repeat(64),
+          proceduralTemplate: null,
+        },
+      }));
+      await delayedImport;
+      await Promise.resolve();
+    });
+
+    expect(latestDocument.authoredClips).toEqual([]);
+    expect(container.querySelector('[role="alert"]')?.textContent)
+      .toContain("document changed while the donor preview was being prepared");
+  });
+
+  it("merges a delayed Edit copy into the latest document instead of overwriting newer work", async () => {
+    let latestDocument = emptyDocument();
+    let updateDocument: ((document: AnimationStudioDocumentV1) => void) | null = null;
+    let resolveCopy!: (clip: ReturnType<typeof animationStudioClipFixtureV1>) => void;
+    const delayedCopy = new Promise<ReturnType<typeof animationStudioClipFixtureV1>>(
+      (resolve) => {
+        resolveCopy = resolve;
+      },
+    );
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+
+    function Harness() {
+      const [studio, setStudio] = useState(emptyDocument());
+      latestDocument = studio;
+      updateDocument = setStudio;
+      return (
+        <AnimationStudioWorkspace
+          document={studio}
+          authoring={emptyAuthoring()}
+          sourceInventory={[{
+            clipId: "source-attack",
+            name: "attack",
+            durationSeconds: 0.8,
+            trackCount: 4,
+          }]}
+          rig={rig}
+          viewport={<div />}
+          autosaveState={{ kind: "SAVED" }}
+          diagnostics={[]}
+          onDocumentChange={setStudio}
+          onAuthoringChange={vi.fn()}
+          onEditSourceClip={() => delayedCopy}
+          onUndo={vi.fn()}
+          onRedo={vi.fn()}
+          canUndo={false}
+          canRedo={false}
+        />
+      );
+    }
+
+    await act(async () => root.render(<Harness />));
+    await click(buttonByText(container, "Edit copy"));
+    const newerClip = animationStudioClipFixtureV1({
+      id: "newer-local-clip",
+      name: "newer_local_clip",
+    });
+    await act(async () => {
+      updateDocument?.({
+        ...latestDocument,
+        authoringRevision: latestDocument.authoringRevision + 1,
+        authoredClips: [newerClip],
+      });
+    });
+    const resolved = animationStudioClipFixtureV1({
+      id: "delayed-source-copy",
+      name: "attack_edited",
+      source: {
+        kind: "SOURCE_CLIP_COPY",
+        sourceRevision,
+        sourceClipName: "attack",
+        sourceClipFingerprint: "source-attack",
+        proceduralTemplate: null,
+      },
+    });
+    await act(async () => {
+      resolveCopy(resolved);
+      await delayedCopy;
+      await Promise.resolve();
+    });
+
+    expect(latestDocument.authoredClips.map(({ id }) => id).sort()).toEqual([
+      "delayed-source-copy",
+      "newer-local-clip",
+    ]);
   });
 
   it("creates from the current pose, edits translation and rotation at one playhead, saves to Custom, and keeps rename identity stable", async () => {
@@ -298,22 +753,148 @@ describe("AnimationStudioWorkspace integration", () => {
       latestAuthoring.customAnimations[0]?.clipReference?.authoredClipId,
     ).toBe(stableClipId);
 
-    await click(buttonByText(container, "+ New animation"));
-    await click(buttonByText(container, "From procedural template"));
-    const procedural = latestDocument.authoredClips.find(
-      ({ source }) => source.kind === "PROCEDURAL_TEMPLATE",
-    );
-    expect(procedural).toMatchObject({
-      kind: "MOTION",
-      status: "DRAFT",
-      source: { proceduralTemplate: "ROOT_TRANSLATION_PULSE" },
+  });
+
+  it("delegates smooth playback to the viewport runtime and consumes throttled snapshots", async () => {
+    const clip = animationStudioClipFixtureV1({
+      id: "smooth-playback",
+      name: "smooth_playback",
+      lengthSeconds: 1,
+      status: "VALID",
     });
-    expect(procedural?.tracks.every(
-      ({ interpolation }) => interpolation === "LINEAR",
-    )).toBe(true);
-    expect(procedural?.tracks.find(({ path }) => path === "TRANSLATION")
-      ?.keyframes.map(({ timeSeconds }) => timeSeconds)).toEqual([0, 0.5, 1]);
-    expect(container.textContent).toContain("Generated");
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+    let playbackControl: {
+      playing: boolean;
+      onUpdate: (snapshot: { timeSeconds: number; playing: boolean }) => void;
+    } | undefined;
+
+    function Harness() {
+      const [studio, setStudio] = useState(animationStudioDocumentFixtureV1({
+        status: "VALID",
+        authoredClips: [clip],
+      }));
+      return (
+        <AnimationStudioWorkspace
+          document={studio}
+          authoring={emptyAuthoring()}
+          sourceInventory={[]}
+          rig={rig}
+          viewport={(_selectedClip, playheadSeconds, playback) => {
+            playbackControl = playback;
+            return (
+              <div
+                data-testid="smooth-playback-viewport"
+                data-playhead={playheadSeconds.toFixed(3)}
+                data-playing={playback.playing}
+              />
+            );
+          }}
+          autosaveState={{ kind: "SAVED" }}
+          diagnostics={[]}
+          onDocumentChange={setStudio}
+          onAuthoringChange={vi.fn()}
+          onUndo={vi.fn()}
+          onRedo={vi.fn()}
+          canUndo={false}
+          canRedo={false}
+        />
+      );
+    }
+
+    await act(async () => root.render(<Harness />));
+    await click(required<HTMLButtonElement>(
+      container.querySelector('button[aria-label="Play"]'),
+    ));
+    expect(playbackControl?.playing).toBe(true);
+    expect(
+      container.querySelector('[data-testid="smooth-playback-viewport"]')
+        ?.getAttribute("data-playhead"),
+    ).toBe("0.000");
+
+    await act(async () => playbackControl?.onUpdate({
+      timeSeconds: 0.42,
+      playing: true,
+    }));
+    expect(
+      container.querySelector('[data-testid="smooth-playback-viewport"]')
+        ?.getAttribute("data-playhead"),
+    ).toBe("0.420");
+
+    await act(async () => playbackControl?.onUpdate({
+      timeSeconds: 1,
+      playing: false,
+    }));
+    expect(container.querySelector('button[aria-label="Play"]')).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="smooth-playback-viewport"]')
+        ?.getAttribute("data-playing"),
+    ).toBe("false");
+  });
+
+  it("prunes orphaned authored Custom references when saving a recovered clip", async () => {
+    const clip = animationStudioClipFixtureV1({
+      id: "authored-current",
+      name: "current_attack",
+      status: "DRAFT",
+    });
+    const initialDocument = animationStudioDocumentFixtureV1({
+      status: "DRAFT",
+      authoredClips: [clip],
+    });
+    const staleCustom = createCustomDefinitionFromAuthoredClipV1("authored-missing", {
+      id: "custom-stale",
+      name: "stale_attack",
+    });
+    let latestDocument = initialDocument;
+    let latestAuthoring: CreatureAnimationAuthoringV2 = {
+      ...emptyAuthoring(),
+      assignments: [customAssignment("ca1slashl", staleCustom.id)],
+      customAnimations: [staleCustom],
+    };
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+
+    function Harness() {
+      const [studioState, setStudioState] = useState(
+        createAnimationStudioStateV1(initialDocument),
+      );
+      const [authoring, setAuthoring] = useState(latestAuthoring);
+      latestDocument = studioState.document;
+      latestAuthoring = authoring;
+      return (
+        <AnimationStudioWorkspace
+          document={studioState.document}
+          authoring={authoring}
+          sourceInventory={[]}
+          rig={rig}
+          viewport={() => <div />}
+          autosaveState={{ kind: "SAVED" }}
+          diagnostics={[]}
+          onDocumentChange={(next) => setStudioState((current) => (
+            commitAnimationStudioDocumentV1(current, next)
+          ))}
+          onAuthoringChange={setAuthoring}
+          onUndo={vi.fn()}
+          onRedo={vi.fn()}
+          canUndo={false}
+          canRedo={false}
+        />
+      );
+    }
+
+    await act(async () => root.render(<Harness />));
+    await click(buttonByText(container, "Save to Custom"));
+
+    expect(latestDocument.authoredClips[0]?.status).toBe("VALID");
+    expect(latestAuthoring.assignments).toEqual([]);
+    expect(latestAuthoring.customAnimations).toHaveLength(1);
+    expect(latestAuthoring.customAnimations[0]?.clipReference?.authoredClipId)
+      .toBe(clip.id);
   });
 
   it("keeps a false-valid clip Invalid and unassignable when exact core validation blocks it", async () => {
@@ -437,7 +1018,7 @@ describe("AnimationStudioWorkspace integration", () => {
     expect(latestAuthoring.customAnimations).toHaveLength(1);
   });
 
-  it("discards an exact validation result when the clip changes in flight", async () => {
+  it("locks editing while exact validation is in flight", async () => {
     const clip = animationStudioClipFixtureV1({
       id: "async-stale",
       name: "async_stale",
@@ -488,15 +1069,21 @@ describe("AnimationStudioWorkspace integration", () => {
     await act(async () => buttonByText(container, "Save to Custom").click());
     expect(buttonByText(container, "Validating…").disabled).toBe(true);
 
+    expect(container.querySelector(".animation-studio-workspace__main"))
+      .toHaveProperty("disabled", true);
+    expect(container.textContent).toContain(
+      "Editing is temporarily locked",
+    );
+    expect(labelInput(container, "Output name").matches(":disabled")).toBe(true);
     await setInputValue(labelInput(container, "Output name"), "changed_in_flight");
     await act(async () => resolveValidation([]));
 
     expect(latestDocument.authoredClips[0]).toMatchObject({
-      name: "changed_in_flight",
-      status: "DRAFT",
+      name: "async_stale",
+      status: "VALID",
     });
-    expect(container.textContent).toContain(
-      "The clip changed while exact validation was running.",
+    expect(container.textContent).not.toContain(
+      "Editing is temporarily locked",
     );
   });
 
@@ -555,6 +1142,38 @@ describe("AnimationStudioWorkspace integration", () => {
     }
 
     await act(async () => root.render(<Harness />));
+    const boneSelect = required<HTMLSelectElement>(
+      container.querySelector('select[aria-label="Output rig bone"]'),
+    );
+    await act(async () => {
+      boneSelect.value = "7";
+      boneSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await click(required<HTMLButtonElement>(
+      container.querySelector('button[aria-label*="key at 0.000 seconds"]'),
+    ));
+    await act(async () => {
+      required<HTMLButtonElement>(
+        container.querySelector('button[aria-label*="key at 0.500 seconds"]'),
+      ).dispatchEvent(new MouseEvent("click", {
+        bubbles: true,
+        ctrlKey: true,
+      }));
+    });
+    expect(required<HTMLInputElement>(
+      container.querySelector('input[aria-label="Animation playhead"]'),
+    ).valueAsNumber).toBeCloseTo(0.5);
+    expect(container.textContent).toContain(
+      "Editing the selected keyframe value.",
+    );
+    const rotationZ = Array.from(
+      required<HTMLElement>(
+        container.querySelector(".bone-transform-inspector"),
+      ).querySelectorAll<HTMLLabelElement>("label"),
+    ).find((label) => label.firstChild?.textContent?.trim() === "Z")
+      ?.querySelector<HTMLInputElement>("input");
+    expect(rotationZ?.valueAsNumber).toBeCloseTo(90);
+
     await setInputValue(
       required(container.querySelector('input[aria-label="Range start seconds"]')),
       "0.45",
@@ -827,6 +1446,27 @@ describe("AnimationStudioWorkspace integration", () => {
 });
 
 describe("AnimationDopeSheet bounded rendering", () => {
+  it("projects a bounded time window without re-sorting all markers per frame", () => {
+    const candidates = Array.from({ length: 10_000 }, (_, index) => ({
+      id: `key-${index}`,
+      kind: "KEY" as const,
+      timeSeconds: index / 100,
+    }));
+    const selected = new Set(["key-9999"]);
+    const projected = projectTimelineMarkersV1(
+      candidates,
+      selected,
+      5,
+      2_000,
+    );
+
+    expect(projected).toHaveLength(2_000);
+    expect(projected.some(({ id }) => id === "key-9999")).toBe(true);
+    expect(projected.some(({ timeSeconds }) => timeSeconds === 5)).toBe(true);
+    expect(projectTimelineMarkersV1(candidates.slice(0, 10), selected, 9, 2_000))
+      .toEqual(candidates.slice(0, 10));
+  });
+
   it("keeps one playhead and at most 2,000 key/event marker nodes", async () => {
     const largeClip = animationStudioClipFixtureV1({
       lengthSeconds: 2,
@@ -877,6 +1517,87 @@ describe("AnimationDopeSheet bounded rendering", () => {
 });
 
 describe("CustomAnimationMappingPanel integration", () => {
+  it("previews attack routing without mutation, then applies and reverts it explicitly", async () => {
+    const attack = animationStudioClipFixtureV1({
+      id: "clip-attack-demo",
+      name: "attack_demo",
+      status: "VALID",
+    });
+    const studio = animationStudioDocumentFixtureV1({
+      status: "VALID",
+      authoredClips: [attack],
+    });
+    const originalAssignments: CreatureAnimationAuthoringV2["assignments"] = [
+      "cpause1",
+      "ca1slashl",
+      "ca1slashr",
+      "ca1stab",
+    ].map((targetSlot) => ({
+      targetSlot: targetSlot as
+        | "cpause1" | "ca1slashl" | "ca1slashr" | "ca1stab",
+      sourceKind: "SOURCE_CLIP" as const,
+      sourceClipName: targetSlot,
+      customAnimationId: null,
+      provenance: {
+        provider: "SOURCE_GLB" as const,
+        assetId: sourceRevision,
+        ownership: "USER_OWNED" as const,
+      },
+    }));
+    const initialAuthoring: CreatureAnimationAuthoringV2 = {
+      ...emptyAuthoring(),
+      assignments: originalAssignments,
+      customAnimations: [
+        createCustomDefinitionFromAuthoredClipV1(attack.id, {
+          id: "custom-attack-demo",
+          name: "Attack demo",
+        }),
+      ],
+    };
+    let latestAuthoring = initialAuthoring;
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+
+    function Harness() {
+      const [authoring, setAuthoring] = useState(initialAuthoring);
+      latestAuthoring = authoring;
+      return (
+        <CustomAnimationMappingPanel
+          slot="ca1slashl"
+          authoring={authoring}
+          studio={studio}
+          onAuthoringChange={setAuthoring}
+          onCreate={vi.fn()}
+          onOpenClip={vi.fn()}
+        />
+      );
+    }
+
+    await act(async () => root.render(<Harness />));
+    await click(buttonByText(container, "Preview attack demo (3 slots)"));
+    expect(latestAuthoring).toBe(initialAuthoring);
+    expect(container.textContent).toContain(
+      "No production mapping has changed.",
+    );
+
+    await click(buttonByText(container, "Apply attack demo routing"));
+    expect(latestAuthoring.assignments.filter(({ targetSlot }) => (
+      targetSlot.startsWith("ca1")
+    )).every(({ customAnimationId }) => (
+      customAnimationId === "custom-attack-demo"
+    ))).toBe(true);
+    expect(latestAuthoring.assignments.find(({ targetSlot }) => (
+      targetSlot === "cpause1"
+    ))).toEqual(originalAssignments[0]);
+
+    await click(buttonByText(container, "Revert applied attack demo"));
+    expect(latestAuthoring.assignments).toEqual(originalAssignments);
+    expect(latestAuthoring.authoringRevision)
+      .toBe(initialAuthoring.authoringRevision + 2);
+  });
+
   it("creates and assigns a Valid phased Custom from three stable authored clip IDs without asking for an ID", async () => {
     const start = animationStudioClipFixtureV1({
       id: "phase-start-stable",
@@ -1193,6 +1914,162 @@ describe("CustomAnimationMappingPanel integration", () => {
     ]);
     expect(onOpenClip).not.toHaveBeenCalled();
   });
+
+  it("uses a compatible repository preset as a provenance-complete Draft Custom clip", async () => {
+    let latestDocument = emptyDocument();
+    const instantiate = vi.fn(async (
+      preset: Parameters<NonNullable<React.ComponentProps<typeof AnimationStudioWorkspace>["onInstantiateLibraryPreset"]>>[0],
+      newId: string,
+      newName: string,
+    ) => libraryPresetClip(newId, newName, preset));
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+
+    function Harness() {
+      const [studio, setStudio] = useState(emptyDocument());
+      latestDocument = studio;
+      return (
+        <AnimationStudioWorkspace
+          document={studio}
+          authoring={emptyAuthoring()}
+          sourceInventory={[]}
+          rig={rig}
+          viewport={<div />}
+          autosaveState={{ kind: "SAVED" }}
+          diagnostics={[]}
+          onDocumentChange={setStudio}
+          onAuthoringChange={vi.fn()}
+          onInspectLibraryPreset={async (preset) => ({
+            schemaVersion: 1,
+            status: "COMPATIBLE",
+            expectedRigSignatureSha256: preset.rigSignatureSha256,
+            actualRigSignatureSha256: preset.rigSignatureSha256,
+            missingBones: [],
+            diagnostics: [],
+          })}
+          onInstantiateLibraryPreset={instantiate}
+          onUndo={vi.fn()}
+          onRedo={vi.fn()}
+          canUndo={false}
+          canRedo={false}
+        />
+      );
+    }
+
+    await act(async () => root.render(<Harness />));
+    await click(tabByText(container, "Built-in", "Animation clip source"));
+    await vi.waitFor(() => {
+      expect(libraryOptionByText(container, "Right cross")).toBeDefined();
+    });
+    await click(libraryOptionByText(container, "Right cross"));
+    await vi.waitFor(() => {
+      expect(buttonByText(container, "Use as template").disabled).toBe(false);
+    });
+    await click(buttonByText(container, "Use as template"));
+    await vi.waitFor(() => {
+      expect(instantiate).toHaveBeenCalledTimes(1);
+    });
+
+    expect(instantiate).toHaveBeenCalledWith(
+      expect.objectContaining({ presetId: "m2a_right_cross" }),
+      expect.stringMatching(/^library-m2a_right_cross-/),
+      "m2a_rightcross",
+    );
+    expect(latestDocument.schemaVersion).toBe(2);
+    expect(latestDocument.authoringRevision).toBe(2);
+    expect(latestDocument.authoredClips).toHaveLength(1);
+    expect(latestDocument.authoredClips[0]).toMatchObject({
+      name: "m2a_rightcross",
+      status: "DRAFT",
+      source: {
+        kind: "LIBRARY_PRESET_COPY",
+        sourceRevision,
+        libraryPreset: {
+          presetId: "m2a_right_cross",
+          presetVersion: 1,
+          source: "BUILT_IN",
+          instantiationMode: "STRICT_RIG_V1",
+        },
+      },
+    });
+  });
+
+  it("does not add a library clip when the project changes during instantiation", async () => {
+    let latestDocument = emptyDocument();
+    let updateDocument: ((document: AnimationStudioDocumentV1) => void) | null = null;
+    let resolveInstantiation: (() => void) | null = null;
+    const instantiate = vi.fn((
+      preset: Parameters<NonNullable<React.ComponentProps<typeof AnimationStudioWorkspace>["onInstantiateLibraryPreset"]>>[0],
+      newId: string,
+      newName: string,
+    ) => new Promise<ReturnType<typeof libraryPresetClip>>((resolve) => {
+      resolveInstantiation = () => resolve(libraryPresetClip(newId, newName, preset));
+    }));
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+
+    function Harness() {
+      const [studio, setStudio] = useState(emptyDocument());
+      latestDocument = studio;
+      updateDocument = setStudio;
+      return (
+        <AnimationStudioWorkspace
+          document={studio}
+          authoring={emptyAuthoring()}
+          sourceInventory={[]}
+          rig={rig}
+          viewport={<div />}
+          autosaveState={{ kind: "SAVED" }}
+          diagnostics={[]}
+          onDocumentChange={setStudio}
+          onAuthoringChange={vi.fn()}
+          onInspectLibraryPreset={async (preset) => ({
+            schemaVersion: 1,
+            status: "COMPATIBLE",
+            expectedRigSignatureSha256: preset.rigSignatureSha256,
+            actualRigSignatureSha256: preset.rigSignatureSha256,
+            missingBones: [],
+            diagnostics: [],
+          })}
+          onInstantiateLibraryPreset={instantiate}
+          onUndo={vi.fn()}
+          onRedo={vi.fn()}
+          canUndo={false}
+          canRedo={false}
+        />
+      );
+    }
+
+    await act(async () => root.render(<Harness />));
+    await click(tabByText(container, "Built-in", "Animation clip source"));
+    await vi.waitFor(() => {
+      expect(libraryOptionByText(container, "Right cross")).toBeDefined();
+    });
+    await click(libraryOptionByText(container, "Right cross"));
+    await vi.waitFor(() => {
+      expect(buttonByText(container, "Use as template").disabled).toBe(false);
+    });
+    await click(buttonByText(container, "Use as template"));
+    await vi.waitFor(() => {
+      expect(instantiate).toHaveBeenCalledTimes(1);
+    });
+    await act(async () => {
+      const setStudio = required(updateDocument);
+      setStudio({ ...latestDocument, authoringRevision: 2 });
+    });
+    await act(async () => required(resolveInstantiation)());
+    await flushPromises();
+
+    expect(latestDocument.authoringRevision).toBe(2);
+    expect(latestDocument.authoredClips).toEqual([]);
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      "document changed while the library preset was loading",
+    );
+  });
 });
 
 function emptyDocument(): AnimationStudioDocumentV1 {
@@ -1317,4 +2194,47 @@ function pickerRow(container: HTMLElement, name: string): HTMLButtonElement {
   return required(Array.from(container.querySelectorAll<HTMLButtonElement>(
     '.custom-animation-picker [role="option"]',
   )).find((button) => button.querySelector("strong")?.textContent === name));
+}
+
+function libraryOptionByText(container: HTMLElement, text: string): HTMLButtonElement {
+  return required(Array.from(container.querySelectorAll<HTMLButtonElement>(
+    '.animation-clip-library [role="option"]',
+  )).find((button) => button.textContent?.includes(text)));
+}
+
+async function flushPromises() {
+  await act(async () => {
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+}
+
+function libraryPresetClip(
+  id: string,
+  name: string,
+  preset: Parameters<NonNullable<React.ComponentProps<typeof AnimationStudioWorkspace>["onInstantiateLibraryPreset"]>>[0],
+) {
+  return animationStudioClipFixtureV1({
+    id,
+    name,
+    status: "DRAFT",
+    source: {
+      kind: "LIBRARY_PRESET_COPY",
+      sourceRevision,
+      sourceClipName: null,
+      sourceClipFingerprint: preset.motionSha256,
+      proceduralTemplate: null,
+      libraryPreset: {
+        presetId: preset.presetId,
+        presetVersion: preset.presetVersion,
+        presetMotionSha256: preset.motionSha256,
+        catalogSha256: "c".repeat(64),
+        source: preset.source,
+        authors: preset.authors.map(({ name: author }) => author),
+        license: preset.license,
+        rigSignatureSha256: preset.rigSignatureSha256,
+        instantiationMode: "STRICT_RIG_V1",
+      },
+    },
+  });
 }

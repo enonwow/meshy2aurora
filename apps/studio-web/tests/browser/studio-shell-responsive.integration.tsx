@@ -66,9 +66,9 @@ describe("Studio shell responsive browser contract", () => {
     roots.push(root);
     root.render(
       <ImportAnimationFromModelDialog
-        currentRig={[]}
         onInspect={vi.fn()}
-        onImport={vi.fn()}
+        onPrepare={vi.fn()}
+        onCommit={vi.fn()}
         onClose={vi.fn()}
       />,
     );

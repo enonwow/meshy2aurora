@@ -14,6 +14,7 @@ export class StudioWorkerClient {
   private readonly worker: Worker;
   private previewWorker: Worker | null = null;
   private animationPreviewRequestId: string | null = null;
+  private animationLibraryRequestId: string | null = null;
 
   constructor() {
     this.worker = this.createWorker("MAIN");
@@ -83,6 +84,139 @@ export class StudioWorkerClient {
     }, [sourceGlb]);
   }
 
+  inspectAnimationTransferCompatibility(
+    targetGlb: ArrayBuffer,
+    donorGlb: ArrayBuffer,
+    requestId = workerRequestId(),
+  ) {
+    return this.request({
+      requestId,
+      type: "INSPECT_ANIMATION_TRANSFER_COMPATIBILITY",
+      targetGlb,
+      donorGlb,
+    }, [targetGlb, donorGlb]);
+  }
+
+  retargetAnimationModelClip(
+    targetGlb: ArrayBuffer,
+    donorGlb: ArrayBuffer,
+    clipName: string,
+    optionsJson: string,
+    requestId = workerRequestId(),
+  ) {
+    return this.request({
+      requestId,
+      type: "RETARGET_ANIMATION_MODEL_CLIP",
+      targetGlb,
+      donorGlb,
+      clipName,
+      optionsJson,
+    }, [targetGlb, donorGlb]);
+  }
+
+  inspectHumanoidRetargetCompatibilityV2(
+    targetGlb: ArrayBuffer,
+    donorGlb: ArrayBuffer,
+    overridesJson = "[]",
+    manualMappingConfirmed = false,
+    requestId = workerRequestId(),
+  ) {
+    return this.request({
+      requestId,
+      type: "INSPECT_HUMANOID_RETARGET_COMPATIBILITY_V2",
+      targetGlb,
+      donorGlb,
+      overridesJson,
+      manualMappingConfirmed,
+    }, [targetGlb, donorGlb]);
+  }
+
+  retargetAnimationClipHumanoidV2(
+    targetGlb: ArrayBuffer,
+    donorGlb: ArrayBuffer,
+    clipName: string,
+    semanticMapJson: string,
+    clipId: string,
+    outputName: string,
+    requestId = workerRequestId(),
+  ) {
+    return this.request({
+      requestId,
+      type: "RETARGET_ANIMATION_CLIP_HUMANOID_V2",
+      targetGlb,
+      donorGlb,
+      clipName,
+      semanticMapJson,
+      clipId,
+      outputName,
+    }, [targetGlb, donorGlb]);
+  }
+
+  prepareAnimationTransferBatchV2(
+    targetGlb: ArrayBuffer,
+    donorGlb: ArrayBuffer,
+    batchRequestJson: string,
+    requestId = workerRequestId(),
+  ) {
+    return this.request({
+      requestId,
+      type: "PREPARE_ANIMATION_TRANSFER_BATCH_V2",
+      targetGlb,
+      donorGlb,
+      batchRequestJson,
+    }, [targetGlb, donorGlb]);
+  }
+
+  buildAnimationSequencePreview(
+    sequenceRequestJson: string,
+    availableClipsJson: string,
+    requestId = workerRequestId(),
+  ) {
+    return this.request({
+      requestId,
+      type: "BUILD_ANIMATION_SEQUENCE_PREVIEW",
+      sequenceRequestJson,
+      availableClipsJson,
+    });
+  }
+
+  applyAnimationWorkbenchOperationV1(
+    operationJson: string,
+    requestId = workerRequestId(),
+  ) {
+    return this.request({
+      requestId,
+      type: "APPLY_ANIMATION_WORKBENCH_OPERATION_V1",
+      operationJson,
+    });
+  }
+
+  resampleAnimationCurveToLinear(
+    curveJson: string,
+    policyJson: string,
+    requestId = workerRequestId(),
+  ) {
+    return this.request({
+      requestId,
+      type: "RESAMPLE_ANIMATION_CURVE_TO_LINEAR",
+      curveJson,
+      policyJson,
+    });
+  }
+
+  bakeAnimationLayers(
+    layersJson: string,
+    rigJson: string,
+    requestId = workerRequestId(),
+  ) {
+    return this.request({
+      requestId,
+      type: "BAKE_ANIMATION_LAYERS",
+      layersJson,
+      rigJson,
+    });
+  }
+
   validateAnimationStudioDocument(
     sourceGlb: ArrayBuffer,
     animationStudioDocumentJson: string,
@@ -138,6 +272,167 @@ export class StudioWorkerClient {
     });
   }
 
+  applyAnimationEditCommandBatch(
+    sourceGlb: ArrayBuffer,
+    animationStudioDocumentJson: string,
+    commandBatchJson: string,
+    requestId = workerRequestId(),
+  ) {
+    return this.request({
+      requestId,
+      type: "APPLY_ANIMATION_EDIT_COMMAND_BATCH",
+      sourceGlb,
+      animationStudioDocumentJson,
+      commandBatchJson,
+    }, [sourceGlb]);
+  }
+
+  analyzeAnimationMotionQuality(
+    sourceGlb: ArrayBuffer,
+    authoredClipJson: string,
+    policyJson: string,
+    contextJson: string,
+    requestId = workerRequestId(),
+  ) {
+    return this.request({
+      requestId,
+      type: "ANALYZE_ANIMATION_MOTION_QUALITY",
+      sourceGlb,
+      authoredClipJson,
+      policyJson,
+      contextJson,
+    }, [sourceGlb]);
+  }
+
+  applyAnimationAuthoringTool(
+    sourceGlb: ArrayBuffer,
+    authoredClipJson: string,
+    toolRequestJson: string,
+    requestId = workerRequestId(),
+  ) {
+    return this.request({
+      requestId,
+      type: "APPLY_ANIMATION_AUTHORING_TOOL",
+      sourceGlb,
+      authoredClipJson,
+      toolRequestJson,
+    }, [sourceGlb]);
+  }
+
+  inspectHeldWeaponSource(
+    weaponGlb: ArrayBuffer,
+    filename: string,
+    provenance = "LOCAL_FILE",
+    requestId = workerRequestId(),
+  ) {
+    return this.request({
+      requestId,
+      type: "INSPECT_HELD_WEAPON_SOURCE",
+      filename,
+      provenance,
+      weaponGlb,
+    }, [weaponGlb]);
+  }
+
+  evaluateAnimationPoseParity(
+    sourceGlb: ArrayBuffer,
+    expectedClipJson: string,
+    actualClipJson: string,
+    policyJson: string,
+    requestId = workerRequestId(),
+  ) {
+    return this.request({
+      requestId,
+      type: "EVALUATE_ANIMATION_POSE_PARITY",
+      sourceGlb,
+      expectedClipJson,
+      actualClipJson,
+      policyJson,
+    }, [sourceGlb]);
+  }
+
+  validateAnimationPreset(
+    manifestJson: string,
+    animationJson: string,
+    catalogSha256: string,
+    requestId = workerRequestId(),
+  ) {
+    return this.request({
+      requestId,
+      type: "VALIDATE_ANIMATION_PRESET",
+      manifestJson,
+      animationJson,
+      catalogSha256,
+    });
+  }
+
+  inspectAnimationPresetCompatibility(
+    manifestJson: string,
+    animationJson: string,
+    catalogSha256: string,
+    sourceGlb: ArrayBuffer,
+    requestId = workerRequestId(),
+  ) {
+    this.beginAnimationLibraryRequest(requestId);
+    return this.request({
+      requestId,
+      type: "INSPECT_ANIMATION_PRESET_COMPATIBILITY",
+      manifestJson,
+      animationJson,
+      catalogSha256,
+      sourceGlb,
+    }, [sourceGlb]).finally(() => this.finishAnimationLibraryRequest(requestId));
+  }
+
+  instantiateAnimationPreset(
+    manifestJson: string,
+    animationJson: string,
+    catalogSha256: string,
+    sourceGlb: ArrayBuffer,
+    clipId: string,
+    outputName: string,
+    requestId = workerRequestId(),
+  ) {
+    this.beginAnimationLibraryRequest(requestId);
+    return this.request({
+      requestId,
+      type: "INSTANTIATE_ANIMATION_PRESET",
+      manifestJson,
+      animationJson,
+      catalogSha256,
+      sourceGlb,
+      clipId,
+      outputName,
+    }, [sourceGlb]).finally(() => this.finishAnimationLibraryRequest(requestId));
+  }
+
+  exportAnimationContribution(
+    authoredClipJson: string,
+    sourceGlb: ArrayBuffer,
+    metadataJson: string,
+    requestId = workerRequestId(),
+  ) {
+    this.beginAnimationLibraryRequest(requestId);
+    return this.request({
+      requestId,
+      type: "EXPORT_ANIMATION_CONTRIBUTION",
+      authoredClipJson,
+      sourceGlb,
+      metadataJson,
+    }, [sourceGlb]).finally(() => this.finishAnimationLibraryRequest(requestId));
+  }
+
+  private beginAnimationLibraryRequest(requestId: string) {
+    if (this.animationLibraryRequestId) this.cancel(this.animationLibraryRequestId);
+    this.animationLibraryRequestId = requestId;
+  }
+
+  private finishAnimationLibraryRequest(requestId: string) {
+    if (this.animationLibraryRequestId === requestId) {
+      this.animationLibraryRequestId = null;
+    }
+  }
+
   buildAuthoredCreatureModelPackage(
     sourceGlb: ArrayBuffer,
     appearanceTwoDa: ArrayBuffer,
@@ -189,6 +484,7 @@ export class StudioWorkerClient {
     worker?.terminate();
     if (this.previewWorker === worker) this.previewWorker = null;
     this.animationPreviewRequestId = null;
+    this.animationLibraryRequestId = null;
     for (const requestId of pendingPreviewIds) {
       const pending = this.pending.get(requestId);
       this.pending.delete(requestId);

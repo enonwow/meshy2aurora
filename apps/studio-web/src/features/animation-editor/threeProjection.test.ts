@@ -1,4 +1,4 @@
-import { Object3D } from "three";
+import { Matrix4, Object3D, Quaternion, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
 import type { AuthoredAnimationClipV1 } from "../animation-studio/types";
 import {
@@ -8,6 +8,7 @@ import {
   commitBoneTransformGestureV1,
   projectAuthoredClipToThreeV1,
   projectDopeSheetRowsV1,
+  projectThreeBoneTransformToAuthoredV1,
   updateBoneTransformGestureV1,
 } from "./threeProjection";
 
@@ -64,6 +65,81 @@ describe("Three editor projection", () => {
     });
   });
 
+  it("rebases output-rig tracks onto the exact source GLB pose for viewport playback", () => {
+    const sourceRoot = new Object3D();
+    const hand = new Object3D();
+    hand.name = "hand";
+    hand.position.set(1, 2, 3);
+    sourceRoot.add(hand);
+    const outputBase = new Quaternion().setFromAxisAngle(
+      new Vector3(0, 0, 1),
+      Math.PI / 2,
+    );
+    const sourceTurn = outputBase.clone().multiply(
+      new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI / 2),
+    );
+    const basis = new Matrix4().set(
+      1, 0, 0, 0,
+      0, 0, 1, 0,
+      0, 1, 0, 0,
+      0, 0, 0, 1,
+    );
+    const toOutput = (source: Quaternion) => new Quaternion()
+      .setFromRotationMatrix(
+        basis.clone()
+          .multiply(new Matrix4().makeRotationFromQuaternion(source))
+          .multiply(basis),
+      )
+      .normalize();
+    const outputBind = toOutput(outputBase);
+    const outputTurn = toOutput(sourceTurn);
+    const rebased = projectAuthoredClipToThreeV1({
+      ...clip,
+      tracks: [{
+        ...clip.tracks[0]!,
+        keyframes: [
+          { id: "k0", timeSeconds: 0, value: [2, 6, 4] },
+          { id: "k1", timeSeconds: 1, value: [4, 6, 4] },
+        ],
+      }, {
+        id: "rotation",
+        targetNodeId: 1,
+        path: "ROTATION",
+        interpolation: "LINEAR",
+        keyframes: [
+          {
+            id: "r0",
+            timeSeconds: 0,
+            value: outputBind.toArray(),
+          },
+          {
+            id: "r1",
+            timeSeconds: 1,
+            value: outputTurn.toArray(),
+          },
+        ],
+      }],
+    }, [{
+      ...rig[0],
+      translation: [2, 6, 4],
+      rotation: [outputBind.x, outputBind.y, outputBind.z, outputBind.w],
+    }], sourceRoot);
+
+    expect(Array.from(rebased.tracks[0]!.values)).toEqual([1, 2, 3, 2, 2, 3]);
+    expect(Array.from(rebased.tracks[1]!.values).slice(0, 4)).toEqual([
+      0,
+      0,
+      expect.closeTo(Math.SQRT1_2, 6),
+      expect.closeTo(Math.SQRT1_2, 6),
+    ]);
+    expect(Array.from(rebased.tracks[1]!.values).slice(4)).toEqual([
+      expect.closeTo(-0.5, 6),
+      expect.closeTo(0.5, 6),
+      expect.closeTo(0.5, 6),
+      expect.closeTo(0.5, 6),
+    ]);
+  });
+
   it("commits one gesture and cancels without a document delta", () => {
     const begun = beginBoneTransformGestureV1({
       nodeId: 1,
@@ -76,5 +152,39 @@ describe("Three editor projection", () => {
       changed: true,
     });
     expect(cancelBoneTransformGestureV1(updated)).toBeNull();
+  });
+
+  it("projects a real Three transform gizmo result back to output-rig values", () => {
+    const snapshot = {
+      objectName: "hand",
+      position: [2, 4, 3] as const,
+      quaternion: [0, 0, Math.SQRT1_2, Math.SQRT1_2] as const,
+      initialPosition: [1, 2, 3] as const,
+      initialQuaternion: [0, 0, 0, 1] as const,
+      sourceRestPosition: [1, 2, 3] as const,
+    };
+    const targetRig = {
+      ...rig[0],
+      translation: [2, 4, 6] as const,
+    };
+    expect(projectThreeBoneTransformToAuthoredV1(
+      snapshot,
+      targetRig,
+      "TRANSLATION",
+    )).toEqual([
+      expect.closeTo(4),
+      expect.closeTo(4),
+      expect.closeTo(10),
+    ]);
+    expect(projectThreeBoneTransformToAuthoredV1(
+      snapshot,
+      targetRig,
+      "ROTATION",
+    )).toEqual([
+      expect.closeTo(0),
+      expect.closeTo(-Math.SQRT1_2),
+      expect.closeTo(0),
+      expect.closeTo(Math.SQRT1_2),
+    ]);
   });
 });

@@ -1,9 +1,10 @@
+import { memo } from "react";
 import type { AuthoredAnimationTrackV1 } from "../animation-studio/types";
 import type { AnimationRigNodeV1 } from "./AnimationBoneTree";
 import { AnimationKeyframeMarker } from "./AnimationKeyframeMarker";
 import { animationKeySelectionIdV1 } from "./editing";
 
-export function AnimationTrackRow({
+export const AnimationTrackRow = memo(function AnimationTrackRow({
   track,
   rig,
   lengthSeconds,
@@ -43,4 +44,4 @@ export function AnimationTrackRow({
       </div>
     </div>
   );
-}
+});

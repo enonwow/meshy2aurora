@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { createLocalBridge } from "./index.mjs";
+import { animationCatalogRequestIdentityV1 } from "./animation-catalog.mjs";
 
 const profiles = new Set(["H1-humanoid-animated/v1", "N1-quadruped/v1", "S1-static-prop/v1"]);
 const geometryTargets = new Set(["AURORA_PROOF", "LOWER_DETAIL", "BALANCED", "HIGHER_DETAIL"]);
@@ -12,7 +13,7 @@ function required(name) {
 }
 
 function terminal(status) {
-  return status === "READY" || status === "FAILED" || status === "CANCELED";
+  return ["READY", "PARTIAL", "FAILED", "CANCELED", "STOPPED_LOCAL"].includes(status);
 }
 
 function glbTriangles(bytes) {
@@ -44,8 +45,8 @@ async function main() {
   if (!Number.isFinite(maxCredits) || maxCredits <= 0) throw new Error("MESHY_MAX_CREDITS must be a positive number.");
   if (!profiles.has(profileId)) throw new Error("MESHY_REAL_E2E_PROFILE must be H1-humanoid-animated/v1, N1-quadruped/v1, or S1-static-prop/v1.");
   if (!geometryTargets.has(geometryTarget)) throw new Error("MESHY_REAL_E2E_GEOMETRY_TARGET must be AURORA_PROOF, LOWER_DETAIL, BALANCED, or HIGHER_DETAIL.");
-  if (targetPolycount !== undefined && (!Number.isInteger(targetPolycount) || targetPolycount < 100 || targetPolycount > 20_000)) {
-    throw new Error("MESHY_REAL_E2E_TARGET_POLYCOUNT must be an integer in 100..=20000.");
+  if (targetPolycount !== undefined && (!Number.isInteger(targetPolycount) || targetPolycount < 100 || targetPolycount > 300_000)) {
+    throw new Error("MESHY_REAL_E2E_TARGET_POLYCOUNT must be an integer in 100..=300000.");
   }
   const apiOptions = targetPolycount === undefined ? undefined : {
     modelType: "standard",
@@ -61,7 +62,7 @@ async function main() {
     originAt: "bottom",
     enablePbr: true,
     shouldTexture: true,
-    hdTexture: false,
+    textureResolution: "2k",
     texturePrompt: "",
     textureImageUrl: "",
     removeLighting: true,
@@ -96,11 +97,21 @@ async function main() {
     if (!balanceResponse.ok) throw new Error("Could not retrieve Meshy balance.");
     const balance = await balanceResponse.json();
     const preflight = profileId.startsWith("H1")
-      ? { h1Preflight: { standardHumanoid: true, clearLimbs: true, noWeapon: true } }
+      ? {
+          h1Preflight: {
+            standardHumanoid: true,
+            clearLimbs: true,
+            noWeapon: true,
+            aOrTPose: true,
+          },
+        }
       : {};
+    const requestApiOptions = profileId.startsWith("H1") && apiOptions
+      ? { ...apiOptions, ...animationCatalogRequestIdentityV1() }
+      : apiOptions;
     const previewResponse = await request("/v1/runs/preview", {
       method: "POST", headers: sessionHeaders,
-      body: JSON.stringify({ profileId, prompt, geometryTarget, ...preflight, ...(apiOptions ? { apiOptions } : {}) }),
+      body: JSON.stringify({ profileId, prompt, geometryTarget, ...preflight, ...(requestApiOptions ? { apiOptions: requestApiOptions } : {}) }),
     });
     if (!previewResponse.ok) throw new Error("Local Bridge rejected the E2E preview request.");
     const preview = await previewResponse.json();
