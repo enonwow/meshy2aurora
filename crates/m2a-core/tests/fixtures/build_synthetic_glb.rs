@@ -55,6 +55,12 @@ pub fn unit_cube() -> Vec<u8> {
     )
 }
 
+pub fn rectangular_prism(width_x: f32, depth_y: f32, length_z: f32) -> Vec<u8> {
+    mutate_json(unit_cube(), |root| {
+        root["nodes"][0]["scale"] = json!([width_x, depth_y, length_z]);
+    })
+}
+
 pub fn axis_hierarchy_asymmetric() -> Vec<u8> {
     geometry_glb(
         &[[2.0, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 5.0]],

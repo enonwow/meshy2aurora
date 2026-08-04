@@ -9,19 +9,27 @@ import { ArtifactDownloads } from "../downloads/ArtifactDownloads";
 import { StudioWorkerClient } from "../../worker/client";
 import {
   allocateItemNamespace,
+  encodeWeaponPartAppearance,
   eulerDegreesToQuaternion,
   initialItemPartDrafts,
   projectItemBaseitemsCatalog,
+  quaternionToEulerDegrees,
+  requiresEquippedItemProof,
   resolveItemPartDraft,
 } from "./domain";
 import type { ItemNamespaceAllocation } from "./domain";
 import { ItemCompositionViewport } from "./ItemCompositionViewport";
 import { ItemIconArtifactPreview } from "./ItemIconArtifactPreview";
+import { ItemGenerationPanel } from "./ItemGenerationPanel";
+import { serializeItemGenerationSession, type ItemGenerationSessionV1 } from "./itemGeneration";
+import type { MeshyArtifactProvenance, MeshyBridgeClient } from "../meshy/bridge";
 import type { ItemSeamResult } from "./itemPreview";
 import type {
   ItemBaseItemRow,
   ItemBaseItemsCatalog,
+  ItemAttachmentProfileV1,
   ItemBuildSnapshot,
+  ItemFitReport,
   ItemPartDraft,
   ItemWorkerClient,
   ResolvedItemPartDraft,
@@ -33,6 +41,7 @@ const id = () => crypto.randomUUID();
 export interface ItemWorkflowProps {
   readonly onTargetChange: (target: StudioTarget) => void;
   readonly client?: ItemWorkerClient;
+  readonly meshyBridge?: MeshyBridgeClient;
 }
 
 interface ItemUtiNumericDraft {
@@ -52,6 +61,12 @@ interface ItemPropertyDraft {
   readonly param1: number;
   readonly param1Value: number;
   readonly chanceAppear: number;
+}
+
+interface ItemReferenceModelDraft {
+  readonly field: string;
+  readonly modelResref: string;
+  readonly file: File;
 }
 
 const EMPTY_ITEM_PROPERTY: ItemPropertyDraft = {
@@ -80,6 +95,10 @@ function initialUtiNumeric(row: ItemBaseItemRow): ItemUtiNumericDraft {
   };
 }
 
+function initialFitTargetLengths(row: ItemBaseItemRow): number[] {
+  return row.capability.meshySourceCount === 3 ? [0.30, 0.10, 0.60] : [1.0];
+}
+
 function integerInRange(value: number, maximum: number) {
   return Number.isInteger(value) && value >= 0 && value <= maximum;
 }
@@ -87,9 +106,56 @@ function integerInRange(value: number, maximum: number) {
 function validPartTransform(part: ItemPartDraft) {
   return part.translation.every(Number.isFinite)
     && part.rotationDegrees.every(Number.isFinite)
+    && part.rotationXyzw.every(Number.isFinite)
     && part.pivot.every(Number.isFinite)
+    && part.targetSpaceScaleXyz.every((value) => Number.isFinite(value) && value > 0)
     && Number.isFinite(part.uniformScale)
     && part.uniformScale > 0;
+}
+
+function tupleEquals(first: readonly number[], second: readonly number[]) {
+  return first.length === second.length
+    && first.every((value, index) => value === second[index]);
+}
+
+function partMatchesFitContract(
+  part: ItemPartDraft,
+  fitReport: ItemFitReport | undefined,
+) {
+  if (part.sourceKind !== "MESHY_GLB") return true;
+  const fitted = fitReport?.parts.find((candidate) => candidate.field === part.field);
+  return Boolean(
+    fitted
+    && fitted.sourceNode === (part.sourceNode.trim() || null)
+    && fitted.transform.uniformScale === part.uniformScale
+    && tupleEquals(fitted.transform.translation, part.translation)
+    && tupleEquals(fitted.transform.rotationXyzw, part.rotationXyzw)
+    && tupleEquals(fitted.transform.pivot, part.pivot)
+    && tupleEquals(fitted.targetSpaceScaleXyz, part.targetSpaceScaleXyz),
+  );
+}
+
+function itemReferenceScalePercent(
+  part: ItemPartDraft,
+  fitReport: ItemFitReport | undefined,
+  attachmentProfile: ItemAttachmentProfileV1 | undefined,
+) {
+  const fitted = fitReport?.parts.find((candidate) => candidate.field === part.field);
+  if (!fitted || fitted.transform.uniformScale <= 0) return 100;
+  const slot = attachmentProfile?.slots.find((candidate) => candidate.field === part.field);
+  const referenceLength = slot ? slot.boundsMax[1] - slot.boundsMin[1] : 0;
+  const fittedPercent = referenceLength > 0
+    ? fitted.targetAxialLength / referenceLength * 100
+    : 100;
+  return fittedPercent * part.uniformScale / fitted.transform.uniformScale;
+}
+
+function itemPartSupportsReferenceScaling(
+  part: ItemPartDraft,
+  attachmentProfile: ItemAttachmentProfileV1 | undefined,
+) {
+  const slot = attachmentProfile?.slots.find((candidate) => candidate.field === part.field);
+  return !slot || slot.allowAxialExtensionAtMin || slot.allowAxialExtensionAtMax;
 }
 
 function stepIndex(step: WorkflowStep) {
@@ -161,6 +227,7 @@ function TargetRail({ onTargetChange }: ItemWorkflowProps) {
 
 function ItemSource({
   onTargetChange,
+  meshyBridge,
   baseitems,
   catalog,
   selected,
@@ -170,10 +237,15 @@ function ItemSource({
   onBaseitems,
   onSelectRow,
   onPartFile,
+  onGeneratedPart,
+  onGenerationSessionChange,
   referenceTables,
   onReferenceTable,
   referenceResources,
   onReferenceResources,
+  referenceModels,
+  attachmentProfile,
+  onReferenceModel,
   onContinue,
 }: ItemWorkflowProps & {
   readonly baseitems?: File;
@@ -185,10 +257,15 @@ function ItemSource({
   readonly onBaseitems: (file: File) => void;
   readonly onSelectRow: (baseItem: number) => void;
   readonly onPartFile: (field: string, file: File) => void;
+  readonly onGeneratedPart: (field: string, file: File, provenance: MeshyArtifactProvenance) => void;
+  readonly onGenerationSessionChange: (session: ItemGenerationSessionV1) => void;
   readonly referenceTables: Readonly<Record<string, File>>;
   readonly onReferenceTable: (tableName: string, file: File) => void;
   readonly referenceResources: readonly File[];
   readonly onReferenceResources: (files: File[]) => void;
+  readonly referenceModels: Readonly<Record<string, ItemReferenceModelDraft>>;
+  readonly attachmentProfile?: ItemAttachmentProfileV1;
+  readonly onReferenceModel: (field: string, file: File) => void;
   readonly onContinue: () => void;
 }) {
   const requiresRetailResources = Boolean(
@@ -211,7 +288,11 @@ function ItemSource({
     && (
       !requiresRetailResources
       || (resourceManifestCount === 1 && resourcePayloadCount > 0)
-    ),
+    )
+    && (
+      selected.modelType !== 2
+      || selected.partSlots.every((slot) => referenceModels[slot.field])
+    )
   );
   return (
     <section className="item-source">
@@ -261,6 +342,60 @@ function ItemSource({
               <small>{selected?.partSlots.map((slot) => slot.label).join(" · ") ?? "No row selected"}</small>
             </div>
           </section>
+          {selected?.modelType === 2 ? (
+            <section className="item-reference-frame panel" aria-label="Reference appearance models">
+              <header>
+                <div>
+                  <p className="eyebrow">Separate case · existing BaseItem</p>
+                  <h2>Reference appearance and native slot frame</h2>
+                  <p>Provide the exact read-only Bottom, Middle and Top MDLs from one Vanilla/HAK/MOD appearance. Their controller positions and model-space bounds define the grip and assembly frame.</p>
+                </div>
+                <span className={`status-badge ${attachmentProfile ? "status-badge--success" : "status-badge--neutral"}`}>
+                  {attachmentProfile ? "Profile locked" : "Reference required"}
+                </span>
+              </header>
+              <div className="item-reference-model-grid">
+                {selected.partSlots.map((slot) => {
+                  const reference = referenceModels[slot.field];
+                  return (
+                    <label key={slot.field}>
+                      <b>{slot.token?.toUpperCase()}</b>
+                      <span>
+                        <strong>{slot.label} reference MDL</strong>
+                        <small>{reference ? `${reference.modelResref} · ${reference.file.name}` : `${slot.field} · exact .mdl`}</small>
+                      </span>
+                      <input
+                        aria-label={`${slot.field} reference MDL`}
+                        type="file"
+                        accept=".mdl,application/octet-stream"
+                        onChange={(event) => {
+                          const file = event.currentTarget.files?.[0];
+                          if (file) onReferenceModel(slot.field, file);
+                        }}
+                      />
+                    </label>
+                  );
+                })}
+              </div>
+              {attachmentProfile ? (
+                <dl className="item-reference-profile-summary">
+                  <div><dt>Profile</dt><dd><code>{attachmentProfile.profileSha256.slice(0, 16)}</code></dd></div>
+                  <div><dt>Attachment</dt><dd>{attachmentProfile.attachmentRoute}</dd></div>
+                  <div><dt>Origin</dt><dd><code>{attachmentProfile.commonOrigin.join(", ")}</code></dd></div>
+                  <div><dt>Frame</dt><dd>Y axial · Z width · X depth</dd></div>
+                </dl>
+              ) : null}
+            </section>
+          ) : null}
+          {selected && selected.capability.meshySourceCount > 0 && catalog ? (
+            <ItemGenerationPanel
+              row={selected}
+              baseitemsSha256={catalog.sourceSha256}
+              bridge={meshyBridge}
+              onArtifact={onGeneratedPart}
+              onSessionChange={onGenerationSessionChange}
+            />
+          ) : null}
           {selected ? (
             <section className="item-source-parts panel">
               <header><div><p className="eyebrow">Resolved composer inputs</p><h2>{selected.partSlots.length} exact UTI slot{selected.partSlots.length === 1 ? "" : "s"} · {selected.capability.meshySourceCount} Meshy source{selected.capability.meshySourceCount === 1 ? "" : "s"}</h2></div><code>{selected.capability.compositionProfile}</code></header>
@@ -359,11 +494,16 @@ function ItemPrepare({
   selectedField,
   preview,
   seamTolerance,
+  fitTargetLengths,
   seams,
+  fitReport,
+  attachmentProfile,
+  busy,
   error,
   onSelectPart,
   onPreview,
   onPartChange,
+  onPartScalePreview,
   onUtiNumericChange,
   onPropertiesChange,
   onOccupiedNamespaceChange,
@@ -374,6 +514,9 @@ function ItemPrepare({
   onProofGenderChange,
   onProofPhenotypeChange,
   onSeamToleranceChange,
+  onFitTargetLengthsChange,
+  onAutoFit,
+  onDiscardFit,
   onSeams,
   onBack,
   onContinue,
@@ -393,11 +536,16 @@ function ItemPrepare({
   readonly selectedField: string;
   readonly preview: "COMPOSED" | "EXPLODED" | "ICON";
   readonly seamTolerance: number;
+  readonly fitTargetLengths: readonly number[];
   readonly seams: readonly ItemSeamResult[];
+  readonly fitReport?: ItemFitReport;
+  readonly attachmentProfile?: ItemAttachmentProfileV1;
+  readonly busy: boolean;
   readonly error?: string;
   readonly onSelectPart: (field: string) => void;
   readonly onPreview: (preview: "COMPOSED" | "EXPLODED" | "ICON") => void;
   readonly onPartChange: (part: ItemPartDraft) => void;
+  readonly onPartScalePreview: (part: ItemPartDraft) => void;
   readonly onUtiNumericChange: (next: ItemUtiNumericDraft) => void;
   readonly onPropertiesChange: (next: ItemPropertyDraft[]) => void;
   readonly onOccupiedNamespaceChange: (next: string) => void;
@@ -408,15 +556,20 @@ function ItemPrepare({
   readonly onProofGenderChange: (next: number) => void;
   readonly onProofPhenotypeChange: (next: number) => void;
   readonly onSeamToleranceChange: (next: number) => void;
+  readonly onFitTargetLengthsChange: (next: number[]) => void;
+  readonly onAutoFit: (targetAxialScaleFactors?: readonly number[]) => void;
+  readonly onDiscardFit: () => void;
   readonly onSeams: (next: ItemSeamResult[]) => void;
   readonly onBack: () => void;
   readonly onContinue: () => void;
 }) {
   const [nodeNames, setNodeNames] = useState<Record<string, string[]>>({});
+  const [showReference, setShowReference] = useState(true);
   const selected = parts.find((part) => part.field === selectedField) ?? parts[0];
   const authorsCustomIconLayers = ["STANDARD", "LAYERED"].includes(
     row.capability.iconProfile,
   );
+  const equippedProof = requiresEquippedItemProof(row);
   const resolved = parts.map((part, index) => {
     try {
       return resolveItemPartDraft(row, part, index);
@@ -427,8 +580,16 @@ function ItemPrepare({
   const complete = resolved.every(Boolean)
     && Boolean(namespaceAllocation)
     && parts.every(validPartTransform)
+    && (!fitReport || parts.every((part) => partMatchesFitContract(part, fitReport)))
     && Number.isFinite(seamTolerance)
     && seamTolerance >= 0
+    && (row.modelType === 2
+      ? fitReport?.schemaVersion === 4 && fitReport.status === "PASSED"
+      : row.capability.meshySourceCount === 0 || (
+      fitTargetLengths.length === row.capability.meshySourceCount
+      && fitTargetLengths.every((value) => Number.isFinite(value) && value > 0)
+      && fitTargetLengths.reduce((sum, value) => sum + value, 0) <= 10
+    ))
     && integerInRange(utiNumeric.cost, 0xffff_ffff)
     && integerInRange(utiNumeric.addCost, 0xffff_ffff)
     && integerInRange(utiNumeric.charges, 0xff)
@@ -446,7 +607,7 @@ function ItemPrepare({
     ))
     && (row.capability.iconProfile !== "IPRP_SPELL"
       || properties.filter((property) => property.propertyName === 15).length === 1)
-    && (!["CAPART_COMPOSITE", "CLOAK_MODEL"].includes(row.capability.iconProfile)
+    && (!equippedProof
       || (
         integerInRange(proofAppearanceRow, 0xffff)
         && integerInRange(proofRace, 0xff)
@@ -457,7 +618,45 @@ function ItemPrepare({
     field: "translation" | "rotationDegrees" | "pivot",
     index: number,
     value: string,
-  ) => onPartChange({ ...selected, [field]: updateTuple(selected[field], index, Number(value)) });
+  ) => {
+    const next = updateTuple(selected[field], index, Number(value));
+    onPartChange(field === "rotationDegrees"
+      ? { ...selected, rotationDegrees: next, rotationXyzw: eulerDegreesToQuaternion(next) }
+      : { ...selected, [field]: next });
+  };
+  const selectedFitPart = fitReport?.parts.find((part) => part.field === selected.field);
+  const fittedUniformScale = selectedFitPart?.transform.uniformScale;
+  const selectedSizePercent = itemReferenceScalePercent(
+    selected,
+    fitReport,
+    attachmentProfile,
+  );
+  const selectedSupportsScaling = itemPartSupportsReferenceScaling(selected, attachmentProfile);
+  const manualFitParts = parts.filter((part) => (
+    part.sourceKind === "MESHY_GLB" && !partMatchesFitContract(part, fitReport)
+  ));
+  const hasManualFit = manualFitParts.length > 0;
+  const selectedHasManualSize = Boolean(
+    selectedFitPart && !partMatchesFitContract(selected, fitReport),
+  );
+  const setSelectedSizePercent = (nextPercent: number) => {
+    if (!fittedUniformScale || !selectedSupportsScaling || !Number.isFinite(nextPercent)) return;
+    const clamped = Math.min(200, Math.max(50, nextPercent));
+    const fittedPercent = itemReferenceScalePercent(
+      { ...selected, uniformScale: fittedUniformScale },
+      fitReport,
+      attachmentProfile,
+    );
+    onPartScalePreview({
+      ...selected,
+      uniformScale: fittedUniformScale * clamped / fittedPercent,
+    });
+  };
+  const targetAxialScaleFactors = parts
+    .filter((part) => part.sourceKind === "MESHY_GLB")
+    .map((part) => Math.round(
+      itemReferenceScalePercent(part, fitReport, attachmentProfile) * 10_000,
+    ) / 1_000_000);
   return (
     <section className="item-prepare">
       <header className="item-page-heading">
@@ -478,6 +677,8 @@ function ItemPrepare({
                 parts={parts}
                 mode="ICON"
                 tolerance={seamTolerance}
+                referenceProfile={attachmentProfile}
+                showReference={false}
                 onSeams={onSeams}
                 onNodeNames={(field, names) => setNodeNames((current) => (
                   current[field]?.join("\0") === names.join("\0")
@@ -521,6 +722,8 @@ function ItemPrepare({
                 parts={parts}
                 mode={preview}
                 tolerance={seamTolerance}
+                referenceProfile={attachmentProfile}
+                showReference={showReference}
                 onSeams={onSeams}
                 onNodeNames={(field, names) => setNodeNames((current) => (
                   current[field]?.join("\0") === names.join("\0")
@@ -535,11 +738,69 @@ function ItemPrepare({
                   </button>
                 ))}
               </div>
-              <div className="item-seam-panel">
+              <details className="item-fit-diagnostics">
+                <summary>
+                  <strong>Connections</strong>
+                  <span data-status={fitReport?.adjacentConnectors.every((connector) => connector.status === "OVERLAPPING") ? "TOUCHING" : "GAP"}>
+                    {fitReport?.adjacentConnectors.length ?? 0}/{Math.max(0, parts.length - 1)} connected
+                  </span>
+                  <span>{attachmentProfile?.attachmentRoute === "HAND" ? "HAND preserved" : attachmentProfile?.attachmentRoute ?? "Reference pending"}</span>
+                  <b>Details</b>
+                </summary>
+                <div className="item-seam-panel">
+                {fitReport ? (
+                  <>
+                    <span data-status={fitReport.status === "PASSED" ? "TOUCHING" : "GAP"}>
+                      <b>AUTO-FIT {fitReport.status}</b> {fitReport.algorithm}
+                      <code>{fitReport.solutionSha256.slice(0, 16)}...</code>
+                    </span>
+                    <span data-status={fitReport.orientationFrame.status === "PASSED" ? "TOUCHING" : "GAP"}>
+                      <b>FULL FRAME {fitReport.orientationFrame.status}</b> depth X · axial Y · width Z
+                      <code>width/depth {fitReport.orientationFrame.widthToDepthRatio.toFixed(3)}</code>
+                    </span>
+                    {fitReport.adjacentConnectors.map((connector) => (
+                      <span key={`${connector.firstField}:${connector.secondField}:connector`} data-status={connector.status === "OVERLAPPING" ? "TOUCHING" : "GAP"}>
+                        <b>CONNECTOR {connector.status}</b> {connector.firstField} TOP ↔ {connector.secondField} BOTTOM
+                        <code>+Y overlap {connector.axialOverlap.toFixed(4)}</code>
+                      </span>
+                    ))}
+                  </>
+                ) : null}
                 <label>
                   <span>Authoritative seam tolerance</span>
                   <input aria-label="Seam tolerance" type="number" min="0" step="0.001" value={seamTolerance} onChange={(event) => onSeamToleranceChange(Number(event.currentTarget.value))} />
                 </label>
+                <fieldset className="item-fit-proportions">
+                  {attachmentProfile ? <strong>Reference slot-frame contract</strong> : null}
+                  <legend>Axial-length contract · ordered Aurora slots</legend>
+                  {attachmentProfile ? attachmentProfile.slots.map((slot) => (
+                    <label key={slot.field}>
+                      <span>{slot.label}</span>
+                      <code>Y {slot.boundsMin[1].toFixed(4)} … {slot.boundsMax[1].toFixed(4)}</code>
+                    </label>
+                  )) : parts.filter((part) => part.sourceKind === "MESHY_GLB").map((part, index) => (
+                    <label key={part.field}>
+                      <span>{part.label}</span>
+                      <input
+                        aria-label={`Target axial length ${part.label}`}
+                        type="number"
+                        min="0.001"
+                        max="10"
+                        step="0.01"
+                        value={fitTargetLengths[index] ?? 0}
+                        onChange={(event) => onFitTargetLengthsChange(fitTargetLengths.map(
+                          (value, targetIndex) => targetIndex === index
+                            ? Number(event.currentTarget.value)
+                            : value,
+                        ))}
+                      />
+                    </label>
+                  ))}
+                  <small>{attachmentProfile
+                    ? `Origin ${attachmentProfile.commonOrigin.join(", ")} · ${attachmentProfile.attachmentRoute}`
+                    : `Total composer length: ${fitTargetLengths.reduce((sum, value) => sum + value, 0).toFixed(2)}`}</small>
+                  <button type="button" className="button button--secondary" disabled={busy} onClick={() => onAutoFit()}>{attachmentProfile ? "Reapply reference frame" : "Apply proportion contract"}</button>
+                </fieldset>
                 <small>Preview AABB is advisory. Build recomputes the gate from transformed triangle surfaces.</small>
                 {seams.length === 0 ? <small>One part: no inter-part seam.</small> : seams.map((seam) => (
                   <span key={`${seam.firstField}:${seam.secondField}`} data-status={seam.status}>
@@ -547,7 +808,8 @@ function ItemPrepare({
                     <code>{seam.status === "OVERLAP" ? `volume ${seam.overlapVolume.toPrecision(3)}` : `gap ${seam.gap.toPrecision(3)}`}</code>
                   </span>
                 ))}
-              </div>
+                </div>
+              </details>
             </>
           ) : (
             <div className="item-reference-preview">
@@ -568,11 +830,140 @@ function ItemPrepare({
             </strong>
           </footer>
         </section>
-        <aside className="item-part-inspector">
+        <aside className="item-part-inspector item-fit-panel" aria-label="Selected part fitting">
+          <header className="item-fit-panel__header">
+            <div><p className="eyebrow">Selected part</p><h2>Part fitting</h2></div>
+            <span data-state={hasManualFit ? "dirty" : "valid"}>{hasManualFit ? "Manual fit" : "Validated"}</span>
+          </header>
+          <p className="item-fit-panel__intro">Scale relative to the Aurora reference slot. Locked ends preserve the hand anchor and part connectors.</p>
+          <div className="item-fit-part-tabs" role="tablist" aria-label="Model parts">
+            {parts.filter((part) => part.sourceKind === "MESHY_GLB").map((part) => {
+              const percent = itemReferenceScalePercent(part, fitReport, attachmentProfile);
+              const changed = !partMatchesFitContract(part, fitReport);
+              const scalable = itemPartSupportsReferenceScaling(part, attachmentProfile);
+              return (
+                <button
+                  key={part.field}
+                  type="button"
+                  role="tab"
+                  aria-selected={part.field === selected.field}
+                  data-selected={part.field === selected.field}
+                  onClick={() => onSelectPart(part.field)}
+                >
+                  <strong>{part.label}</strong>
+                  <small>{percent.toFixed(0)}% · {changed ? "changed" : scalable ? "OK" : "reference locked"}</small>
+                </button>
+              );
+            })}
+          </div>
+          <section className="item-fit-size" aria-label="Selected part size">
+            <header><label htmlFor="item-part-size"><strong>Size {selected.label}</strong></label><output>{selectedSizePercent.toFixed(0)}%</output></header>
+            <input
+              id="item-part-size"
+              aria-label="Part size percent"
+              type="range"
+              min="50"
+              max="200"
+              step="1"
+              disabled={!selectedFitPart || !selectedSupportsScaling || busy}
+              value={Math.min(200, Math.max(50, selectedSizePercent))}
+              onChange={(event) => setSelectedSizePercent(Number(event.currentTarget.value))}
+            />
+            <div className="item-part-size-presets" aria-label="Part size presets">
+              {[75, 100, 125, 150, 200].map((percent) => (
+                <button
+                  key={percent}
+                  type="button"
+                  disabled={!selectedFitPart || !selectedSupportsScaling || busy}
+                  data-active={Math.abs(selectedSizePercent - percent) < 0.01}
+                  onClick={() => setSelectedSizePercent(percent)}
+                >
+                  {percent}%
+                </button>
+              ))}
+            </div>
+            <div className="item-fit-reference-row">
+              <label><input type="checkbox" checked={showReference} onChange={(event) => setShowReference(event.currentTarget.checked)} /> Show 100% reference</label>
+              <button type="button" className="button button--secondary" disabled={!selectedFitPart || !selectedSupportsScaling || busy} onClick={() => setSelectedSizePercent(100)}>Reset part</button>
+            </div>
+            <dl className="item-fit-deltas">
+              <div><dt>Length vs auto-fit</dt><dd>{selectedSizePercent >= 100 ? "+" : ""}{(selectedSizePercent - 100).toFixed(0)}%</dd></div>
+              <div><dt>Connector anchor</dt><dd>{selectedSupportsScaling ? "Preserved" : "Locked"}</dd></div>
+            </dl>
+            <p className={selectedHasManualSize ? "item-part-size-warning" : "item-part-size-valid"} role="status">
+              <strong>{selectedHasManualSize ? "Manual change pending" : "Fit validated"}</strong>
+              {selectedHasManualSize
+                ? "Validation will recompute the slot frame, HAND anchor and both connections."
+                : selectedSupportsScaling
+                  ? "This transform is bound to the validated reference-fit contract."
+                  : "This slot has no Aurora extension policy and remains reference locked."}
+            </p>
+            <div className="item-fit-actions">
+              <button type="button" className="button button--secondary" disabled={!hasManualFit || busy} onClick={onDiscardFit}>Discard changes</button>
+              <button type="button" className="button button--primary" disabled={!hasManualFit || busy} onClick={() => onAutoFit(targetAxialScaleFactors)}>{busy ? "Validating…" : "Validate fit"}</button>
+            </div>
+          </section>
+          <details className="item-advanced-inspector">
+            <summary>Advanced item properties</summary>
+            <div className="item-advanced-inspector__body">
           <p className="eyebrow">Selected part</p>
           <h2>{selected.label}</h2>
           <label><span>UTI field</span><input value={selected.field} readOnly /></label>
-          <label><span>Numeric variant (BYTE)</span><input aria-label="Part variant" type="number" min="0" max="255" value={selected.variant} onChange={(event) => onPartChange({ ...selected, variant: Number(event.currentTarget.value) })} /></label>
+          {row.modelType === 2 ? (
+            <fieldset className="item-weapon-appearance">
+              <legend>Aurora weapon-part appearance</legend>
+              <label>
+                <span>Model</span>
+                <input
+                  aria-label="Weapon part model"
+                  type="number"
+                  min="0"
+                  max="25"
+                  value={selected.weaponModel ?? 0}
+                  onChange={(event) => {
+                    const weaponModel = Number(event.currentTarget.value);
+                    const weaponColor = selected.weaponColor ?? 1;
+                    onPartChange({
+                      ...selected,
+                      weaponModel,
+                      weaponColor,
+                      variant: encodeWeaponPartAppearance(weaponModel, weaponColor),
+                    });
+                  }}
+                />
+              </label>
+              <label>
+                <span>Color</span>
+                <select
+                  aria-label="Weapon part color"
+                  value={selected.weaponColor ?? 1}
+                  onChange={(event) => {
+                    const weaponModel = selected.weaponModel ?? 0;
+                    const weaponColor = Number(event.currentTarget.value);
+                    onPartChange({
+                      ...selected,
+                      weaponModel,
+                      weaponColor,
+                      variant: encodeWeaponPartAppearance(weaponModel, weaponColor),
+                    });
+                  }}
+                >
+                  <option value="1">Color 1</option>
+                  <option value="2">Color 2</option>
+                  <option value="3">Color 3</option>
+                  <option value="4">Color 4</option>
+                </select>
+              </label>
+              <small>
+                Encoded UTI BYTE: {encodeWeaponPartAppearance(
+                  selected.weaponModel ?? 0,
+                  selected.weaponColor ?? 1,
+                )} = model × 10 + color
+              </small>
+            </fieldset>
+          ) : (
+            <label><span>Numeric selector (BYTE)</span><input aria-label="Part variant" type="number" min="0" max="255" value={selected.variant} onChange={(event) => onPartChange({ ...selected, variant: Number(event.currentTarget.value) })} /></label>
+          )}
           {selected.sourceKind === "MESHY_GLB" ? (
             <>
               <label><span>GLB sourceNode (optional exact default-scene root)</span><input aria-label="Source node" list={`item-source-nodes-${selected.field}`} value={selected.sourceNode} onChange={(event) => onPartChange({ ...selected, sourceNode: event.currentTarget.value })} placeholder="whole default scene" /></label>
@@ -583,14 +974,19 @@ function ItemPrepare({
                 <span>Aurora texture encoding</span>
                 <select aria-label="Texture encoding" value={selected.textureEncoding} onChange={(event) => onPartChange({ ...selected, textureEncoding: event.currentTarget.value as ItemPartDraft["textureEncoding"] })}>
                   <option value="DIRECT_COLOR">Direct-color TGA</option>
-                  <option value="PLT_METAL1">PLT · Metal 1</option>
-                  <option value="PLT_METAL2">PLT · Metal 2</option>
-                  <option value="PLT_CLOTH1">PLT · Cloth 1</option>
-                  <option value="PLT_CLOTH2">PLT · Cloth 2</option>
-                  <option value="PLT_LEATHER1">PLT · Leather 1</option>
-                  <option value="PLT_LEATHER2">PLT · Leather 2</option>
+                  {row.modelType !== 2 ? (
+                    <>
+                      <option value="PLT_METAL1">PLT · Metal 1</option>
+                      <option value="PLT_METAL2">PLT · Metal 2</option>
+                      <option value="PLT_CLOTH1">PLT · Cloth 1</option>
+                      <option value="PLT_CLOTH2">PLT · Cloth 2</option>
+                      <option value="PLT_LEATHER1">PLT · Leather 1</option>
+                      <option value="PLT_LEATHER2">PLT · Leather 2</option>
+                    </>
+                  ) : null}
                 </select>
               </label>
+              {row.modelType === 2 ? <small>ModelType 2 colors select concrete MDL/texture variants; they are not standalone PLT fields.</small> : null}
             </>
           ) : (
             <>
@@ -684,7 +1080,6 @@ function ItemPrepare({
             <>
               <fieldset><legend>Translation · MDL controller</legend>{["X", "Y", "Z"].map((axis, index) => <label key={axis}><span>{axis}</span><input aria-label={`Translation ${axis}`} type="number" step="0.01" value={selected.translation[index]} onChange={(event) => setNumber("translation", index, event.currentTarget.value)} /></label>)}</fieldset>
               <fieldset><legend>Rotation · MDL controller</legend>{["X", "Y", "Z"].map((axis, index) => <label key={axis}><span>{axis}°</span><input aria-label={`Rotation ${axis}`} type="number" step="1" value={selected.rotationDegrees[index]} onChange={(event) => setNumber("rotationDegrees", index, event.currentTarget.value)} /></label>)}</fieldset>
-              <label><span>Uniform scale · geometry bake</span><input aria-label="Uniform part scale" type="number" min="0.001" step="0.01" value={selected.uniformScale} onChange={(event) => onPartChange({ ...selected, uniformScale: Number(event.currentTarget.value) })} /></label>
             </>
           ) : null}
           <fieldset className="item-uti-numeric">
@@ -765,6 +1160,14 @@ function ItemPrepare({
                 <code>{namespaceAllocation.blueprintResref}.uti</code>
                 <code>{namespaceAllocation.hakResref}.hak</code>
                 <code>{namespaceAllocation.moduleResref}.mod · Area {namespaceAllocation.areaResref}</code>
+                {namespaceAllocation.sourceMaxRange !== null ? (
+                  <span>
+                    Model selector range {namespaceAllocation.sourceMinRange}..{namespaceAllocation.sourceMaxRange}
+                    {namespaceAllocation.baseitemsOverrideRequired
+                      ? ` → ${namespaceAllocation.effectiveMaxRange} (baseitems.2da override in HAK)`
+                      : " (source range)"}
+                  </span>
+                ) : null}
                 <span>{namespaceAllocation.occupiedKeyCount} occupied keys · {namespaceAllocation.collisionAvoidanceCount} deterministic probes</span>
               </div>
             ) : <small>Namespace allocation is invalid or exhausted.</small>}
@@ -774,12 +1177,14 @@ function ItemPrepare({
             <span>2</span><p><strong>MDL controllers</strong><small>translation + rotation</small></p>
             <span>3</span><p><strong>UTI stays numeric</strong><small>{selected.field} = {selected.variant}</small></p>
           </div>
+            </div>
+          </details>
           {error ? <p className="item-error" role="alert">{error}</p> : null}
         </aside>
       </div>
       <footer className="item-action-bar">
         <button type="button" className="button button--secondary" onClick={onBack}>Back</button>
-        <p><strong>{complete ? "Part recipe is complete." : "Enter explicit Aurora-validated resrefs for context-dependent parts."}</strong><span>Combined triangle budget is checked during Build.</span></p>
+        <p><strong>{hasManualFit ? `${manualFitParts.length} manual change${manualFitParts.length === 1 ? "" : "s"} require validation.` : complete ? "Part recipe is ready." : "Complete the Aurora-validated item contract."}</strong><span>{selected.label}: {selectedSizePercent.toFixed(0)}% · camera and HAND anchor remain reference-bound.</span></p>
         <button type="button" className="button button--primary" disabled={!complete} onClick={onContinue}>Continue to Build</button>
       </footer>
     </section>
@@ -826,6 +1231,9 @@ function ItemBuild({
               <>
                 <code>{part.modelResref}.mdl</code>
                 <code>{authorsCustomIconLayers ? `${part.iconResref}.tga` : row.capability.iconProfile}</code>
+                {part.weaponColorways.length > 0 ? (
+                  <small>{part.weaponColorways.length} concrete MDL/texture colorways · one Meshy geometry source</small>
+                ) : null}
               </>
             ) : (
               <>
@@ -862,13 +1270,22 @@ function ItemReview({
         <article><strong>{snapshot.report.meshyPartCount}</strong><span>authored Meshy MDL parts</span></article>
         <article><strong>{snapshot.report.referenceSelectorCount}</strong><span>retail numeric selectors</span></article>
         <article><strong>{snapshot.report.iconLayerCount}</strong><span>authored 2D icon layers</span></article>
+        {snapshot.report.weaponColorwayCoverage.status === "COMPLETE" ? (
+          <article><strong>{snapshot.report.weaponColorwayCoverage.emittedResourceCount}</strong><span>concrete weapon colorways (1..4)</span></article>
+        ) : null}
+        {snapshot.report.itemPropertiesModelConformance.status === "PASSED" ? (
+          <article><strong>{snapshot.report.itemPropertiesModelConformance.checkedMdlCount}</strong><span>MDLs: controllerless root + Trimesh transforms</span></article>
+        ) : null}
+        {snapshot.report.itemIconConformance.status === "PASSED" ? (
+          <article><strong>{snapshot.report.itemIconConformance.colorways.length}</strong><span>native layered icon composites passed</span></article>
+        ) : null}
         <article><strong>{snapshot.utiReport.partCount}</strong><span>numeric UTI part fields</span></article>
         <article><strong>{snapshot.report.triangleBudget.triangleCount.toLocaleString()}</strong><span>/ 300,000 triangles</span></article>
       </div>
       <section className="panel item-readback-table">
         <header><h2>Item resource readback</h2><span>No composed-model artifact exists</span></header>
         {snapshot.partReadbacks.map((part) => (
-          <div key={part.field}>
+          <div key={`${part.field}:${part.variant}`}>
             <b>PASS</b><strong>{part.field} = {part.variant}</strong><code>{part.modelResref}.mdl</code><span>{part.readback.nodeTree?.nodeCount ?? "?"} nodes</span>
           </div>
         ))}
@@ -877,6 +1294,18 @@ function ItemReview({
         ) : null}
         <div><b>PASS</b><strong>UTI numeric readback</strong><code>BaseItem {snapshot.utiReport.baseItem} · ModelType {snapshot.utiReport.modelType}</code><span>{snapshot.utiReport.semanticReadbackStatus}</span></div>
       </section>
+      {snapshot.report.itemPropertiesModelConformance.status === "PASSED" ? (
+        <section className="panel item-seam-readback">
+          <header><h2>Aurora ModelType 2 append contract</h2><span>{snapshot.report.itemPropertiesModelConformance.algorithm}</span></header>
+          {snapshot.report.itemPropertiesModelConformance.colorways.map((colorway) => (
+            <div key={colorway.color}>
+              <b>PASS</b>
+              <strong>Color {colorway.color} · {snapshot.report.itemPropertiesModelConformance.appendOrder.join(" → ")}</strong>
+              <code>{colorway.parts.map((part) => `${part.field}:${part.transformControllerOwner}`).join(" · ")}</code>
+            </div>
+          ))}
+        </section>
+      ) : null}
       <ItemIconArtifactPreview artifacts={snapshot.artifacts} />
       <section className="panel item-seam-readback">
         <header><h2>Persisted seam gate</h2><span>tolerance {snapshot.report.seamValidation.tolerance}</span></header>
@@ -902,7 +1331,7 @@ function ItemReview({
   );
 }
 
-export function ItemWorkflow({ onTargetChange, client }: ItemWorkflowProps) {
+export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkflowProps) {
   const workerRef = useRef<ItemWorkerClient | undefined>(client);
   const requestEpoch = useRef(0);
   const [step, setStep] = useState<WorkflowStep>("SOURCE");
@@ -910,20 +1339,27 @@ export function ItemWorkflow({ onTargetChange, client }: ItemWorkflowProps) {
   const [catalog, setCatalog] = useState<ItemBaseItemsCatalog>();
   const [selectedBaseItem, setSelectedBaseItem] = useState<number>();
   const [parts, setParts] = useState<ItemPartDraft[]>([]);
+  const [generationProvenance, setGenerationProvenance] = useState<Record<string, MeshyArtifactProvenance>>({});
+  const [generationSession, setGenerationSession] = useState<ItemGenerationSessionV1>();
   const [referenceTables, setReferenceTables] = useState<Record<string, File>>({});
   const [referenceResources, setReferenceResources] = useState<File[]>([]);
+  const [referenceModels, setReferenceModels] = useState<Record<string, ItemReferenceModelDraft>>({});
+  const [attachmentProfile, setAttachmentProfile] = useState<ItemAttachmentProfileV1>();
+  const [attachmentProfileJson, setAttachmentProfileJson] = useState<string>();
   const [properties, setProperties] = useState<ItemPropertyDraft[]>([]);
   const [occupiedNamespace, setOccupiedNamespace] = useState("");
   const [capartModelPrefix, setCapartModelPrefix] = useState("pmh0");
   const [capartGenderCode, setCapartGenderCode] = useState("");
   const [proofAppearanceRow, setProofAppearanceRow] = useState(6);
-  const [proofRace, setProofRace] = useState(6);
+  const [proofRace, setProofRace] = useState(11);
   const [proofGender, setProofGender] = useState(0);
   const [proofPhenotype, setProofPhenotype] = useState(0);
   const [selectedField, setSelectedField] = useState("");
   const [preview, setPreview] = useState<"COMPOSED" | "EXPLODED" | "ICON">("COMPOSED");
   const [seamTolerance, setSeamTolerance] = useState(0.01);
+  const [fitTargetLengths, setFitTargetLengths] = useState<number[]>([1.0]);
   const [seams, setSeams] = useState<ItemSeamResult[]>([]);
+  const [fitReport, setFitReport] = useState<ItemFitReport>();
   const [utiNumeric, setUtiNumeric] = useState<ItemUtiNumericDraft>(EMPTY_UTI_NUMERIC);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -968,17 +1404,24 @@ export function ItemWorkflow({ onTargetChange, client }: ItemWorkflowProps) {
     const next = initialItemPartDrafts(row);
     setSelectedBaseItem(baseItem);
     setParts(next);
+    setGenerationProvenance({});
+    setGenerationSession(undefined);
     setReferenceResources([]);
+    setReferenceModels({});
+    setAttachmentProfile(undefined);
+    setAttachmentProfileJson(undefined);
     setUtiNumeric(initialUtiNumeric(row));
     setProperties(row.capability.iconProfile === "IPRP_SPELL"
       ? [{ ...EMPTY_ITEM_PROPERTY, propertyName: 15 }]
       : []);
     setProofAppearanceRow(6);
-    setProofRace(6);
+    setProofRace(11);
     setProofGender(0);
     setProofPhenotype(0);
     setSelectedField(next[0]?.field ?? "");
     setSeams([]);
+    setFitReport(undefined);
+    setFitTargetLengths(initialFitTargetLengths(row));
     setBuild(undefined);
     setError(undefined);
   };
@@ -999,17 +1442,24 @@ export function ItemWorkflow({ onTargetChange, client }: ItemWorkflowProps) {
     setCatalog(undefined);
     setSelectedBaseItem(undefined);
     setParts([]);
+    setGenerationProvenance({});
+    setGenerationSession(undefined);
     setReferenceTables({});
     setReferenceResources([]);
+    setReferenceModels({});
+    setAttachmentProfile(undefined);
+    setAttachmentProfileJson(undefined);
     setProperties([]);
     setOccupiedNamespace("");
     setCapartModelPrefix("pmh0");
     setCapartGenderCode("");
     setProofAppearanceRow(6);
-    setProofRace(6);
+    setProofRace(11);
     setProofGender(0);
     setProofPhenotype(0);
     setSeams([]);
+    setFitReport(undefined);
+    setFitTargetLengths([1.0]);
     setUtiNumeric(EMPTY_UTI_NUMERIC);
     void file.arrayBuffer()
       .then((bytes) => worker.request({
@@ -1035,6 +1485,8 @@ export function ItemWorkflow({ onTargetChange, client }: ItemWorkflowProps) {
             : []);
           setSelectedField(drafts[0]?.field ?? "");
           setSeams([]);
+          setFitReport(undefined);
+          setFitTargetLengths(initialFitTargetLengths(next.rows[0]));
         }
       })
       .catch((reason: unknown) => {
@@ -1050,6 +1502,200 @@ export function ItemWorkflow({ onTargetChange, client }: ItemWorkflowProps) {
   const updatePart = (next: ItemPartDraft) => {
     setParts((current) => current.map((part) => part.field === next.field ? next : part));
     setSeams([]);
+    setFitReport(undefined);
+    setBuild(undefined);
+    setError(undefined);
+  };
+
+  const updatePartScalePreview = (next: ItemPartDraft) => {
+    setParts((current) => current.map((part) => part.field === next.field ? next : part));
+    setSeams([]);
+    setBuild(undefined);
+    setError(undefined);
+  };
+
+  const updateReferenceModel = (field: string, file: File) => {
+    const modelResref = file.name.replace(/\.mdl$/i, "").toLowerCase();
+    if (!file.name.toLowerCase().endsWith(".mdl") || !/^[a-z0-9_-]{1,16}$/.test(modelResref)) {
+      setError("Reference model filename must be a valid 1..16 character Aurora .mdl resref.");
+      return;
+    }
+    setReferenceModels((current) => ({
+      ...current,
+      [field]: { field, modelResref, file },
+    }));
+    setAttachmentProfile(undefined);
+    setAttachmentProfileJson(undefined);
+    setFitReport(undefined);
+    setBuild(undefined);
+    setError(undefined);
+  };
+
+  const startAutoFit = (targetAxialScaleFactors?: readonly number[]) => {
+    const worker = workerRef.current;
+    const fitParts = resolvedParts.filter((part) => part.sourceKind === "MESHY_GLB");
+    if (!worker || !selected || fitParts.length !== selected.capability.meshySourceCount || fitParts.some((part) => !part.file)) {
+      setError("Every resolved Meshy Item slot requires a GLB before deterministic auto-fit.");
+      return;
+    }
+    if (selected.modelType === 2 && (
+      !baseitems
+      || selected.partSlots.some((slot) => !referenceModels[slot.field])
+    )) {
+      setError("ModelType 2 requires one exact reference MDL for Bottom, Middle and Top before fitting.");
+      return;
+    }
+    if (selected.modelType === 2 && targetAxialScaleFactors && (
+      targetAxialScaleFactors.length !== fitParts.length
+      || targetAxialScaleFactors.some((value) => !Number.isFinite(value) || value < 0.5 || value > 2)
+    )) {
+      setError("Reference-relative part scales must contain one value from 50% through 200% per Meshy slot.");
+      return;
+    }
+    if (selected.modelType !== 2 && (
+      fitTargetLengths.length !== fitParts.length
+      || fitTargetLengths.some((value) => !Number.isFinite(value) || value <= 0)
+      || fitTargetLengths.reduce((sum, value) => sum + value, 0) > 10
+    )) {
+      setError("Target axial lengths must contain one positive value per Meshy part and total at most 10.");
+      return;
+    }
+    const epoch = ++requestEpoch.current;
+    setBusy(true);
+    setError(undefined);
+    void (async () => {
+      let currentProfileJson = attachmentProfileJson;
+      if (selected.modelType === 2 && !currentProfileJson) {
+        const baseitemsTwoDa = await baseitems!.arrayBuffer();
+        const models = await Promise.all(selected.partSlots.map(async (slot) => {
+          const reference = referenceModels[slot.field];
+          return {
+            field: slot.field,
+            modelResref: reference.modelResref,
+            bytes: await reference.file.arrayBuffer(),
+          };
+        }));
+        const profileResponse = await worker.request({
+          requestId: id(),
+          type: "BUILD_ITEM_ATTACHMENT_PROFILE",
+          baseitemsTwoDa,
+          baseItem: selected.baseItem,
+          referenceKind: "EXPLICIT_VARIANTS",
+          referenceId: models.map((model) => model.modelResref).join("/"),
+          models,
+        }, [baseitemsTwoDa, ...models.map((model) => model.bytes)]);
+        if (!profileResponse.ok || profileResponse.type !== "ITEM_ATTACHMENT_PROFILE_BUILT") {
+          throw new Error("Unexpected Item attachment profile response");
+        }
+        currentProfileJson = profileResponse.attachmentProfileJson;
+        const profile = JSON.parse(currentProfileJson) as ItemAttachmentProfileV1;
+        if (
+          profile.schemaVersion !== 1
+          || profile.algorithm !== "AURORA_ITEM_REFERENCE_PROFILE_V1"
+          || profile.identity.baseItem !== selected.baseItem
+          || profile.slots.length !== selected.partSlots.length
+        ) {
+          throw new Error("Reference attachment profile does not match the selected BaseItem.");
+        }
+        setAttachmentProfile(profile);
+        setAttachmentProfileJson(currentProfileJson);
+      }
+      const requestParts = await Promise.all(fitParts.map(async (part) => ({
+        field: part.field,
+        modelResref: part.modelResref,
+        sourceGlb: await part.file!.arrayBuffer(),
+        sourceNode: part.sourceNode.trim() || null,
+      })));
+      return worker.request({
+        requestId: id(),
+        type: "FIT_ITEM_PARTS",
+        tolerance: seamTolerance,
+        targetAxialLengths: selected.modelType === 2 ? undefined : fitTargetLengths,
+        targetAxialScaleFactors: selected.modelType === 2 && targetAxialScaleFactors
+          ? [...targetAxialScaleFactors]
+          : undefined,
+        attachmentProfileJson: currentProfileJson,
+        parts: requestParts,
+      }, requestParts.map((part) => part.sourceGlb));
+    })().then((response) => {
+      if (epoch !== requestEpoch.current) return;
+      if (!response.ok || response.type !== "ITEM_PARTS_FITTED") {
+        throw new Error("Unexpected Item auto-fit response");
+      }
+      const report = JSON.parse(response.fitReportJson) as ItemFitReport;
+      const expectsReferenceFit = selected.modelType === 2;
+      if (
+        (expectsReferenceFit
+          ? report.schemaVersion !== 4 || report.algorithm !== "ITEM_REFERENCE_SLOT_FRAME_FIT_V1"
+          : report.schemaVersion !== 3 || report.algorithm !== "ITEM_MODELTYPE2_FULL_FRAME_CONNECTOR_FIT_V4_AURORA_YZX")
+        || report.parts.length !== fitParts.length
+      ) {
+        throw new Error("Item auto-fit report does not match the resolved slot count.");
+      }
+      const transforms = new Map(report.parts.map((part) => [part.field, part]));
+      setParts((current) => current.map((part) => {
+        if (part.sourceKind !== "MESHY_GLB") return part;
+        const fitted = transforms.get(part.field);
+        if (!fitted || fitted.sourceNode !== (part.sourceNode.trim() || null)) {
+          throw new Error(`${part.field} auto-fit binding differs from the active sourceNode.`);
+        }
+        return {
+          ...part,
+          translation: fitted.transform.translation,
+          rotationXyzw: fitted.transform.rotationXyzw,
+          rotationDegrees: quaternionToEulerDegrees(fitted.transform.rotationXyzw),
+          uniformScale: fitted.transform.uniformScale,
+          pivot: fitted.transform.pivot,
+          targetSpaceScaleXyz: fitted.targetSpaceScaleXyz,
+        };
+      }));
+      setFitReport(report);
+      if (selected.modelType === 2 && report.parts.length === 3) {
+        setSelectedField(report.parts[2].field);
+      }
+      setSeams(report.adjacentSeams.map((seam) => ({
+        firstField: seam.firstField,
+        secondField: seam.secondField,
+        status: seam.status,
+        gap: seam.gap,
+        overlapVolume: seam.overlap ? 1 : 0,
+      })));
+      setBuild(undefined);
+      setStep("INSPECT");
+      if (report.status !== "PASSED") {
+        setError("Auto-fit proposed deterministic transforms, but the authoritative seam gate requires manual adjustment.");
+      }
+    }).catch((reason: unknown) => {
+      if (epoch === requestEpoch.current) setError(reason instanceof Error ? reason.message : String(reason));
+    }).finally(() => {
+      if (epoch === requestEpoch.current) setBusy(false);
+    });
+  };
+
+  const discardFitPreview = () => {
+    if (!fitReport) return;
+    const fittedByField = new Map(fitReport.parts.map((part) => [part.field, part]));
+    setParts((current) => current.map((part) => {
+      if (part.sourceKind !== "MESHY_GLB") return part;
+      const fitted = fittedByField.get(part.field);
+      if (!fitted) return part;
+      return {
+        ...part,
+        translation: fitted.transform.translation,
+        rotationXyzw: fitted.transform.rotationXyzw,
+        rotationDegrees: quaternionToEulerDegrees(fitted.transform.rotationXyzw),
+        uniformScale: fitted.transform.uniformScale,
+        pivot: fitted.transform.pivot,
+        targetSpaceScaleXyz: fitted.targetSpaceScaleXyz,
+      };
+    }));
+    setSeams(fitReport.adjacentSeams.map((seam) => ({
+      firstField: seam.firstField,
+      secondField: seam.secondField,
+      status: seam.status,
+      gap: seam.gap,
+      overlapVolume: seam.overlap ? 1 : 0,
+    })));
     setBuild(undefined);
     setError(undefined);
   };
@@ -1060,11 +1706,12 @@ export function ItemWorkflow({ onTargetChange, client }: ItemWorkflowProps) {
       || !selected
       || resolvedParts.length !== parts.length
       || parts.some((part) => part.sourceKind === "MESHY_GLB" && !part.file)
+      || (selected.modelType === 2 && (!attachmentProfileJson || fitReport?.schemaVersion !== 4))
       || selected.capability.requiredReferenceTables.some(
         (tableName) => !referenceTables[tableName.toUpperCase()],
       )
       || (
-        ["CAPART_COMPOSITE", "CLOAK_MODEL"].includes(selected.capability.iconProfile)
+        requiresEquippedItemProof(selected)
         && (
           !namespaceAllocation?.proofCreatureResref
           || !integerInRange(proofAppearanceRow, 0xffff)
@@ -1103,6 +1750,7 @@ export function ItemWorkflow({ onTargetChange, client }: ItemWorkflowProps) {
         modelResref: part.modelResref,
         iconResref: part.iconResref,
         textureResref: part.textureResref,
+        weaponColorways: [...part.weaponColorways],
         sourceGlb: part.sourceKind === "MESHY_GLB"
           ? await part.file!.arrayBuffer()
           : undefined,
@@ -1110,10 +1758,11 @@ export function ItemWorkflow({ onTargetChange, client }: ItemWorkflowProps) {
         textureEncoding: part.textureEncoding,
         transformJson: JSON.stringify({
           translation: part.translation,
-          rotationXyzw: eulerDegreesToQuaternion(part.rotationDegrees),
+          rotationXyzw: part.rotationXyzw,
           uniformScale: part.uniformScale,
           pivot: part.pivot,
         }),
+        targetSpaceScaleXyz: [...part.targetSpaceScaleXyz] as [number, number, number],
       })));
       const requestReferenceTables = await Promise.all(
         selected.capability.requiredReferenceTables.map(async (tableName) => ({
@@ -1184,6 +1833,31 @@ export function ItemWorkflow({ onTargetChange, client }: ItemWorkflowProps) {
         ...requestReferenceResources.map((resource) => resource.bytes),
         ...requestParts.flatMap((part) => part.sourceGlb ? [part.sourceGlb] : []),
       ];
+      const generatedRequestParts = requestParts.filter(
+        (part) => part.sourceKind === "MESHY_GLB",
+      );
+      const generationReady = Boolean(generationSession)
+        && generatedRequestParts.length > 0
+        && generatedRequestParts.every((part) => generationProvenance[part.field]);
+      const generationArtifactsJson = generationReady
+        ? JSON.stringify({
+            schemaVersion: 1,
+            artifacts: generatedRequestParts.map((part) => {
+              const provenance = generationProvenance[part.field];
+              return {
+                field: part.field,
+                profileId: provenance.profileId,
+                bridgeProtocolVersion: provenance.bridgeProtocolVersion,
+                sha256: provenance.sha256,
+                byteLength: provenance.byteLength,
+                taskIds: { PREVIEW: provenance.taskIds.PREVIEW },
+                consumedCredits: provenance.consumedCredits,
+                createdAt: provenance.createdAt,
+                finishedAt: provenance.finishedAt,
+              };
+            }),
+          })
+        : null;
       return worker.request({
         requestId: id(),
         type: "BUILD_ITEM_PACKAGE",
@@ -1198,6 +1872,12 @@ export function ItemWorkflow({ onTargetChange, client }: ItemWorkflowProps) {
         areaName: "Meshy2Aurora Item Assembly Proof",
         blueprintResref,
         blueprintJson,
+        generationSessionJson: generationReady && generationSession
+          ? serializeItemGenerationSession(generationSession)
+          : null,
+        generationArtifactsJson,
+        fitReportJson: fitReport ? JSON.stringify(fitReport) : null,
+        attachmentProfileJson: attachmentProfileJson ?? null,
         occupiedResourceKeys: occupiedNamespace
           .split(/[\s,]+/)
           .map((key) => key.trim().toLowerCase())
@@ -1215,9 +1895,7 @@ export function ItemWorkflow({ onTargetChange, client }: ItemWorkflowProps) {
               genderCode: capartGenderCode.trim().toLowerCase() || null,
             }
           : null,
-        equippedProofContext: ["CAPART_COMPOSITE", "CLOAK_MODEL"].includes(
-          selected.capability.iconProfile,
-        )
+        equippedProofContext: requiresEquippedItemProof(selected)
           ? {
               creatureResref: proofCreatureResref!,
               appearanceRow: proofAppearanceRow,
@@ -1252,6 +1930,7 @@ export function ItemWorkflow({ onTargetChange, client }: ItemWorkflowProps) {
   const contents = step === "SOURCE" ? (
     <ItemSource
       onTargetChange={onTargetChange}
+      meshyBridge={meshyBridge}
       baseitems={baseitems}
       catalog={catalog}
       selected={selected}
@@ -1274,6 +1953,9 @@ export function ItemWorkflow({ onTargetChange, client }: ItemWorkflowProps) {
         setError(undefined);
       }}
       referenceResources={referenceResources}
+      referenceModels={referenceModels}
+      attachmentProfile={attachmentProfile}
+      onReferenceModel={updateReferenceModel}
       onReferenceResources={(files) => {
         const invalid = files.find((file) => !/\.(mdl|tga)$/i.test(file.name));
         if (invalid) {
@@ -1290,9 +1972,23 @@ export function ItemWorkflow({ onTargetChange, client }: ItemWorkflowProps) {
           return;
         }
         const part = parts.find((candidate) => candidate.field === field);
-        if (part) updatePart({ ...part, file });
+        if (part) {
+          setGenerationProvenance((current) => {
+            const next = { ...current };
+            delete next[field];
+            return next;
+          });
+          updatePart({ ...part, file });
+        }
       }}
-      onContinue={() => setStep("INSPECT")}
+      onGeneratedPart={(field, file, provenance) => {
+        const part = parts.find((candidate) => candidate.field === field);
+        if (!part) return;
+        setGenerationProvenance((current) => ({ ...current, [field]: provenance }));
+        updatePart({ ...part, file });
+      }}
+      onGenerationSessionChange={setGenerationSession}
+      onContinue={() => startAutoFit()}
     />
   ) : step === "INSPECT" && selected ? (
     <ItemPrepare
@@ -1311,11 +2007,16 @@ export function ItemWorkflow({ onTargetChange, client }: ItemWorkflowProps) {
       selectedField={selectedField}
       preview={preview}
       seamTolerance={seamTolerance}
+      fitTargetLengths={fitTargetLengths}
       seams={seams}
+      fitReport={fitReport}
+      attachmentProfile={attachmentProfile}
+      busy={busy}
       error={error}
       onSelectPart={setSelectedField}
       onPreview={setPreview}
       onPartChange={updatePart}
+      onPartScalePreview={updatePartScalePreview}
       onUtiNumericChange={(next) => {
         setUtiNumeric(next);
         setBuild(undefined);
@@ -1364,9 +2065,19 @@ export function ItemWorkflow({ onTargetChange, client }: ItemWorkflowProps) {
       onSeamToleranceChange={(next) => {
         setSeamTolerance(next);
         setSeams([]);
+        setFitReport(undefined);
         setBuild(undefined);
         setError(undefined);
       }}
+      onFitTargetLengthsChange={(next) => {
+        setFitTargetLengths(next);
+        setSeams([]);
+        setFitReport(undefined);
+        setBuild(undefined);
+        setError(undefined);
+      }}
+      onAutoFit={startAutoFit}
+      onDiscardFit={discardFitPreview}
       onSeams={(next) => {
         setSeams((current) => (
           JSON.stringify(current) === JSON.stringify(next) ? current : next
@@ -1394,7 +2105,7 @@ export function ItemWorkflow({ onTargetChange, client }: ItemWorkflowProps) {
       {step === "DOWNLOAD" ? (
         <section className="item-download-complete panel">
           <h2>Item package downloads</h2>
-          <p>HAK, UTI, every MDL, diffuse TGA, icon-layer TGA and the deterministic report remain separate artifacts.</p>
+          <p>Runtime HAK/MOD/UTI/MDL/textures/icons and the exact source GLBs with canonical manifest.yaml remain separate, hash-verified artifacts.</p>
           <ArtifactDownloads artifacts={build.artifacts} onError={setError} />
         </section>
       ) : null}

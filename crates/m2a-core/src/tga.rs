@@ -670,6 +670,17 @@ fn readback_tga_v1(payload: &[u8]) -> Result<TgaReadback, String> {
     })
 }
 
+pub(crate) fn read_tga_image_v1(payload: &[u8]) -> Result<TgaImageV1, String> {
+    let readback = readback_tga_v1(payload)?;
+    Ok(TgaImageV1 {
+        schema_version: TGA_SCHEMA_VERSION,
+        width: readback.width,
+        height: readback.height,
+        pixel_format: readback.pixel_format,
+        pixels: readback.pixels,
+    })
+}
+
 fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     digest.iter().map(|byte| format!("{byte:02x}")).collect()

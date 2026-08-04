@@ -523,6 +523,37 @@ pub fn inspect_item_baseitems_v1_json(bytes: &[u8]) -> Result<String, JsValue> {
         .map_err(|error| JsValue::from_str(&serialize_json(&error)))
 }
 
+fn extend_item_baseitem_model_range_artifact_v1(
+    bytes: &[u8],
+    base_item: u32,
+    model: u8,
+) -> Result<m2a_core::item::ItemBaseItemModelRangeArtifactV1, JsValue> {
+    m2a_core::item::extend_item_baseitem_model_range_v1(bytes, base_item, model)
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+/// Returns an exact baseitems.2da override when Aurora's ModelType 2 selector
+/// range does not yet include the requested model bucket.
+#[wasm_bindgen(js_name = extendItemBaseitemModelRangeV1)]
+pub fn extend_item_baseitem_model_range_v1(
+    bytes: &[u8],
+    base_item: u32,
+    model: u8,
+) -> Result<Vec<u8>, JsValue> {
+    extend_item_baseitem_model_range_artifact_v1(bytes, base_item, model)
+        .map(|artifact| artifact.payload)
+}
+
+#[wasm_bindgen(js_name = extendItemBaseitemModelRangeV1ReportJson)]
+pub fn extend_item_baseitem_model_range_v1_report_json(
+    bytes: &[u8],
+    base_item: u32,
+    model: u8,
+) -> Result<String, JsValue> {
+    extend_item_baseitem_model_range_artifact_v1(bytes, base_item, model)
+        .map(|artifact| serialize_json(&artifact.report))
+}
+
 /// Inspects an exact retail Item reference table while preserving raw source
 /// identity and normalizing only terminal blank physical records.
 #[wasm_bindgen(js_name = inspectItemReferenceTwoDaV1Json)]
@@ -532,6 +563,29 @@ pub fn inspect_item_reference_two_da_v1_json(
 ) -> Result<String, JsValue> {
     m2a_core::item::inspect_item_reference_two_da_v1(table_name, bytes)
         .map(|report| serialize_json(&report))
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+/// Resolves the exact native Equip_ItemList hand slot for a ModelType 2 proof
+/// from the selected BaseItem's EquipableSlots bitmask.
+#[wasm_bindgen(js_name = resolveItemModelType2EquipmentSlotV1)]
+pub fn resolve_item_modeltype2_equipment_slot_v1(equipable_slots: u32) -> Result<u32, JsValue> {
+    m2a_core::item::resolve_item_modeltype2_equipment_slot_v1(equipable_slots)
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+/// Encodes Aurora's native ModelType 2 selector as `model * 10 + color`.
+#[wasm_bindgen(js_name = encodeItemWeaponPartAppearanceV1)]
+pub fn encode_item_weapon_part_appearance_v1(model: u8, color: u8) -> Result<u8, JsValue> {
+    m2a_core::item::encode_item_weapon_part_appearance_v1(model, color)
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+/// Decodes one native ModelType 2 selector and rejects nonexistent colors.
+#[wasm_bindgen(js_name = decodeItemWeaponPartAppearanceV1Json)]
+pub fn decode_item_weapon_part_appearance_v1_json(encoded_value: u8) -> Result<String, JsValue> {
+    m2a_core::item::decode_item_weapon_part_appearance_v1(encoded_value)
+        .map(|appearance| serialize_json(&appearance))
         .map_err(|error| JsValue::from_str(&serialize_json(&error)))
 }
 
@@ -904,6 +958,40 @@ pub fn build_meshy_item_part_with_options_v2(
     })
 }
 
+/// Aurora composer-correct Item authoring boundary. V3 bakes source-axis
+/// normalization into geometry and emits controllerless model roots with
+/// Trimesh-owned position/orientation controllers.
+#[wasm_bindgen(js_name = buildMeshyItemPartWithOptionsV3)]
+pub fn build_meshy_item_part_with_options_v3(
+    source_glb: &[u8],
+    model_resref: &str,
+    texture_resref: &str,
+    options_json: &str,
+) -> Result<StudioItemPartArtifactV1, JsValue> {
+    let options = serde_json::from_str::<m2a_core::item::ItemPartBuildOptionsV2>(options_json)
+        .map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-PART-OPTIONS-JSON-INVALID",
+                "optionsJson",
+                "item part options JSON does not match ItemPartBuildOptionsV2",
+            ))
+        })?;
+    let artifact = m2a_core::item::build_meshy_item_part_with_options_v3(
+        source_glb,
+        model_resref,
+        texture_resref,
+        &options,
+    )
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+    Ok(StudioItemPartArtifactV1 {
+        mdl_bytes: artifact.mdl_payload,
+        texture_bytes: artifact.texture_payload,
+        icon_bytes: artifact.icon_payload.unwrap_or_default(),
+        report_json: serialize_json(&artifact.report),
+        readback_json: serialize_json(&artifact.readback),
+    })
+}
+
 /// Measures one adjacent pair from the same source bytes, source-node
 /// selections, transforms and generated Aurora geometry used by the Item
 /// builder. The returned report binds every input by SHA-256.
@@ -943,6 +1031,753 @@ pub fn measure_meshy_item_seam_v1_json(
         second_model_resref,
         &second_options,
         tolerance,
+    )
+    .map(|report| serialize_json(&report))
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ItemFitPackedRequestV1 {
+    schema_version: u32,
+    tolerance: f32,
+    #[serde(default)]
+    target_axial_lengths: Option<Vec<f32>>,
+    #[serde(default)]
+    target_axial_scale_factors: Option<Vec<f32>>,
+    parts: Vec<ItemFitPackedPartV1>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ItemFitPackedPartV1 {
+    field: String,
+    model_resref: String,
+    source_node: Option<String>,
+    byte_offset: usize,
+    byte_length: usize,
+}
+
+/// Fits one packed ordered Item source set. The byte ranges keep the JS/WASM
+/// boundary generic for both the one-part and three-part Aurora schemas while
+/// preserving every exact source byte.
+#[wasm_bindgen(js_name = fitMeshyItemPartsV1Json)]
+pub fn fit_meshy_item_parts_v1_json(
+    source_bundle: &[u8],
+    request_json: &str,
+) -> Result<String, JsValue> {
+    let request = serde_json::from_str::<ItemFitPackedRequestV1>(request_json).map_err(|_| {
+        JsValue::from_str(&m5_boundary_error(
+            "ITEM-FIT-REQUEST-JSON-INVALID",
+            "requestJson",
+            "Item fit request JSON does not match the packed V1 contract",
+        ))
+    })?;
+    if request.schema_version != 1 {
+        return Err(JsValue::from_str(&m5_boundary_error(
+            "ITEM-FIT-REQUEST-SCHEMA-INVALID",
+            "requestJson.schemaVersion",
+            "Item fit request schemaVersion must be 1",
+        )));
+    }
+    let mut ranges = Vec::with_capacity(request.parts.len());
+    for (index, part) in request.parts.iter().enumerate() {
+        let end = part
+            .byte_offset
+            .checked_add(part.byte_length)
+            .ok_or_else(|| {
+                JsValue::from_str(&m5_boundary_error(
+                    "ITEM-FIT-SOURCE-RANGE-INVALID",
+                    &format!("requestJson.parts[{index}]"),
+                    "Item fit source byte range overflowed",
+                ))
+            })?;
+        if part.byte_length == 0 || end > source_bundle.len() {
+            return Err(JsValue::from_str(&m5_boundary_error(
+                "ITEM-FIT-SOURCE-RANGE-INVALID",
+                &format!("requestJson.parts[{index}]"),
+                "Item fit source byte range is empty or exceeds sourceBundle",
+            )));
+        }
+        ranges.push((part.byte_offset, end));
+    }
+    let sources = request
+        .parts
+        .iter()
+        .zip(ranges)
+        .map(|(part, (start, end))| m2a_core::item::ItemFitSourceV1 {
+            field: &part.field,
+            model_resref: &part.model_resref,
+            source_glb: &source_bundle[start..end],
+            source_node: part.source_node.as_deref(),
+        })
+        .collect::<Vec<_>>();
+    let report = match request.target_axial_lengths {
+        Some(targets) => m2a_core::item::fit_meshy_item_parts_with_target_lengths_aurora_v3(
+            &sources,
+            request.tolerance,
+            &targets,
+        ),
+        None => m2a_core::item::fit_meshy_item_parts_aurora_v3(&sources, request.tolerance),
+    };
+    report
+        .map(|report| serialize_json(&report))
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[wasm_bindgen(js_name = validateItemFitReportV1Json)]
+pub fn validate_item_fit_report_v1_json(report_json: &str) -> Result<String, JsValue> {
+    let report =
+        serde_json::from_str::<m2a_core::item::ItemFitReportV1>(report_json).map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-FIT-REPORT-JSON-INVALID",
+                "reportJson",
+                "Item fit report JSON does not match the exact V1 contract",
+            ))
+        })?;
+    m2a_core::item::validate_item_fit_report_v1(&report)
+        .map(|()| serialize_json(&report))
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+/// Fits a packed ModelType 2 source set with explicit Bottom/Middle/Top
+/// connector overlap. Schema 2 deliberately rejects legacy tolerance-gap fits.
+#[wasm_bindgen(js_name = fitMeshyItemPartsV2Json)]
+pub fn fit_meshy_item_parts_v2_json(
+    source_bundle: &[u8],
+    request_json: &str,
+) -> Result<String, JsValue> {
+    let request = serde_json::from_str::<ItemFitPackedRequestV1>(request_json).map_err(|_| {
+        JsValue::from_str(&m5_boundary_error(
+            "ITEM-FIT-V2-REQUEST-JSON-INVALID",
+            "requestJson",
+            "Item composer fit request JSON does not match the packed schema",
+        ))
+    })?;
+    if request.schema_version != 2 {
+        return Err(JsValue::from_str(&m5_boundary_error(
+            "ITEM-FIT-V2-REQUEST-SCHEMA-INVALID",
+            "requestJson.schemaVersion",
+            "Item composer fit request schemaVersion must be 2",
+        )));
+    }
+    let mut ranges = Vec::with_capacity(request.parts.len());
+    for (index, part) in request.parts.iter().enumerate() {
+        let end = part
+            .byte_offset
+            .checked_add(part.byte_length)
+            .ok_or_else(|| {
+                JsValue::from_str(&m5_boundary_error(
+                    "ITEM-FIT-V2-SOURCE-RANGE-INVALID",
+                    &format!("requestJson.parts[{index}]"),
+                    "Item composer fit source byte range overflowed",
+                ))
+            })?;
+        if part.byte_length == 0 || end > source_bundle.len() {
+            return Err(JsValue::from_str(&m5_boundary_error(
+                "ITEM-FIT-V2-SOURCE-RANGE-INVALID",
+                &format!("requestJson.parts[{index}]"),
+                "Item composer fit source byte range is empty or exceeds sourceBundle",
+            )));
+        }
+        ranges.push((part.byte_offset, end));
+    }
+    let sources = request
+        .parts
+        .iter()
+        .zip(ranges)
+        .map(|(part, (start, end))| m2a_core::item::ItemFitSourceV1 {
+            field: &part.field,
+            model_resref: &part.model_resref,
+            source_glb: &source_bundle[start..end],
+            source_node: part.source_node.as_deref(),
+        })
+        .collect::<Vec<_>>();
+    let target_lengths = request.target_axial_lengths.unwrap_or_else(|| {
+        if sources.len() == 1 {
+            vec![1.0]
+        } else {
+            vec![0.30, 0.10, 0.60]
+        }
+    });
+    m2a_core::item::fit_meshy_item_parts_with_target_lengths_aurora_v4(
+        &sources,
+        request.tolerance,
+        &target_lengths,
+    )
+    .map(|report| serialize_json(&report))
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[wasm_bindgen(js_name = fitMeshyItemPartsV3Json)]
+pub fn fit_meshy_item_parts_v3_json(
+    source_bundle: &[u8],
+    request_json: &str,
+) -> Result<String, JsValue> {
+    let request = serde_json::from_str::<ItemFitPackedRequestV1>(request_json).map_err(|_| {
+        JsValue::from_str(&m5_boundary_error(
+            "ITEM-FIT-V3-REQUEST-JSON-INVALID",
+            "requestJson",
+            "full-frame Item fit request JSON does not match the packed schema",
+        ))
+    })?;
+    if request.schema_version != 3 {
+        return Err(JsValue::from_str(&m5_boundary_error(
+            "ITEM-FIT-V3-REQUEST-SCHEMA-INVALID",
+            "requestJson.schemaVersion",
+            "full-frame Item fit request schemaVersion must be 3",
+        )));
+    }
+    let mut ranges = Vec::with_capacity(request.parts.len());
+    for (index, part) in request.parts.iter().enumerate() {
+        let end = part
+            .byte_offset
+            .checked_add(part.byte_length)
+            .ok_or_else(|| {
+                JsValue::from_str(&m5_boundary_error(
+                    "ITEM-FIT-V3-SOURCE-RANGE-INVALID",
+                    &format!("requestJson.parts[{index}]"),
+                    "full-frame Item source byte range overflowed",
+                ))
+            })?;
+        if part.byte_length == 0 || end > source_bundle.len() {
+            return Err(JsValue::from_str(&m5_boundary_error(
+                "ITEM-FIT-V3-SOURCE-RANGE-INVALID",
+                &format!("requestJson.parts[{index}]"),
+                "full-frame Item source byte range is empty or exceeds sourceBundle",
+            )));
+        }
+        ranges.push((part.byte_offset, end));
+    }
+    let sources = request
+        .parts
+        .iter()
+        .zip(ranges)
+        .map(|(part, (start, end))| m2a_core::item::ItemFitSourceV1 {
+            field: &part.field,
+            model_resref: &part.model_resref,
+            source_glb: &source_bundle[start..end],
+            source_node: part.source_node.as_deref(),
+        })
+        .collect::<Vec<_>>();
+    let target_lengths = request.target_axial_lengths.unwrap_or_else(|| {
+        if sources.len() == 1 {
+            vec![1.0]
+        } else {
+            vec![0.30, 0.10, 0.60]
+        }
+    });
+    m2a_core::item::fit_meshy_item_parts_with_target_lengths_aurora_v5(
+        &sources,
+        request.tolerance,
+        &target_lengths,
+    )
+    .map(|report| serialize_json(&report))
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[wasm_bindgen(js_name = fitMeshyItemPartsV4Json)]
+pub fn fit_meshy_item_parts_v4_json(
+    source_bundle: &[u8],
+    request_json: &str,
+    attachment_profile_json: &str,
+) -> Result<String, JsValue> {
+    let request = serde_json::from_str::<ItemFitPackedRequestV1>(request_json).map_err(|_| {
+        JsValue::from_str(&m5_boundary_error(
+            "ITEM-FIT-V4-REQUEST-JSON-INVALID",
+            "requestJson",
+            "reference-frame Item fit request JSON does not match the packed schema",
+        ))
+    })?;
+    if request.schema_version != 4 || request.target_axial_lengths.is_some() {
+        return Err(JsValue::from_str(&m5_boundary_error(
+            "ITEM-FIT-V4-REQUEST-SCHEMA-INVALID",
+            "requestJson",
+            "reference-frame Item fit requires schemaVersion 4 and derives lengths from the profile",
+        )));
+    }
+    let profile =
+        serde_json::from_str::<m2a_core::item::ItemAttachmentProfileV1>(attachment_profile_json)
+            .map_err(|_| {
+                JsValue::from_str(&m5_boundary_error(
+                    "ITEM-FIT-V4-PROFILE-JSON-INVALID",
+                    "attachmentProfileJson",
+                    "attachment profile JSON does not match ItemAttachmentProfileV1",
+                ))
+            })?;
+    let mut ranges = Vec::with_capacity(request.parts.len());
+    for (index, part) in request.parts.iter().enumerate() {
+        let end = part
+            .byte_offset
+            .checked_add(part.byte_length)
+            .ok_or_else(|| {
+                JsValue::from_str(&m5_boundary_error(
+                    "ITEM-FIT-V4-SOURCE-RANGE-INVALID",
+                    &format!("requestJson.parts[{index}]"),
+                    "reference-frame Item source byte range overflowed",
+                ))
+            })?;
+        if part.byte_length == 0 || end > source_bundle.len() {
+            return Err(JsValue::from_str(&m5_boundary_error(
+                "ITEM-FIT-V4-SOURCE-RANGE-INVALID",
+                &format!("requestJson.parts[{index}]"),
+                "reference-frame Item source range is empty or exceeds sourceBundle",
+            )));
+        }
+        ranges.push((part.byte_offset, end));
+    }
+    let sources = request
+        .parts
+        .iter()
+        .zip(ranges)
+        .map(|(part, (start, end))| m2a_core::item::ItemFitSourceV1 {
+            field: &part.field,
+            model_resref: &part.model_resref,
+            source_glb: &source_bundle[start..end],
+            source_node: part.source_node.as_deref(),
+        })
+        .collect::<Vec<_>>();
+    let axial_scale_factors = request
+        .target_axial_scale_factors
+        .unwrap_or_else(|| vec![1.0; sources.len()]);
+    m2a_core::item::fit_meshy_item_parts_to_attachment_profile_with_axial_scales_v1(
+        &sources,
+        request.tolerance,
+        &profile,
+        &axial_scale_factors,
+    )
+    .map(|report| serialize_json(&report))
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ItemReferenceProfilePackedRequestV1 {
+    schema_version: u32,
+    resource_context_sha256: String,
+    reference_kind: String,
+    reference_id: String,
+    models: Vec<ItemReferenceProfilePackedModelV1>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ItemReferenceProfilePackedModelV1 {
+    field: String,
+    model_resref: String,
+    byte_offset: usize,
+    byte_length: usize,
+}
+
+#[wasm_bindgen(js_name = buildItemAttachmentProfileV1Json)]
+pub fn build_item_attachment_profile_v1_json(
+    baseitems_two_da: &[u8],
+    base_item: u32,
+    mdl_bundle: &[u8],
+    request_json: &str,
+) -> Result<String, JsValue> {
+    let request = serde_json::from_str::<ItemReferenceProfilePackedRequestV1>(request_json)
+        .map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-REFERENCE-PROFILE-REQUEST-INVALID",
+                "requestJson",
+                "reference profile request JSON does not match the packed schema",
+            ))
+        })?;
+    if request.schema_version != 1 {
+        return Err(JsValue::from_str(&m5_boundary_error(
+            "ITEM-REFERENCE-PROFILE-REQUEST-INVALID",
+            "requestJson.schemaVersion",
+            "reference profile request schemaVersion must be 1",
+        )));
+    }
+    let row = m2a_core::item::resolve_item_baseitem_v1(baseitems_two_da, base_item)
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+    let mut ranges = Vec::with_capacity(request.models.len());
+    for (index, model) in request.models.iter().enumerate() {
+        let end = model
+            .byte_offset
+            .checked_add(model.byte_length)
+            .ok_or_else(|| {
+                JsValue::from_str(&m5_boundary_error(
+                    "ITEM-REFERENCE-PROFILE-RANGE-INVALID",
+                    &format!("requestJson.models[{index}]"),
+                    "reference MDL byte range overflowed",
+                ))
+            })?;
+        if model.byte_length == 0 || end > mdl_bundle.len() {
+            return Err(JsValue::from_str(&m5_boundary_error(
+                "ITEM-REFERENCE-PROFILE-RANGE-INVALID",
+                &format!("requestJson.models[{index}]"),
+                "reference MDL range is empty or exceeds mdlBundle",
+            )));
+        }
+        ranges.push((model.byte_offset, end));
+    }
+    let inputs = request
+        .models
+        .iter()
+        .zip(ranges)
+        .map(
+            |(model, (start, end))| m2a_core::item::ItemReferenceMdlInputV1 {
+                field: &model.field,
+                model_resref: &model.model_resref,
+                mdl_payload: &mdl_bundle[start..end],
+            },
+        )
+        .collect::<Vec<_>>();
+    m2a_core::item::build_item_attachment_profile_v1(
+        &row,
+        &request.resource_context_sha256,
+        &m2a_core::item::item_payload_sha256_v1(baseitems_two_da),
+        &request.reference_kind,
+        &request.reference_id,
+        &inputs,
+    )
+    .map(|profile| serialize_json(&profile))
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[wasm_bindgen(js_name = validateItemFitReportV4Json)]
+pub fn validate_item_fit_report_v4_json(report_json: &str) -> Result<String, JsValue> {
+    let report =
+        serde_json::from_str::<m2a_core::item::ItemFitReportV4>(report_json).map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-FIT-V4-REPORT-JSON-INVALID",
+                "reportJson",
+                "reference-frame Item fit report JSON does not match schema 4",
+            ))
+        })?;
+    m2a_core::item::validate_item_fit_report_v4(&report)
+        .map(|()| serialize_json(&report))
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[wasm_bindgen(js_name = validateItemFitReportV3Json)]
+pub fn validate_item_fit_report_v3_json(report_json: &str) -> Result<String, JsValue> {
+    let report =
+        serde_json::from_str::<m2a_core::item::ItemFitReportV3>(report_json).map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-FIT-V3-REPORT-JSON-INVALID",
+                "reportJson",
+                "full-frame Item fit report JSON does not match schema 3",
+            ))
+        })?;
+    m2a_core::item::validate_item_fit_report_v3(&report)
+        .map(|()| serialize_json(&report))
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[wasm_bindgen(js_name = validateItemFitReportV2Json)]
+pub fn validate_item_fit_report_v2_json(report_json: &str) -> Result<String, JsValue> {
+    let report =
+        serde_json::from_str::<m2a_core::item::ItemFitReportV2>(report_json).map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-FIT-V2-REPORT-JSON-INVALID",
+                "reportJson",
+                "Item composer fit report JSON does not match schema 2",
+            ))
+        })?;
+    m2a_core::item::validate_item_fit_report_v2(&report)
+        .map(|()| serialize_json(&report))
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ItemComposerPackedRequestV2 {
+    schema_version: u32,
+    parts: Vec<ItemComposerPackedPartV2>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ItemComposerPackedPartV2 {
+    field: String,
+    model_resref: String,
+    byte_offset: usize,
+    byte_length: usize,
+}
+
+/// Emulates Aurora's ModelType 2 load order (Bottom base, append Middle,
+/// append Top) and rejects correct-bounds/wrong-hierarchy false positives.
+#[wasm_bindgen(js_name = validateItemModelType2ComposerV2Json)]
+pub fn validate_item_modeltype2_composer_v2_json(
+    mdl_bundle: &[u8],
+    request_json: &str,
+    fit_report_json: &str,
+) -> Result<String, JsValue> {
+    let request =
+        serde_json::from_str::<ItemComposerPackedRequestV2>(request_json).map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-MODELTYPE2-COMPOSER-REQUEST-INVALID",
+                "requestJson",
+                "composer request JSON does not match schema 2",
+            ))
+        })?;
+    if request.schema_version != 2 {
+        return Err(JsValue::from_str(&m5_boundary_error(
+            "ITEM-MODELTYPE2-COMPOSER-REQUEST-INVALID",
+            "requestJson.schemaVersion",
+            "composer request schemaVersion must be 2",
+        )));
+    }
+    let fit =
+        serde_json::from_str::<m2a_core::item::ItemFitReportV2>(fit_report_json).map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-MODELTYPE2-COMPOSER-FIT-INVALID",
+                "fitReportJson",
+                "composer validation requires one exact ItemFitReportV2",
+            ))
+        })?;
+    let mut ranges = Vec::with_capacity(request.parts.len());
+    for (index, part) in request.parts.iter().enumerate() {
+        let end = part
+            .byte_offset
+            .checked_add(part.byte_length)
+            .ok_or_else(|| {
+                JsValue::from_str(&m5_boundary_error(
+                    "ITEM-MODELTYPE2-COMPOSER-RANGE-INVALID",
+                    &format!("requestJson.parts[{index}]"),
+                    "MDL byte range overflowed",
+                ))
+            })?;
+        if part.byte_length == 0 || end > mdl_bundle.len() {
+            return Err(JsValue::from_str(&m5_boundary_error(
+                "ITEM-MODELTYPE2-COMPOSER-RANGE-INVALID",
+                &format!("requestJson.parts[{index}]"),
+                "MDL byte range is empty or exceeds mdlBundle",
+            )));
+        }
+        ranges.push((part.byte_offset, end));
+    }
+    let inputs = request
+        .parts
+        .iter()
+        .zip(ranges)
+        .map(
+            |(part, (start, end))| m2a_core::item::ItemComposerMdlInputV2 {
+                field: &part.field,
+                model_resref: &part.model_resref,
+                mdl_payload: &mdl_bundle[start..end],
+            },
+        )
+        .collect::<Vec<_>>();
+    m2a_core::item::validate_item_modeltype2_aurora_append_conformance_v2(&inputs, &fit)
+        .map(|report| serialize_json(&report))
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[wasm_bindgen(js_name = validateItemModelType2ComposerV3Json)]
+pub fn validate_item_modeltype2_composer_v3_json(
+    mdl_bundle: &[u8],
+    request_json: &str,
+    fit_report_json: &str,
+) -> Result<String, JsValue> {
+    let request =
+        serde_json::from_str::<ItemComposerPackedRequestV2>(request_json).map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-MODELTYPE2-COMPOSER-V3-REQUEST-INVALID",
+                "requestJson",
+                "full-frame composer request JSON does not match schema 3",
+            ))
+        })?;
+    if request.schema_version != 3 {
+        return Err(JsValue::from_str(&m5_boundary_error(
+            "ITEM-MODELTYPE2-COMPOSER-V3-REQUEST-INVALID",
+            "requestJson.schemaVersion",
+            "full-frame composer request schemaVersion must be 3",
+        )));
+    }
+    let fit =
+        serde_json::from_str::<m2a_core::item::ItemFitReportV3>(fit_report_json).map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-MODELTYPE2-COMPOSER-V3-FIT-INVALID",
+                "fitReportJson",
+                "full-frame composer validation requires one exact ItemFitReportV3",
+            ))
+        })?;
+    let mut ranges = Vec::with_capacity(request.parts.len());
+    for (index, part) in request.parts.iter().enumerate() {
+        let end = part
+            .byte_offset
+            .checked_add(part.byte_length)
+            .ok_or_else(|| {
+                JsValue::from_str(&m5_boundary_error(
+                    "ITEM-MODELTYPE2-COMPOSER-V3-RANGE-INVALID",
+                    &format!("requestJson.parts[{index}]"),
+                    "MDL byte range overflowed",
+                ))
+            })?;
+        if part.byte_length == 0 || end > mdl_bundle.len() {
+            return Err(JsValue::from_str(&m5_boundary_error(
+                "ITEM-MODELTYPE2-COMPOSER-V3-RANGE-INVALID",
+                &format!("requestJson.parts[{index}]"),
+                "MDL byte range is empty or exceeds mdlBundle",
+            )));
+        }
+        ranges.push((part.byte_offset, end));
+    }
+    let inputs = request
+        .parts
+        .iter()
+        .zip(ranges)
+        .map(
+            |(part, (start, end))| m2a_core::item::ItemComposerMdlInputV2 {
+                field: &part.field,
+                model_resref: &part.model_resref,
+                mdl_payload: &mdl_bundle[start..end],
+            },
+        )
+        .collect::<Vec<_>>();
+    m2a_core::item::validate_item_modeltype2_aurora_append_conformance_v3(&inputs, &fit)
+        .map(|report| serialize_json(&report))
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[wasm_bindgen(js_name = validateItemModelType2ComposerV4Json)]
+pub fn validate_item_modeltype2_composer_v4_json(
+    mdl_bundle: &[u8],
+    request_json: &str,
+    fit_report_json: &str,
+) -> Result<String, JsValue> {
+    let request =
+        serde_json::from_str::<ItemComposerPackedRequestV2>(request_json).map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-MODELTYPE2-COMPOSER-V4-REQUEST-INVALID",
+                "requestJson",
+                "reference-frame composer request JSON does not match schema 4",
+            ))
+        })?;
+    if request.schema_version != 4 {
+        return Err(JsValue::from_str(&m5_boundary_error(
+            "ITEM-MODELTYPE2-COMPOSER-V4-REQUEST-INVALID",
+            "requestJson.schemaVersion",
+            "reference-frame composer request schemaVersion must be 4",
+        )));
+    }
+    let fit =
+        serde_json::from_str::<m2a_core::item::ItemFitReportV4>(fit_report_json).map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-MODELTYPE2-COMPOSER-V4-FIT-INVALID",
+                "fitReportJson",
+                "reference-frame composer validation requires one exact ItemFitReportV4",
+            ))
+        })?;
+    let mut ranges = Vec::with_capacity(request.parts.len());
+    for (index, part) in request.parts.iter().enumerate() {
+        let end = part
+            .byte_offset
+            .checked_add(part.byte_length)
+            .ok_or_else(|| {
+                JsValue::from_str(&m5_boundary_error(
+                    "ITEM-MODELTYPE2-COMPOSER-V4-RANGE-INVALID",
+                    &format!("requestJson.parts[{index}]"),
+                    "MDL byte range overflowed",
+                ))
+            })?;
+        if part.byte_length == 0 || end > mdl_bundle.len() {
+            return Err(JsValue::from_str(&m5_boundary_error(
+                "ITEM-MODELTYPE2-COMPOSER-V4-RANGE-INVALID",
+                &format!("requestJson.parts[{index}]"),
+                "MDL byte range is empty or exceeds mdlBundle",
+            )));
+        }
+        ranges.push((part.byte_offset, end));
+    }
+    let inputs = request
+        .parts
+        .iter()
+        .zip(ranges)
+        .map(
+            |(part, (start, end))| m2a_core::item::ItemComposerMdlInputV2 {
+                field: &part.field,
+                model_resref: &part.model_resref,
+                mdl_payload: &mdl_bundle[start..end],
+            },
+        )
+        .collect::<Vec<_>>();
+    m2a_core::item::validate_item_modeltype2_aurora_append_conformance_v4(&inputs, &fit)
+        .map(|report| serialize_json(&report))
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ItemIconPackedRequestV3 {
+    schema_version: u32,
+    width: u32,
+    height: u32,
+    layout_profile: String,
+    layers: Vec<ItemIconPackedLayerV3>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ItemIconPackedLayerV3 {
+    field: String,
+    icon_resref: String,
+    byte_offset: usize,
+    byte_length: usize,
+}
+
+#[wasm_bindgen(js_name = validateItemModelType2IconLayersV3Json)]
+pub fn validate_item_modeltype2_icon_layers_v3_json(
+    icon_bundle: &[u8],
+    request_json: &str,
+) -> Result<String, JsValue> {
+    let request = serde_json::from_str::<ItemIconPackedRequestV3>(request_json).map_err(|_| {
+        JsValue::from_str(&m5_boundary_error(
+            "ITEM-ICON-V3-REQUEST-INVALID",
+            "requestJson",
+            "native Item icon request JSON does not match schema 3",
+        ))
+    })?;
+    if request.schema_version != 3 {
+        return Err(JsValue::from_str(&m5_boundary_error(
+            "ITEM-ICON-V3-REQUEST-INVALID",
+            "requestJson.schemaVersion",
+            "native Item icon request schemaVersion must be 3",
+        )));
+    }
+    let mut ranges = Vec::with_capacity(request.layers.len());
+    for (index, layer) in request.layers.iter().enumerate() {
+        let end = layer
+            .byte_offset
+            .checked_add(layer.byte_length)
+            .ok_or_else(|| {
+                JsValue::from_str(&m5_boundary_error(
+                    "ITEM-ICON-V3-RANGE-INVALID",
+                    &format!("requestJson.layers[{index}]"),
+                    "icon byte range overflowed",
+                ))
+            })?;
+        if layer.byte_length == 0 || end > icon_bundle.len() {
+            return Err(JsValue::from_str(&m5_boundary_error(
+                "ITEM-ICON-V3-RANGE-INVALID",
+                &format!("requestJson.layers[{index}]"),
+                "icon byte range is empty or exceeds iconBundle",
+            )));
+        }
+        ranges.push((layer.byte_offset, end));
+    }
+    let inputs = request
+        .layers
+        .iter()
+        .zip(ranges)
+        .map(
+            |(layer, (start, end))| m2a_core::item::ItemIconLayerInputV3 {
+                field: &layer.field,
+                icon_resref: &layer.icon_resref,
+                payload: &icon_bundle[start..end],
+            },
+        )
+        .collect::<Vec<_>>();
+    m2a_core::item::validate_item_modeltype2_icon_layers_v3(
+        &inputs,
+        request.width,
+        request.height,
+        &request.layout_profile,
     )
     .map(|report| serialize_json(&report))
     .map_err(|error| JsValue::from_str(&serialize_json(&error)))

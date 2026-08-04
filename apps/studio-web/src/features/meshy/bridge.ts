@@ -5,7 +5,10 @@ export type MeshyProfileId =
   | "N1-quadruped/v1"
   | "S1-static-prop/v1";
 
-export type MeshyArtifactProfileId = MeshyProfileId | "RECOVERED-text-to-3d/v1" | "RETEXTURED-model/v1";
+export type MeshyArtifactProfileId = MeshyProfileId
+  | "RECOVERED-text-to-3d/v1"
+  | "RECOVERED-image-to-3d/v1"
+  | "RETEXTURED-model/v1";
 
 export type MeshyPipelineStage = "PREVIEW" | "REFINE" | "RIG" | "ANIMATE";
 export type MeshyGeometryTarget = "AURORA_PROOF" | "LOWER_DETAIL" | "BALANCED" | "HIGHER_DETAIL";
@@ -268,6 +271,9 @@ export interface MeshyArtifactProvenance {
   readonly sha256: string;
   readonly byteLength: number;
   readonly taskIds: Readonly<Partial<Record<MeshyPipelineStage, string>>>;
+  readonly consumedCredits?: number;
+  readonly createdAt?: string;
+  readonly finishedAt?: string;
 }
 
 export interface MeshyRunArtifact {
@@ -317,6 +323,7 @@ export interface MeshyBridgeClient {
   listHistory(sessionToken: string, pageNum?: number): Promise<MeshyHistoryPage>;
   downloadHistoryArtifact(sessionToken: string, taskId: string): Promise<MeshyRunArtifact>;
   downloadHistoryThumbnail(sessionToken: string, taskId: string): Promise<MeshyHistoryThumbnail>;
+  recoverImageTo3dArtifact(sessionToken: string, taskId: string): Promise<MeshyRunArtifact>;
   previewRetexture(sessionToken: string, input: MeshyRetexturePreviewRequest): Promise<MeshyRetexturePreview>;
   createRetexture(sessionToken: string, input: { readonly previewId: string; readonly confirmationNonce: string }): Promise<MeshyRetextureRun>;
   getRetexture(sessionToken: string, runId: string): Promise<MeshyRetextureRun>;
@@ -370,11 +377,13 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
   private readonly previews = new Map<string, StoredPreview>();
   private readonly runs = new Map<string, StoredRun>();
   private readonly history = new Map<string, StoredHistoryItem>();
+  private readonly recoveredImageTo3d = new Map<string, MeshyRunArtifact>();
   private readonly imagePreviews = new Map<string, MeshyImageRunPreview>();
   private readonly imageRuns = new Map<string, StoredImageRun>();
   private readonly retexturePreviews = new Map<string, MeshyRetexturePreview>();
   private readonly retextureRuns = new Map<string, StoredRetextureRun>();
   private readonly usedConfirmationNonces = new Set<string>();
+  private readonly confirmedRunsByNonce = new Map<string, { previewId: string; runId: string }>();
   private readonly sessions = new Set<string>();
   private pairingCodeUsed = false;
   private readonly availableCredits: number;
@@ -468,6 +477,8 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
       throw new MeshyBridgeError("CONFIRMATION_REQUIRED", "Confirm generation before creating a Meshy task.");
     }
     if (this.usedConfirmationNonces.has(input.confirmationNonce)) {
+      const confirmed = this.confirmedRunsByNonce.get(input.confirmationNonce);
+      if (confirmed?.previewId === input.previewId) return this.storedRun(confirmed.runId).run;
       throw new MeshyBridgeError("CONFIRMATION_ALREADY_USED", "This confirmation was already used for a Meshy run.");
     }
     const preview = this.previews.get(input.previewId);
@@ -487,6 +498,7 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
       updatedAt: timestamp,
     };
     this.runs.set(run.id, { run });
+    this.confirmedRunsByNonce.set(input.confirmationNonce, { previewId: input.previewId, runId: run.id });
     return run;
   }
 
@@ -542,6 +554,13 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
     const item = this.history.get(taskId)?.item;
     if (!item?.thumbnailAvailable) throw new MeshyBridgeError("ARTIFACT_NOT_READY", "The selected Meshy history entry has no thumbnail.");
     return { file: new File(["<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 160 160\"><rect width=\"160\" height=\"160\" fill=\"#242624\"/><path d=\"M80 24 128 52v56l-48 28-48-28V52z\" fill=\"#7d857d\"/><path d=\"m80 42 30 18v36L80 114 50 96V60z\" fill=\"#bfc7bd\"/></svg>"], "meshy-thumbnail.svg", { type: "image/svg+xml" }) };
+  }
+
+  async recoverImageTo3dArtifact(sessionToken: string, taskId: string): Promise<MeshyRunArtifact> {
+    this.requireSession(sessionToken);
+    const artifact = this.recoveredImageTo3d.get(taskId);
+    if (!artifact) throw new MeshyBridgeError("ARTIFACT_NOT_READY", "The exact Image-to-3D task cannot be recovered as a verified GLB.");
+    return artifact;
   }
 
   async previewRetexture(sessionToken: string, input: MeshyRetexturePreviewRequest): Promise<MeshyRetexturePreview> {
@@ -645,6 +664,9 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
         sha256: hash,
         byteLength: bytes.byteLength,
         taskIds,
+        consumedCredits: 30,
+        createdAt: stored.run.createdAt,
+        finishedAt: now(),
       },
     };
     return stored.run;
@@ -667,6 +689,28 @@ export class InMemoryMeshyBridgeClient implements MeshyBridgeClient {
           byteLength: bytes.byteLength,
           taskIds: { REFINE: item.taskId },
         },
+      },
+    });
+  }
+
+  async addRecoverableImageTo3dForTest(input: {
+    readonly taskId: string;
+    readonly consumedCredits?: number;
+    readonly createdAt?: string;
+    readonly finishedAt?: string;
+  }, bytes: Uint8Array): Promise<void> {
+    const hash = await sha256(bytes);
+    this.recoveredImageTo3d.set(input.taskId, {
+      file: new File([bytes.slice()], "meshy-recovered-image-to-3d.glb", { type: "model/gltf-binary" }),
+      provenance: {
+        profileId: "RECOVERED-image-to-3d/v1",
+        bridgeProtocolVersion: MESHY_BRIDGE_PROTOCOL_VERSION,
+        sha256: hash,
+        byteLength: bytes.byteLength,
+        taskIds: { PREVIEW: input.taskId },
+        ...(input.consumedCredits === undefined ? {} : { consumedCredits: input.consumedCredits }),
+        ...(input.createdAt === undefined ? {} : { createdAt: input.createdAt }),
+        ...(input.finishedAt === undefined ? {} : { finishedAt: input.finishedAt }),
       },
     });
   }
@@ -781,6 +825,10 @@ export class LocalMeshyBridgeClient implements MeshyBridgeClient {
     const blob = await response.blob();
     if (!blob.size || blob.size > 8 * 1024 * 1024) throw new MeshyBridgeError("ARTIFACT_INVALID", "The local Bridge thumbnail violates the size gate.");
     return { file: new File([blob], `meshy-${taskId}-thumbnail.${type === "image/png" ? "png" : type === "image/jpeg" ? "jpg" : "webp"}`, { type }) };
+  }
+
+  async recoverImageTo3dArtifact(sessionToken: string, taskId: string): Promise<MeshyRunArtifact> {
+    return this.downloadVerifiedArtifact(sessionToken, `/v1/image-to-3d/${encodeURIComponent(taskId)}`);
   }
 
   async previewRetexture(sessionToken: string, input: MeshyRetexturePreviewRequest): Promise<MeshyRetexturePreview> {

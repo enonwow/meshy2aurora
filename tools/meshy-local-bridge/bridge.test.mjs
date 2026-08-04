@@ -223,6 +223,32 @@ test("checks the live balance before it creates a paid run", async () => {
   }
 });
 
+test("replays the exact confirmed run for a repeated Item nonce without starting a duplicate", async () => {
+  const local = createLocalBridge({
+    apiKey: "idempotent-test-key", pairingCode: "idempotent-pair", allowedOrigin: "http://localhost:5173",
+    meshFetch: async () => new Response(JSON.stringify({ balance: 120 })), startRuns: false,
+  });
+  const localOrigin = await local.listen(0);
+  const request = (path, options = {}) => fetch(`${localOrigin}${path}`, { ...options, headers: { Origin: "http://localhost:5173", ...(options.headers ?? {}) } });
+  try {
+    const pairing = await (await request("/v1/pair", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pairingCode: "idempotent-pair" }) })).json();
+    const headers = { "X-Meshy-Session": pairing.sessionToken, "Content-Type": "application/json" };
+    const preview = await (await request("/v1/runs/preview", { method: "POST", headers, body: JSON.stringify({ profileId: "S1-static-prop/v1", prompt: "longsword bottom part", source: "IMAGE", imageDataUrls: ["data:image/png;base64,AAAA"], geometryTarget: "BALANCED" }) })).json();
+    const body = JSON.stringify({ previewId: preview.previewId, confirmationNonce: "item:session:ModelPart1:preview" });
+    const first = await (await request("/v1/runs", { method: "POST", headers, body })).json();
+    const repeated = await (await request("/v1/runs", { method: "POST", headers, body })).json();
+    assert.equal(repeated.id, first.id);
+    assert.equal(repeated.createdAt, first.createdAt);
+
+    const otherPreview = await (await request("/v1/runs/preview", { method: "POST", headers, body: JSON.stringify({ profileId: "S1-static-prop/v1", prompt: "longsword top part", source: "IMAGE", imageDataUrls: ["data:image/png;base64,AAAA"], geometryTarget: "BALANCED" }) })).json();
+    const collision = await request("/v1/runs", { method: "POST", headers, body: JSON.stringify({ previewId: otherPreview.previewId, confirmationNonce: "item:session:ModelPart1:preview" }) });
+    assert.equal(collision.status, 409);
+    assert.equal((await collision.json()).code, "CONFIRMATION_ALREADY_USED");
+  } finally {
+    await local.close();
+  }
+});
+
 test("requires explicit confirmation before ReTexture and never sends a signed model URL", async () => {
   const calls = [];
   const local = createLocalBridge({
@@ -571,6 +597,72 @@ test("lists prior Text-to-3D work without signed URLs and recovers a verified re
     assert.deepEqual([...new Uint8Array(await artifact.arrayBuffer())], [0x67, 0x6c, 0x54, 0x46]);
     assert.equal(calls.some((call) => call.url === "https://assets.meshy.ai/recovered.glb"), true);
     assert.equal(calls.every((call) => ["https://assets.meshy.ai/recovered.glb", "https://assets.meshy.ai/recovered-thumbnail.png?Expires=secret"].includes(call.url) || call.options.headers.Authorization === "Bearer history-test-key"), true);
+  } finally {
+    await local.close();
+  }
+});
+
+test("recovers an exact completed Image-to-3D task without creating another paid task", async () => {
+  const calls = [];
+  const fakeMeshy = async (url, options = {}) => {
+    calls.push({ url, options });
+    if (url === "https://assets.meshy.ai/recovered-image.glb?Expires=secret") {
+      return new Response(new Uint8Array([0x67, 0x6c, 0x54, 0x46]));
+    }
+    if (url.endsWith("/openapi/v1/image-to-3d/image-task-1")) {
+      return new Response(JSON.stringify({
+        id: "image-task-1",
+        type: "image-to-3d",
+        status: "SUCCEEDED",
+        created_at: 1_000,
+        finished_at: 2_000,
+        consumed_credits: 30,
+        model_urls: { glb: "https://assets.meshy.ai/recovered-image.glb?Expires=secret" },
+      }), { headers: { "Content-Type": "application/json" } });
+    }
+    throw new Error(`Unexpected Meshy Image-to-3D recovery URL ${url}`);
+  };
+  const local = createLocalBridge({
+    apiKey: "image-recovery-test-key",
+    pairingCode: "image-recovery-pair",
+    allowedOrigin: "http://localhost:5173",
+    meshFetch: fakeMeshy,
+    startRuns: false,
+  });
+  const localOrigin = await local.listen(0);
+  const request = (path, options = {}) => fetch(`${localOrigin}${path}`, {
+    ...options,
+    headers: { Origin: "http://localhost:5173", ...(options.headers ?? {}) },
+  });
+  try {
+    const pairing = await (await request("/v1/pair", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pairingCode: "image-recovery-pair" }),
+    })).json();
+    const headers = { "X-Meshy-Session": pairing.sessionToken };
+
+    const provenanceResponse = await request("/v1/image-to-3d/image-task-1/provenance", { headers });
+    assert.equal(provenanceResponse.status, 200);
+    const provenance = await provenanceResponse.json();
+    assert.deepEqual(provenance, {
+      profileId: "RECOVERED-image-to-3d/v1",
+      bridgeProtocolVersion: 1,
+      sha256: "c74f919439792582aa4f0b188ec2a928675cdb3ba72797781ceb6dfaa86b313f",
+      byteLength: 4,
+      taskIds: { PREVIEW: "image-task-1" },
+      consumedCredits: 30,
+      createdAt: "1970-01-01T00:00:01.000Z",
+      finishedAt: "1970-01-01T00:00:02.000Z",
+    });
+    assert.equal(JSON.stringify(provenance).includes("Expires=secret"), false);
+
+    const artifact = await request("/v1/image-to-3d/image-task-1/artifact", { headers });
+    assert.equal(artifact.status, 200);
+    assert.deepEqual([...new Uint8Array(await artifact.arrayBuffer())], [0x67, 0x6c, 0x54, 0x46]);
+    assert.equal(calls.filter(({ url }) => url.endsWith("/openapi/v1/image-to-3d/image-task-1")).length, 1);
+    assert.equal(calls.some(({ options }) => options.method === "POST"), false);
+    assert.equal(calls[0].options.headers.Authorization, "Bearer image-recovery-test-key");
   } finally {
     await local.close();
   }

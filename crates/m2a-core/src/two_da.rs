@@ -33,6 +33,8 @@ pub const LAYOUT_OVERFLOW: &str = "M5-2DA-LAYOUT-OVERFLOW";
 pub const READBACK_FAILED: &str = "M5-2DA-READBACK-FAILED";
 pub const SEMANTIC_DIFF: &str = "M5-2DA-SEMANTIC-DIFF";
 pub const ROW_LABEL_MISMATCH: &str = "M5-2DA-ROW-LABEL-MISMATCH";
+pub const PATCH_EXPECTED_VALUE_MISMATCH: &str = "M5-2DA-PATCH-EXPECTED-VALUE-MISMATCH";
+pub const PATCH_ROW_LABEL_MISMATCH: &str = "M5-2DA-PATCH-ROW-LABEL-MISMATCH";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -60,6 +62,23 @@ pub struct TwoDaCellAssignmentV1 {
 pub struct TwoDaAppendRequestV1 {
     pub schema_version: u32,
     pub cells: Vec<TwoDaCellAssignmentV1>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TwoDaCellPatchV1 {
+    pub column_name: String,
+    pub expected_value: TwoDaCellValueV1,
+    pub value: TwoDaCellValueV1,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TwoDaRowPatchRequestV1 {
+    pub schema_version: u32,
+    pub physical_row_index: u32,
+    pub expected_printed_row_label: u32,
+    pub cells: Vec<TwoDaCellPatchV1>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -153,6 +172,30 @@ pub struct TwoDaAppendReportV1 {
 pub struct TwoDaAppendArtifactV1 {
     pub payload: Vec<u8>,
     pub report: TwoDaAppendReportV1,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TwoDaRowPatchReportV1 {
+    pub schema_version: u32,
+    pub source_sha256: String,
+    pub output_sha256: String,
+    pub source_byte_length: u64,
+    pub output_byte_length: u64,
+    pub physical_row_index: u32,
+    pub printed_row_label: u32,
+    pub physical_row_count: u32,
+    pub newline: TwoDaNewlineV1,
+    pub untouched_prefix_preserved: bool,
+    pub untouched_suffix_preserved: bool,
+    pub changed_cells: Vec<TwoDaChangedCellV1>,
+    pub diagnostics: Vec<TwoDaDiagnosticV1>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TwoDaRowPatchArtifactV1 {
+    pub payload: Vec<u8>,
+    pub report: TwoDaRowPatchReportV1,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1295,6 +1338,207 @@ pub fn append_two_da_row_v1(
             changed_cells,
             diagnostics: source.diagnostics,
         },
+    })
+}
+
+/// Rewrites one validated physical row while preserving every byte before and
+/// after that row. Each changed cell carries an expected value so callers
+/// cannot silently patch a different retail/custom 2DA revision.
+pub fn patch_two_da_row_v1(
+    bytes: &[u8],
+    request: &TwoDaRowPatchRequestV1,
+    limits: &TwoDaLimitsV1,
+) -> Result<TwoDaRowPatchArtifactV1, TwoDaError> {
+    validate_limits(limits)?;
+    if request.schema_version != TWO_DA_SCHEMA_VERSION {
+        return Err(TwoDaError::fatal(
+            SCHEMA_INVALID,
+            "request.schemaVersion",
+            0,
+            None,
+            None,
+            format!(
+                "schema version must be {TWO_DA_SCHEMA_VERSION}, got {}",
+                request.schema_version
+            ),
+        ));
+    }
+
+    let source = inspect_two_da_v2(bytes, limits)?;
+    let source_row = read_two_da_row_v2(bytes, request.physical_row_index, limits)?;
+    if source_row.printed_row_label != request.expected_printed_row_label {
+        return Err(TwoDaError::fatal(
+            PATCH_ROW_LABEL_MISMATCH,
+            "request.expectedPrintedRowLabel",
+            0,
+            None,
+            None,
+            format!(
+                "physical row {} has printed label {}, expected {}",
+                request.physical_row_index,
+                source_row.printed_row_label,
+                request.expected_printed_row_label
+            ),
+        ));
+    }
+
+    let mut output_cells = source_row.cells.clone();
+    let mut changed = vec![false; source.columns.len()];
+    for (request_index, patch) in request.cells.iter().enumerate() {
+        let column_index = source
+            .columns
+            .iter()
+            .position(|column| column.eq_ignore_ascii_case(&patch.column_name))
+            .ok_or_else(|| {
+                TwoDaError::fatal(
+                    ASSIGNMENT_COLUMN_MISSING,
+                    &format!("request.cells[{request_index}].columnName"),
+                    0,
+                    None,
+                    None,
+                    format!("column {:?} does not exist", patch.column_name),
+                )
+            })?;
+        if changed[column_index] {
+            return Err(TwoDaError::fatal(
+                ASSIGNMENT_DUPLICATE,
+                &format!("request.cells[{request_index}]"),
+                0,
+                None,
+                None,
+                format!(
+                    "column {:?} is patched more than once",
+                    source.columns[column_index]
+                ),
+            ));
+        }
+        validate_generated_value(&patch.expected_value, limits, request_index)?;
+        validate_generated_value(&patch.value, limits, request_index)?;
+        if source_row.cells[column_index] != patch.expected_value {
+            return Err(TwoDaError::fatal(
+                PATCH_EXPECTED_VALUE_MISMATCH,
+                &format!("request.cells[{request_index}].expectedValue"),
+                0,
+                None,
+                Some(column_index as u32 + 1),
+                format!(
+                    "column {:?} has value {:?}, expected {:?}",
+                    source.columns[column_index],
+                    source_row.cells[column_index],
+                    patch.expected_value
+                ),
+            ));
+        }
+        output_cells[column_index] = patch.value.clone();
+        changed[column_index] = true;
+    }
+
+    let (_, _, lines, line_limit_error) = scan_input(bytes, limits)?;
+    if let Some(error) = line_limit_error {
+        return Err(error);
+    }
+    let line_index = usize::try_from(request.physical_row_index)
+        .ok()
+        .and_then(|row| row.checked_add(3))
+        .ok_or_else(|| readback_error("physical row cannot index the 2DA line layout"))?;
+    let line = lines
+        .get(line_index)
+        .copied()
+        .ok_or_else(|| readback_error("validated 2DA is missing its requested row"))?;
+    let prefix_end = usize::try_from(line.byte_offset)
+        .map_err(|_| layout_error("row byte offset cannot be represented as usize"))?;
+    let suffix_start = prefix_end
+        .checked_add(line.bytes.len())
+        .ok_or_else(|| layout_error("row byte range overflow"))?;
+
+    let mut replacement = Vec::new();
+    replacement.extend_from_slice(source_row.printed_row_label.to_string().as_bytes());
+    for value in &output_cells {
+        replacement.push(b' ');
+        emit_cell(&mut replacement, Some(value));
+    }
+    let output_length = prefix_end
+        .checked_add(replacement.len())
+        .and_then(|length| length.checked_add(bytes.len().saturating_sub(suffix_start)))
+        .ok_or_else(|| layout_error("patched output length overflow"))?;
+    if output_length as u64 > limits.max_input_bytes {
+        return Err(TwoDaError::fatal(
+            LIMIT_EXCEEDED,
+            "limits.maxInputBytes",
+            limits.max_input_bytes,
+            None,
+            None,
+            format!(
+                "patched output byte length {output_length} exceeds configured limit {}",
+                limits.max_input_bytes
+            ),
+        ));
+    }
+    let mut payload = Vec::new();
+    payload
+        .try_reserve_exact(output_length)
+        .map_err(|_| layout_error("unable to reserve patched output buffer"))?;
+    payload.extend_from_slice(&bytes[..prefix_end]);
+    payload.extend_from_slice(&replacement);
+    payload.extend_from_slice(&bytes[suffix_start..]);
+
+    let output = inspect_two_da_v2(&payload, limits)
+        .map_err(|error| readback_error(format!("patched output parse failed: {}", error.code)))?;
+    if output.columns != source.columns
+        || output.default_value != source.default_value
+        || output.newline != source.newline
+        || output.terminal_newline != source.terminal_newline
+        || output.physical_row_count != source.physical_row_count
+    {
+        return Err(semantic_error("patched output changes table invariants"));
+    }
+    let output_row = read_two_da_row_v2(&payload, request.physical_row_index, limits)?;
+    if output_row.printed_row_label != source_row.printed_row_label
+        || output_row.cells != output_cells
+    {
+        return Err(semantic_error(
+            "patched row readback differs from the requested values",
+        ));
+    }
+    for row_index in 0..source.physical_row_count {
+        if row_index != request.physical_row_index
+            && read_two_da_row_v2(bytes, row_index, limits)?
+                != read_two_da_row_v2(&payload, row_index, limits)?
+        {
+            return Err(semantic_error(format!(
+                "unpatched physical row {row_index} changed"
+            )));
+        }
+    }
+
+    let changed_cells = changed
+        .iter()
+        .enumerate()
+        .filter(|(_, changed)| **changed)
+        .map(|(column_index, _)| TwoDaChangedCellV1 {
+            column_index: column_index as u32,
+            column_name: source.columns[column_index].clone(),
+            value: output_cells[column_index].clone(),
+        })
+        .collect();
+    Ok(TwoDaRowPatchArtifactV1 {
+        report: TwoDaRowPatchReportV1 {
+            schema_version: TWO_DA_SCHEMA_VERSION,
+            source_sha256: source.source_sha256,
+            output_sha256: output.source_sha256,
+            source_byte_length: bytes.len() as u64,
+            output_byte_length: payload.len() as u64,
+            physical_row_index: request.physical_row_index,
+            printed_row_label: source_row.printed_row_label,
+            physical_row_count: source.physical_row_count,
+            newline: source.newline,
+            untouched_prefix_preserved: payload[..prefix_end] == bytes[..prefix_end],
+            untouched_suffix_preserved: payload[prefix_end + replacement.len()..]
+                == bytes[suffix_start..],
+            changed_cells,
+            diagnostics: output.diagnostics,
+        },
+        payload,
     })
 }
 

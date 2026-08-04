@@ -237,6 +237,8 @@ fn exact_retail_baseitems_resolves_active_rows_and_resref_fallbacks() {
     assert_eq!(longsword.item_class, "WSwLs");
     assert_eq!(longsword.default_model.as_deref(), Some("it_bag"));
     assert_eq!(longsword.default_icon.as_deref(), Some("iwswls"));
+    assert_eq!(longsword.min_range, Some(10));
+    assert_eq!(longsword.max_range, Some(100));
 
     let armor = catalog
         .rows

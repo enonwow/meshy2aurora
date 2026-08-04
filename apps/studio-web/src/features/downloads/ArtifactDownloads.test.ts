@@ -58,6 +58,23 @@ describe("canonical Worker downloads", () => {
     expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
   });
 
+  it("accepts the exact Item source GLB and its canonical YAML manifest", async () => {
+    await downloadWorkerArtifact({
+      ...validArtifact(),
+      artifactId: "item-source-bottom",
+      kind: "SOURCE_MODEL",
+      fileName: "bottom.glb",
+    });
+    await downloadWorkerArtifact({
+      ...validArtifact(),
+      artifactId: "item-source-manifest",
+      kind: "SOURCE_MANIFEST",
+      fileName: "manifest.yaml",
+      mediaType: "application/yaml",
+    });
+    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects byte corruption even when SHA-256 metadata has a valid shape", async () => {
     await expect(downloadWorkerArtifact({
       ...validArtifact(),

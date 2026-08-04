@@ -4,15 +4,65 @@ use m2a_core::two_da::{
     APPEND_U16_OVERFLOW, ASSIGNMENT_COLUMN_MISSING, ASSIGNMENT_DUPLICATE, COLUMN_AMBIGUOUS,
     COLUMN_INVALID, DEFAULT_INVALID, HEADER_INVALID, LIMIT_EXCEEDED, NEWLINE_INVALID,
     NUL_FORBIDDEN, QUOTE_INVALID, ROW_ARITY_INVALID, ROW_LABEL_INVALID, ROW_LABEL_MISMATCH,
-    TAB_FORBIDDEN, TwoDaAppendRequestV1, TwoDaCellAssignmentV1, TwoDaCellValueV1, TwoDaLimitsV1,
-    TwoDaNewlineV1, VALUE_INVALID, append_two_da_row_v1, clone_two_da_row_request_v1,
-    inspect_two_da_v2, read_two_da_row_v2,
+    TAB_FORBIDDEN, TwoDaAppendRequestV1, TwoDaCellAssignmentV1, TwoDaCellPatchV1, TwoDaCellValueV1,
+    TwoDaLimitsV1, TwoDaNewlineV1, TwoDaRowPatchRequestV1, VALUE_INVALID, append_two_da_row_v1,
+    clone_two_da_row_request_v1, inspect_two_da_v2, patch_two_da_row_v1, read_two_da_row_v2,
 };
 
 fn text(value: &str) -> TwoDaCellValueV1 {
     TwoDaCellValueV1::Text {
         value: value.to_owned(),
     }
+}
+
+#[test]
+fn row_patch_changes_only_the_expected_existing_cell_and_preserves_other_rows() {
+    let source =
+        b"2DA V2.0\r\n\r\nLabel MinRange MaxRange\r\n0 first 10 100\r\n7 second 20 200\r\n";
+    let request = TwoDaRowPatchRequestV1 {
+        schema_version: 1,
+        physical_row_index: 0,
+        expected_printed_row_label: 0,
+        cells: vec![TwoDaCellPatchV1 {
+            column_name: "MaxRange".to_owned(),
+            expected_value: text("100"),
+            value: text("250"),
+        }],
+    };
+
+    let artifact = patch_two_da_row_v1(source, &request, &TwoDaLimitsV1::default()).unwrap();
+
+    assert_eq!(
+        artifact.payload,
+        b"2DA V2.0\r\n\r\nLabel MinRange MaxRange\r\n0 first 10 250\r\n7 second 20 200\r\n"
+    );
+    assert_eq!(artifact.report.physical_row_index, 0);
+    assert_eq!(artifact.report.printed_row_label, 0);
+    assert_eq!(artifact.report.changed_cells.len(), 1);
+    assert_eq!(artifact.report.changed_cells[0].column_name, "MaxRange");
+    assert!(artifact.report.untouched_prefix_preserved);
+    assert!(artifact.report.untouched_suffix_preserved);
+    assert_eq!(
+        read_two_da_row_v2(&artifact.payload, 1, &TwoDaLimitsV1::default())
+            .unwrap()
+            .printed_row_label,
+        7
+    );
+
+    let stale = TwoDaRowPatchRequestV1 {
+        cells: vec![TwoDaCellPatchV1 {
+            column_name: "MaxRange".to_owned(),
+            expected_value: text("99"),
+            value: text("250"),
+        }],
+        ..request
+    };
+    assert_eq!(
+        patch_two_da_row_v1(source, &stale, &TwoDaLimitsV1::default())
+            .unwrap_err()
+            .code,
+        "M5-2DA-PATCH-EXPECTED-VALUE-MISMATCH"
+    );
 }
 
 fn request(cells: Vec<(&str, TwoDaCellValueV1)>) -> TwoDaAppendRequestV1 {

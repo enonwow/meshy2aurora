@@ -38,6 +38,10 @@ pub enum MdlFormatProfileV1 {
     /// Static, unskinned item part. Item assembly remains UTI/baseitems.2da
     /// driven while each resolved part is an independent binary MDL.
     ItemPartStaticRigidNativeV1,
+    /// Aurora ModelType 2 composer profile. The model-named root is
+    /// controllerless and every generated Trimesh child owns the static
+    /// position/orientation controllers, matching retail weapon-part MDLs.
+    ItemPartStaticRigidAuroraComposerV2,
     /// Non-default, offline-only controlled experiment. It preserves the M0
     /// native mesh policy while allowing caller-bound source transform dummies.
     SourceTopologyPreservingRigidExperimentV1,

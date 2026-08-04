@@ -22,15 +22,16 @@ use crate::{
     glb::{EmbeddedImageDecodeLimitsV1, decode_embedded_image_to_tga_v1, ingest_glb},
     hak::{HakResourceInputV1, HakWriterOptionsV1, write_erf_archive_v1},
     mdl::{
-        InspectionReport, MdlFormatProfileV1, MdlMaterialTextureBindingV1,
-        MdlStateProjectionProfileV1, MdlWriterOptionsV1, inspect_binary_mdl, write_binary_mdl,
+        InspectionReport, MdlAnimationSetV1, MdlFormatProfileV1, MdlMaterialTextureBindingV1,
+        MdlStateProjectionProfileV1, MdlWriterOptionsV1, NodeReport, inspect_binary_mdl,
+        write_binary_mdl_with_animations_exact_face_planes_v1,
     },
     model_limits::{
         AURORA_MODEL_TRIANGLE_BUDGET_V1, AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1,
         validate_model_triangle_budget_v1,
     },
     model_pipeline::{
-        resolve_base_color_image_index_v1, sanitize_meshy_h1_degenerate_triangles_v1,
+        resolve_base_color_image_index_v1, sanitize_meshy_h1_degenerate_triangles_exact_v1,
     },
     model_segmentation::segment_model_for_binary_mdl_v1,
     placeable::{static_placeable_glb_limits_v1, static_placeable_profile_a_options_v1},
@@ -42,13 +43,30 @@ use crate::{
         M0RuntimePositionV1, binary_creature_multi_fixture_gic, binary_creature_multi_fixture_git,
         binary_m0_area_for, binary_m0_module_ifo_for, proof_factions,
     },
-    tga::{TGA_SCHEMA_VERSION, TgaImageV1, TgaPixelFormatV1, TgaWriterOptionsV1, write_tga_v1},
+    tga::{
+        TGA_SCHEMA_VERSION, TgaImageV1, TgaPixelFormatV1, TgaWriterOptionsV1, read_tga_image_v1,
+        write_tga_v1,
+    },
     two_da::{
-        TwoDaCellValueV1, TwoDaInspectionV1, TwoDaLimitsV1, inspect_two_da_v2, read_two_da_row_v2,
+        TwoDaCellPatchV1, TwoDaCellValueV1, TwoDaInspectionV1, TwoDaLimitsV1,
+        TwoDaRowPatchReportV1, TwoDaRowPatchRequestV1, inspect_two_da_v2, patch_two_da_row_v1,
+        read_two_da_row_v2,
     },
 };
 
 pub const ITEM_SCHEMA_VERSION_V1: u32 = 1;
+pub const ITEM_WEAPON_COLOR_MIN_V1: u8 = 1;
+pub const ITEM_WEAPON_COLOR_MAX_V1: u8 = 4;
+pub const ITEM_WEAPON_MODEL_MAX_V1: u8 = 25;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemWeaponPartAppearanceV1 {
+    pub schema_version: u32,
+    pub model: u8,
+    pub color: u8,
+    pub encoded_value: u8,
+}
 
 pub const ITEM_COLOR_FIELDS_V1: [&str; 6] = [
     "Leather1Color",
@@ -244,6 +262,8 @@ pub struct ItemBaseItemV1 {
     pub label: String,
     pub item_class: String,
     pub model_type: u8,
+    pub min_range: Option<u32>,
+    pub max_range: Option<u32>,
     pub gender_specific: bool,
     pub default_model: Option<String>,
     pub default_icon: Option<String>,
@@ -263,6 +283,104 @@ pub struct ItemBaseItemsCatalogV1 {
     pub physical_row_count: u32,
     pub inactive_row_count: u32,
     pub rows: Vec<ItemBaseItemV1>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemBaseItemModelRangeReportV1 {
+    pub schema_version: u32,
+    pub status: String,
+    pub base_item: u32,
+    pub model: u8,
+    pub model_bucket: u32,
+    pub source_min_range: u32,
+    pub source_max_range: u32,
+    pub effective_max_range: u32,
+    pub source_sha256: String,
+    pub output_sha256: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub patch_report: Option<TwoDaRowPatchReportV1>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ItemBaseItemModelRangeArtifactV1 {
+    pub payload: Vec<u8>,
+    pub report: ItemBaseItemModelRangeReportV1,
+}
+
+/// A deterministic, read-only source participating in Item resource
+/// resolution. `order` is identity-bearing evidence, not an implicit guess at
+/// Aurora's priority between multiple custom containers.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ItemResourceProviderKindV1 {
+    Vanilla,
+    Hak,
+    Module,
+}
+
+#[derive(Clone, Debug)]
+pub struct ItemResourceProviderInputV1<'a> {
+    pub provider_id: String,
+    pub kind: ItemResourceProviderKindV1,
+    pub order: u32,
+    pub file_name: String,
+    pub bytes: &'a [u8],
+}
+
+#[derive(Clone, Debug)]
+pub struct ItemResourceContextInputV1<'a> {
+    pub schema_version: u32,
+    pub resolution_policy: String,
+    pub providers: Vec<ItemResourceProviderInputV1<'a>>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemResourceProviderReportV1 {
+    pub provider_id: String,
+    pub kind: ItemResourceProviderKindV1,
+    pub order: u32,
+    pub file_name: String,
+    pub container_file_type: String,
+    pub byte_length: usize,
+    pub sha256: String,
+    pub resource_count: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemResourceContextReportV1 {
+    pub schema_version: u32,
+    pub resolution_policy: String,
+    pub status: String,
+    pub providers: Vec<ItemResourceProviderReportV1>,
+    pub context_sha256: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemEffectiveBaseItemsSelectionV1 {
+    pub schema_version: u32,
+    pub status: String,
+    pub resource_context_sha256: String,
+    pub baseitems_sha256: String,
+    pub winning_provider_id: String,
+    pub shadowed_provider_ids: Vec<String>,
+    pub selected: ItemBaseItemV1,
+    pub selection_sha256: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ItemResolvedContextResourceV1<'a> {
+    pub schema_version: u32,
+    pub resref: String,
+    pub resource_type: u16,
+    pub winning_provider_id: String,
+    pub shadowed_provider_ids: Vec<String>,
+    pub payload: &'a [u8],
+    pub payload_sha256: String,
+    pub context_sha256: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -496,6 +614,7 @@ pub struct ItemUtiReportV1 {
     pub model_type: u8,
     pub part_count: u32,
     pub color_field_count: u32,
+    pub weapon_color_selector_count: u32,
     pub byte_length: u64,
     pub output_sha256: String,
     pub semantic_readback_status: String,
@@ -568,6 +687,24 @@ pub struct ItemPartBuildOptionsV2 {
     pub texture_encoding: ItemPartTextureEncodingV1,
     pub icon_size: Option<[u32; 2]>,
     pub icon_projection_bounds: Option<ItemIconProjectionBoundsV1>,
+    /// Native ModelType 2 weapon color slot. Geometry stays byte-equivalent at
+    /// the IR boundary while this slot deterministically authors a concrete
+    /// direct-color texture resource.
+    #[serde(default)]
+    pub weapon_color: Option<u8>,
+    /// Additional target-frame scale baked after the authored rotation. The
+    /// reference fitter uses `[s, 1, s]` to fit transverse width/depth without
+    /// shortening a weapon along Aurora's Y assembly axis.
+    #[serde(default = "item_unit_scale_xyz_v1")]
+    pub target_space_scale_xyz: [f32; 3],
+}
+
+fn item_unit_scale_xyz_v1() -> [f32; 3] {
+    [1.0; 3]
+}
+
+fn item_is_unit_scale_xyz_v1(value: &[f32; 3]) -> bool {
+    *value == item_unit_scale_xyz_v1()
 }
 
 impl Default for ItemPartBuildOptionsV1 {
@@ -591,6 +728,8 @@ impl Default for ItemPartBuildOptionsV2 {
             texture_encoding: ItemPartTextureEncodingV1::DirectColor,
             icon_size: None,
             icon_projection_bounds: None,
+            weapon_color: None,
+            target_space_scale_xyz: item_unit_scale_xyz_v1(),
         }
     }
 }
@@ -614,11 +753,15 @@ pub struct ItemPartBuildReportV1 {
     pub model_resref: String,
     pub texture_resref: String,
     pub texture_format: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub weapon_color: Option<u8>,
     pub source_node: Option<String>,
     pub source_sha256: String,
     pub triangle_count: usize,
+    pub degenerate_triangle_count_removed: usize,
     pub stream_count: usize,
     pub transform: ItemPartTransformV1,
+    pub target_space_scale_xyz: [f32; 3],
     pub mdl_sha256: String,
     pub texture_sha256: String,
     pub icon_sha256: Option<String>,
@@ -638,8 +781,46 @@ pub struct ItemPartArtifactV1 {
     pub readback: InspectionReport,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct ItemIconLayerInputV3<'a> {
+    pub field: &'a str,
+    pub icon_resref: &'a str,
+    pub payload: &'a [u8],
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ItemIconLayerSummaryV3 {
+    pub field: String,
+    pub icon_resref: String,
+    pub opaque_pixel_count: u64,
+    pub bounds_min: [u32; 2],
+    pub bounds_max_exclusive: [u32; 2],
+    pub sha256: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemIconCompositeReportV3 {
+    pub schema_version: u32,
+    pub algorithm: String,
+    pub status: String,
+    pub layout_profile: String,
+    pub width: u32,
+    pub height: u32,
+    pub layer_count: usize,
+    pub layers: Vec<ItemIconLayerSummaryV3>,
+    pub opaque_pixel_count: u64,
+    pub bounds_min: [u32; 2],
+    pub bounds_max_exclusive: [u32; 2],
+    pub axial_fill_ratio: f32,
+    pub occupied_fill_ratio: f32,
+    pub part_order_status: String,
+    pub composite_rgba_sha256: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ItemSeamMeasurementV1 {
     pub schema_version: u32,
     pub algorithm: String,
@@ -656,6 +837,379 @@ pub struct ItemSeamMeasurementV1 {
     pub gap: f32,
     pub overlap: bool,
     pub measurement_sha256: String,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ItemFitSourceV1<'a> {
+    pub field: &'a str,
+    pub model_resref: &'a str,
+    pub source_glb: &'a [u8],
+    pub source_node: Option<&'a str>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemFitPartV1 {
+    pub field: String,
+    pub source_sha256: String,
+    pub source_node: Option<String>,
+    pub triangle_count: usize,
+    pub input_bounds_min: [f32; 3],
+    pub input_bounds_max: [f32; 3],
+    pub axial_source_axis: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub axial_target_axis: Option<u8>,
+    pub target_axial_length: f32,
+    pub transform: ItemPartTransformV1,
+    pub transform_sha256: String,
+    pub output_bounds_min: [f32; 3],
+    pub output_bounds_max: [f32; 3],
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemFitReportV1 {
+    pub schema_version: u32,
+    pub algorithm: String,
+    pub status: String,
+    pub tolerance: f32,
+    pub iterations: u32,
+    pub parts: Vec<ItemFitPartV1>,
+    pub adjacent_seams: Vec<ItemSeamMeasurementV1>,
+    pub non_adjacent_measurements: Vec<ItemSeamMeasurementV1>,
+    pub solution_sha256: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemConnectorAnchorV2 {
+    pub kind: String,
+    pub axial_axis: u8,
+    pub position: [f32; 3],
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemFitPartV2 {
+    pub field: String,
+    pub source_sha256: String,
+    pub source_node: Option<String>,
+    pub triangle_count: usize,
+    pub input_bounds_min: [f32; 3],
+    pub input_bounds_max: [f32; 3],
+    pub axial_source_axis: u8,
+    pub axial_target_axis: u8,
+    pub target_axial_length: f32,
+    pub transform: ItemPartTransformV1,
+    #[serde(default = "item_unit_scale_xyz_v1")]
+    pub target_space_scale_xyz: [f32; 3],
+    pub transform_sha256: String,
+    pub output_bounds_min: [f32; 3],
+    pub output_bounds_max: [f32; 3],
+    pub bottom_connector: Option<ItemConnectorAnchorV2>,
+    pub top_connector: Option<ItemConnectorAnchorV2>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemAdjacentConnectorV2 {
+    pub first_field: String,
+    pub first_connector: String,
+    pub second_field: String,
+    pub second_connector: String,
+    pub axial_axis: u8,
+    pub axial_overlap: f32,
+    pub required_min_overlap: f32,
+    pub required_max_overlap: f32,
+    pub surface_status: String,
+    pub status: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemFitReportV2 {
+    pub schema_version: u32,
+    pub algorithm: String,
+    pub status: String,
+    pub tolerance: f32,
+    pub iterations: u32,
+    pub parts: Vec<ItemFitPartV2>,
+    pub adjacent_seams: Vec<ItemSeamMeasurementV1>,
+    pub adjacent_connectors: Vec<ItemAdjacentConnectorV2>,
+    pub non_adjacent_measurements: Vec<ItemSeamMeasurementV1>,
+    pub solution_sha256: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemOrientationFrameV3 {
+    pub source_axial_axis: u8,
+    pub source_width_axis: u8,
+    pub source_depth_axis: u8,
+    pub target_axial_axis: u8,
+    pub target_width_axis: u8,
+    pub target_depth_axis: u8,
+    pub width_to_depth_ratio: f32,
+    pub handedness_determinant: f32,
+    pub evidence: String,
+    pub status: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemFitReportV3 {
+    pub schema_version: u32,
+    pub algorithm: String,
+    pub status: String,
+    pub tolerance: f32,
+    pub iterations: u32,
+    pub orientation_frame: ItemOrientationFrameV3,
+    pub parts: Vec<ItemFitPartV2>,
+    pub adjacent_seams: Vec<ItemSeamMeasurementV1>,
+    pub adjacent_connectors: Vec<ItemAdjacentConnectorV2>,
+    pub non_adjacent_measurements: Vec<ItemSeamMeasurementV1>,
+    pub solution_sha256: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ItemAttachmentRouteV1 {
+    None,
+    Hand,
+    Capart,
+    Cloak,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemReferenceProfileIdentityV1 {
+    pub schema_version: u32,
+    pub resource_context_sha256: String,
+    pub baseitems_sha256: String,
+    pub base_item: u32,
+    pub item_class: String,
+    pub model_type: u8,
+    pub reference_kind: String,
+    pub reference_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemReferenceSlotFrameV1 {
+    pub field: String,
+    pub label: String,
+    pub token: String,
+    pub model_resref: String,
+    pub model_sha256: String,
+    pub controller_node_name: String,
+    pub controller_translation: [f32; 3],
+    pub controller_rotation_xyzw: [f32; 4],
+    pub bounds_min: [f32; 3],
+    pub bounds_max: [f32; 3],
+    pub allow_axial_extension_at_min: bool,
+    pub allow_axial_extension_at_max: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemAttachmentProfileV1 {
+    pub schema_version: u32,
+    pub algorithm: String,
+    pub status: String,
+    pub identity: ItemReferenceProfileIdentityV1,
+    pub attachment_route: ItemAttachmentRouteV1,
+    pub equipable_slots: u32,
+    pub common_origin: [f32; 3],
+    pub axial_axis: u8,
+    pub width_axis: u8,
+    pub depth_axis: u8,
+    pub attachment_zone_min: [f32; 3],
+    pub attachment_zone_max: [f32; 3],
+    pub attachment_evidence: String,
+    pub slots: Vec<ItemReferenceSlotFrameV1>,
+    pub profile_sha256: String,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ItemReferenceMdlInputV1<'a> {
+    pub field: &'a str,
+    pub model_resref: &'a str,
+    pub mdl_payload: &'a [u8],
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemFitReportV4 {
+    pub schema_version: u32,
+    pub algorithm: String,
+    pub status: String,
+    pub tolerance: f32,
+    pub iterations: u32,
+    pub reference_profile_sha256: String,
+    pub common_origin: [f32; 3],
+    pub orientation_frame: ItemOrientationFrameV3,
+    pub parts: Vec<ItemFitPartV2>,
+    pub adjacent_seams: Vec<ItemSeamMeasurementV1>,
+    pub adjacent_connectors: Vec<ItemAdjacentConnectorV2>,
+    pub non_adjacent_measurements: Vec<ItemSeamMeasurementV1>,
+    pub solution_sha256: String,
+}
+
+// V2/V3 reports predate target-space transverse scaling. Their public JSON now
+// exposes the explicit unit default, while their frozen solution hashes retain
+// the original canonical payload. V4 hashes the complete scale-aware report.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ItemFitPartV2LegacyHashView<'a> {
+    field: &'a str,
+    source_sha256: &'a str,
+    source_node: &'a Option<String>,
+    triangle_count: usize,
+    input_bounds_min: [f32; 3],
+    input_bounds_max: [f32; 3],
+    axial_source_axis: u8,
+    axial_target_axis: u8,
+    target_axial_length: f32,
+    transform: ItemPartTransformV1,
+    transform_sha256: &'a str,
+    output_bounds_min: [f32; 3],
+    output_bounds_max: [f32; 3],
+    bottom_connector: &'a Option<ItemConnectorAnchorV2>,
+    top_connector: &'a Option<ItemConnectorAnchorV2>,
+}
+
+impl<'a> From<&'a ItemFitPartV2> for ItemFitPartV2LegacyHashView<'a> {
+    fn from(part: &'a ItemFitPartV2) -> Self {
+        Self {
+            field: &part.field,
+            source_sha256: &part.source_sha256,
+            source_node: &part.source_node,
+            triangle_count: part.triangle_count,
+            input_bounds_min: part.input_bounds_min,
+            input_bounds_max: part.input_bounds_max,
+            axial_source_axis: part.axial_source_axis,
+            axial_target_axis: part.axial_target_axis,
+            target_axial_length: part.target_axial_length,
+            transform: part.transform,
+            transform_sha256: &part.transform_sha256,
+            output_bounds_min: part.output_bounds_min,
+            output_bounds_max: part.output_bounds_max,
+            bottom_connector: &part.bottom_connector,
+            top_connector: &part.top_connector,
+        }
+    }
+}
+
+fn item_fit_report_v2_legacy_hash_bytes_v1(
+    report: &ItemFitReportV2,
+) -> Result<Vec<u8>, ItemErrorV1> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Report<'a> {
+        schema_version: u32,
+        algorithm: &'a str,
+        status: &'a str,
+        tolerance: f32,
+        iterations: u32,
+        parts: Vec<ItemFitPartV2LegacyHashView<'a>>,
+        adjacent_seams: &'a [ItemSeamMeasurementV1],
+        adjacent_connectors: &'a [ItemAdjacentConnectorV2],
+        non_adjacent_measurements: &'a [ItemSeamMeasurementV1],
+        solution_sha256: &'a str,
+    }
+    serde_json::to_vec(&Report {
+        schema_version: report.schema_version,
+        algorithm: &report.algorithm,
+        status: &report.status,
+        tolerance: report.tolerance,
+        iterations: report.iterations,
+        parts: report.parts.iter().map(Into::into).collect(),
+        adjacent_seams: &report.adjacent_seams,
+        adjacent_connectors: &report.adjacent_connectors,
+        non_adjacent_measurements: &report.non_adjacent_measurements,
+        solution_sha256: &report.solution_sha256,
+    })
+    .map_err(|_| {
+        error(
+            "ITEM-FIT-LEGACY-HASH-SERIALIZE-FAILED",
+            "report",
+            "legacy Item fit hash payload could not be serialized",
+        )
+    })
+}
+
+fn item_fit_report_v3_legacy_hash_bytes_v1(
+    report: &ItemFitReportV3,
+) -> Result<Vec<u8>, ItemErrorV1> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Report<'a> {
+        schema_version: u32,
+        algorithm: &'a str,
+        status: &'a str,
+        tolerance: f32,
+        iterations: u32,
+        orientation_frame: &'a ItemOrientationFrameV3,
+        parts: Vec<ItemFitPartV2LegacyHashView<'a>>,
+        adjacent_seams: &'a [ItemSeamMeasurementV1],
+        adjacent_connectors: &'a [ItemAdjacentConnectorV2],
+        non_adjacent_measurements: &'a [ItemSeamMeasurementV1],
+        solution_sha256: &'a str,
+    }
+    serde_json::to_vec(&Report {
+        schema_version: report.schema_version,
+        algorithm: &report.algorithm,
+        status: &report.status,
+        tolerance: report.tolerance,
+        iterations: report.iterations,
+        orientation_frame: &report.orientation_frame,
+        parts: report.parts.iter().map(Into::into).collect(),
+        adjacent_seams: &report.adjacent_seams,
+        adjacent_connectors: &report.adjacent_connectors,
+        non_adjacent_measurements: &report.non_adjacent_measurements,
+        solution_sha256: &report.solution_sha256,
+    })
+    .map_err(|_| {
+        error(
+            "ITEM-FIT-LEGACY-HASH-SERIALIZE-FAILED",
+            "report",
+            "legacy full-frame Item fit hash payload could not be serialized",
+        )
+    })
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ItemComposerMdlInputV2<'a> {
+    pub field: &'a str,
+    pub model_resref: &'a str,
+    pub mdl_payload: &'a [u8],
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemComposerPartConformanceV2 {
+    pub field: String,
+    pub model_resref: String,
+    pub root_node_name: String,
+    pub root_controller_owner: String,
+    pub transform_controller_owner: String,
+    pub mesh_node_names: Vec<String>,
+    pub triangle_count: usize,
+    pub bounds_min: [f32; 3],
+    pub bounds_max: [f32; 3],
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemComposerConformanceReportV2 {
+    pub schema_version: u32,
+    pub algorithm: String,
+    pub status: String,
+    pub append_order: Vec<String>,
+    pub parts: Vec<ItemComposerPartConformanceV2>,
+    pub composite_bounds_min: [f32; 3],
+    pub composite_bounds_max: [f32; 3],
+    pub total_triangle_count: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -686,22 +1240,63 @@ pub struct ItemProofPlacementV1 {
 pub enum ItemEquippedProofProfileV2 {
     CapartArmor,
     Cloak,
+    ModelType2Parts,
 }
 
 impl ItemEquippedProofProfileV2 {
-    fn equipment_slot(self) -> u32 {
-        match self {
-            Self::CapartArmor => 2,
-            Self::Cloak => 8_192,
+    fn equipment_slot(self, selected_slot: u32) -> Result<u32, ItemErrorV1> {
+        let expected = match self {
+            Self::CapartArmor => Some(2),
+            Self::Cloak => Some(8_192),
+            Self::ModelType2Parts => None,
+        };
+        if let Some(expected) = expected {
+            if selected_slot != expected {
+                return Err(error(
+                    "ITEM-EQUIPPED-PROOF-SLOT-MISMATCH",
+                    "identity.equipmentSlot",
+                    format!(
+                        "{} requires native Equip_ItemList slot {expected}, got {selected_slot}",
+                        self.report_name()
+                    ),
+                ));
+            }
+        } else if !matches!(selected_slot, 0x10 | 0x20) {
+            return Err(error(
+                "ITEM-EQUIPPED-PROOF-SLOT-INVALID",
+                "identity.equipmentSlot",
+                "ModelType 2 proof requires the data-selected native right-hand (16) or left-hand (32) Equip_ItemList slot",
+            ));
         }
+        Ok(selected_slot)
     }
 
     fn report_name(self) -> &'static str {
         match self {
             Self::CapartArmor => "EQUIPPED_CAPART_ARMOR_V2",
             Self::Cloak => "EQUIPPED_CLOAK_V2",
+            Self::ModelType2Parts => "EQUIPPED_MODELTYPE2_PARTS_V2",
         }
     }
+}
+
+/// Selects a deterministic humanoid hand slot from the exact BaseItem
+/// `EquipableSlots` mask. This is deliberately data-driven: no weapon/shield
+/// category is inferred. Right hand is preferred when the BaseItem permits
+/// both hands, which matches the proof wearer's intended presentation.
+pub fn resolve_item_modeltype2_equipment_slot_v1(equipable_slots: u32) -> Result<u32, ItemErrorV1> {
+    for slot in [0x10, 0x20] {
+        if equipable_slots & slot != 0 {
+            return Ok(slot);
+        }
+    }
+    Err(error(
+        "ITEM-MODELTYPE2-PROOF-SLOT-UNSUPPORTED",
+        "baseitems.2da.EquipableSlots",
+        format!(
+            "ModelType 2 equipped proof requires a humanoid right-hand (16) or left-hand (32) bit; mask is {equipable_slots}"
+        ),
+    ))
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -723,6 +1318,7 @@ pub struct ItemEquippedProofIdentityV2 {
     pub model_prefix: String,
     pub appearance_table_sha256: String,
     pub fixture_profile: ItemEquippedProofProfileV2,
+    pub equipment_slot: u32,
 }
 
 impl Default for ItemProofPlacementV1 {
@@ -742,12 +1338,15 @@ impl Default for ItemProofPlacementV1 {
 #[serde(rename_all = "camelCase")]
 pub struct ItemProofModuleReportV1 {
     pub schema_version: u32,
+    pub fixture_profile: String,
     pub module_resref: String,
     pub module_name: String,
     pub area_resref: String,
     pub area_name: String,
     pub hak_resref: String,
     pub blueprint_resref: String,
+    pub ground_item_count: u32,
+    pub creature_count: u32,
     pub item_position: [f32; 3],
     pub entry_position: [f32; 3],
     pub entry_direction: [f32; 2],
@@ -789,6 +1388,31 @@ pub struct ItemEquippedProofModuleReportV2 {
     pub proof_completeness: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemAndEquippedProofModuleReportV3 {
+    pub schema_version: u32,
+    pub module_resref: String,
+    pub module_name: String,
+    pub area_resref: String,
+    pub area_name: String,
+    pub hak_resref: String,
+    pub blueprint_resref: String,
+    pub creature_resref: String,
+    pub fixture_profile: String,
+    pub equipment_slot: u32,
+    pub item_position: [f32; 3],
+    pub creature_position: [f32; 3],
+    pub ground_item_count: u32,
+    pub equipped_item_count: u32,
+    pub resource_count: u32,
+    pub byte_length: u64,
+    pub output_sha256: String,
+    pub semantic_readback_status: String,
+    pub model_visibility: String,
+    pub proof_completeness: String,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ItemProofModuleArtifactV1 {
     pub payload: Vec<u8>,
@@ -799,6 +1423,12 @@ pub struct ItemProofModuleArtifactV1 {
 pub struct ItemEquippedProofModuleArtifactV2 {
     pub payload: Vec<u8>,
     pub report: ItemEquippedProofModuleReportV2,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ItemAndEquippedProofModuleArtifactV3 {
+    pub payload: Vec<u8>,
+    pub report: ItemAndEquippedProofModuleReportV3,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -863,6 +1493,24 @@ fn required_column(columns: &[String], name: &str) -> Result<usize, ItemErrorV1>
     }
 }
 
+fn optional_column(columns: &[String], name: &str) -> Result<Option<usize>, ItemErrorV1> {
+    let matches = columns
+        .iter()
+        .enumerate()
+        .filter(|(_, value)| value.eq_ignore_ascii_case(name))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    match matches.as_slice() {
+        [index] => Ok(Some(*index)),
+        [] => Ok(None),
+        _ => Err(error(
+            "ITEM-BASEITEMS-COLUMN-DUPLICATE",
+            format!("baseitems.2da.columns.{name}"),
+            format!("baseitems.2da column {name} is ambiguous"),
+        )),
+    }
+}
+
 fn cell_text<'a>(
     cells: &'a [TwoDaCellValueV1],
     index: usize,
@@ -910,6 +1558,21 @@ fn parse_optional_text(
             }
         }
     }
+}
+
+fn parse_optional_u32(
+    cells: &[TwoDaCellValueV1],
+    index: Option<usize>,
+    row: u32,
+    name: &str,
+) -> Result<Option<u32>, ItemErrorV1> {
+    let Some(index) = index else {
+        return Ok(None);
+    };
+    let Some(value) = parse_optional_text(cells, index)? else {
+        return Ok(None);
+    };
+    parse_u32(&value, row, name).map(Some)
 }
 
 fn inactive_row(
@@ -974,7 +1637,12 @@ fn part_slots(base_item: u32, model_type: u8, explicit: bool) -> Vec<ItemPartSlo
     }
 }
 
-fn item_capability_v1(base_item: u32, model_type: u8, part_count: usize) -> ItemCapabilityV1 {
+fn item_capability_v1(
+    base_item: u32,
+    model_type: u8,
+    part_count: usize,
+    equipable_slots: u32,
+) -> ItemCapabilityV1 {
     let (composition_profile, texture_profile, icon_profile, meshy_source_count, tables) =
         if base_item == ITEM_BASEITEM_CLOAK_V1 {
             (
@@ -1018,6 +1686,8 @@ fn item_capability_v1(base_item: u32, model_type: u8, part_count: usize) -> Item
             };
             let tables = if icon == ItemIconProfileV1::IprpSpell {
                 vec!["IPRP_SPELLS".to_owned()]
+            } else if model_type == 2 && equipable_slots != 0 {
+                vec!["Appearance".to_owned()]
             } else {
                 Vec::new()
             };
@@ -1038,6 +1708,7 @@ pub fn resolve_item_capability_v1(base_item: &ItemBaseItemV1) -> ItemCapabilityV
         base_item.base_item,
         base_item.model_type,
         base_item.part_slots.len(),
+        base_item.equipable_slots,
     )
 }
 
@@ -1049,6 +1720,8 @@ fn parse_row(
     let label_index = required_column(columns, "Label")?;
     let item_class_index = required_column(columns, "ItemClass")?;
     let model_type_index = required_column(columns, "ModelType")?;
+    let min_range_index = optional_column(columns, "MinRange")?;
+    let max_range_index = optional_column(columns, "MaxRange")?;
     let gender_index = required_column(columns, "GenderSpecific")?;
     let default_model_index = required_column(columns, "DefaultModel")?;
     let default_icon_index = required_column(columns, "DefaultIcon")?;
@@ -1093,6 +1766,11 @@ fn parse_row(
         }
     };
     let explicit = gender_specific || model_type == 3 || item_class.eq_ignore_ascii_case("cloak");
+    let equipable_slots = parse_u32(
+        cell_text(cells, equipable_slots_index, base_item, "EquipableSlots")?,
+        base_item,
+        "EquipableSlots",
+    )?;
 
     let slots = part_slots(base_item, model_type, explicit);
     Ok(ItemBaseItemV1 {
@@ -1101,14 +1779,12 @@ fn parse_row(
         label,
         item_class,
         model_type,
+        min_range: parse_optional_u32(cells, min_range_index, base_item, "MinRange")?,
+        max_range: parse_optional_u32(cells, max_range_index, base_item, "MaxRange")?,
         gender_specific,
         default_model: parse_optional_text(cells, default_model_index)?,
         default_icon: parse_optional_text(cells, default_icon_index)?,
-        equipable_slots: parse_u32(
-            cell_text(cells, equipable_slots_index, base_item, "EquipableSlots")?,
-            base_item,
-            "EquipableSlots",
-        )?,
+        equipable_slots,
         inv_slot_width: parse_u32(
             cell_text(cells, width_index, base_item, "InvSlotWidth")?,
             base_item,
@@ -1119,7 +1795,7 @@ fn parse_row(
             base_item,
             "InvSlotHeight",
         )?,
-        capability: item_capability_v1(base_item, model_type, slots.len()),
+        capability: item_capability_v1(base_item, model_type, slots.len(), equipable_slots),
         part_slots: slots,
         color_fields: if matches!(model_type, 1 | 3) {
             ITEM_COLOR_FIELDS_V1
@@ -1203,6 +1879,157 @@ pub fn resolve_item_baseitem_v1(
             format!("BaseItem {base_item} appears more than once in baseitems.2da"),
         )),
     }
+}
+
+/// Ensures Aurora's ModelType 2 selector scan reaches the selected model
+/// bucket. This remains an existing BaseItem: only that row's `MaxRange` is
+/// raised, and only when the selected model lies above the source range.
+pub fn extend_item_baseitem_model_range_v1(
+    bytes: &[u8],
+    base_item: u32,
+    model: u8,
+) -> Result<ItemBaseItemModelRangeArtifactV1, ItemErrorV1> {
+    if model > ITEM_WEAPON_MODEL_MAX_V1 {
+        return Err(error(
+            "ITEM-WEAPON-MODEL-OUT-OF-RANGE",
+            "model",
+            format!("weapon model must be in 0..={ITEM_WEAPON_MODEL_MAX_V1}, got {model}"),
+        ));
+    }
+    let selected = resolve_item_baseitem_v1(bytes, base_item)?;
+    if selected.model_type != 2 {
+        return Err(error(
+            "ITEM-BASEITEM-RANGE-UNSUPPORTED",
+            "baseItem",
+            format!(
+                "BaseItem {base_item} has ModelType {}, expected ModelType 2",
+                selected.model_type
+            ),
+        ));
+    }
+    let source_min_range = selected.min_range.ok_or_else(|| {
+        error(
+            "ITEM-BASEITEM-RANGE-MISSING",
+            format!("baseitems.2da.rows.{base_item}.MinRange"),
+            "ModelType 2 BaseItem requires MinRange",
+        )
+    })?;
+    let source_max_range = selected.max_range.ok_or_else(|| {
+        error(
+            "ITEM-BASEITEM-RANGE-MISSING",
+            format!("baseitems.2da.rows.{base_item}.MaxRange"),
+            "ModelType 2 BaseItem requires MaxRange",
+        )
+    })?;
+    if source_min_range > source_max_range {
+        return Err(error(
+            "ITEM-BASEITEM-RANGE-INVALID",
+            format!("baseitems.2da.rows.{base_item}"),
+            format!("MinRange {source_min_range} exceeds MaxRange {source_max_range}"),
+        ));
+    }
+    let model_bucket = u32::from(model) * 10;
+    if model_bucket < source_min_range {
+        return Err(error(
+            "ITEM-BASEITEM-MODEL-BELOW-MIN-RANGE",
+            "model",
+            format!(
+                "model bucket {model_bucket} is below BaseItem {base_item} MinRange {source_min_range}"
+            ),
+        ));
+    }
+
+    let source_sha256 = item_payload_sha256_v1(bytes);
+    if model_bucket <= source_max_range {
+        return Ok(ItemBaseItemModelRangeArtifactV1 {
+            payload: bytes.to_vec(),
+            report: ItemBaseItemModelRangeReportV1 {
+                schema_version: ITEM_SCHEMA_VERSION_V1,
+                status: "NOT_REQUIRED".to_owned(),
+                base_item,
+                model,
+                model_bucket,
+                source_min_range,
+                source_max_range,
+                effective_max_range: source_max_range,
+                source_sha256: source_sha256.clone(),
+                output_sha256: source_sha256,
+                patch_report: None,
+            },
+        });
+    }
+
+    let limits = TwoDaLimitsV1::default();
+    let inspection = inspect_two_da_v2(bytes, &limits).map_err(|source| {
+        error(
+            "ITEM-BASEITEMS-INVALID",
+            source.path,
+            format!("baseitems.2da inspection failed: {}", source.message),
+        )
+    })?;
+    let physical_row_index = (0..inspection.physical_row_count)
+        .find(|physical_row| {
+            read_two_da_row_v2(bytes, *physical_row, &limits)
+                .map(|row| row.printed_row_label == base_item)
+                .unwrap_or(false)
+        })
+        .ok_or_else(|| {
+            error(
+                "ITEM-BASEITEM-NOT-FOUND",
+                "baseItem",
+                format!("BaseItem {base_item} is not present in baseitems.2da"),
+            )
+        })?;
+    let patched = patch_two_da_row_v1(
+        bytes,
+        &TwoDaRowPatchRequestV1 {
+            schema_version: ITEM_SCHEMA_VERSION_V1,
+            physical_row_index,
+            expected_printed_row_label: base_item,
+            cells: vec![TwoDaCellPatchV1 {
+                column_name: "MaxRange".to_owned(),
+                expected_value: TwoDaCellValueV1::Text {
+                    value: source_max_range.to_string(),
+                },
+                value: TwoDaCellValueV1::Text {
+                    value: model_bucket.to_string(),
+                },
+            }],
+        },
+        &limits,
+    )
+    .map_err(|source| {
+        error(
+            "ITEM-BASEITEM-RANGE-PATCH-FAILED",
+            source.path,
+            format!("baseitems.2da row patch failed: {}", source.message),
+        )
+    })?;
+    let output_row = resolve_item_baseitem_v1(&patched.payload, base_item)?;
+    if output_row.min_range != Some(source_min_range) || output_row.max_range != Some(model_bucket)
+    {
+        return Err(error(
+            "ITEM-BASEITEM-RANGE-READBACK-FAILED",
+            "baseitems.2da",
+            "patched baseitems.2da did not preserve MinRange and raise only MaxRange",
+        ));
+    }
+    Ok(ItemBaseItemModelRangeArtifactV1 {
+        report: ItemBaseItemModelRangeReportV1 {
+            schema_version: ITEM_SCHEMA_VERSION_V1,
+            status: "PATCHED".to_owned(),
+            base_item,
+            model,
+            model_bucket,
+            source_min_range,
+            source_max_range,
+            effective_max_range: model_bucket,
+            source_sha256,
+            output_sha256: item_payload_sha256_v1(&patched.payload),
+            patch_report: Some(patched.report),
+        },
+        payload: patched.payload,
+    })
 }
 
 fn two_da_cell_by_column_v1<'a>(
@@ -2541,6 +3368,48 @@ fn validate_resref(value: &str, path: &str) -> Result<String, ItemErrorV1> {
     Ok(normalized)
 }
 
+/// Encodes Aurora's ModelType 2 part selector. The decimal tens are the model
+/// number and the ones digit is one of the four native weapon color variants.
+pub fn encode_item_weapon_part_appearance_v1(model: u8, color: u8) -> Result<u8, ItemErrorV1> {
+    if !(ITEM_WEAPON_COLOR_MIN_V1..=ITEM_WEAPON_COLOR_MAX_V1).contains(&color) {
+        return Err(error(
+            "ITEM-WEAPON-COLOR-INVALID",
+            "color",
+            format!(
+                "ModelType 2 weapon color must be {}..{}",
+                ITEM_WEAPON_COLOR_MIN_V1, ITEM_WEAPON_COLOR_MAX_V1
+            ),
+        ));
+    }
+    let encoded = u16::from(model) * 10 + u16::from(color);
+    u8::try_from(encoded).map_err(|_| {
+        error(
+            "ITEM-WEAPON-MODEL-OVERFLOW",
+            "model",
+            format!(
+                "ModelType 2 weapon model must encode with color into one BYTE; maximum model is {}",
+                ITEM_WEAPON_MODEL_MAX_V1
+            ),
+        )
+    })
+}
+
+/// Decodes and validates one Aurora ModelType 2 part selector. Values whose
+/// ones digit is 0 or 5..9 name no native weapon color and are rejected.
+pub fn decode_item_weapon_part_appearance_v1(
+    encoded_value: u8,
+) -> Result<ItemWeaponPartAppearanceV1, ItemErrorV1> {
+    let model = encoded_value / 10;
+    let color = encoded_value % 10;
+    let canonical = encode_item_weapon_part_appearance_v1(model, color)?;
+    Ok(ItemWeaponPartAppearanceV1 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        model,
+        color,
+        encoded_value: canonical,
+    })
+}
+
 pub fn resolve_item_part_resource_v1(
     base_item: &ItemBaseItemV1,
     field: &str,
@@ -2548,6 +3417,9 @@ pub fn resolve_item_part_resource_v1(
     explicit_model_resref: Option<&str>,
     explicit_icon_resref: Option<&str>,
 ) -> Result<ItemResolvedResourceV1, ItemErrorV1> {
+    if base_item.model_type == 2 {
+        decode_item_weapon_part_appearance_v1(variant)?;
+    }
     let slot = base_item
         .part_slots
         .iter()
@@ -2733,6 +3605,17 @@ pub fn write_item_uti_v1(
             format!("missing required part fields: {}", missing.join(", ")),
         ));
     }
+    if base_item.model_type == 2 {
+        for (field, value) in &values {
+            decode_item_weapon_part_appearance_v1(*value).map_err(|source| {
+                error(
+                    &source.code,
+                    format!("blueprint.parts.{field}"),
+                    source.message,
+                )
+            })?;
+        }
+    }
     let colors = [
         blueprint.colors.leather1_color,
         blueprint.colors.leather2_color,
@@ -2847,6 +3730,11 @@ pub fn write_item_uti_v1(
             model_type: base_item.model_type,
             part_count: base_item.part_slots.len() as u32,
             color_field_count: base_item.color_fields.len() as u32,
+            weapon_color_selector_count: if base_item.model_type == 2 {
+                base_item.part_slots.len() as u32
+            } else {
+                0
+            },
             byte_length: artifact.report.byte_length,
             output_sha256: artifact.report.output_sha256,
             semantic_readback_status: artifact.report.semantic_readback_status,
@@ -2856,6 +3744,241 @@ pub fn write_item_uti_v1(
 
 pub fn item_payload_sha256_v1(bytes: &[u8]) -> String {
     hex_lower(&Sha256::digest(bytes))
+}
+
+fn item_resource_provider_kind_name_v1(kind: ItemResourceProviderKindV1) -> &'static str {
+    match kind {
+        ItemResourceProviderKindV1::Vanilla => "VANILLA",
+        ItemResourceProviderKindV1::Hak => "HAK",
+        ItemResourceProviderKindV1::Module => "MODULE",
+    }
+}
+
+fn item_erf_file_type_name_v1(file_type: ErfFileType) -> &'static str {
+    match file_type {
+        ErfFileType::Erf => "ERF",
+        ErfFileType::Hak => "HAK",
+        ErfFileType::Module => "MOD",
+    }
+}
+
+/// Validates and hashes an ordered Item resource context without writing to
+/// any source container. A context is accepted only when every provider is an
+/// independently readable ERF-family archive with a stable identity.
+pub fn inspect_item_resource_context_v1(
+    context: &ItemResourceContextInputV1<'_>,
+) -> Result<ItemResourceContextReportV1, ItemErrorV1> {
+    if context.schema_version != ITEM_SCHEMA_VERSION_V1
+        || context.resolution_policy != "SINGLE_CUSTOM_PROVIDER_OVER_VANILLA_V1"
+        || context.providers.is_empty()
+    {
+        return Err(error(
+            "ITEM-RESOURCE-CONTEXT-INVALID",
+            "context",
+            "Item resource context requires schema 1, the fail-closed single-custom policy and at least one provider",
+        ));
+    }
+    let mut provider_ids = BTreeSet::new();
+    let mut order_keys = BTreeSet::new();
+    let mut providers = Vec::with_capacity(context.providers.len());
+    for (index, provider) in context.providers.iter().enumerate() {
+        if provider.provider_id.trim().is_empty()
+            || provider.file_name.trim().is_empty()
+            || !provider_ids.insert(provider.provider_id.clone())
+            || !order_keys.insert((
+                item_resource_provider_kind_name_v1(provider.kind),
+                provider.order,
+            ))
+        {
+            return Err(error(
+                "ITEM-RESOURCE-CONTEXT-PROVIDER-INVALID",
+                format!("context.providers[{index}]"),
+                "provider id, file name and kind-local order must be non-empty and unique",
+            ));
+        }
+        let archive = ErfArchive::parse(provider.bytes).map_err(|source| {
+            error(
+                "ITEM-RESOURCE-CONTEXT-CONTAINER-INVALID",
+                format!("context.providers[{index}].bytes"),
+                format!(
+                    "{} at byte {}: {}",
+                    source.code, source.offset, source.context
+                ),
+            )
+        })?;
+        let declared_container_matches = match provider.kind {
+            // Tests and pre-indexed retail inventories may expose Vanilla as
+            // an immutable ERF-family fixture. Its provenance, not its ERF
+            // signature, is what makes it Vanilla.
+            ItemResourceProviderKindV1::Vanilla => true,
+            ItemResourceProviderKindV1::Hak => archive.file_type() == ErfFileType::Hak,
+            ItemResourceProviderKindV1::Module => archive.file_type() == ErfFileType::Module,
+        };
+        if !declared_container_matches {
+            return Err(error(
+                "ITEM-RESOURCE-CONTEXT-KIND-MISMATCH",
+                format!("context.providers[{index}].kind"),
+                "declared custom provider kind does not match the container signature",
+            ));
+        }
+        providers.push(ItemResourceProviderReportV1 {
+            provider_id: provider.provider_id.clone(),
+            kind: provider.kind,
+            order: provider.order,
+            file_name: provider.file_name.clone(),
+            container_file_type: item_erf_file_type_name_v1(archive.file_type()).to_owned(),
+            byte_length: provider.bytes.len(),
+            sha256: item_payload_sha256_v1(provider.bytes),
+            resource_count: archive.resources().len(),
+        });
+    }
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ContextIdentity<'a> {
+        schema_version: u32,
+        resolution_policy: &'a str,
+        providers: &'a [ItemResourceProviderReportV1],
+    }
+    let identity = serde_json::to_vec(&ContextIdentity {
+        schema_version: context.schema_version,
+        resolution_policy: &context.resolution_policy,
+        providers: &providers,
+    })
+    .map_err(|_| {
+        error(
+            "ITEM-RESOURCE-CONTEXT-SERIALIZE-FAILED",
+            "context",
+            "resource context identity could not be serialized",
+        )
+    })?;
+    Ok(ItemResourceContextReportV1 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        resolution_policy: context.resolution_policy.clone(),
+        status: "PASSED".to_owned(),
+        providers,
+        context_sha256: item_payload_sha256_v1(&identity),
+    })
+}
+
+/// Resolves one exact resource. One custom HAK or MOD may shadow Vanilla; two
+/// custom matches are rejected because Aurora's multi-container collision
+/// priority has not been accepted as a product invariant.
+pub fn resolve_item_resource_from_context_v1<'a>(
+    context: &'a ItemResourceContextInputV1<'a>,
+    resref: &str,
+    resource_type: u16,
+) -> Result<ItemResolvedContextResourceV1<'a>, ItemErrorV1> {
+    validate_resref(resref, "resref")?;
+    let report = inspect_item_resource_context_v1(context)?;
+    let mut vanilla_matches = Vec::new();
+    let mut custom_matches = Vec::new();
+    for (index, provider) in context.providers.iter().enumerate() {
+        let archive = ErfArchive::parse(provider.bytes).map_err(|source| {
+            error(
+                "ITEM-RESOURCE-CONTEXT-CONTAINER-INVALID",
+                format!("context.providers[{index}].bytes"),
+                format!(
+                    "{} at byte {}: {}",
+                    source.code, source.offset, source.context
+                ),
+            )
+        })?;
+        match archive.find(resref, resource_type) {
+            Ok(payload) => {
+                let binding = (index, provider, payload);
+                if provider.kind == ItemResourceProviderKindV1::Vanilla {
+                    vanilla_matches.push(binding);
+                } else {
+                    custom_matches.push(binding);
+                }
+            }
+            Err(source) if source.code == crate::erf::RESOURCE_MISSING => {}
+            Err(source) => {
+                return Err(error(
+                    "ITEM-RESOURCE-CONTEXT-LOOKUP-FAILED",
+                    format!("context.providers[{index}]"),
+                    format!(
+                        "{} at byte {}: {}",
+                        source.code, source.offset, source.context
+                    ),
+                ));
+            }
+        }
+    }
+    if custom_matches.len() > 1 {
+        return Err(error(
+            "ITEM-RESOURCE-CONTEXT-AMBIGUOUS-CUSTOM-RESOURCE",
+            format!("resources.{resref}.{resource_type}"),
+            format!(
+                "resource occurs in multiple custom providers: {}",
+                custom_matches
+                    .iter()
+                    .map(|(_, provider, _)| provider.provider_id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        ));
+    }
+    if custom_matches.is_empty() && vanilla_matches.len() > 1 {
+        return Err(error(
+            "ITEM-RESOURCE-CONTEXT-AMBIGUOUS-VANILLA-RESOURCE",
+            format!("resources.{resref}.{resource_type}"),
+            "resource occurs in multiple Vanilla providers",
+        ));
+    }
+    let (winning_index, winning_provider, payload) = custom_matches
+        .first()
+        .copied()
+        .or_else(|| vanilla_matches.first().copied())
+        .ok_or_else(|| {
+            error(
+                "ITEM-RESOURCE-CONTEXT-RESOURCE-MISSING",
+                format!("resources.{resref}.{resource_type}"),
+                "resource was not found in the selected Item resource context",
+            )
+        })?;
+    let shadowed_provider_ids = vanilla_matches
+        .iter()
+        .filter(|(index, _, _)| *index != winning_index)
+        .map(|(_, provider, _)| provider.provider_id.clone())
+        .collect();
+    Ok(ItemResolvedContextResourceV1 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        resref: resref.to_ascii_lowercase(),
+        resource_type,
+        winning_provider_id: winning_provider.provider_id.clone(),
+        shadowed_provider_ids,
+        payload,
+        payload_sha256: item_payload_sha256_v1(payload),
+        context_sha256: report.context_sha256,
+    })
+}
+
+pub fn select_effective_item_baseitem_v1(
+    context: &ItemResourceContextInputV1<'_>,
+    base_item: u32,
+) -> Result<ItemEffectiveBaseItemsSelectionV1, ItemErrorV1> {
+    let resolved = resolve_item_resource_from_context_v1(context, "baseitems", 2017)?;
+    let selected = resolve_item_baseitem_v1(resolved.payload, base_item)?;
+    let mut selection = ItemEffectiveBaseItemsSelectionV1 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        status: "PASSED".to_owned(),
+        resource_context_sha256: resolved.context_sha256,
+        baseitems_sha256: resolved.payload_sha256,
+        winning_provider_id: resolved.winning_provider_id,
+        shadowed_provider_ids: resolved.shadowed_provider_ids,
+        selected,
+        selection_sha256: String::new(),
+    };
+    let bytes = serde_json::to_vec(&selection).map_err(|_| {
+        error(
+            "ITEM-BASEITEM-SELECTION-SERIALIZE-FAILED",
+            "selection",
+            "effective BaseItem selection could not be serialized",
+        )
+    })?;
+    selection.selection_sha256 = item_payload_sha256_v1(&bytes);
+    Ok(selection)
 }
 
 fn item_proof_map_error_v1(
@@ -3126,16 +4249,40 @@ pub fn build_item_proof_module_v1(
             "candidate MOD must contain exactly one placed item instance",
         ));
     }
+    let creature_list = git_readback
+        .root
+        .fields
+        .iter()
+        .find(|field| field.label == "Creature List")
+        .and_then(|field| match &field.value {
+            GffValueV1::List(values) => Some(values),
+            _ => None,
+        });
+    if creature_list.is_none_or(|creatures| !creatures.is_empty())
+        || readback
+            .resources()
+            .iter()
+            .any(|resource| resource.resource_type == 2027)
+    {
+        return Err(error(
+            "ITEM-PROOF-MODULE-CREATURE-UNEXPECTED",
+            "module.git.Creature List",
+            "item-only proof MOD must contain zero creatures and zero UTC resources",
+        ));
+    }
 
     Ok(ItemProofModuleArtifactV1 {
         report: ItemProofModuleReportV1 {
             schema_version: ITEM_SCHEMA_VERSION_V1,
+            fixture_profile: "ITEM_ONLY_GROUND_ITEM_V1".to_owned(),
             module_resref,
             module_name: identity.module_name.trim().to_owned(),
             area_resref,
             area_name: identity.area_name.trim().to_owned(),
             hak_resref,
             blueprint_resref,
+            ground_item_count: 1,
+            creature_count: 0,
             item_position: [placement.x, placement.y, placement.z],
             entry_position: [M0_RUNTIME_ENTRY_X, M0_RUNTIME_ENTRY_Y, M0_RUNTIME_ENTRY_Z],
             entry_direction: [M0_RUNTIME_ENTRY_DIR_X, M0_RUNTIME_ENTRY_DIR_Y],
@@ -3369,6 +4516,26 @@ pub fn build_item_equipped_proof_module_v2(
             "UTI type or TemplateResRef differs from the equipped proof identity",
         ));
     }
+    if identity.fixture_profile == ItemEquippedProofProfileV2::ModelType2Parts {
+        let exact_model_parts =
+            ["ModelPart1", "ModelPart2", "ModelPart3"]
+                .into_iter()
+                .all(|label| {
+                    uti.root.fields.iter().any(|field| {
+                        field.label == label && matches!(field.value, GffValueV1::Byte(_))
+                    })
+                });
+        if !exact_model_parts {
+            return Err(error(
+                "ITEM-EQUIPPED-PROOF-MODELTYPE2-UTI-INVALID",
+                "uti",
+                "ModelType 2 equipped proof requires BYTE fields ModelPart1, ModelPart2 and ModelPart3",
+            ));
+        }
+    }
+    let equipment_slot = identity
+        .fixture_profile
+        .equipment_slot(identity.equipment_slot)?;
 
     let ifo = binary_m0_module_ifo_for(
         &module_resref,
@@ -3441,7 +4608,6 @@ pub fn build_item_equipped_proof_module_v2(
             "equipped proof GIT must contain exactly one creature",
         ));
     };
-    let equipment_slot = identity.fixture_profile.equipment_slot();
     set_equipped_item_reference_v2(
         &mut creature.fields,
         equipment_slot,
@@ -3626,6 +4792,258 @@ pub fn build_item_equipped_proof_module_v2(
     })
 }
 
+/// Builds one candidate-bound demo Area with two deliberately separate views
+/// of the same byte-identical UTI: a real placed Item instance and a humanoid
+/// render witness carrying that UTI in the native equipment slot. The placed
+/// Item proves the object type while the equipped witness exercises Aurora's
+/// ModelType 2 part assembler.
+pub fn build_item_and_equipped_proof_module_v3(
+    uti_payload: &[u8],
+    identity: &ItemEquippedProofIdentityV2,
+    item_placement: ItemProofPlacementV1,
+    creature_placement: ItemProofPlacementV1,
+) -> Result<ItemAndEquippedProofModuleArtifactV3, ItemErrorV1> {
+    if item_placement.schema_version != ITEM_SCHEMA_VERSION_V1
+        || ![
+            item_placement.x,
+            item_placement.y,
+            item_placement.z,
+            item_placement.orientation_x,
+            item_placement.orientation_y,
+        ]
+        .into_iter()
+        .all(f32::is_finite)
+    {
+        return Err(error(
+            "ITEM-PAIRED-PROOF-PLACEMENT-INVALID",
+            "itemPlacement",
+            "paired proof Item placement must use schemaVersion 1 and contain only finite values",
+        ));
+    }
+
+    let equipped = build_item_equipped_proof_module_v2(uti_payload, identity, creature_placement)?;
+    let equipped_archive = ErfArchive::parse(&equipped.payload).map_err(|source| {
+        error(
+            "ITEM-PAIRED-PROOF-MODULE-READBACK-FAILED",
+            "module",
+            source.to_string(),
+        )
+    })?;
+    let uti = read_gff_v32(uti_payload, &GffLimitsV1::default())
+        .map_err(|source| error("ITEM-PROOF-UTI-READ-FAILED", source.path, source.message))?;
+    let mut git = read_gff_v32(
+        equipped_archive
+            .find(&equipped.report.area_resref, 2023)
+            .map_err(|source| {
+                error(
+                    "ITEM-PAIRED-PROOF-GIT-MISSING",
+                    "module.git",
+                    source.to_string(),
+                )
+            })?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|source| error("ITEM-PROOF-GIT-READ-FAILED", source.path, source.message))?;
+    let mut item_fields = uti.root.fields.clone();
+    item_fields.extend([
+        field("XPosition", GffValueV1::Float(item_placement.x)),
+        field("YPosition", GffValueV1::Float(item_placement.y)),
+        field("ZPosition", GffValueV1::Float(item_placement.z)),
+        field(
+            "XOrientation",
+            GffValueV1::Float(item_placement.orientation_x),
+        ),
+        field(
+            "YOrientation",
+            GffValueV1::Float(item_placement.orientation_y),
+        ),
+    ]);
+    replace_gff_list_v1(
+        &mut git,
+        "List",
+        vec![GffStructV1 {
+            struct_id: 0,
+            fields: item_fields,
+        }],
+    )?;
+    let paired_git = write_item_proof_gff_v1(&git, "git")?;
+
+    let resources = equipped_archive
+        .resources()
+        .iter()
+        .map(|resource| {
+            let payload = if resource
+                .resref
+                .eq_ignore_ascii_case(&equipped.report.area_resref)
+                && resource.resource_type == 2023
+            {
+                paired_git.clone()
+            } else {
+                equipped_archive
+                    .find(&resource.resref, resource.resource_type)
+                    .map_err(|source| {
+                        error(
+                            "ITEM-PAIRED-PROOF-RESOURCE-READBACK-FAILED",
+                            format!(
+                                "module.resources.{}/{}",
+                                resource.resref, resource.resource_type
+                            ),
+                            source.to_string(),
+                        )
+                    })?
+                    .to_vec()
+            };
+            Ok(item_proof_resource_v1(
+                &resource.resref,
+                resource.resource_type,
+                payload,
+            ))
+        })
+        .collect::<Result<Vec<_>, ItemErrorV1>>()?;
+    let archive = write_erf_archive_v1(
+        ErfFileType::Module,
+        &resources,
+        &HakWriterOptionsV1::default(),
+    )
+    .map_err(|source| {
+        error(
+            "ITEM-PAIRED-PROOF-MODULE-WRITE-FAILED",
+            "module",
+            source.to_string(),
+        )
+    })?;
+    let readback = ErfArchive::parse(&archive.payload).map_err(|source| {
+        error(
+            "ITEM-PAIRED-PROOF-MODULE-READBACK-FAILED",
+            "module",
+            source.to_string(),
+        )
+    })?;
+    if readback.file_type() != ErfFileType::Module
+        || readback.resources().len() != resources.len()
+        || readback.find(&equipped.report.blueprint_resref, 2025).ok() != Some(uti_payload)
+    {
+        return Err(error(
+            "ITEM-PAIRED-PROOF-SEMANTIC-DIFF",
+            "module.resources",
+            "paired proof MOD does not contain the exact UTI and expected resources",
+        ));
+    }
+    let git_readback = read_gff_v32(
+        readback
+            .find(&equipped.report.area_resref, 2023)
+            .map_err(|source| {
+                error(
+                    "ITEM-PAIRED-PROOF-SEMANTIC-DIFF",
+                    "module.git",
+                    source.to_string(),
+                )
+            })?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|source| {
+        error(
+            "ITEM-PROOF-GIT-READBACK-FAILED",
+            source.path,
+            source.message,
+        )
+    })?;
+    let items = git_readback
+        .root
+        .fields
+        .iter()
+        .find(|field| field.label == "List")
+        .and_then(|field| match &field.value {
+            GffValueV1::List(values) => Some(values),
+            _ => None,
+        })
+        .ok_or_else(|| {
+            error(
+                "ITEM-PAIRED-PROOF-SEMANTIC-DIFF",
+                "git.List",
+                "paired proof GIT is missing the Item instance list",
+            )
+        })?;
+    let [placed_item] = items.as_slice() else {
+        return Err(error(
+            "ITEM-PAIRED-PROOF-SEMANTIC-DIFF",
+            "git.List",
+            "paired proof GIT must contain exactly one placed Item",
+        ));
+    };
+    let placed_template = placed_item
+        .fields
+        .iter()
+        .find(|field| field.label == "TemplateResRef")
+        .and_then(|field| match &field.value {
+            GffValueV1::ResRef(value) => Some(value.as_str()),
+            _ => None,
+        });
+    if placed_template != Some(equipped.report.blueprint_resref.as_str()) {
+        return Err(error(
+            "ITEM-PAIRED-PROOF-SEMANTIC-DIFF",
+            "git.List[0].TemplateResRef",
+            "placed Item is not bound to the exact candidate UTI",
+        ));
+    }
+    let creatures = git_readback
+        .root
+        .fields
+        .iter()
+        .find(|field| field.label == "Creature List")
+        .and_then(|field| match &field.value {
+            GffValueV1::List(values) => Some(values),
+            _ => None,
+        })
+        .ok_or_else(|| {
+            error(
+                "ITEM-PAIRED-PROOF-SEMANTIC-DIFF",
+                "git.Creature List",
+                "paired proof GIT is missing the equipped render witness",
+            )
+        })?;
+    let [creature] = creatures.as_slice() else {
+        return Err(error(
+            "ITEM-PAIRED-PROOF-SEMANTIC-DIFF",
+            "git.Creature List",
+            "paired proof GIT must contain exactly one equipped render witness",
+        ));
+    };
+    verify_equipped_item_reference_v2(
+        &creature.fields,
+        equipped.report.equipment_slot,
+        &equipped.report.blueprint_resref,
+        "git.Creature List[0]",
+    )?;
+    verify_equipped_creature_context_v2(&creature.fields, identity, "git.Creature List[0]")?;
+
+    Ok(ItemAndEquippedProofModuleArtifactV3 {
+        report: ItemAndEquippedProofModuleReportV3 {
+            schema_version: 3,
+            module_resref: equipped.report.module_resref,
+            module_name: equipped.report.module_name,
+            area_resref: equipped.report.area_resref,
+            area_name: equipped.report.area_name,
+            hak_resref: equipped.report.hak_resref,
+            blueprint_resref: equipped.report.blueprint_resref,
+            creature_resref: equipped.report.creature_resref,
+            fixture_profile: "ITEM_AND_EQUIPPED_MODELTYPE2_PARTS_V3".to_owned(),
+            equipment_slot: equipped.report.equipment_slot,
+            item_position: [item_placement.x, item_placement.y, item_placement.z],
+            creature_position: equipped.report.creature_position,
+            ground_item_count: 1,
+            equipped_item_count: 1,
+            resource_count: resources.len() as u32,
+            byte_length: archive.payload.len() as u64,
+            output_sha256: item_payload_sha256_v1(&archive.payload),
+            semantic_readback_status: "PASS".to_owned(),
+            model_visibility: "not_tested".to_owned(),
+            proof_completeness: "missing".to_owned(),
+        },
+        payload: archive.payload,
+    })
+}
+
 fn write_item_icon_layer_v1(
     source: &TgaImageV1,
     width: u32,
@@ -3781,19 +5199,14 @@ fn item_node_world_matrices_v1(
     Ok(worlds)
 }
 
-fn project_item_icon_point_v1(point: [f32; 3]) -> [f32; 3] {
-    // A deterministic isometric authoring view. It is a Meshy2Aurora icon
-    // authoring contract; Aurora still performs the final native layer
-    // composition from the emitted TGA resources.
-    const INV_SQRT_2: f32 = 0.707_106_77;
-    const INV_SQRT_6: f32 = 0.408_248_3;
-    const TWO_INV_SQRT_6: f32 = 0.816_496_6;
-    const INV_SQRT_3: f32 = 0.577_350_26;
-    [
-        (point[0] - point[1]) * INV_SQRT_2,
-        -(point[0] + point[1]) * INV_SQRT_6 + point[2] * TWO_INV_SQRT_6,
-        (point[0] + point[1] + point[2]) * INV_SQRT_3,
-    ]
+fn project_item_icon_point_aurora_v2(point: [f32; 3]) -> [f32; 3] {
+    // Aurora ModelType 2 icons are authored as independent 2D layers on one
+    // shared canvas. For the vertical Item profile, view the complete Aurora
+    // frame along front/depth X. Aurora presents the decoded TGA with the
+    // opposite 2D axial direction to the authoring raster, so rotate the whole
+    // shared icon frame by 180 degrees: broad width Z remains horizontal while
+    // Top is above Middle and Bottom in Toolset. Never rotate a part alone.
+    [point[2], -point[1], point[0]]
 }
 
 fn item_icon_geometry_v1(
@@ -3829,7 +5242,9 @@ fn item_icon_geometry_v1(
                 .iter()
                 .zip(&segment.uv0)
                 .map(|(&position, &uv)| ItemIconVertexV1 {
-                    projected: project_item_icon_point_v1(transform_point_v1(world, position)),
+                    projected: project_item_icon_point_aurora_v2(transform_point_v1(
+                        world, position,
+                    )),
                     uv,
                 })
                 .collect())
@@ -4076,6 +5491,208 @@ fn write_item_icon_layer_v2(
     Ok((payload, bounds, opaque_pixel_count))
 }
 
+fn item_icon_alpha_bounds_v3(
+    pixels: &[u8],
+    width: u32,
+    height: u32,
+) -> Option<(u64, [u32; 2], [u32; 2])> {
+    let mut count = 0_u64;
+    let mut min = [u32::MAX; 2];
+    let mut max = [0_u32; 2];
+    for (index, pixel) in pixels.chunks_exact(4).enumerate() {
+        if pixel[3] == 0 {
+            continue;
+        }
+        let index = index as u32;
+        let x = index % width;
+        let y = index / width;
+        if y >= height {
+            continue;
+        }
+        count += 1;
+        min[0] = min[0].min(x);
+        min[1] = min[1].min(y);
+        max[0] = max[0].max(x + 1);
+        max[1] = max[1].max(y + 1);
+    }
+    (count > 0).then_some((count, min, max))
+}
+
+/// Reproduces the native Bottom/Middle/Top icon resource contract offline.
+/// Every layer must already use the same full canvas; this function never
+/// recenters or rescales an individual part.
+pub fn validate_item_modeltype2_icon_layers_v3(
+    inputs: &[ItemIconLayerInputV3<'_>],
+    expected_width: u32,
+    expected_height: u32,
+    layout_profile: &str,
+) -> Result<ItemIconCompositeReportV3, ItemErrorV1> {
+    if inputs.len() != 3 || expected_width == 0 || expected_height == 0 {
+        return Err(error(
+            "ITEM-ICON-V3-LAYER-SET-INVALID",
+            "inputs",
+            "ModelType 2 icon conformance requires exactly three non-zero full-canvas layers",
+        ));
+    }
+    if !matches!(
+        layout_profile,
+        "LONG_VERTICAL_V1" | "LONG_VERTICAL_PART_ORDER_V2"
+    ) {
+        return Err(error(
+            "ITEM-ICON-V3-LAYOUT-UNSUPPORTED",
+            "layoutProfile",
+            "the native icon conformance route supports LONG_VERTICAL_V1 and LONG_VERTICAL_PART_ORDER_V2",
+        ));
+    }
+    let expected_fields = ["ModelPart1", "ModelPart2", "ModelPart3"];
+    let pixel_count = usize::try_from(u64::from(expected_width) * u64::from(expected_height))
+        .map_err(|_| {
+            error(
+                "ITEM-ICON-V3-DIMENSIONS-INVALID",
+                "expectedDimensions",
+                "icon canvas does not fit the host address space",
+            )
+        })?;
+    let mut composite = vec![0_u8; pixel_count * 4];
+    let mut layers = Vec::with_capacity(3);
+    for (index, input) in inputs.iter().enumerate() {
+        if input.field != expected_fields[index] {
+            return Err(error(
+                "ITEM-ICON-V3-LAYER-ORDER-INVALID",
+                format!("inputs[{index}].field"),
+                "icon layers must be supplied in Bottom, Middle, Top order",
+            ));
+        }
+        validate_resref(input.icon_resref, &format!("inputs[{index}].iconResref"))?;
+        let image = read_tga_image_v1(input.payload).map_err(|message| {
+            error(
+                "ITEM-ICON-V3-TGA-INVALID",
+                format!("inputs[{index}].payload"),
+                message,
+            )
+        })?;
+        if image.width != expected_width
+            || image.height != expected_height
+            || image.pixel_format != TgaPixelFormatV1::Rgba8
+        {
+            return Err(error(
+                "ITEM-ICON-V3-CANVAS-MISMATCH",
+                format!("inputs[{index}].payload"),
+                "every native icon layer must be RGBA8 and use the exact shared canvas dimensions",
+            ));
+        }
+        let (opaque_pixel_count, bounds_min, bounds_max_exclusive) =
+            item_icon_alpha_bounds_v3(&image.pixels, image.width, image.height).ok_or_else(
+                || {
+                    error(
+                        "ITEM-ICON-V3-LAYER-EMPTY",
+                        format!("inputs[{index}].payload"),
+                        "a native icon layer cannot be completely transparent",
+                    )
+                },
+            )?;
+        layers.push(ItemIconLayerSummaryV3 {
+            field: input.field.to_owned(),
+            icon_resref: input.icon_resref.to_owned(),
+            opaque_pixel_count,
+            bounds_min,
+            bounds_max_exclusive,
+            sha256: item_payload_sha256_v1(input.payload),
+        });
+        for (target, source) in composite
+            .chunks_exact_mut(4)
+            .zip(image.pixels.chunks_exact(4))
+        {
+            let source_alpha = u32::from(source[3]);
+            if source_alpha == 0 {
+                continue;
+            }
+            let target_alpha = u32::from(target[3]);
+            let inverse = 255 - source_alpha;
+            let output_alpha = source_alpha + (target_alpha * inverse + 127) / 255;
+            for channel in 0..3 {
+                let source_premultiplied = u32::from(source[channel]) * source_alpha;
+                let target_premultiplied =
+                    u32::from(target[channel]) * target_alpha * inverse / 255;
+                target[channel] = if output_alpha == 0 {
+                    0
+                } else {
+                    ((source_premultiplied + target_premultiplied) / output_alpha).min(255) as u8
+                };
+            }
+            target[3] = output_alpha.min(255) as u8;
+        }
+    }
+    let (opaque_pixel_count, bounds_min, bounds_max_exclusive) =
+        item_icon_alpha_bounds_v3(&composite, expected_width, expected_height).ok_or_else(
+            || {
+                error(
+                    "ITEM-ICON-V3-COMPOSITE-EMPTY",
+                    "inputs",
+                    "Bottom/Middle/Top icon composition produced no visible pixels",
+                )
+            },
+        )?;
+    let bounds_width = bounds_max_exclusive[0] - bounds_min[0];
+    let bounds_height = bounds_max_exclusive[1] - bounds_min[1];
+    let axial_fill_ratio = bounds_height as f32 / expected_height as f32;
+    let occupied_fill_ratio = opaque_pixel_count as f32 / (bounds_width * bounds_height) as f32;
+    if axial_fill_ratio < 0.65 || opaque_pixel_count < u64::from(expected_height) {
+        return Err(error(
+            "ITEM-ICON-V3-INCOMPLETE-SILHOUETTE",
+            "composite",
+            format!(
+                "LONG_VERTICAL_V1 requires at least 65% axial canvas coverage and {} visible pixels; got {:.3} and {opaque_pixel_count}",
+                expected_height, axial_fill_ratio,
+            ),
+        ));
+    }
+    if bounds_min[1] == 0 || bounds_max_exclusive[1] == expected_height {
+        return Err(error(
+            "ITEM-ICON-V3-CLIPPED",
+            "composite",
+            "LONG_VERTICAL_V1 icon touches the top or bottom canvas boundary",
+        ));
+    }
+    let part_order_status = if layout_profile == "LONG_VERTICAL_PART_ORDER_V2" {
+        let center_y = |layer: &ItemIconLayerSummaryV3| {
+            (layer.bounds_min[1] as f32 + layer.bounds_max_exclusive[1] as f32) * 0.5
+        };
+        let bottom_center = center_y(&layers[0]);
+        let middle_center = center_y(&layers[1]);
+        let top_center = center_y(&layers[2]);
+        if !(top_center < middle_center && middle_center < bottom_center) {
+            return Err(error(
+                "ITEM-ICON-V3-PART-ORDER-INVERTED",
+                "layers",
+                format!(
+                    "LONG_VERTICAL_PART_ORDER_V2 requires Top above Middle above Bottom in decoded TGA coordinates; centers are Top={top_center:.3}, Middle={middle_center:.3}, Bottom={bottom_center:.3}"
+                ),
+            ));
+        }
+        "PASSED"
+    } else {
+        "NOT_ENFORCED"
+    };
+    Ok(ItemIconCompositeReportV3 {
+        schema_version: 3,
+        algorithm: "AURORA_MODELTYPE2_ICON_LAYER_COMPOSITE_V3".to_owned(),
+        status: "PASSED".to_owned(),
+        layout_profile: layout_profile.to_owned(),
+        width: expected_width,
+        height: expected_height,
+        layer_count: layers.len(),
+        layers,
+        opaque_pixel_count,
+        bounds_min,
+        bounds_max_exclusive,
+        axial_fill_ratio,
+        occupied_fill_ratio,
+        part_order_status: part_order_status.to_owned(),
+        composite_rgba_sha256: item_payload_sha256_v1(&composite),
+    })
+}
+
 pub fn build_meshy_item_part_v1(
     source_glb: &[u8],
     model_resref: &str,
@@ -4110,7 +5727,10 @@ pub fn build_meshy_item_part_with_options_v1(
             texture_encoding: options.texture_encoding,
             icon_size: options.icon_size,
             icon_projection_bounds: None,
+            weapon_color: None,
+            target_space_scale_xyz: item_unit_scale_xyz_v1(),
             geometry_derived_icon: false,
+            aurora_composer_v2: false,
         },
     )
 }
@@ -4132,7 +5752,38 @@ pub fn build_meshy_item_part_with_options_v2(
             texture_encoding: options.texture_encoding,
             icon_size: options.icon_size,
             icon_projection_bounds: options.icon_projection_bounds,
+            weapon_color: options.weapon_color,
+            target_space_scale_xyz: options.target_space_scale_xyz,
             geometry_derived_icon: true,
+            aurora_composer_v2: false,
+        },
+    )
+}
+
+/// Builds one ModelType 2 part using the node/controller ownership observed in
+/// retail Aurora weapon parts. Geometry normalization is baked into mesh
+/// streams; the controllerless model root never carries the assembly transform.
+pub fn build_meshy_item_part_with_options_v3(
+    source_glb: &[u8],
+    model_resref: &str,
+    texture_resref: &str,
+    options: &ItemPartBuildOptionsV2,
+) -> Result<ItemPartArtifactV1, ItemErrorV1> {
+    build_meshy_item_part_with_internal_options_v1(
+        source_glb,
+        model_resref,
+        texture_resref,
+        &ItemPartBuildInternalOptionsV1 {
+            schema_version: options.schema_version,
+            transform: options.transform,
+            source_node: options.source_node.clone(),
+            texture_encoding: options.texture_encoding,
+            icon_size: options.icon_size,
+            icon_projection_bounds: options.icon_projection_bounds,
+            weapon_color: options.weapon_color,
+            target_space_scale_xyz: options.target_space_scale_xyz,
+            geometry_derived_icon: true,
+            aurora_composer_v2: true,
         },
     )
 }
@@ -4145,7 +5796,10 @@ struct ItemPartBuildInternalOptionsV1 {
     texture_encoding: ItemPartTextureEncodingV1,
     icon_size: Option<[u32; 2]>,
     icon_projection_bounds: Option<ItemIconProjectionBoundsV1>,
+    weapon_color: Option<u8>,
+    target_space_scale_xyz: [f32; 3],
     geometry_derived_icon: bool,
+    aurora_composer_v2: bool,
 }
 
 struct PreparedItemPartV1 {
@@ -4153,6 +5807,219 @@ struct PreparedItemPartV1 {
     model: crate::model_ir::AuroraModelIrV1,
     source_node: Option<String>,
     triangle_count: usize,
+    degenerate_triangle_count_removed: usize,
+}
+
+/// Removes only faces that become non-finite or exactly degenerate after a
+/// user-authored uniform scale is baked. The Item writer uses exact finite
+/// face-plane semantics so valid small Meshy faces survive scale normalization.
+/// Any unavoidable removal is deterministic and reported by the Item build.
+fn sanitize_item_model_face_planes_v1(
+    model: &mut crate::model_ir::AuroraModelIrV1,
+) -> Result<usize, ItemErrorV1> {
+    let mut removed_total = 0_usize;
+    for (segment_index, segment) in model.segments.iter_mut().enumerate() {
+        if !segment.indices.len().is_multiple_of(3)
+            || (!segment.face_surface_ids.is_empty()
+                && segment.face_surface_ids.len() != segment.indices.len() / 3)
+        {
+            return Err(error(
+                "ITEM-PART-FACE-PLANE-SOURCE-INVALID",
+                format!("model.segments[{segment_index}].indices"),
+                "item segment indices or face surface metadata are not triangle-aligned",
+            ));
+        }
+        let has_surface_ids = !segment.face_surface_ids.is_empty();
+        let mut retained_indices = Vec::with_capacity(segment.indices.len());
+        let mut retained_surface_ids = has_surface_ids
+            .then(|| Vec::with_capacity(segment.face_surface_ids.len()))
+            .unwrap_or_default();
+        for (triangle_index, triangle) in segment.indices.chunks_exact(3).enumerate() {
+            let mut vertices = [[0.0_f32; 3]; 3];
+            for (corner, source_index) in triangle.iter().copied().enumerate() {
+                let index = usize::try_from(source_index).map_err(|_| {
+                    error(
+                        "ITEM-PART-FACE-PLANE-INDEX",
+                        format!("model.segments[{segment_index}].indices"),
+                        "item triangle index does not fit this platform",
+                    )
+                })?;
+                vertices[corner] = *segment.positions.get(index).ok_or_else(|| {
+                    error(
+                        "ITEM-PART-FACE-PLANE-INDEX",
+                        format!("model.segments[{segment_index}].indices[{triangle_index}]"),
+                        "item triangle index escapes the position stream",
+                    )
+                })?;
+            }
+            let edge_ab = [
+                f64::from(vertices[1][0]) - f64::from(vertices[0][0]),
+                f64::from(vertices[1][1]) - f64::from(vertices[0][1]),
+                f64::from(vertices[1][2]) - f64::from(vertices[0][2]),
+            ];
+            let edge_ac = [
+                f64::from(vertices[2][0]) - f64::from(vertices[0][0]),
+                f64::from(vertices[2][1]) - f64::from(vertices[0][1]),
+                f64::from(vertices[2][2]) - f64::from(vertices[0][2]),
+            ];
+            let cross = [
+                edge_ab[1] * edge_ac[2] - edge_ab[2] * edge_ac[1],
+                edge_ab[2] * edge_ac[0] - edge_ab[0] * edge_ac[2],
+                edge_ab[0] * edge_ac[1] - edge_ab[1] * edge_ac[0],
+            ];
+            let length = (cross[0].powi(2) + cross[1].powi(2) + cross[2].powi(2)).sqrt();
+            if length.is_finite() && length > 0.0 {
+                retained_indices.extend_from_slice(triangle);
+                if has_surface_ids {
+                    retained_surface_ids.push(segment.face_surface_ids[triangle_index]);
+                }
+            } else {
+                removed_total += 1;
+            }
+        }
+        if retained_indices.is_empty() {
+            return Err(error(
+                "ITEM-PART-FACE-PLANE-EMPTY",
+                format!("model.segments[{segment_index}].indices"),
+                "item segment contains no Aurora-safe face after post-transform sanitation",
+            ));
+        }
+        segment.indices = retained_indices;
+        if has_surface_ids {
+            segment.face_surface_ids = retained_surface_ids;
+        }
+    }
+    Ok(removed_total)
+}
+
+fn normalize_item_geometry_for_aurora_composer_v2(
+    model: &mut crate::model_ir::AuroraModelIrV1,
+    root_index: usize,
+    composed_root: [f32; 16],
+    target_space_scale_xyz: [f32; 3],
+) -> Result<(), ItemErrorV1> {
+    if model.nodes.len() != 1 {
+        return Err(error(
+            "ITEM-PART-COMPOSER-HIERARCHY-INVALID",
+            "model.nodes",
+            "ModelType 2 output requires one controllerless model root and direct Trimesh children",
+        ));
+    }
+    let root_id = model.nodes[root_index].id;
+    if let Some((segment_index, _)) = model
+        .segments
+        .iter()
+        .enumerate()
+        .find(|(_, segment)| segment.parent_node_id != root_id)
+    {
+        return Err(error(
+            "ITEM-PART-COMPOSER-HIERARCHY-INVALID",
+            format!("model.segments[{segment_index}].parentNodeId"),
+            "every generated Item Trimesh must be a direct child of the model root",
+        ));
+    }
+    if target_space_scale_xyz
+        .iter()
+        .any(|value| !value.is_finite() || *value <= 0.0)
+    {
+        return Err(error(
+            "ITEM-PART-TARGET-SPACE-SCALE-INVALID",
+            "options.targetSpaceScaleXyz",
+            "target-space scale must contain three positive finite components",
+        ));
+    }
+    let columns = [
+        [composed_root[0], composed_root[1], composed_root[2]],
+        [composed_root[4], composed_root[5], composed_root[6]],
+        [composed_root[8], composed_root[9], composed_root[10]],
+    ];
+    let dot = |first: [f32; 3], second: [f32; 3]| {
+        first[0] * second[0] + first[1] * second[1] + first[2] * second[2]
+    };
+    let lengths = columns.map(|column| dot(column, column).sqrt());
+    let determinant = columns[0][0]
+        * (columns[1][1] * columns[2][2] - columns[2][1] * columns[1][2])
+        - columns[1][0] * (columns[0][1] * columns[2][2] - columns[2][1] * columns[0][2])
+        + columns[2][0] * (columns[0][1] * columns[1][2] - columns[1][1] * columns[0][2]);
+    if composed_root.iter().any(|value| !value.is_finite())
+        || lengths.iter().any(|length| (*length - 1.0).abs() > 1.0e-4)
+        || dot(columns[0], columns[1]).abs() > 1.0e-4
+        || dot(columns[0], columns[2]).abs() > 1.0e-4
+        || dot(columns[1], columns[2]).abs() > 1.0e-4
+        || (determinant - 1.0).abs() > 1.0e-4
+    {
+        return Err(error(
+            "ITEM-PART-COMPOSER-NORMALIZATION-NONRIGID",
+            "model.nodes[0].bindLocalMatrix",
+            "Item composer geometry normalization accepts only a finite proper rigid basis after uniform scale is baked",
+        ));
+    }
+    let rotate = |value: [f32; 3]| {
+        [
+            composed_root[0] * value[0] + composed_root[4] * value[1] + composed_root[8] * value[2],
+            composed_root[1] * value[0] + composed_root[5] * value[1] + composed_root[9] * value[2],
+            composed_root[2] * value[0]
+                + composed_root[6] * value[1]
+                + composed_root[10] * value[2],
+        ]
+    };
+    let normalize = |value: [f32; 3]| -> Result<[f32; 3], ItemErrorV1> {
+        let length = dot(value, value).sqrt();
+        if !length.is_finite() || length <= 1.0e-8 {
+            return Err(error(
+                "ITEM-PART-COMPOSER-DIRECTION-INVALID",
+                "model.segments",
+                "rotated normal or tangent has no finite direction",
+            ));
+        }
+        Ok(value.map(|component| component / length))
+    };
+    for segment in &mut model.segments {
+        for position in &mut segment.positions {
+            let rotated = rotate(*position);
+            *position = std::array::from_fn(|axis| rotated[axis] * target_space_scale_xyz[axis]);
+        }
+        for normal in &mut segment.normals {
+            let rotated = rotate(*normal);
+            *normal = normalize(std::array::from_fn(|axis| {
+                rotated[axis] / target_space_scale_xyz[axis]
+            }))?;
+        }
+        if let Some(tangents) = &mut segment.tangents {
+            for (tangent, normal) in tangents.iter_mut().zip(&segment.normals) {
+                let rotated = rotate([tangent[0], tangent[1], tangent[2]]);
+                let scaled =
+                    std::array::from_fn(|axis| rotated[axis] * target_space_scale_xyz[axis]);
+                let projection = dot(scaled, *normal);
+                let orthogonal =
+                    std::array::from_fn(|axis| scaled[axis] - projection * normal[axis]);
+                let normalized = normalize(orthogonal)?;
+                tangent[0] = normalized[0];
+                tangent[1] = normalized[1];
+                tangent[2] = normalized[2];
+            }
+        }
+    }
+    model.nodes[root_index].bind_local_matrix = [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        composed_root[12],
+        composed_root[13],
+        composed_root[14],
+        1.0,
+    ];
+    model.profile_id = "ITEM_PART_AURORA_COMPOSER_V2".to_owned();
+    Ok(())
 }
 
 fn selected_item_scene_material_ids_v1(
@@ -4235,7 +6102,7 @@ fn prepare_meshy_item_part_v1(
             ),
         ));
     }
-    sanitize_meshy_h1_degenerate_triangles_v1(&mut ingest).map_err(|source| {
+    sanitize_meshy_h1_degenerate_triangles_exact_v1(&mut ingest).map_err(|source| {
         error(
             &format!("ITEM-{}", source.code),
             source.path,
@@ -4302,9 +6169,19 @@ fn prepare_meshy_item_part_v1(
         );
     }
     let authored = item_part_rigid_matrix_v1(options.transform)?;
-    model.nodes[root_index].bind_local_matrix =
-        multiply_matrix_v1(authored, model.nodes[root_index].bind_local_matrix);
+    let composed_root = multiply_matrix_v1(authored, model.nodes[root_index].bind_local_matrix);
+    if options.aurora_composer_v2 {
+        normalize_item_geometry_for_aurora_composer_v2(
+            &mut model,
+            root_index,
+            composed_root,
+            options.target_space_scale_xyz,
+        )?;
+    } else {
+        model.nodes[root_index].bind_local_matrix = composed_root;
+    }
 
+    let degenerate_triangle_count_removed = sanitize_item_model_face_planes_v1(&mut model)?;
     let triangle_count = validate_model_triangle_budget_v1(&model).map_err(|source| {
         error(
             &format!("ITEM-{}", source.code),
@@ -4317,6 +6194,7 @@ fn prepare_meshy_item_part_v1(
         model,
         source_node,
         triangle_count,
+        degenerate_triangle_count_removed,
     })
 }
 
@@ -5056,10 +6934,13 @@ fn item_seam_transform_sha256_v1(options: &ItemPartBuildOptionsV2) -> Result<Str
     struct Binding<'a> {
         transform: ItemPartTransformV1,
         source_node: &'a Option<String>,
+        #[serde(skip_serializing_if = "item_is_unit_scale_xyz_v1")]
+        target_space_scale_xyz: [f32; 3],
     }
     let bytes = serde_json::to_vec(&Binding {
         transform: options.transform,
         source_node: &options.source_node,
+        target_space_scale_xyz: options.target_space_scale_xyz,
     })
     .map_err(|_| {
         error(
@@ -5069,6 +6950,2181 @@ fn item_seam_transform_sha256_v1(options: &ItemPartBuildOptionsV2) -> Result<Str
         )
     })?;
     Ok(item_payload_sha256_v1(&bytes))
+}
+
+fn item_fit_bounds_v2(
+    source: ItemFitSourceV1<'_>,
+    transform: ItemPartTransformV1,
+    target_space_scale_xyz: [f32; 3],
+) -> Result<(ItemSeamBoundsV1, usize), ItemErrorV1> {
+    let options = ItemPartBuildInternalOptionsV1 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        transform,
+        source_node: source.source_node.map(str::to_owned),
+        texture_encoding: ItemPartTextureEncodingV1::DirectColor,
+        icon_size: None,
+        icon_projection_bounds: None,
+        weapon_color: None,
+        target_space_scale_xyz,
+        geometry_derived_icon: true,
+        aurora_composer_v2: true,
+    };
+    let prepared = prepare_meshy_item_part_v1(source.source_glb, source.model_resref, &options)?;
+    let triangles = item_seam_model_triangles_v1(&prepared.model)?;
+    let bounds = triangles
+        .iter()
+        .map(|triangle| triangle.bounds)
+        .reduce(item_seam_bounds_union_v1)
+        .ok_or_else(|| {
+            error(
+                "ITEM-FIT-GEOMETRY-EMPTY",
+                source.field,
+                "Item auto-fit requires at least one triangle per source",
+            )
+        })?;
+    Ok((bounds, prepared.triangle_count))
+}
+
+fn item_fit_bounds_v1(
+    source: ItemFitSourceV1<'_>,
+    transform: ItemPartTransformV1,
+) -> Result<(ItemSeamBoundsV1, usize), ItemErrorV1> {
+    item_fit_bounds_v2(source, transform, item_unit_scale_xyz_v1())
+}
+
+fn item_fit_long_axis_v1(bounds: ItemSeamBoundsV1) -> usize {
+    (0..3)
+        .max_by(|&first, &second| {
+            let first_extent = bounds.max[first] - bounds.min[first];
+            let second_extent = bounds.max[second] - bounds.min[second];
+            first_extent
+                .total_cmp(&second_extent)
+                .then_with(|| second.cmp(&first))
+        })
+        .unwrap_or(0)
+}
+
+fn item_fit_axis_rotation_v1(axis: usize) -> [f32; 4] {
+    match axis {
+        0 => [
+            0.0,
+            -std::f32::consts::FRAC_1_SQRT_2,
+            0.0,
+            std::f32::consts::FRAC_1_SQRT_2,
+        ],
+        1 => [
+            std::f32::consts::FRAC_1_SQRT_2,
+            0.0,
+            0.0,
+            std::f32::consts::FRAC_1_SQRT_2,
+        ],
+        _ => [0.0, 0.0, 0.0, 1.0],
+    }
+}
+
+fn item_fit_axis_rotation_to_aurora_y_v2(axis: usize) -> [f32; 4] {
+    match axis {
+        0 => [
+            0.0,
+            0.0,
+            std::f32::consts::FRAC_1_SQRT_2,
+            std::f32::consts::FRAC_1_SQRT_2,
+        ],
+        1 => [0.0, 0.0, 0.0, 1.0],
+        _ => [
+            -std::f32::consts::FRAC_1_SQRT_2,
+            0.0,
+            0.0,
+            std::f32::consts::FRAC_1_SQRT_2,
+        ],
+    }
+}
+
+fn item_fit_options_v1(
+    source_node: Option<&str>,
+    transform: ItemPartTransformV1,
+) -> ItemPartBuildOptionsV2 {
+    item_fit_options_v2(source_node, transform, item_unit_scale_xyz_v1())
+}
+
+fn item_fit_options_v2(
+    source_node: Option<&str>,
+    transform: ItemPartTransformV1,
+    target_space_scale_xyz: [f32; 3],
+) -> ItemPartBuildOptionsV2 {
+    ItemPartBuildOptionsV2 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        transform,
+        source_node: source_node.map(str::to_owned),
+        texture_encoding: ItemPartTextureEncodingV1::DirectColor,
+        icon_size: None,
+        icon_projection_bounds: None,
+        weapon_color: None,
+        target_space_scale_xyz,
+    }
+}
+
+fn item_reference_controller_value_v1<const N: usize>(
+    node: &NodeReport,
+    name: &str,
+    fallback: [f32; N],
+) -> Result<[f32; N], ItemErrorV1> {
+    let Some(controller) = node.controllers.iter().find(|controller| {
+        controller
+            .controller_name
+            .as_deref()
+            .is_some_and(|value| value.eq_ignore_ascii_case(name))
+    }) else {
+        return Ok(fallback);
+    };
+    let values = controller.values.first().ok_or_else(|| {
+        error(
+            "ITEM-REFERENCE-CONTROLLER-EMPTY",
+            format!("nodes.{}.controllers.{name}", node.name),
+            "reference controller has no decoded value row",
+        )
+    })?;
+    if values.len() < N || values[..N].iter().any(|value| !value.is_finite()) {
+        return Err(error(
+            "ITEM-REFERENCE-CONTROLLER-INVALID",
+            format!("nodes.{}.controllers.{name}", node.name),
+            "reference controller does not contain the required finite values",
+        ));
+    }
+    Ok(std::array::from_fn(|index| values[index]))
+}
+
+#[derive(Clone, Debug)]
+struct ItemReferenceMdlGeometryV1 {
+    controller_node_name: String,
+    controller_translation: [f32; 3],
+    controller_rotation_xyzw: [f32; 4],
+    bounds_min: [f32; 3],
+    bounds_max: [f32; 3],
+}
+
+fn inspect_item_reference_mdl_geometry_v1(
+    inspection: &InspectionReport,
+) -> Result<ItemReferenceMdlGeometryV1, ItemErrorV1> {
+    fn walk(
+        node: &NodeReport,
+        parent_matrix: [f32; 16],
+        bounds_min: &mut [f32; 3],
+        bounds_max: &mut [f32; 3],
+        evidence: &mut Option<(String, [f32; 3], [f32; 4])>,
+        vertex_count: &mut usize,
+    ) -> Result<(), ItemErrorV1> {
+        let translation = item_reference_controller_value_v1(node, "position", [0.0; 3])?;
+        let rotation =
+            item_reference_controller_value_v1(node, "orientation", [0.0, 0.0, 0.0, 1.0])?;
+        let local_matrix = item_part_rigid_matrix_v1(ItemPartTransformV1 {
+            translation,
+            rotation_xyzw: rotation,
+            uniform_scale: 1.0,
+            pivot: [0.0; 3],
+        })?;
+        let world_matrix = multiply_matrix_v1(parent_matrix, local_matrix);
+        if let Some(mesh) = &node.mesh {
+            if evidence.is_none() {
+                *evidence = Some((node.name.clone(), translation, rotation));
+            }
+            for vertex in &mesh.vertices {
+                let point = transform_point_v1(world_matrix, [vertex.x, vertex.y, vertex.z]);
+                if point.iter().any(|value| !value.is_finite()) {
+                    return Err(error(
+                        "ITEM-REFERENCE-MDL-BOUNDS-INVALID",
+                        format!("nodes.{}.mesh.vertices", node.name),
+                        "reference model contains a non-finite transformed vertex",
+                    ));
+                }
+                for axis in 0..3 {
+                    bounds_min[axis] = bounds_min[axis].min(point[axis]);
+                    bounds_max[axis] = bounds_max[axis].max(point[axis]);
+                }
+                *vertex_count += 1;
+            }
+        }
+        for child in &node.children {
+            walk(
+                child,
+                world_matrix,
+                bounds_min,
+                bounds_max,
+                evidence,
+                vertex_count,
+            )?;
+        }
+        Ok(())
+    }
+
+    let identity = [
+        1.0, 0.0, 0.0, 0.0, // X column
+        0.0, 1.0, 0.0, 0.0, // Y column
+        0.0, 0.0, 1.0, 0.0, // Z column
+        0.0, 0.0, 0.0, 1.0, // translation/homogeneous column
+    ];
+    let mut bounds_min = [f32::INFINITY; 3];
+    let mut bounds_max = [f32::NEG_INFINITY; 3];
+    let mut evidence = None;
+    let mut vertex_count = 0_usize;
+    for root in &inspection.node_tree.roots {
+        walk(
+            root,
+            identity,
+            &mut bounds_min,
+            &mut bounds_max,
+            &mut evidence,
+            &mut vertex_count,
+        )?;
+    }
+    let (controller_node_name, controller_translation, controller_rotation_xyzw) = evidence
+        .ok_or_else(|| {
+            error(
+                "ITEM-REFERENCE-MDL-GEOMETRY-EMPTY",
+                "mdl.nodeTree",
+                "reference Item model has no mesh node",
+            )
+        })?;
+    if vertex_count == 0
+        || (0..3).any(|axis| {
+            !bounds_min[axis].is_finite()
+                || !bounds_max[axis].is_finite()
+                || bounds_max[axis] <= bounds_min[axis]
+        })
+    {
+        return Err(error(
+            "ITEM-REFERENCE-MDL-BOUNDS-INVALID",
+            "mdl.nodeTree",
+            "reference Item model must have finite, positive transformed mesh bounds",
+        ));
+    }
+    Ok(ItemReferenceMdlGeometryV1 {
+        controller_node_name,
+        controller_translation,
+        controller_rotation_xyzw,
+        bounds_min,
+        bounds_max,
+    })
+}
+
+fn item_attachment_route_v1(base_item: &ItemBaseItemV1) -> ItemAttachmentRouteV1 {
+    if base_item.model_type == 2 && base_item.equipable_slots & (0x10 | 0x20) != 0 {
+        ItemAttachmentRouteV1::Hand
+    } else if base_item.model_type == 3 {
+        ItemAttachmentRouteV1::Capart
+    } else if base_item.base_item == ITEM_BASEITEM_CLOAK_V1
+        || base_item.capability.composition_profile == ItemCompositionProfileV1::CloakModel
+    {
+        ItemAttachmentRouteV1::Cloak
+    } else {
+        ItemAttachmentRouteV1::None
+    }
+}
+
+pub fn item_attachment_profile_sha256_v1(
+    profile: &ItemAttachmentProfileV1,
+) -> Result<String, ItemErrorV1> {
+    let mut identity = profile.clone();
+    identity.profile_sha256.clear();
+    let bytes = serde_json::to_vec(&identity).map_err(|_| {
+        error(
+            "ITEM-REFERENCE-PROFILE-SERIALIZE-FAILED",
+            "profile",
+            "Item attachment profile could not be serialized",
+        )
+    })?;
+    Ok(item_payload_sha256_v1(&bytes))
+}
+
+fn validate_item_attachment_profile_v1(
+    profile: &ItemAttachmentProfileV1,
+) -> Result<(), ItemErrorV1> {
+    let mut axes = [profile.axial_axis, profile.width_axis, profile.depth_axis];
+    axes.sort_unstable();
+    if profile.schema_version != ITEM_SCHEMA_VERSION_V1
+        || profile.algorithm != "AURORA_ITEM_REFERENCE_PROFILE_V1"
+        || profile.status != "PASSED"
+        || axes != [0, 1, 2]
+        || !valid_lowercase_sha256_v1(&profile.identity.resource_context_sha256)
+        || !valid_lowercase_sha256_v1(&profile.identity.baseitems_sha256)
+        || !valid_lowercase_sha256_v1(&profile.profile_sha256)
+        || profile.identity.schema_version != ITEM_SCHEMA_VERSION_V1
+        || profile.identity.item_class.trim().is_empty()
+        || profile.identity.reference_kind.trim().is_empty()
+        || profile.identity.reference_id.trim().is_empty()
+        || profile.slots.is_empty()
+    {
+        return Err(error(
+            "ITEM-REFERENCE-PROFILE-INVALID",
+            "profile",
+            "Item attachment profile identity, axes, slots or hashes are invalid",
+        ));
+    }
+    for (index, slot) in profile.slots.iter().enumerate() {
+        if slot.field.trim().is_empty()
+            || slot.label.trim().is_empty()
+            || slot.token.trim().is_empty()
+            || slot.controller_node_name.trim().is_empty()
+            || !valid_lowercase_sha256_v1(&slot.model_sha256)
+            || (0..3).any(|axis| {
+                !slot.bounds_min[axis].is_finite()
+                    || !slot.bounds_max[axis].is_finite()
+                    || slot.bounds_max[axis] <= slot.bounds_min[axis]
+            })
+        {
+            return Err(error(
+                "ITEM-REFERENCE-PROFILE-SLOT-INVALID",
+                format!("profile.slots[{index}]"),
+                "reference slot binding or transformed bounds are invalid",
+            ));
+        }
+        validate_resref(
+            &slot.model_resref,
+            &format!("profile.slots[{index}].modelResref"),
+        )?;
+    }
+    if item_attachment_profile_sha256_v1(profile)? != profile.profile_sha256 {
+        return Err(error(
+            "ITEM-REFERENCE-PROFILE-HASH-MISMATCH",
+            "profile.profileSha256",
+            "Item attachment profile hash does not match its semantic payload",
+        ));
+    }
+    Ok(())
+}
+
+/// Extracts the real model-space slot frames from exact reference MDLs. The
+/// resulting profile binds BaseItem semantics, resource-context identity and
+/// byte-level model provenance into one immutable fitting contract.
+pub fn build_item_attachment_profile_v1(
+    base_item: &ItemBaseItemV1,
+    resource_context_sha256: &str,
+    baseitems_sha256: &str,
+    reference_kind: &str,
+    reference_id: &str,
+    inputs: &[ItemReferenceMdlInputV1<'_>],
+) -> Result<ItemAttachmentProfileV1, ItemErrorV1> {
+    if !valid_lowercase_sha256_v1(resource_context_sha256)
+        || !valid_lowercase_sha256_v1(baseitems_sha256)
+        || reference_kind.trim().is_empty()
+        || reference_id.trim().is_empty()
+        || inputs.len() != base_item.part_slots.len()
+        || inputs.is_empty()
+    {
+        return Err(error(
+            "ITEM-REFERENCE-PROFILE-INPUT-INVALID",
+            "inputs",
+            "profile construction requires exact context/baseitems hashes, reference identity and one MDL per BaseItem slot",
+        ));
+    }
+    let mut slots = Vec::with_capacity(inputs.len());
+    for (index, (input, expected)) in inputs.iter().zip(&base_item.part_slots).enumerate() {
+        if !input.field.eq_ignore_ascii_case(&expected.field) {
+            return Err(error(
+                "ITEM-REFERENCE-PROFILE-SLOT-ORDER",
+                format!("inputs[{index}].field"),
+                format!("expected ordered BaseItem field {}", expected.field),
+            ));
+        }
+        validate_resref(input.model_resref, &format!("inputs[{index}].modelResref"))?;
+        let inspection = inspect_binary_mdl(input.mdl_payload).map_err(|source| {
+            error(
+                "ITEM-REFERENCE-MDL-READBACK",
+                format!("inputs[{index}].mdlPayload"),
+                format!("{} at byte {}", source.code, source.offset),
+            )
+        })?;
+        if !inspection
+            .model
+            .name
+            .eq_ignore_ascii_case(input.model_resref)
+            || !inspection.diagnostics.is_empty()
+            || !inspection.unsupported.is_empty()
+        {
+            return Err(error(
+                "ITEM-REFERENCE-MDL-IDENTITY",
+                format!("inputs[{index}]"),
+                "reference MDL name or semantic readback does not match its declared resref",
+            ));
+        }
+        let geometry = inspect_item_reference_mdl_geometry_v1(&inspection)?;
+        slots.push(ItemReferenceSlotFrameV1 {
+            field: expected.field.clone(),
+            label: expected.label.clone(),
+            token: expected.token.clone().ok_or_else(|| {
+                error(
+                    "ITEM-REFERENCE-PROFILE-TOKEN-MISSING",
+                    format!("baseItem.partSlots[{index}].token"),
+                    "reference-based model slots require a filename token",
+                )
+            })?,
+            model_resref: input.model_resref.to_ascii_lowercase(),
+            model_sha256: item_payload_sha256_v1(input.mdl_payload),
+            controller_node_name: geometry.controller_node_name,
+            controller_translation: geometry.controller_translation,
+            controller_rotation_xyzw: geometry.controller_rotation_xyzw,
+            bounds_min: geometry.bounds_min,
+            bounds_max: geometry.bounds_max,
+            allow_axial_extension_at_min: false,
+            allow_axial_extension_at_max: base_item.model_type == 2 && index + 1 == inputs.len(),
+        });
+    }
+    let common_origin = [0.0_f32; 3];
+    let origin_slots = slots
+        .iter()
+        .filter(|slot| {
+            (0..3).all(|axis| {
+                slot.bounds_min[axis] <= common_origin[axis] + 1.0e-5
+                    && slot.bounds_max[axis] >= common_origin[axis] - 1.0e-5
+            })
+        })
+        .collect::<Vec<_>>();
+    if origin_slots.is_empty() {
+        return Err(error(
+            "ITEM-REFERENCE-ORIGIN-OUTSIDE-PARTS",
+            "profile.commonOrigin",
+            "no exact reference slot contains the Aurora model origin",
+        ));
+    }
+    let attachment_zone_min = std::array::from_fn(|axis| {
+        origin_slots
+            .iter()
+            .map(|slot| slot.bounds_min[axis])
+            .fold(f32::INFINITY, f32::min)
+    });
+    let attachment_zone_max = std::array::from_fn(|axis| {
+        origin_slots
+            .iter()
+            .map(|slot| slot.bounds_max[axis])
+            .fold(f32::NEG_INFINITY, f32::max)
+    });
+    let mut profile = ItemAttachmentProfileV1 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        algorithm: "AURORA_ITEM_REFERENCE_PROFILE_V1".to_owned(),
+        status: "PASSED".to_owned(),
+        identity: ItemReferenceProfileIdentityV1 {
+            schema_version: ITEM_SCHEMA_VERSION_V1,
+            resource_context_sha256: resource_context_sha256.to_owned(),
+            baseitems_sha256: baseitems_sha256.to_owned(),
+            base_item: base_item.base_item,
+            item_class: base_item.item_class.clone(),
+            model_type: base_item.model_type,
+            reference_kind: reference_kind.trim().to_owned(),
+            reference_id: reference_id.trim().to_owned(),
+        },
+        attachment_route: item_attachment_route_v1(base_item),
+        equipable_slots: base_item.equipable_slots,
+        common_origin,
+        axial_axis: 1,
+        width_axis: 2,
+        depth_axis: 0,
+        attachment_zone_min,
+        attachment_zone_max,
+        attachment_evidence: "ORIGIN_CONTAINING_REFERENCE_PARTS_V1".to_owned(),
+        slots,
+        profile_sha256: String::new(),
+    };
+    profile.profile_sha256 = item_attachment_profile_sha256_v1(&profile)?;
+    validate_item_attachment_profile_v1(&profile)?;
+    Ok(profile)
+}
+
+/// Proposes one deterministic rigid transform per ordered Meshy Item slot.
+/// The three-part envelope is derived from the Aurora Bottom/Middle/Top
+/// composer itself, never from a Weapon/Shield usage category. The proposal is
+/// accepted only when the existing triangle-surface seam measurement reports
+/// every adjacent pair as TOUCHING and no non-adjacent pair overlaps.
+pub fn fit_meshy_item_parts_v1(
+    sources: &[ItemFitSourceV1<'_>],
+    tolerance: f32,
+) -> Result<ItemFitReportV1, ItemErrorV1> {
+    let target_lengths = if sources.len() == 1 {
+        vec![1.0]
+    } else {
+        vec![0.30, 0.10, 0.60]
+    };
+    fit_meshy_item_parts_with_target_lengths_v2(sources, tolerance, &target_lengths)
+}
+
+/// Fits the ordered Aurora slots against an explicit axial-length contract.
+/// Values are absolute composer-space lengths, so the caller controls both
+/// the total item length and the Bottom/Middle/Top proportions. This legacy
+/// +Z route is retained only so the immutable V3 lineage remains reproducible.
+pub fn fit_meshy_item_parts_with_target_lengths_v2(
+    sources: &[ItemFitSourceV1<'_>],
+    tolerance: f32,
+    target_lengths: &[f32],
+) -> Result<ItemFitReportV1, ItemErrorV1> {
+    fit_meshy_item_parts_on_target_axis_v3(
+        sources,
+        tolerance,
+        target_lengths,
+        2,
+        "ORDERED_SLOT_AXIAL_ENVELOPE_SEAM_GATE_V1",
+        false,
+        None,
+    )
+}
+
+/// Proposes deterministic Bottom/Middle/Top transforms in the +Y axial
+/// convention used by Aurora's ModelType 2 weapon-part composer.
+pub fn fit_meshy_item_parts_aurora_v3(
+    sources: &[ItemFitSourceV1<'_>],
+    tolerance: f32,
+) -> Result<ItemFitReportV1, ItemErrorV1> {
+    let target_lengths = if sources.len() == 1 {
+        vec![1.0]
+    } else {
+        vec![0.30, 0.10, 0.60]
+    };
+    fit_meshy_item_parts_with_target_lengths_aurora_v3(sources, tolerance, &target_lengths)
+}
+
+/// Fits ordered Aurora Item slots against explicit composer-space lengths and
+/// binds the resulting report to Aurora's +Y axial convention.
+pub fn fit_meshy_item_parts_with_target_lengths_aurora_v3(
+    sources: &[ItemFitSourceV1<'_>],
+    tolerance: f32,
+    target_lengths: &[f32],
+) -> Result<ItemFitReportV1, ItemErrorV1> {
+    fit_meshy_item_parts_on_target_axis_v3(
+        sources,
+        tolerance,
+        target_lengths,
+        1,
+        "ORDERED_SLOT_AXIAL_ENVELOPE_SEAM_GATE_V2_AURORA_Y",
+        true,
+        None,
+    )
+}
+
+fn item_fit_matrix_determinant_v3(columns: [[f32; 3]; 3]) -> f32 {
+    columns[0][0] * (columns[1][1] * columns[2][2] - columns[2][1] * columns[1][2])
+        - columns[1][0] * (columns[0][1] * columns[2][2] - columns[2][1] * columns[0][2])
+        + columns[2][0] * (columns[0][1] * columns[1][2] - columns[1][1] * columns[0][2])
+}
+
+fn item_fit_quaternion_from_columns_v3(columns: [[f32; 3]; 3]) -> [f32; 4] {
+    let r00 = columns[0][0];
+    let r01 = columns[1][0];
+    let r02 = columns[2][0];
+    let r10 = columns[0][1];
+    let r11 = columns[1][1];
+    let r12 = columns[2][1];
+    let r20 = columns[0][2];
+    let r21 = columns[1][2];
+    let r22 = columns[2][2];
+    let trace = r00 + r11 + r22;
+    let [x, y, z, w] = if trace > 0.0 {
+        let s = (trace + 1.0).sqrt() * 2.0;
+        [(r21 - r12) / s, (r02 - r20) / s, (r10 - r01) / s, s * 0.25]
+    } else if r00 > r11 && r00 > r22 {
+        let s = (1.0 + r00 - r11 - r22).sqrt() * 2.0;
+        [s * 0.25, (r01 + r10) / s, (r02 + r20) / s, (r21 - r12) / s]
+    } else if r11 > r22 {
+        let s = (1.0 + r11 - r00 - r22).sqrt() * 2.0;
+        [(r01 + r10) / s, s * 0.25, (r12 + r21) / s, (r02 - r20) / s]
+    } else {
+        let s = (1.0 + r22 - r00 - r11).sqrt() * 2.0;
+        [(r02 + r20) / s, (r12 + r21) / s, s * 0.25, (r10 - r01) / s]
+    };
+    let norm = (x * x + y * y + z * z + w * w).sqrt();
+    [x / norm, y / norm, z / norm, w / norm]
+}
+
+fn resolve_item_orientation_frame_v3(
+    sources: &[ItemFitSourceV1<'_>],
+) -> Result<(ItemOrientationFrameV3, [f32; 4]), ItemErrorV1> {
+    let identities = sources
+        .iter()
+        .copied()
+        .map(|source| item_fit_bounds_v1(source, ItemPartTransformV1::default()))
+        .collect::<Result<Vec<_>, _>>()?;
+    let long_axes = identities
+        .iter()
+        .map(|(bounds, _)| item_fit_long_axis_v1(*bounds))
+        .collect::<Vec<_>>();
+    let source_axial_axis = if sources.len() == 1 || long_axes[0] == long_axes[sources.len() - 1] {
+        long_axes[0]
+    } else {
+        let mut counts = [0_u8; 3];
+        for axis in &long_axes {
+            counts[*axis] += 1;
+        }
+        (0..3)
+            .max_by_key(|&axis| (counts[axis], std::cmp::Reverse(axis)))
+            .unwrap_or(0)
+    };
+    let transverse_axes = (0..3)
+        .filter(|axis| *axis != source_axial_axis)
+        .collect::<Vec<_>>();
+    let mut scores = [0.0_f64; 3];
+    for (bounds, _) in &identities {
+        let axial_extent = bounds.max[source_axial_axis] - bounds.min[source_axial_axis];
+        if !axial_extent.is_finite() || axial_extent <= 1.0e-9 {
+            return Err(error(
+                "ITEM-FRAME-AXIS-DEGENERATE",
+                "sources",
+                "full Item orientation frame requires a positive shared axial extent",
+            ));
+        }
+        for axis in &transverse_axes {
+            scores[*axis] += (bounds.max[*axis] - bounds.min[*axis]) / axial_extent;
+        }
+    }
+    let source_width_axis = transverse_axes
+        .iter()
+        .copied()
+        .max_by(|first, second| scores[*first].total_cmp(&scores[*second]))
+        .unwrap_or(0);
+    let source_depth_axis = transverse_axes
+        .iter()
+        .copied()
+        .find(|axis| *axis != source_width_axis)
+        .unwrap_or(0);
+    let width_to_depth_ratio = (scores[source_width_axis] / scores[source_depth_axis]) as f32;
+    if !width_to_depth_ratio.is_finite() || width_to_depth_ratio <= 0.0 {
+        return Err(error(
+            "ITEM-FRAME-TRANSVERSE-DEGENERATE",
+            "sources",
+            "full Item orientation frame requires two finite transverse extents",
+        ));
+    }
+
+    let mut columns = [[0.0_f32; 3]; 3];
+    columns[source_axial_axis] = [0.0, 1.0, 0.0];
+    columns[source_width_axis] = [0.0, 0.0, 1.0];
+    columns[source_depth_axis] = [1.0, 0.0, 0.0];
+    if item_fit_matrix_determinant_v3(columns) < 0.0 {
+        columns[source_depth_axis] = [-1.0, 0.0, 0.0];
+    }
+    let determinant = item_fit_matrix_determinant_v3(columns);
+    let status = if width_to_depth_ratio >= 1.10 {
+        "PASSED"
+    } else {
+        "MANUAL_REQUIRED"
+    };
+    Ok((
+        ItemOrientationFrameV3 {
+            source_axial_axis: source_axial_axis as u8,
+            source_width_axis: source_width_axis as u8,
+            source_depth_axis: source_depth_axis as u8,
+            target_axial_axis: 1,
+            target_width_axis: 2,
+            target_depth_axis: 0,
+            width_to_depth_ratio,
+            handedness_determinant: determinant,
+            evidence: "GROUP_NORMALIZED_TRANSVERSE_EXTENTS_WITH_PROPER_HANDEDNESS_V1".to_owned(),
+            status: status.to_owned(),
+        },
+        item_fit_quaternion_from_columns_v3(columns),
+    ))
+}
+
+/// Fits ModelType 2 parts in Aurora +Y space and gives every adjacent pair a
+/// small, explicit axial connector overlap. Retail weapon families use such
+/// overlap to hide seams; a tolerance-only positive gap is not accepted.
+pub fn fit_meshy_item_parts_with_target_lengths_aurora_v4(
+    sources: &[ItemFitSourceV1<'_>],
+    tolerance: f32,
+    target_lengths: &[f32],
+) -> Result<ItemFitReportV2, ItemErrorV1> {
+    let legacy =
+        fit_meshy_item_parts_with_target_lengths_aurora_v3(sources, tolerance, target_lengths)?;
+    finish_item_fit_with_connector_overlap_v2(
+        sources,
+        tolerance,
+        target_lengths,
+        legacy,
+        "ITEM_MODELTYPE2_CONNECTOR_OVERLAP_FIT_V3_AURORA_Y",
+    )
+}
+
+fn finish_item_fit_with_connector_overlap_v2(
+    sources: &[ItemFitSourceV1<'_>],
+    tolerance: f32,
+    target_lengths: &[f32],
+    legacy: ItemFitReportV1,
+    algorithm: &str,
+) -> Result<ItemFitReportV2, ItemErrorV1> {
+    let mut parts = legacy
+        .parts
+        .into_iter()
+        .map(|part| ItemFitPartV2 {
+            field: part.field,
+            source_sha256: part.source_sha256,
+            source_node: part.source_node,
+            triangle_count: part.triangle_count,
+            input_bounds_min: part.input_bounds_min,
+            input_bounds_max: part.input_bounds_max,
+            axial_source_axis: part.axial_source_axis,
+            axial_target_axis: 1,
+            target_axial_length: part.target_axial_length,
+            transform: part.transform,
+            target_space_scale_xyz: item_unit_scale_xyz_v1(),
+            transform_sha256: part.transform_sha256,
+            output_bounds_min: part.output_bounds_min,
+            output_bounds_max: part.output_bounds_max,
+            bottom_connector: None,
+            top_connector: None,
+        })
+        .collect::<Vec<_>>();
+    let mut connector_overlaps = Vec::with_capacity(parts.len().saturating_sub(1));
+    let mut cursor = parts
+        .first()
+        .map(|part| part.output_bounds_min[1])
+        .unwrap_or(0.0);
+    for index in 0..parts.len() {
+        let overlap = if index == 0 {
+            0.0
+        } else {
+            (target_lengths[index - 1].min(target_lengths[index]) * 0.10).min(0.01)
+        };
+        let desired_min = if index == 0 { cursor } else { cursor - overlap };
+        let shift = desired_min - parts[index].output_bounds_min[1];
+        parts[index].transform.translation[1] += shift;
+        parts[index].output_bounds_min[1] += shift;
+        parts[index].output_bounds_max[1] += shift;
+        let options = item_fit_options_v1(sources[index].source_node, parts[index].transform);
+        parts[index].transform_sha256 = item_seam_transform_sha256_v1(&options)?;
+        cursor = parts[index].output_bounds_max[1];
+        if index > 0 {
+            connector_overlaps.push(overlap);
+        }
+    }
+    for index in 0..parts.len() {
+        let transverse_center = [
+            (parts[index].output_bounds_min[0] + parts[index].output_bounds_max[0]) * 0.5,
+            0.0,
+            (parts[index].output_bounds_min[2] + parts[index].output_bounds_max[2]) * 0.5,
+        ];
+        if index > 0 {
+            parts[index].bottom_connector = Some(ItemConnectorAnchorV2 {
+                kind: "BOTTOM".to_owned(),
+                axial_axis: 1,
+                position: [
+                    transverse_center[0],
+                    parts[index].output_bounds_min[1],
+                    transverse_center[2],
+                ],
+            });
+        }
+        if index + 1 < parts.len() {
+            parts[index].top_connector = Some(ItemConnectorAnchorV2 {
+                kind: "TOP".to_owned(),
+                axial_axis: 1,
+                position: [
+                    transverse_center[0],
+                    parts[index].output_bounds_max[1],
+                    transverse_center[2],
+                ],
+            });
+        }
+    }
+    let options = parts
+        .iter()
+        .zip(sources)
+        .map(|(part, source)| item_fit_options_v1(source.source_node, part.transform))
+        .collect::<Vec<_>>();
+    let mut adjacent_seams = Vec::with_capacity(parts.len().saturating_sub(1));
+    let mut adjacent_connectors = Vec::with_capacity(parts.len().saturating_sub(1));
+    for index in 0..parts.len().saturating_sub(1) {
+        let seam = measure_meshy_item_seam_v1(
+            sources[index].field,
+            sources[index].source_glb,
+            sources[index].model_resref,
+            &options[index],
+            sources[index + 1].field,
+            sources[index + 1].source_glb,
+            sources[index + 1].model_resref,
+            &options[index + 1],
+            tolerance,
+        )?;
+        let axial_overlap =
+            parts[index].output_bounds_max[1] - parts[index + 1].output_bounds_min[1];
+        let designed = connector_overlaps[index];
+        let required_min_overlap = designed * 0.75;
+        let required_max_overlap = designed * 1.25;
+        let overlapping = axial_overlap >= required_min_overlap
+            && axial_overlap <= required_max_overlap
+            && seam.status != "GAP";
+        adjacent_connectors.push(ItemAdjacentConnectorV2 {
+            first_field: parts[index].field.clone(),
+            first_connector: "TOP".to_owned(),
+            second_field: parts[index + 1].field.clone(),
+            second_connector: "BOTTOM".to_owned(),
+            axial_axis: 1,
+            axial_overlap,
+            required_min_overlap,
+            required_max_overlap,
+            surface_status: seam.status.clone(),
+            status: if overlapping { "OVERLAPPING" } else { "FAILED" }.to_owned(),
+        });
+        adjacent_seams.push(seam);
+    }
+    let mut non_adjacent_measurements = Vec::new();
+    for first in 0..sources.len() {
+        for second in first + 2..sources.len() {
+            non_adjacent_measurements.push(measure_meshy_item_seam_v1(
+                sources[first].field,
+                sources[first].source_glb,
+                sources[first].model_resref,
+                &options[first],
+                sources[second].field,
+                sources[second].source_glb,
+                sources[second].model_resref,
+                &options[second],
+                tolerance,
+            )?);
+        }
+    }
+    let passed = adjacent_connectors
+        .iter()
+        .all(|connector| connector.status == "OVERLAPPING")
+        && non_adjacent_measurements
+            .iter()
+            .all(|measurement| !measurement.overlap);
+    let mut report = ItemFitReportV2 {
+        schema_version: 2,
+        algorithm: algorithm.to_owned(),
+        status: if passed { "PASSED" } else { "MANUAL_REQUIRED" }.to_owned(),
+        tolerance,
+        iterations: 1,
+        parts,
+        adjacent_seams,
+        adjacent_connectors,
+        non_adjacent_measurements,
+        solution_sha256: String::new(),
+    };
+    let bytes = item_fit_report_v2_legacy_hash_bytes_v1(&report)?;
+    report.solution_sha256 = item_payload_sha256_v1(&bytes);
+    Ok(report)
+}
+
+/// Resolves a complete proper Item basis. Aurora's modular Item convention is
+/// axial +Y, broad width Z and front/depth X. Unlike V4 this function does not
+/// leave the transverse roll unconstrained after mapping the longest axis.
+pub fn fit_meshy_item_parts_with_target_lengths_aurora_v5(
+    sources: &[ItemFitSourceV1<'_>],
+    tolerance: f32,
+    target_lengths: &[f32],
+) -> Result<ItemFitReportV3, ItemErrorV1> {
+    let (orientation_frame, rotation) = resolve_item_orientation_frame_v3(sources)?;
+    let legacy = fit_meshy_item_parts_on_target_axis_v3(
+        sources,
+        tolerance,
+        target_lengths,
+        1,
+        "ORDERED_SLOT_FULL_FRAME_SEAM_GATE_V3_AURORA_YZX",
+        true,
+        Some(rotation),
+    )?;
+    let fitted = finish_item_fit_with_connector_overlap_v2(
+        sources,
+        tolerance,
+        target_lengths,
+        legacy,
+        "ITEM_MODELTYPE2_FULL_FRAME_CONNECTOR_FIT_V4_AURORA_YZX",
+    )?;
+    let passed = fitted.status == "PASSED" && orientation_frame.status == "PASSED";
+    let mut report = ItemFitReportV3 {
+        schema_version: 3,
+        algorithm: "ITEM_MODELTYPE2_FULL_FRAME_CONNECTOR_FIT_V4_AURORA_YZX".to_owned(),
+        status: if passed { "PASSED" } else { "MANUAL_REQUIRED" }.to_owned(),
+        tolerance: fitted.tolerance,
+        iterations: fitted.iterations,
+        orientation_frame,
+        parts: fitted.parts,
+        adjacent_seams: fitted.adjacent_seams,
+        adjacent_connectors: fitted.adjacent_connectors,
+        non_adjacent_measurements: fitted.non_adjacent_measurements,
+        solution_sha256: String::new(),
+    };
+    let bytes = item_fit_report_v3_legacy_hash_bytes_v1(&report)?;
+    report.solution_sha256 = item_payload_sha256_v1(&bytes);
+    validate_item_fit_report_v3(&report)?;
+    Ok(report)
+}
+
+/// Fits generated parts into exact model-space frames extracted from a
+/// selected Aurora reference Item. This replaces the origin-zero cursor used
+/// by V1-V3 and therefore preserves the reference grip/attachment zone.
+pub fn fit_meshy_item_parts_to_attachment_profile_v1(
+    sources: &[ItemFitSourceV1<'_>],
+    tolerance: f32,
+    profile: &ItemAttachmentProfileV1,
+) -> Result<ItemFitReportV4, ItemErrorV1> {
+    fit_meshy_item_parts_to_attachment_profile_with_axial_scales_v1(
+        sources,
+        tolerance,
+        profile,
+        &vec![1.0; sources.len()],
+    )
+}
+
+/// Fits generated parts into an Aurora reference Item while allowing explicit,
+/// reference-relative axial scaling only on slot ends that the extracted
+/// profile marks as extensible. The non-extensible connector end remains
+/// anchored, so a longer blade cannot move the grip or break the adjacent slot.
+pub fn fit_meshy_item_parts_to_attachment_profile_with_axial_scales_v1(
+    sources: &[ItemFitSourceV1<'_>],
+    tolerance: f32,
+    profile: &ItemAttachmentProfileV1,
+    axial_scale_factors: &[f32],
+) -> Result<ItemFitReportV4, ItemErrorV1> {
+    validate_item_attachment_profile_v1(profile)?;
+    if profile.axial_axis != 1 || profile.width_axis != 2 || profile.depth_axis != 0 {
+        return Err(error(
+            "ITEM-FIT-REFERENCE-FRAME-UNSUPPORTED",
+            "profile",
+            "the current modular Item fitter requires the Aurora Y axial, Z width, X depth frame",
+        ));
+    }
+    if sources.len() != profile.slots.len() || !matches!(sources.len(), 1 | 3) {
+        return Err(error(
+            "ITEM-FIT-REFERENCE-SLOT-COUNT",
+            "sources",
+            "generated sources must match the complete ordered reference slot set",
+        ));
+    }
+    if axial_scale_factors.len() != sources.len()
+        || axial_scale_factors
+            .iter()
+            .any(|value| !value.is_finite() || !(0.5..=2.0).contains(value))
+    {
+        return Err(error(
+            "ITEM-FIT-REFERENCE-SCALE-INVALID",
+            "axialScaleFactors",
+            "reference-relative axial scales must contain one finite value from 0.5 through 2.0 per ordered slot",
+        ));
+    }
+    if !tolerance.is_finite() || tolerance < 0.0 {
+        return Err(error(
+            "ITEM-FIT-TOLERANCE-INVALID",
+            "tolerance",
+            "Item fit tolerance must be finite and non-negative",
+        ));
+    }
+    for (index, (source, slot)) in sources.iter().zip(&profile.slots).enumerate() {
+        if !source.field.eq_ignore_ascii_case(&slot.field) {
+            return Err(error(
+                "ITEM-FIT-REFERENCE-SLOT-ORDER",
+                format!("sources[{index}].field"),
+                format!("expected reference field {}", slot.field),
+            ));
+        }
+        validate_resref(
+            source.model_resref,
+            &format!("sources[{index}].modelResref"),
+        )?;
+        if (axial_scale_factors[index] - 1.0).abs() > 1.0e-6
+            && !slot.allow_axial_extension_at_min
+            && !slot.allow_axial_extension_at_max
+        {
+            return Err(error(
+                "ITEM-FIT-REFERENCE-SCALE-NOT-ALLOWED",
+                format!("axialScaleFactors[{index}]"),
+                format!(
+                    "{} is locked by the selected Aurora reference slot and cannot be scaled independently",
+                    slot.label,
+                ),
+            ));
+        }
+    }
+
+    let (orientation_frame, rotation) = resolve_item_orientation_frame_v3(sources)?;
+    let identities = sources
+        .iter()
+        .copied()
+        .map(|source| item_fit_bounds_v1(source, ItemPartTransformV1::default()))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut parts = Vec::with_capacity(sources.len());
+    let mut options = Vec::with_capacity(sources.len());
+    for (index, ((source, slot), (identity_bounds, triangle_count))) in sources
+        .iter()
+        .copied()
+        .zip(&profile.slots)
+        .zip(&identities)
+        .enumerate()
+    {
+        let rotation_only = ItemPartTransformV1 {
+            translation: [0.0; 3],
+            rotation_xyzw: rotation,
+            uniform_scale: 1.0,
+            pivot: [0.0; 3],
+        };
+        let rotated_unscaled = item_fit_bounds_v1(source, rotation_only)?.0;
+        let reference_axial_length = slot.bounds_max[1] - slot.bounds_min[1];
+        let target_axial_length = reference_axial_length * axial_scale_factors[index];
+        let source_axial_length = rotated_unscaled.max[1] - rotated_unscaled.min[1];
+        if !source_axial_length.is_finite() || source_axial_length <= 1.0e-9 {
+            return Err(error(
+                "ITEM-FIT-REFERENCE-AXIS-DEGENERATE",
+                format!("sources[{index}]"),
+                "generated source has no positive extent on the resolved axial frame",
+            ));
+        }
+        let base_transform = ItemPartTransformV1 {
+            uniform_scale: (f64::from(target_axial_length) / source_axial_length) as f32,
+            ..rotation_only
+        };
+        let axial_scaled_bounds = item_fit_bounds_v1(source, base_transform)?.0;
+        let mut transverse_scale = 1.0_f64;
+        for axis in [0_usize, 2_usize] {
+            let source_span = axial_scaled_bounds.max[axis] - axial_scaled_bounds.min[axis];
+            let reference_span = f64::from(slot.bounds_max[axis] - slot.bounds_min[axis]);
+            if source_span.is_finite() && source_span > 1.0e-9 {
+                transverse_scale = transverse_scale.min(reference_span / source_span);
+            }
+        }
+        if !transverse_scale.is_finite() || transverse_scale <= 0.0 {
+            return Err(error(
+                "ITEM-FIT-REFERENCE-TRANSVERSE-DEGENERATE",
+                format!("profile.slots[{index}]"),
+                "reference slot does not provide a positive finite transverse envelope",
+            ));
+        }
+        transverse_scale = transverse_scale.min(1.0);
+        let target_space_scale_xyz = [transverse_scale as f32, 1.0, transverse_scale as f32];
+        let scaled_bounds = item_fit_bounds_v2(source, base_transform, target_space_scale_xyz)?.0;
+        let mut translation = [0.0_f32; 3];
+        for axis in [0_usize, 2_usize] {
+            let target_center = (slot.bounds_min[axis] + slot.bounds_max[axis]) * 0.5;
+            let source_center = (scaled_bounds.min[axis] + scaled_bounds.max[axis]) * 0.5;
+            translation[axis] = target_center - source_center as f32;
+        }
+        translation[1] = if slot.allow_axial_extension_at_min && !slot.allow_axial_extension_at_max
+        {
+            slot.bounds_max[1] - scaled_bounds.max[1] as f32
+        } else if slot.allow_axial_extension_at_min && slot.allow_axial_extension_at_max {
+            let target_center = (slot.bounds_min[1] + slot.bounds_max[1]) * 0.5;
+            let source_center = (scaled_bounds.min[1] + scaled_bounds.max[1]) * 0.5;
+            target_center - source_center as f32
+        } else {
+            slot.bounds_min[1] - scaled_bounds.min[1] as f32
+        };
+        let transform = ItemPartTransformV1 {
+            translation,
+            ..base_transform
+        };
+        let output_bounds = ItemSeamBoundsV1 {
+            min: std::array::from_fn(|axis| scaled_bounds.min[axis] + f64::from(translation[axis])),
+            max: std::array::from_fn(|axis| scaled_bounds.max[axis] + f64::from(translation[axis])),
+        };
+        let part_options =
+            item_fit_options_v2(source.source_node, transform, target_space_scale_xyz);
+        let transform_sha256 = item_seam_transform_sha256_v1(&part_options)?;
+        let transverse_center = [
+            (output_bounds.min[0] + output_bounds.max[0]) as f32 * 0.5,
+            0.0,
+            (output_bounds.min[2] + output_bounds.max[2]) as f32 * 0.5,
+        ];
+        let bottom_connector = (index > 0).then(|| ItemConnectorAnchorV2 {
+            kind: "BOTTOM".to_owned(),
+            axial_axis: 1,
+            position: [
+                transverse_center[0],
+                output_bounds.min[1] as f32,
+                transverse_center[2],
+            ],
+        });
+        let top_connector = (index + 1 < sources.len()).then(|| ItemConnectorAnchorV2 {
+            kind: "TOP".to_owned(),
+            axial_axis: 1,
+            position: [
+                transverse_center[0],
+                output_bounds.max[1] as f32,
+                transverse_center[2],
+            ],
+        });
+        options.push(part_options);
+        parts.push(ItemFitPartV2 {
+            field: slot.field.clone(),
+            source_sha256: item_payload_sha256_v1(source.source_glb),
+            source_node: source.source_node.map(str::to_owned),
+            triangle_count: *triangle_count,
+            input_bounds_min: identity_bounds.min.map(|value| value as f32),
+            input_bounds_max: identity_bounds.max.map(|value| value as f32),
+            axial_source_axis: orientation_frame.source_axial_axis,
+            axial_target_axis: 1,
+            target_axial_length,
+            transform,
+            target_space_scale_xyz,
+            transform_sha256,
+            output_bounds_min: output_bounds.min.map(|value| value as f32),
+            output_bounds_max: output_bounds.max.map(|value| value as f32),
+            bottom_connector,
+            top_connector,
+        });
+    }
+
+    let mut adjacent_seams = Vec::with_capacity(parts.len().saturating_sub(1));
+    let mut adjacent_connectors = Vec::with_capacity(parts.len().saturating_sub(1));
+    for index in 0..parts.len().saturating_sub(1) {
+        let seam = measure_meshy_item_seam_v1(
+            sources[index].field,
+            sources[index].source_glb,
+            sources[index].model_resref,
+            &options[index],
+            sources[index + 1].field,
+            sources[index + 1].source_glb,
+            sources[index + 1].model_resref,
+            &options[index + 1],
+            tolerance,
+        )?;
+        let expected_overlap =
+            profile.slots[index].bounds_max[1] - profile.slots[index + 1].bounds_min[1];
+        if !expected_overlap.is_finite() || expected_overlap <= 0.0 {
+            return Err(error(
+                "ITEM-FIT-REFERENCE-CONNECTOR-INVALID",
+                format!("profile.slots[{index}]"),
+                "adjacent reference slots must carry a positive axial overlap",
+            ));
+        }
+        let actual_overlap =
+            parts[index].output_bounds_max[1] - parts[index + 1].output_bounds_min[1];
+        let margin = (tolerance * 0.25).max(1.0e-5);
+        let required_min_overlap = (expected_overlap - margin).max(expected_overlap * 0.5);
+        let required_max_overlap = expected_overlap + margin;
+        let overlapping = actual_overlap >= required_min_overlap
+            && actual_overlap <= required_max_overlap
+            && seam.status != "GAP";
+        adjacent_connectors.push(ItemAdjacentConnectorV2 {
+            first_field: parts[index].field.clone(),
+            first_connector: "TOP".to_owned(),
+            second_field: parts[index + 1].field.clone(),
+            second_connector: "BOTTOM".to_owned(),
+            axial_axis: 1,
+            axial_overlap: actual_overlap,
+            required_min_overlap,
+            required_max_overlap,
+            surface_status: seam.status.clone(),
+            status: if overlapping { "OVERLAPPING" } else { "FAILED" }.to_owned(),
+        });
+        adjacent_seams.push(seam);
+    }
+    let mut non_adjacent_measurements = Vec::new();
+    for first in 0..sources.len() {
+        for second in first + 2..sources.len() {
+            non_adjacent_measurements.push(measure_meshy_item_seam_v1(
+                sources[first].field,
+                sources[first].source_glb,
+                sources[first].model_resref,
+                &options[first],
+                sources[second].field,
+                sources[second].source_glb,
+                sources[second].model_resref,
+                &options[second],
+                tolerance,
+            )?);
+        }
+    }
+    let passed = orientation_frame.status == "PASSED"
+        && adjacent_connectors
+            .iter()
+            .all(|connector| connector.status == "OVERLAPPING")
+        && non_adjacent_measurements
+            .iter()
+            .all(|measurement| !measurement.overlap);
+    let mut report = ItemFitReportV4 {
+        schema_version: 4,
+        algorithm: "ITEM_REFERENCE_SLOT_FRAME_FIT_V1".to_owned(),
+        status: if passed { "PASSED" } else { "MANUAL_REQUIRED" }.to_owned(),
+        tolerance,
+        iterations: 1,
+        reference_profile_sha256: profile.profile_sha256.clone(),
+        common_origin: profile.common_origin,
+        orientation_frame,
+        parts,
+        adjacent_seams,
+        adjacent_connectors,
+        non_adjacent_measurements,
+        solution_sha256: String::new(),
+    };
+    let bytes = serde_json::to_vec(&report).map_err(|_| {
+        error(
+            "ITEM-FIT-V4-REPORT-SERIALIZE-FAILED",
+            "report",
+            "reference-frame Item fit report could not be serialized",
+        )
+    })?;
+    report.solution_sha256 = item_payload_sha256_v1(&bytes);
+    validate_item_fit_report_v4(&report)?;
+    validate_item_fit_report_v4_against_profile_v1(&report, profile)?;
+    Ok(report)
+}
+
+fn fit_meshy_item_parts_on_target_axis_v3(
+    sources: &[ItemFitSourceV1<'_>],
+    tolerance: f32,
+    target_lengths: &[f32],
+    axial_target_axis: usize,
+    algorithm: &str,
+    emit_axial_target_axis: bool,
+    rotation_override: Option<[f32; 4]>,
+) -> Result<ItemFitReportV1, ItemErrorV1> {
+    if !matches!(sources.len(), 1 | 3) {
+        return Err(error(
+            "ITEM-FIT-SLOT-COUNT-UNSUPPORTED",
+            "sources",
+            "Item auto-fit supports the one-part and ordered three-part Meshy composer schemas",
+        ));
+    }
+    if !tolerance.is_finite() || tolerance < 0.0 {
+        return Err(error(
+            "ITEM-FIT-TOLERANCE-INVALID",
+            "tolerance",
+            "Item auto-fit tolerance must be finite and non-negative",
+        ));
+    }
+    if target_lengths.len() != sources.len()
+        || target_lengths
+            .iter()
+            .any(|value| !value.is_finite() || *value <= 0.0)
+        || target_lengths.iter().sum::<f32>() > 10.0
+    {
+        return Err(error(
+            "ITEM-FIT-PROPORTION-CONTRACT-INVALID",
+            "targetAxialLengths",
+            "target axial lengths must contain one positive finite value per ordered slot and total at most 10 composer units",
+        ));
+    }
+    let mut fields = BTreeSet::new();
+    for (index, source) in sources.iter().enumerate() {
+        if source.field.trim().is_empty() || !fields.insert(source.field.to_ascii_lowercase()) {
+            return Err(error(
+                "ITEM-FIT-FIELDS-INVALID",
+                format!("sources[{index}].field"),
+                "Item auto-fit requires distinct non-empty ordered fields",
+            ));
+        }
+        validate_resref(
+            source.model_resref,
+            &format!("sources[{index}].modelResref"),
+        )?;
+    }
+
+    let identities = sources
+        .iter()
+        .copied()
+        .map(|source| item_fit_bounds_v1(source, ItemPartTransformV1::default()))
+        .collect::<Result<Vec<_>, _>>()?;
+    let long_axes = identities
+        .iter()
+        .map(|(bounds, _)| item_fit_long_axis_v1(*bounds))
+        .collect::<Vec<_>>();
+    let axial_source_axis = if sources.len() == 1 || long_axes[0] == long_axes[sources.len() - 1] {
+        long_axes[0]
+    } else {
+        let mut counts = [0_u8; 3];
+        for axis in &long_axes {
+            counts[*axis] += 1;
+        }
+        (0..3)
+            .max_by_key(|&axis| (counts[axis], std::cmp::Reverse(axis)))
+            .unwrap_or(0)
+    };
+    let rotation = rotation_override.unwrap_or_else(|| match axial_target_axis {
+        1 => item_fit_axis_rotation_to_aurora_y_v2(axial_source_axis),
+        _ => item_fit_axis_rotation_v1(axial_source_axis),
+    });
+    let transverse_axes = match axial_target_axis {
+        1 => [0, 2],
+        _ => [0, 1],
+    };
+    let mut cursor = 0.0_f64;
+    let mut parts = Vec::with_capacity(sources.len());
+    let mut options = Vec::with_capacity(sources.len());
+    for (index, source) in sources.iter().copied().enumerate() {
+        let identity_bounds = identities[index].0;
+        let axial_extent =
+            identity_bounds.max[axial_source_axis] - identity_bounds.min[axial_source_axis];
+        if !axial_extent.is_finite() || axial_extent <= 1.0e-9 {
+            return Err(error(
+                "ITEM-FIT-AXIS-DEGENERATE",
+                format!("sources[{index}]"),
+                "Item auto-fit could not resolve a positive axial extent",
+            ));
+        }
+        let uniform_scale = f64::from(target_lengths[index]) / axial_extent;
+        let base_transform = ItemPartTransformV1 {
+            translation: [0.0; 3],
+            rotation_xyzw: rotation,
+            uniform_scale: uniform_scale as f32,
+            pivot: [0.0; 3],
+        };
+        let rotated_bounds = item_fit_bounds_v1(source, base_transform)?.0;
+        let first_transverse_center =
+            (rotated_bounds.min[transverse_axes[0]] + rotated_bounds.max[transverse_axes[0]]) * 0.5;
+        let second_transverse_center =
+            (rotated_bounds.min[transverse_axes[1]] + rotated_bounds.max[transverse_axes[1]]) * 0.5;
+        let desired_axial_min = cursor
+            + if index == 0 {
+                0.0
+            } else {
+                f64::from(tolerance) * 0.25
+            };
+        let mut translation = [0.0_f32; 3];
+        translation[transverse_axes[0]] = -first_transverse_center as f32;
+        translation[transverse_axes[1]] = -second_transverse_center as f32;
+        translation[axial_target_axis] =
+            (desired_axial_min - rotated_bounds.min[axial_target_axis]) as f32;
+        let transform = ItemPartTransformV1 {
+            translation,
+            ..base_transform
+        };
+        let output_bounds = ItemSeamBoundsV1 {
+            min: [
+                rotated_bounds.min[0] + f64::from(translation[0]),
+                rotated_bounds.min[1] + f64::from(translation[1]),
+                rotated_bounds.min[2] + f64::from(translation[2]),
+            ],
+            max: [
+                rotated_bounds.max[0] + f64::from(translation[0]),
+                rotated_bounds.max[1] + f64::from(translation[1]),
+                rotated_bounds.max[2] + f64::from(translation[2]),
+            ],
+        };
+        cursor = output_bounds.max[axial_target_axis];
+        let part_options = item_fit_options_v1(source.source_node, transform);
+        let transform_sha256 = item_seam_transform_sha256_v1(&part_options)?;
+        options.push(part_options);
+        parts.push(ItemFitPartV1 {
+            field: source.field.trim().to_owned(),
+            source_sha256: item_payload_sha256_v1(source.source_glb),
+            source_node: source.source_node.map(str::to_owned),
+            triangle_count: identities[index].1,
+            input_bounds_min: identity_bounds.min.map(|value| value as f32),
+            input_bounds_max: identity_bounds.max.map(|value| value as f32),
+            axial_source_axis: axial_source_axis as u8,
+            axial_target_axis: emit_axial_target_axis.then_some(axial_target_axis as u8),
+            target_axial_length: target_lengths[index],
+            transform,
+            transform_sha256,
+            output_bounds_min: output_bounds.min.map(|value| value as f32),
+            output_bounds_max: output_bounds.max.map(|value| value as f32),
+        });
+    }
+
+    let mut adjacent_seams = Vec::new();
+    for index in 0..sources.len().saturating_sub(1) {
+        adjacent_seams.push(measure_meshy_item_seam_v1(
+            sources[index].field,
+            sources[index].source_glb,
+            sources[index].model_resref,
+            &options[index],
+            sources[index + 1].field,
+            sources[index + 1].source_glb,
+            sources[index + 1].model_resref,
+            &options[index + 1],
+            tolerance,
+        )?);
+    }
+    let mut non_adjacent_measurements = Vec::new();
+    for first in 0..sources.len() {
+        for second in first + 2..sources.len() {
+            non_adjacent_measurements.push(measure_meshy_item_seam_v1(
+                sources[first].field,
+                sources[first].source_glb,
+                sources[first].model_resref,
+                &options[first],
+                sources[second].field,
+                sources[second].source_glb,
+                sources[second].model_resref,
+                &options[second],
+                tolerance,
+            )?);
+        }
+    }
+    let passed = adjacent_seams
+        .iter()
+        .all(|measurement| measurement.status == "TOUCHING" && !measurement.overlap)
+        && non_adjacent_measurements
+            .iter()
+            .all(|measurement| !measurement.overlap);
+    let mut report = ItemFitReportV1 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        algorithm: algorithm.to_owned(),
+        status: if passed { "PASSED" } else { "MANUAL_REQUIRED" }.to_owned(),
+        tolerance,
+        iterations: 1,
+        parts,
+        adjacent_seams,
+        non_adjacent_measurements,
+        solution_sha256: String::new(),
+    };
+    let bytes = serde_json::to_vec(&report).map_err(|_| {
+        error(
+            "ITEM-FIT-REPORT-SERIALIZE-FAILED",
+            "report",
+            "Item auto-fit report could not be serialized",
+        )
+    })?;
+    report.solution_sha256 = item_payload_sha256_v1(&bytes);
+    Ok(report)
+}
+
+pub fn validate_item_fit_report_v1(report: &ItemFitReportV1) -> Result<(), ItemErrorV1> {
+    let expected_target_axis = match report.algorithm.as_str() {
+        "ORDERED_SLOT_AXIAL_ENVELOPE_SEAM_GATE_V1" => None,
+        "ORDERED_SLOT_AXIAL_ENVELOPE_SEAM_GATE_V2_AURORA_Y" => Some(1),
+        _ => {
+            return Err(error(
+                "ITEM-FIT-REPORT-INVALID",
+                "report.algorithm",
+                "Item fit report algorithm is unsupported",
+            ));
+        }
+    };
+    if report.schema_version != ITEM_SCHEMA_VERSION_V1
+        || !matches!(report.status.as_str(), "PASSED" | "MANUAL_REQUIRED")
+        || !matches!(report.parts.len(), 1 | 3)
+        || !report.tolerance.is_finite()
+        || report.tolerance < 0.0
+    {
+        return Err(error(
+            "ITEM-FIT-REPORT-INVALID",
+            "report",
+            "Item fit report schema, algorithm, status, slot count or tolerance is invalid",
+        ));
+    }
+    for part in &report.parts {
+        validate_item_part_transform_v1(part.transform)?;
+        if part.field.trim().is_empty()
+            || !valid_lowercase_sha256_v1(&part.source_sha256)
+            || !valid_lowercase_sha256_v1(&part.transform_sha256)
+            || part.axial_target_axis != expected_target_axis
+            || !part.target_axial_length.is_finite()
+            || part.target_axial_length <= 0.0
+        {
+            return Err(error(
+                "ITEM-FIT-REPORT-PART-INVALID",
+                "report.parts",
+                "Item fit part binding has an invalid field or SHA-256",
+            ));
+        }
+    }
+    if report
+        .parts
+        .iter()
+        .map(|part| part.target_axial_length)
+        .sum::<f32>()
+        > 10.0
+    {
+        return Err(error(
+            "ITEM-FIT-REPORT-PROPORTION-CONTRACT-INVALID",
+            "report.parts.targetAxialLength",
+            "Item fit report target axial lengths exceed the 10-unit composer limit",
+        ));
+    }
+    if report.status == "PASSED"
+        && (report
+            .adjacent_seams
+            .iter()
+            .any(|seam| seam.status != "TOUCHING" || seam.overlap)
+            || report
+                .non_adjacent_measurements
+                .iter()
+                .any(|measurement| measurement.overlap))
+    {
+        return Err(error(
+            "ITEM-FIT-REPORT-SEAM-INVALID",
+            "report",
+            "A PASSED Item fit report must preserve touching adjacent seams and non-overlapping non-adjacent parts",
+        ));
+    }
+    let mut unhashed = report.clone();
+    unhashed.solution_sha256.clear();
+    let bytes = serde_json::to_vec(&unhashed).map_err(|_| {
+        error(
+            "ITEM-FIT-REPORT-SERIALIZE-FAILED",
+            "report",
+            "Item fit report could not be serialized for hash validation",
+        )
+    })?;
+    if report.solution_sha256 != item_payload_sha256_v1(&bytes) {
+        return Err(error(
+            "ITEM-FIT-REPORT-HASH-MISMATCH",
+            "report.solutionSha256",
+            "Item fit report solution hash does not match its exact semantic payload",
+        ));
+    }
+    Ok(())
+}
+
+pub fn validate_item_fit_report_v2(report: &ItemFitReportV2) -> Result<(), ItemErrorV1> {
+    if report.schema_version != 2
+        || report.algorithm != "ITEM_MODELTYPE2_CONNECTOR_OVERLAP_FIT_V3_AURORA_Y"
+        || !matches!(report.status.as_str(), "PASSED" | "MANUAL_REQUIRED")
+        || !matches!(report.parts.len(), 1 | 3)
+        || !report.tolerance.is_finite()
+        || report.tolerance < 0.0
+        || report.adjacent_connectors.len() != report.parts.len().saturating_sub(1)
+        || report.adjacent_seams.len() != report.parts.len().saturating_sub(1)
+    {
+        return Err(error(
+            "ITEM-FIT-V2-REPORT-INVALID",
+            "report",
+            "Item composer fit must use schema 2, the connector-overlap algorithm and a complete ordered slot set",
+        ));
+    }
+    for (index, part) in report.parts.iter().enumerate() {
+        validate_item_part_transform_v1(part.transform)?;
+        let expected_bottom = index > 0;
+        let expected_top = index + 1 < report.parts.len();
+        if part.field.trim().is_empty()
+            || !valid_lowercase_sha256_v1(&part.source_sha256)
+            || !valid_lowercase_sha256_v1(&part.transform_sha256)
+            || part
+                .target_space_scale_xyz
+                .iter()
+                .any(|value| !value.is_finite() || *value <= 0.0)
+            || part.axial_target_axis != 1
+            || !part.target_axial_length.is_finite()
+            || part.target_axial_length <= 0.0
+            || part.bottom_connector.is_some() != expected_bottom
+            || part.top_connector.is_some() != expected_top
+        {
+            return Err(error(
+                "ITEM-FIT-V2-PART-INVALID",
+                format!("report.parts[{index}]"),
+                "Item composer fit part has an invalid binding, axis or connector set",
+            ));
+        }
+        for (connector, kind, axial) in [
+            (
+                part.bottom_connector.as_ref(),
+                "BOTTOM",
+                part.output_bounds_min[1],
+            ),
+            (
+                part.top_connector.as_ref(),
+                "TOP",
+                part.output_bounds_max[1],
+            ),
+        ] {
+            if let Some(connector) = connector
+                && (connector.kind != kind
+                    || connector.axial_axis != 1
+                    || connector.position.iter().any(|value| !value.is_finite())
+                    || (connector.position[1] - axial).abs() > 1.0e-5)
+            {
+                return Err(error(
+                    "ITEM-FIT-V2-CONNECTOR-INVALID",
+                    format!("report.parts[{index}].{kind}"),
+                    "connector kind, +Y axis or axial anchor does not match the fitted envelope",
+                ));
+            }
+        }
+    }
+    for (index, connector) in report.adjacent_connectors.iter().enumerate() {
+        let first = &report.parts[index];
+        let second = &report.parts[index + 1];
+        let actual_overlap = first.output_bounds_max[1] - second.output_bounds_min[1];
+        if connector.first_field != first.field
+            || connector.first_connector != "TOP"
+            || connector.second_field != second.field
+            || connector.second_connector != "BOTTOM"
+            || connector.axial_axis != 1
+            || connector.status != "OVERLAPPING"
+            || connector.surface_status == "GAP"
+            || !connector.axial_overlap.is_finite()
+            || !connector.required_min_overlap.is_finite()
+            || !connector.required_max_overlap.is_finite()
+            || connector.required_min_overlap <= 0.0
+            || connector.required_max_overlap < connector.required_min_overlap
+            || connector.axial_overlap < connector.required_min_overlap
+            || connector.axial_overlap > connector.required_max_overlap
+            || (connector.axial_overlap - actual_overlap).abs() > 1.0e-5
+        {
+            return Err(error(
+                "ITEM-FIT-V2-CONNECTOR-OVERLAP-INVALID",
+                format!("report.adjacentConnectors[{index}]"),
+                "adjacent Bottom/Middle/Top connectors must have a positive bounded overlap and no surface gap",
+            ));
+        }
+    }
+    if report.status == "PASSED"
+        && report
+            .non_adjacent_measurements
+            .iter()
+            .any(|measurement| measurement.overlap)
+    {
+        return Err(error(
+            "ITEM-FIT-V2-NONADJACENT-OVERLAP",
+            "report.nonAdjacentMeasurements",
+            "a PASSED composer fit cannot overlap non-adjacent parts",
+        ));
+    }
+    let mut unhashed = report.clone();
+    unhashed.solution_sha256.clear();
+    let bytes = item_fit_report_v2_legacy_hash_bytes_v1(&unhashed)?;
+    if report.solution_sha256 != item_payload_sha256_v1(&bytes) {
+        return Err(error(
+            "ITEM-FIT-V2-REPORT-HASH-MISMATCH",
+            "report.solutionSha256",
+            "Item composer fit solution hash does not match its exact semantic payload",
+        ));
+    }
+    Ok(())
+}
+
+pub fn validate_item_fit_report_v3(report: &ItemFitReportV3) -> Result<(), ItemErrorV1> {
+    let frame = &report.orientation_frame;
+    let distinct_source_axes = {
+        let mut axes = [
+            frame.source_axial_axis,
+            frame.source_width_axis,
+            frame.source_depth_axis,
+        ];
+        axes.sort_unstable();
+        axes == [0, 1, 2]
+    };
+    if report.schema_version != 3
+        || report.algorithm != "ITEM_MODELTYPE2_FULL_FRAME_CONNECTOR_FIT_V4_AURORA_YZX"
+        || !matches!(report.status.as_str(), "PASSED" | "MANUAL_REQUIRED")
+        || !matches!(report.parts.len(), 1 | 3)
+        || !distinct_source_axes
+        || frame.target_axial_axis != 1
+        || frame.target_width_axis != 2
+        || frame.target_depth_axis != 0
+        || !frame.width_to_depth_ratio.is_finite()
+        || frame.width_to_depth_ratio <= 0.0
+        || !frame.handedness_determinant.is_finite()
+        || (frame.handedness_determinant - 1.0).abs() > 1.0e-5
+        || frame.evidence != "GROUP_NORMALIZED_TRANSVERSE_EXTENTS_WITH_PROPER_HANDEDNESS_V1"
+        || !matches!(frame.status.as_str(), "PASSED" | "MANUAL_REQUIRED")
+    {
+        return Err(error(
+            "ITEM-FIT-V3-FRAME-INVALID",
+            "report.orientationFrame",
+            "full-frame Item fit requires distinct source axes mapped to Aurora depth X, axial Y and width Z with proper handedness",
+        ));
+    }
+
+    let mut legacy = ItemFitReportV2 {
+        schema_version: 2,
+        algorithm: "ITEM_MODELTYPE2_CONNECTOR_OVERLAP_FIT_V3_AURORA_Y".to_owned(),
+        status: report.status.clone(),
+        tolerance: report.tolerance,
+        iterations: report.iterations,
+        parts: report.parts.clone(),
+        adjacent_seams: report.adjacent_seams.clone(),
+        adjacent_connectors: report.adjacent_connectors.clone(),
+        non_adjacent_measurements: report.non_adjacent_measurements.clone(),
+        solution_sha256: String::new(),
+    };
+    let legacy_bytes = item_fit_report_v2_legacy_hash_bytes_v1(&legacy)?;
+    legacy.solution_sha256 = item_payload_sha256_v1(&legacy_bytes);
+    validate_item_fit_report_v2(&legacy)?;
+
+    let mut composite_min = [f32::INFINITY; 3];
+    let mut composite_max = [f32::NEG_INFINITY; 3];
+    for (index, part) in report.parts.iter().enumerate() {
+        let matrix = item_part_rigid_matrix_v1(part.transform)?;
+        let source_axes = [
+            (
+                frame.source_depth_axis as usize,
+                frame.target_depth_axis as usize,
+                false,
+            ),
+            (
+                frame.source_axial_axis as usize,
+                frame.target_axial_axis as usize,
+                true,
+            ),
+            (
+                frame.source_width_axis as usize,
+                frame.target_width_axis as usize,
+                true,
+            ),
+        ];
+        for (source_axis, target_axis, positive) in source_axes {
+            for row in 0..3 {
+                let value = matrix[source_axis * 4 + row];
+                let expected = if row == target_axis { 1.0 } else { 0.0 };
+                let matches = if positive {
+                    (value - expected).abs() <= 1.0e-4
+                } else {
+                    (value.abs() - expected).abs() <= 1.0e-4
+                };
+                if !matches {
+                    return Err(error(
+                        "ITEM-FIT-V3-EDGE-ON-FRAME",
+                        format!("report.parts[{index}].transform.rotationXyzw"),
+                        "part rotation does not map the resolved broad width to Aurora Z and therefore can present the item edge-on",
+                    ));
+                }
+            }
+        }
+        for axis in 0..3 {
+            composite_min[axis] = composite_min[axis].min(part.output_bounds_min[axis]);
+            composite_max[axis] = composite_max[axis].max(part.output_bounds_max[axis]);
+        }
+    }
+    let projected_width = composite_max[2] - composite_min[2];
+    let projected_depth = composite_max[0] - composite_min[0];
+    if report.status == "PASSED"
+        && (!projected_width.is_finite()
+            || !projected_depth.is_finite()
+            || projected_depth <= 0.0
+            || projected_width / projected_depth < 1.10)
+    {
+        return Err(error(
+            "ITEM-FIT-V3-EDGE-ON-SILHOUETTE",
+            "report.parts.outputBounds",
+            "a PASSED full-frame Item fit must expose a wider Z silhouette than its X depth",
+        ));
+    }
+    let expected_status = if frame.status == "PASSED" && legacy.status == "PASSED" {
+        "PASSED"
+    } else {
+        "MANUAL_REQUIRED"
+    };
+    if report.status != expected_status {
+        return Err(error(
+            "ITEM-FIT-V3-STATUS-MISMATCH",
+            "report.status",
+            "full-frame status must combine the orientation and connector gates",
+        ));
+    }
+    let mut unhashed = report.clone();
+    unhashed.solution_sha256.clear();
+    let bytes = item_fit_report_v3_legacy_hash_bytes_v1(&unhashed)?;
+    if report.solution_sha256 != item_payload_sha256_v1(&bytes) {
+        return Err(error(
+            "ITEM-FIT-V3-REPORT-HASH-MISMATCH",
+            "report.solutionSha256",
+            "full-frame Item fit solution hash does not match its exact semantic payload",
+        ));
+    }
+    Ok(())
+}
+
+pub fn validate_item_fit_report_v4(report: &ItemFitReportV4) -> Result<(), ItemErrorV1> {
+    let frame = &report.orientation_frame;
+    let mut source_axes = [
+        frame.source_axial_axis,
+        frame.source_width_axis,
+        frame.source_depth_axis,
+    ];
+    source_axes.sort_unstable();
+    if report.schema_version != 4
+        || report.algorithm != "ITEM_REFERENCE_SLOT_FRAME_FIT_V1"
+        || !matches!(report.status.as_str(), "PASSED" | "MANUAL_REQUIRED")
+        || !matches!(report.parts.len(), 1 | 3)
+        || !valid_lowercase_sha256_v1(&report.reference_profile_sha256)
+        || report.common_origin.iter().any(|value| !value.is_finite())
+        || source_axes != [0, 1, 2]
+        || frame.target_axial_axis != 1
+        || frame.target_width_axis != 2
+        || frame.target_depth_axis != 0
+        || frame.evidence != "GROUP_NORMALIZED_TRANSVERSE_EXTENTS_WITH_PROPER_HANDEDNESS_V1"
+        || !matches!(frame.status.as_str(), "PASSED" | "MANUAL_REQUIRED")
+    {
+        return Err(error(
+            "ITEM-FIT-V4-REPORT-INVALID",
+            "report",
+            "reference-frame Item fit identity, frame or slot set is invalid",
+        ));
+    }
+    let mut connector_view = ItemFitReportV2 {
+        schema_version: 2,
+        algorithm: "ITEM_MODELTYPE2_CONNECTOR_OVERLAP_FIT_V3_AURORA_Y".to_owned(),
+        status: report.status.clone(),
+        tolerance: report.tolerance,
+        iterations: report.iterations,
+        parts: report.parts.clone(),
+        adjacent_seams: report.adjacent_seams.clone(),
+        adjacent_connectors: report.adjacent_connectors.clone(),
+        non_adjacent_measurements: report.non_adjacent_measurements.clone(),
+        solution_sha256: String::new(),
+    };
+    let connector_bytes = item_fit_report_v2_legacy_hash_bytes_v1(&connector_view)?;
+    connector_view.solution_sha256 = item_payload_sha256_v1(&connector_bytes);
+    validate_item_fit_report_v2(&connector_view)?;
+    let expected_status = if frame.status == "PASSED" && connector_view.status == "PASSED" {
+        "PASSED"
+    } else {
+        "MANUAL_REQUIRED"
+    };
+    if report.status != expected_status {
+        return Err(error(
+            "ITEM-FIT-V4-STATUS-MISMATCH",
+            "report.status",
+            "reference-frame status must combine orientation and connector gates",
+        ));
+    }
+    let mut unhashed = report.clone();
+    unhashed.solution_sha256.clear();
+    let bytes = serde_json::to_vec(&unhashed).map_err(|_| {
+        error(
+            "ITEM-FIT-V4-REPORT-SERIALIZE-FAILED",
+            "report",
+            "reference-frame Item fit report could not be serialized for hash validation",
+        )
+    })?;
+    if report.solution_sha256 != item_payload_sha256_v1(&bytes) {
+        return Err(error(
+            "ITEM-FIT-V4-REPORT-HASH-MISMATCH",
+            "report.solutionSha256",
+            "reference-frame Item fit hash does not match its semantic payload",
+        ));
+    }
+    Ok(())
+}
+
+pub fn validate_item_fit_report_v4_against_profile_v1(
+    report: &ItemFitReportV4,
+    profile: &ItemAttachmentProfileV1,
+) -> Result<(), ItemErrorV1> {
+    validate_item_fit_report_v4(report)?;
+    validate_item_attachment_profile_v1(profile)?;
+    if report.reference_profile_sha256 != profile.profile_sha256
+        || report.common_origin != profile.common_origin
+        || report.parts.len() != profile.slots.len()
+    {
+        return Err(error(
+            "ITEM-FIT-REFERENCE-IDENTITY-MISMATCH",
+            "report.referenceProfileSha256",
+            "fit report is not bound to the selected reference attachment profile",
+        ));
+    }
+    for (index, (part, slot)) in report.parts.iter().zip(&profile.slots).enumerate() {
+        let target_center_x = (slot.bounds_min[0] + slot.bounds_max[0]) * 0.5;
+        let target_center_z = (slot.bounds_min[2] + slot.bounds_max[2]) * 0.5;
+        let output_center_x = (part.output_bounds_min[0] + part.output_bounds_max[0]) * 0.5;
+        let output_center_z = (part.output_bounds_min[2] + part.output_bounds_max[2]) * 0.5;
+        let anchored_axial_min = !slot.allow_axial_extension_at_min;
+        let anchored_axial_max = !slot.allow_axial_extension_at_max;
+        if part.field != slot.field
+            || (part.target_space_scale_xyz[0] - part.target_space_scale_xyz[2]).abs() > 1.0e-6
+            || (part.target_space_scale_xyz[1] - 1.0).abs() > 1.0e-6
+            || part.target_space_scale_xyz[0] > 1.0 + 1.0e-6
+            || (anchored_axial_min
+                && (part.output_bounds_min[1] - slot.bounds_min[1]).abs() > 1.0e-5)
+            || (anchored_axial_max
+                && (part.output_bounds_max[1] - slot.bounds_max[1]).abs() > 1.0e-5)
+            || (output_center_x - target_center_x).abs() > 1.0e-5
+            || (output_center_z - target_center_z).abs() > 1.0e-5
+            || part.output_bounds_min[0] < slot.bounds_min[0] - 1.0e-5
+            || part.output_bounds_max[0] > slot.bounds_max[0] + 1.0e-5
+            || part.output_bounds_min[2] < slot.bounds_min[2] - 1.0e-5
+            || part.output_bounds_max[2] > slot.bounds_max[2] + 1.0e-5
+        {
+            return Err(error(
+                "ITEM-FIT-REFERENCE-SLOT-BOUNDS-MISMATCH",
+                format!("report.parts[{index}].outputBounds"),
+                "generated part does not preserve the selected reference slot axial range, transverse center and X/Z envelope",
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub fn validate_item_fit_report_v3_against_profile_v1(
+    report: &ItemFitReportV3,
+    profile: &ItemAttachmentProfileV1,
+) -> Result<(), ItemErrorV1> {
+    validate_item_fit_report_v3(report)?;
+    validate_item_attachment_profile_v1(profile)?;
+    if report.parts.len() != profile.slots.len() {
+        return Err(error(
+            "ITEM-FIT-REFERENCE-SLOT-COUNT",
+            "report.parts",
+            "legacy fit report does not contain the selected reference slot set",
+        ));
+    }
+    for (index, (part, slot)) in report.parts.iter().zip(&profile.slots).enumerate() {
+        if part.field != slot.field
+            || (part.output_bounds_min[1] - slot.bounds_min[1]).abs() > 1.0e-5
+            || (part.output_bounds_max[1] - slot.bounds_max[1]).abs() > 1.0e-5
+        {
+            return Err(error(
+                "ITEM-FIT-REFERENCE-SLOT-BOUNDS-MISMATCH",
+                format!("report.parts[{index}].outputBounds"),
+                "legacy cursor-based fit does not preserve the selected reference slot frame",
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub fn validate_item_modeltype2_aurora_append_conformance_v2(
+    inputs: &[ItemComposerMdlInputV2<'_>],
+    fit: &ItemFitReportV2,
+) -> Result<ItemComposerConformanceReportV2, ItemErrorV1> {
+    validate_item_fit_report_v2(fit)?;
+    if inputs.len() != 3 || fit.parts.len() != 3 {
+        return Err(error(
+            "ITEM-MODELTYPE2-COMPOSER-SLOT-COUNT",
+            "inputs",
+            "Aurora ModelType 2 append emulation requires Bottom, Middle and Top",
+        ));
+    }
+    let expected_fields = ["ModelPart1", "ModelPart2", "ModelPart3"];
+    let mut global_names = BTreeSet::new();
+    let mut parts = Vec::with_capacity(3);
+    let mut composite_min = [f32::INFINITY; 3];
+    let mut composite_max = [f32::NEG_INFINITY; 3];
+    let mut total_triangle_count = 0_usize;
+    for (index, ((input, fitted), expected_field)) in inputs
+        .iter()
+        .zip(&fit.parts)
+        .zip(expected_fields)
+        .enumerate()
+    {
+        if !input.field.eq_ignore_ascii_case(expected_field)
+            || fitted.field != expected_field
+            || input.model_resref.is_empty()
+        {
+            return Err(error(
+                "ITEM-MODELTYPE2-APPEND-ORDER",
+                format!("inputs[{index}]"),
+                "composer inputs must be ordered ModelPart1, ModelPart2, ModelPart3",
+            ));
+        }
+        let inspection = inspect_binary_mdl(input.mdl_payload).map_err(|source| {
+            error(
+                "ITEM-MODELTYPE2-MDL-READBACK",
+                format!("inputs[{index}].mdlPayload"),
+                format!("{} at byte {}", source.code, source.offset),
+            )
+        })?;
+        if inspection.model.name != input.model_resref
+            || inspection.node_tree.roots.len() != 1
+            || !inspection.diagnostics.is_empty()
+            || !inspection.unsupported.is_empty()
+        {
+            return Err(error(
+                "ITEM-MODELTYPE2-MDL-IDENTITY",
+                format!("inputs[{index}]"),
+                "binary MDL identity, root count or parser diagnostics do not match the declared part",
+            ));
+        }
+        let root = &inspection.node_tree.roots[0];
+        if root.name != input.model_resref || root.content_flags != 0x01 {
+            return Err(error(
+                "ITEM-MODELTYPE2-ROOT-INVALID",
+                format!("inputs[{index}].root"),
+                "Item part root must be the controllerless model-named generic node",
+            ));
+        }
+        if !root.controllers.is_empty()
+            || root.controller_keys_header.pointer != 0
+            || root.controller_keys_header.used != 0
+            || root.controller_data_header.pointer != 0
+            || root.controller_data_header.used != 0
+        {
+            return Err(error(
+                "ITEM-MODELTYPE2-ROOT-CONTROLLERS",
+                format!("inputs[{index}].root.controllers"),
+                "Aurora appends Middle and Top without applying their root controllers; ModelType 2 roots must be controllerless",
+            ));
+        }
+        if root.children.is_empty()
+            || root.children.len() + 1 != inspection.node_tree.node_count
+            || root
+                .children
+                .iter()
+                .any(|child| child.mesh.is_none() || !child.children.is_empty())
+        {
+            return Err(error(
+                "ITEM-MODELTYPE2-HIERARCHY",
+                format!("inputs[{index}].root.children"),
+                "every output node below the root must be a direct Trimesh child",
+            ));
+        }
+        let expected_header_min = [-5.0, -5.0, -1.0];
+        let expected_header_max = [5.0, 5.0, 10.0];
+        let header_min = [
+            inspection.model.bounds_min.x,
+            inspection.model.bounds_min.y,
+            inspection.model.bounds_min.z,
+        ];
+        let header_max = [
+            inspection.model.bounds_max.x,
+            inspection.model.bounds_max.y,
+            inspection.model.bounds_max.z,
+        ];
+        if (0..3).any(|axis| {
+            (header_min[axis] - expected_header_min[axis]).abs() > 1.0e-5
+                || (header_max[axis] - expected_header_max[axis]).abs() > 1.0e-5
+        }) {
+            return Err(error(
+                "ITEM-MODELTYPE2-MODEL-HEADER-PROFILE",
+                format!("inputs[{index}].model.bounds"),
+                "ModelType 2 output must use the retail weapon-part model-header envelope",
+            ));
+        }
+        let mut part_min = [f32::INFINITY; 3];
+        let mut part_max = [f32::NEG_INFINITY; 3];
+        let mut mesh_node_names = Vec::with_capacity(root.children.len());
+        let expected_single_name = format!("g_{}", input.model_resref);
+        for (mesh_index, child) in root.children.iter().enumerate() {
+            let expected_name = if root.children.len() == 1 {
+                expected_single_name.clone()
+            } else {
+                format!("g_{}_{:02}", input.model_resref, mesh_index + 1)
+            };
+            if child.name != expected_name
+                || child.content_flags != 0x21
+                || !global_names.insert(child.name.to_ascii_lowercase())
+            {
+                return Err(error(
+                    "ITEM-MODELTYPE2-MESH-NAME",
+                    format!("inputs[{index}].root.children[{mesh_index}].name"),
+                    "Trimesh names must be resref-derived and globally unique across appended parts",
+                ));
+            }
+            let position = child
+                .controllers
+                .iter()
+                .find(|controller| controller.controller_type == 8)
+                .and_then(|controller| controller.values.first())
+                .filter(|value| value.len() == 3)
+                .ok_or_else(|| {
+                    error(
+                        "ITEM-MODELTYPE2-MESH-CONTROLLERS",
+                        format!("inputs[{index}].root.children[{mesh_index}].controllers"),
+                        "each Trimesh child requires one position controller",
+                    )
+                })?;
+            let orientation = child
+                .controllers
+                .iter()
+                .find(|controller| controller.controller_type == 20)
+                .and_then(|controller| controller.values.first())
+                .filter(|value| value.len() == 4)
+                .ok_or_else(|| {
+                    error(
+                        "ITEM-MODELTYPE2-MESH-CONTROLLERS",
+                        format!("inputs[{index}].root.children[{mesh_index}].controllers"),
+                        "each Trimesh child requires one orientation controller",
+                    )
+                })?;
+            if child.controllers.len() != 2
+                || (0..3).any(|axis| {
+                    (position[axis] - fitted.transform.translation[axis]).abs() > 1.0e-4
+                })
+                || (0..4)
+                    .any(|axis| (orientation[axis] - [0.0, 0.0, 0.0, 1.0][axis]).abs() > 1.0e-5)
+            {
+                return Err(error(
+                    "ITEM-MODELTYPE2-MESH-CONTROLLERS",
+                    format!("inputs[{index}].root.children[{mesh_index}].controllers"),
+                    "assembly translation must belong to Trimesh and geometry normalization must leave an identity Trimesh orientation",
+                ));
+            }
+            let mesh = child.mesh.as_ref().expect("validated Trimesh child");
+            total_triangle_count += mesh.faces.len();
+            for vertex in &mesh.vertices {
+                let point = [
+                    vertex.x + position[0],
+                    vertex.y + position[1],
+                    vertex.z + position[2],
+                ];
+                for axis in 0..3 {
+                    part_min[axis] = part_min[axis].min(point[axis]);
+                    part_max[axis] = part_max[axis].max(point[axis]);
+                }
+            }
+            mesh_node_names.push(child.name.clone());
+        }
+        if (0..3).any(|axis| {
+            (part_min[axis] - fitted.output_bounds_min[axis]).abs() > 1.0e-4
+                || (part_max[axis] - fitted.output_bounds_max[axis]).abs() > 1.0e-4
+        }) || part_max[1] <= part_min[1]
+        {
+            return Err(error(
+                "ITEM-MODELTYPE2-COMPOSED-BOUNDS",
+                format!("inputs[{index}]"),
+                "node-aware composed geometry bounds differ from the connector-qualified +Y fit",
+            ));
+        }
+        for axis in 0..3 {
+            composite_min[axis] = composite_min[axis].min(part_min[axis]);
+            composite_max[axis] = composite_max[axis].max(part_max[axis]);
+        }
+        let triangle_count = root
+            .children
+            .iter()
+            .filter_map(|child| child.mesh.as_ref())
+            .map(|mesh| mesh.faces.len())
+            .sum::<usize>();
+        if triangle_count != fitted.triangle_count {
+            return Err(error(
+                "ITEM-MODELTYPE2-TRIANGLE-COUNT",
+                format!("inputs[{index}]"),
+                "composer validation must preserve every fitted source triangle",
+            ));
+        }
+        parts.push(ItemComposerPartConformanceV2 {
+            field: expected_field.to_owned(),
+            model_resref: input.model_resref.to_owned(),
+            root_node_name: root.name.clone(),
+            root_controller_owner: "NONE".to_owned(),
+            transform_controller_owner: "TRIMESH_CHILD".to_owned(),
+            mesh_node_names,
+            triangle_count,
+            bounds_min: part_min,
+            bounds_max: part_max,
+        });
+    }
+    Ok(ItemComposerConformanceReportV2 {
+        schema_version: 2,
+        algorithm: "ITEM_MODELTYPE2_AURORA_APPEND_CONFORMANCE_V2".to_owned(),
+        status: "PASSED".to_owned(),
+        append_order: expected_fields.map(str::to_owned).to_vec(),
+        parts,
+        composite_bounds_min: composite_min,
+        composite_bounds_max: composite_max,
+        total_triangle_count,
+    })
+}
+
+pub fn validate_item_modeltype2_aurora_append_conformance_v3(
+    inputs: &[ItemComposerMdlInputV2<'_>],
+    fit: &ItemFitReportV3,
+) -> Result<ItemComposerConformanceReportV2, ItemErrorV1> {
+    validate_item_fit_report_v3(fit)?;
+    let mut legacy = ItemFitReportV2 {
+        schema_version: 2,
+        algorithm: "ITEM_MODELTYPE2_CONNECTOR_OVERLAP_FIT_V3_AURORA_Y".to_owned(),
+        status: fit.status.clone(),
+        tolerance: fit.tolerance,
+        iterations: fit.iterations,
+        parts: fit.parts.clone(),
+        adjacent_seams: fit.adjacent_seams.clone(),
+        adjacent_connectors: fit.adjacent_connectors.clone(),
+        non_adjacent_measurements: fit.non_adjacent_measurements.clone(),
+        solution_sha256: String::new(),
+    };
+    let bytes = item_fit_report_v2_legacy_hash_bytes_v1(&legacy)?;
+    legacy.solution_sha256 = item_payload_sha256_v1(&bytes);
+    validate_item_modeltype2_aurora_append_conformance_v2(inputs, &legacy)
+}
+
+pub fn validate_item_modeltype2_aurora_append_conformance_v4(
+    inputs: &[ItemComposerMdlInputV2<'_>],
+    fit: &ItemFitReportV4,
+) -> Result<ItemComposerConformanceReportV2, ItemErrorV1> {
+    validate_item_fit_report_v4(fit)?;
+    let mut legacy = ItemFitReportV2 {
+        schema_version: 2,
+        algorithm: "ITEM_MODELTYPE2_CONNECTOR_OVERLAP_FIT_V3_AURORA_Y".to_owned(),
+        status: fit.status.clone(),
+        tolerance: fit.tolerance,
+        iterations: fit.iterations,
+        parts: fit.parts.clone(),
+        adjacent_seams: fit.adjacent_seams.clone(),
+        adjacent_connectors: fit.adjacent_connectors.clone(),
+        non_adjacent_measurements: fit.non_adjacent_measurements.clone(),
+        solution_sha256: String::new(),
+    };
+    let bytes = item_fit_report_v2_legacy_hash_bytes_v1(&legacy)?;
+    legacy.solution_sha256 = item_payload_sha256_v1(&bytes);
+    validate_item_modeltype2_aurora_append_conformance_v2(inputs, &legacy)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -5120,7 +9176,10 @@ pub fn measure_meshy_item_seam_v1(
         texture_encoding: options.texture_encoding,
         icon_size: None,
         icon_projection_bounds: None,
+        weapon_color: None,
+        target_space_scale_xyz: options.target_space_scale_xyz,
         geometry_derived_icon: true,
+        aurora_composer_v2: true,
     };
     let first = prepare_meshy_item_part_v1(
         first_source_glb,
@@ -5215,6 +9274,40 @@ pub fn measure_meshy_item_seam_v1(
     Ok(report)
 }
 
+fn apply_item_weapon_colorway_v1(image: &mut TgaImageV1, color: u8) -> Result<(), ItemErrorV1> {
+    // Reuse the authoritative native color-domain validation. Model zero is
+    // sufficient because this operation authors only the concrete texture.
+    encode_item_weapon_part_appearance_v1(0, color)?;
+    if color == 1 {
+        return Ok(());
+    }
+    let channels = match image.pixel_format {
+        TgaPixelFormatV1::Rgb8 => 3,
+        TgaPixelFormatV1::Rgba8 => 4,
+    };
+    let channel = |value: u16| value.min(255) as u8;
+    for pixel in image.pixels.chunks_exact_mut(channels) {
+        let [red, green, blue] = [
+            u16::from(pixel[0]),
+            u16::from(pixel[1]),
+            u16::from(pixel[2]),
+        ];
+        let resolved = match color {
+            // Cool steel: slightly desaturated red/green and a lifted blue.
+            2 => [red * 3 / 4, green * 7 / 8, blue * 9 / 8],
+            // Bronze: warm highlights without replacing texture detail.
+            3 => [red * 9 / 8, green * 3 / 4, blue / 2],
+            // Blackened steel: retain source detail at half intensity.
+            4 => [red / 2, green / 2, blue / 2],
+            _ => unreachable!("weapon color domain was validated above"),
+        };
+        pixel[0] = channel(resolved[0]);
+        pixel[1] = channel(resolved[1]);
+        pixel[2] = channel(resolved[2]);
+    }
+    Ok(())
+}
+
 fn build_meshy_item_part_with_internal_options_v1(
     source_glb: &[u8],
     model_resref: &str,
@@ -5231,6 +9324,19 @@ fn build_meshy_item_part_with_internal_options_v1(
     let model_resref = validate_resref(model_resref, "modelResref")?;
     let texture_resref = validate_resref(texture_resref, "textureResref")?;
     validate_item_part_transform_v1(options.transform)?;
+    if options
+        .target_space_scale_xyz
+        .iter()
+        .any(|value| !value.is_finite() || *value <= 0.0)
+        || (!options.aurora_composer_v2
+            && options.target_space_scale_xyz != item_unit_scale_xyz_v1())
+    {
+        return Err(error(
+            "ITEM-PART-TARGET-SPACE-SCALE-INVALID",
+            "options.targetSpaceScaleXyz",
+            "target-space scale must be positive and is supported only by the Aurora composer build route",
+        ));
+    }
 
     let limits = static_placeable_glb_limits_v1();
     let PreparedItemPartV1 {
@@ -5238,6 +9344,7 @@ fn build_meshy_item_part_with_internal_options_v1(
         mut model,
         source_node,
         triangle_count,
+        degenerate_triangle_count_removed,
     } = prepare_meshy_item_part_v1(source_glb, &model_resref, options)?;
     if model.material_source_bindings.len() > 1 {
         return Err(error(
@@ -5254,7 +9361,7 @@ fn build_meshy_item_part_with_internal_options_v1(
                 source.message,
             )
         })?;
-    let texture_image = decode_embedded_image_to_tga_v1(
+    let mut texture_image = decode_embedded_image_to_tga_v1(
         source_glb,
         texture_selection.source_image_index,
         &limits,
@@ -5267,6 +9374,16 @@ fn build_meshy_item_part_with_internal_options_v1(
             source.message,
         )
     })?;
+    if let Some(color) = options.weapon_color {
+        if options.texture_encoding != ItemPartTextureEncodingV1::DirectColor {
+            return Err(error(
+                "ITEM-WEAPON-COLORWAY-PLT-UNSUPPORTED",
+                "options.textureEncoding",
+                "ModelType 2 weapon colorways must emit concrete direct-color TGA resources",
+            ));
+        }
+        apply_item_weapon_colorway_v1(&mut texture_image, color)?;
+    }
     let mut icon_projection_bounds = None;
     let mut icon_opaque_pixel_count = None;
     let icon_payload = if options.geometry_derived_icon {
@@ -5337,11 +9454,16 @@ fn build_meshy_item_part_with_internal_options_v1(
     segment_model_for_binary_mdl_v1(&mut model)
         .map_err(|source| error("ITEM-PART-SEGMENTATION-FAILED", source.path, source.message))?;
     let stream_count = model.segments.len();
-    let mdl = write_binary_mdl(
+    let mdl = write_binary_mdl_with_animations_exact_face_planes_v1(
         &model,
+        &MdlAnimationSetV1::empty(),
         &MdlWriterOptionsV1 {
             schema_version: 1,
-            format_profile: MdlFormatProfileV1::ItemPartStaticRigidNativeV1,
+            format_profile: if options.aurora_composer_v2 {
+                MdlFormatProfileV1::ItemPartStaticRigidAuroraComposerV2
+            } else {
+                MdlFormatProfileV1::ItemPartStaticRigidNativeV1
+            },
             state_projection_profile: MdlStateProjectionProfileV1::RetailDirectCreatureType5DummyV1,
             state_projection_provenance: None,
             model_resource_resref: model_resref.clone(),
@@ -5370,15 +9492,22 @@ fn build_meshy_item_part_with_internal_options_v1(
         icon_payload,
         report: ItemPartBuildReportV1 {
             schema_version: ITEM_SCHEMA_VERSION_V1,
-            profile: "ITEM_PART_STATIC_RIGID".to_owned(),
+            profile: if options.aurora_composer_v2 {
+                "ITEM_PART_AURORA_COMPOSER_V2".to_owned()
+            } else {
+                "ITEM_PART_STATIC_RIGID".to_owned()
+            },
             model_resref,
             texture_resref,
             texture_format,
+            weapon_color: options.weapon_color,
             source_node,
             source_sha256: item_payload_sha256_v1(source_glb),
             triangle_count,
+            degenerate_triangle_count_removed,
             stream_count,
             transform: options.transform,
+            target_space_scale_xyz: options.target_space_scale_xyz,
             mdl_sha256: item_payload_sha256_v1(&mdl.payload),
             texture_sha256,
             icon_sha256,

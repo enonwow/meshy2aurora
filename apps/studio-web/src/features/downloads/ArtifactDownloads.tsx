@@ -10,6 +10,8 @@ function extension(kind: WorkerArtifact["kind"]) {
     case "TEXTURE": return ".tga";
     case "ITEM_BLUEPRINT": return ".uti";
     case "JSON_REPORT": return ".json";
+    case "SOURCE_MODEL": return ".glb";
+    case "SOURCE_MANIFEST": return ".yaml";
   }
 }
 

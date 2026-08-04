@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
-import { authoredItemMatrix, itemPreviewGroundingMatrix } from "./itemTransform";
+import {
+  authoredItemMatrix,
+  itemPreviewGroundingMatrix,
+  itemPropertiesCameraFrame,
+} from "./itemTransform";
 
 describe("Item authored transform parity", () => {
   it("keeps the authored Aurora pivot fixed while applying rotation and scale", () => {
@@ -8,7 +12,9 @@ describe("Item authored transform parity", () => {
     const pivot: [number, number, number] = [1.5, -2, 0.75];
     const matrix = authoredItemMatrix({
       translation,
-      rotationDegrees: [37, -23, 71],
+      rotationXyzw: new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(37 * Math.PI / 180, -23 * Math.PI / 180, 71 * Math.PI / 180, "XYZ"),
+      ).toArray(),
       uniformScale: 2.25,
       pivot,
     });
@@ -37,5 +43,43 @@ describe("Item authored transform parity", () => {
     });
     expect(new THREE.Vector3(1, -2, 2).applyMatrix4(grounding).toArray()).toEqual([0, 0, 0]);
     expect(new THREE.Vector3(6, 10, 12).applyMatrix4(grounding).toArray()).toEqual([5, 12, 10]);
+  });
+
+  it("shows the post-rotation target-space scale used by the Item composer", () => {
+    const matrix = authoredItemMatrix({
+      translation: [0, 0, 0],
+      rotationXyzw: [0, 0, 0, 1],
+      uniformScale: 1,
+      pivot: [0, 0, 0],
+      targetSpaceScaleXyz: [2, 3, 4],
+    });
+
+    expect(new THREE.Vector3(1, 2, 3).applyMatrix4(matrix).toArray()).toEqual([2, 8, 9]);
+  });
+
+  it("frames Aurora Item axial length as screen-up without rotating the model", () => {
+    const frame = itemPropertiesCameraFrame({
+      min: new THREE.Vector3(-0.05, -0.2, -0.3),
+      max: new THREE.Vector3(0.05, 0.2, 1.3),
+    }, 1.5);
+
+    expect(frame.target).toEqual([0, 0, 0.5]);
+    expect(frame.position[0]).toBeGreaterThan(frame.target[0]);
+    expect(frame.position[1]).toBe(frame.target[1]);
+    expect(frame.position[2]).toBe(frame.target[2]);
+    expect(frame.up).toEqual([0, 0, 1]);
+    expect(frame.halfHeight).toBeGreaterThan(0.8);
+    expect(frame.near).toBeGreaterThan(0);
+    expect(frame.far).toBeGreaterThan(frame.near);
+  });
+
+  it("fits Aurora Item width horizontally for narrow viewports", () => {
+    const widePart = {
+      min: new THREE.Vector3(-0.05, -2, -0.25),
+      max: new THREE.Vector3(0.05, 2, 0.25),
+    };
+
+    expect(itemPropertiesCameraFrame(widePart, 0.5).halfHeight).toBeCloseTo(4.72, 6);
+    expect(itemPropertiesCameraFrame(widePart, 2).halfHeight).toBeCloseTo(1.18, 6);
   });
 });

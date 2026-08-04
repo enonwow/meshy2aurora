@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import {
   allocateItemNamespace,
+  decodeWeaponPartAppearance,
+  encodeWeaponPartAppearance,
   eulerDegreesToQuaternion,
   initialItemPartDrafts,
   projectItemBaseitemsCatalog,
+  quaternionToEulerDegrees,
   resolveItemPartDraft,
+  requiresEquippedItemProof,
 } from "./domain";
 import type { ItemBaseItemRow } from "./types";
 
@@ -61,6 +65,8 @@ function row(
     label: `Row ${baseItem}`,
     itemClass,
     modelType,
+    minRange: modelType === 2 ? 10 : null,
+    maxRange: modelType === 2 ? 100 : null,
     genderSpecific: modelType === 3,
     defaultModel: "it_bag",
     defaultIcon: `i${itemClass}`,
@@ -132,15 +138,38 @@ describe("Item domain projection", () => {
       { index: 2, field: "ModelPart3", label: "Top", token: "t", sourceKind: "MESHY_GLB", requiresExplicitResourceResrefs: false },
     ], []);
     const allocation = allocateItemNamespace(threePart, initialItemPartDrafts(threePart), [
-      "2002:sw_b_001",
+      "2002:sw_b_011",
       "2025:m2aitmc",
       "hak:m2aihakc",
     ]);
 
-    expect(allocation.parts.map((part) => part.variant)).toEqual([2, 1, 1]);
+    expect(allocation.parts.map((part) => part.variant)).toEqual([21, 21, 21]);
+    expect(allocation.parts.map((part) => [part.weaponModel, part.weaponColor])).toEqual([
+      [2, 1],
+      [2, 1],
+      [2, 1],
+    ]);
+    expect(allocation.parts.every((part) => part.weaponColorways.length === 4)).toBe(true);
+    expect(allocation.parts[0].weaponColorways.map((colorway) => colorway.variant)).toEqual([
+      21, 22, 23, 24,
+    ]);
+    expect(new Set(allocation.parts.flatMap((part) => (
+      part.weaponColorways.map((colorway) => colorway.textureResref)
+    ))).size).toBe(12);
     expect(allocation.blueprintResref).toBe("m2aitmc1");
     expect(allocation.hakResref).toBe("m2aihakc1");
+    expect(requiresEquippedItemProof(threePart)).toBe(false);
+    expect(allocation.proofCreatureResref).toBeNull();
     expect(allocation.collisionAvoidanceCount).toBe(3);
+  });
+
+  it("roundtrips native ModelType2 model and color selectors without exposing an arbitrary BYTE", () => {
+    expect(encodeWeaponPartAppearance(2, 3)).toBe(23);
+    expect(decodeWeaponPartAppearance(254)).toEqual({ model: 25, color: 4, encoded: 254 });
+    expect(() => encodeWeaponPartAppearance(2, 0)).toThrow(/color.*1\.\.4/i);
+    expect(() => encodeWeaponPartAppearance(2, 5)).toThrow(/color.*1\.\.4/i);
+    expect(() => encodeWeaponPartAppearance(26, 1)).toThrow(/BYTE/i);
+    expect(() => decodeWeaponPartAppearance(250)).toThrow(/color.*1\.\.4/i);
   });
 
   it("rejects malformed occupied namespace entries instead of silently dropping them", () => {
@@ -170,10 +199,46 @@ describe("Item domain projection", () => {
 
     expect(threePart.defaultModel).toBe("it_bag");
     expect(drafts.map((draft) => draft.variant)).toEqual([1, 1, 1]);
+    expect(drafts.map((draft) => [draft.weaponModel, draft.weaponColor])).toEqual([
+      [1, 1],
+      [1, 1],
+      [1, 1],
+    ]);
     expect(drafts.map((draft, index) => resolveItemPartDraft(threePart, draft, index).modelResref))
-      .toEqual(["sw_b_001", "sw_m_001", "sw_t_001"]);
+      .toEqual(["sw_b_011", "sw_m_011", "sw_t_011"]);
     expect(drafts.map((draft, index) => resolveItemPartDraft(threePart, draft, index).iconResref))
-      .toEqual(["isw_b_001", "isw_m_001", "isw_t_001"]);
+      .toEqual(["isw_b_011", "isw_m_011", "isw_t_011"]);
+  });
+
+  it("derives the ModelType2 resource variant from separate model and color fields", () => {
+    const weapon = row(12, 2, "sw", [
+      { index: 0, field: "ModelPart1", label: "Bottom", token: "b", sourceKind: "MESHY_GLB", requiresExplicitResourceResrefs: false },
+    ], []);
+    const draft = { ...initialItemPartDrafts(weapon)[0], weaponModel: 25, weaponColor: 4, variant: 7 };
+    const resolved = resolveItemPartDraft(weapon, draft, 0);
+
+    expect(resolved.variant).toBe(254);
+    expect(resolved.modelResref).toBe("sw_b_254");
+    expect(resolved.iconResref).toBe("isw_b_254");
+  });
+
+  it("plans an exact baseitems override when a valid selector exceeds MaxRange", () => {
+    const weapon = row(12, 2, "sw", [{
+      index: 0,
+      field: "ModelPart1",
+      label: "Bottom",
+      token: "b",
+      sourceKind: "MESHY_GLB",
+      requiresExplicitResourceResrefs: false,
+    }], []);
+    const draft = { ...initialItemPartDrafts(weapon)[0], weaponModel: 25 };
+    const allocation = allocateItemNamespace(weapon, [draft], []);
+
+    expect(allocation.selectedWeaponModels).toEqual([25]);
+    expect(allocation.sourceMinRange).toBe(10);
+    expect(allocation.sourceMaxRange).toBe(100);
+    expect(allocation.effectiveMaxRange).toBe(250);
+    expect(allocation.baseitemsOverrideRequired).toBe(true);
   });
 
   it("keeps CAPART armor as numeric selectors instead of inventing Meshy part resrefs", () => {
@@ -223,5 +288,7 @@ describe("Item domain projection", () => {
       expected.z,
       expected.w,
     ]);
+    expect(quaternionToEulerDegrees([expected.x, expected.y, expected.z, expected.w]))
+      .toEqual(expect.arrayContaining(degrees.map((value) => expect.closeTo(value, 10))));
   });
 });

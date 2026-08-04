@@ -121,7 +121,14 @@ function asStaticItemPart(glb: ArrayBuffer): ArrayBuffer {
   root.skins = [];
   root.animations = [];
   root.scenes[0].nodes = [0];
-  root.nodes = [{ name: "item-part-source-root", mesh: 0 }];
+  root.nodes = [{
+    name: "item-part-source-root",
+    mesh: 0,
+    // Weapon-shaped integration witness: a long axial source with a broad
+    // face and materially thinner depth. The old humanoid-width fixture could
+    // not exercise a LONG_VERTICAL_PART_ORDER_V2 inventory layout honestly.
+    scale: [0.25, 1, 0.25],
+  }];
   delete root.meshes[0].primitives[0].attributes.JOINTS_0;
   delete root.meshes[0].primitives[0].attributes.WEIGHTS_0;
   const json = new TextEncoder().encode(JSON.stringify(root));
@@ -201,8 +208,9 @@ afterEach(() => {
 });
 
 describe("Item Worker/WASM integration", () => {
-  it("builds ModelType 2 as three independent MDLs, icon layers and a numeric UTI", async () => {
+  it("builds ModelType 2 as three independent +Y MDLs in an item-only proof MOD", async () => {
     const baseitemsTwoDa = await fetchBytes(baseitemsUrl);
+    const appearance = appearanceFixture();
     const client = new StudioWorkerClient();
     clients.push(client);
 
@@ -228,13 +236,225 @@ describe("Item Worker/WASM integration", () => {
     });
 
     const fields = ["ModelPart1", "ModelPart2", "ModelPart3"];
-    const modelResrefs = ["sw_b_007", "sw_m_007", "sw_t_007"];
-    const iconResrefs = ["isw_b_007", "isw_m_007", "isw_t_007"];
+    const modelResrefs = ["sw_b_251", "sw_m_251", "sw_t_251"];
+    const iconResrefs = ["isw_b_251", "isw_m_251", "isw_t_251"];
     const sources = await Promise.all([
       fetchBytes(sourceUrl).then(asStaticItemPart),
       fetchBytes(sourceUrl).then(asStaticItemPart),
       fetchBytes(sourceUrl).then(asStaticItemPart),
     ]);
+    const fitSources = sources.map((source) => source.slice(0));
+    const fitted = await client.request({
+      requestId: "item-fit",
+      type: "FIT_ITEM_PARTS",
+      tolerance: 10,
+      parts: fields.map((field, index) => ({
+        field,
+        modelResref: modelResrefs[index],
+        sourceGlb: fitSources[index],
+        sourceNode: null,
+      })),
+    }, fitSources);
+    expect(fitted).toMatchObject({ ok: true, type: "ITEM_PARTS_FITTED" });
+    if (!fitted.ok || fitted.type !== "ITEM_PARTS_FITTED") {
+      throw new Error("real Worker did not return an Item fit report");
+    }
+    let fitReport = JSON.parse(fitted.fitReportJson) as {
+      schemaVersion: number;
+      algorithm: string;
+      status: string;
+      solutionSha256: string;
+      referenceProfileSha256?: string;
+      parts: Array<{
+        field: string;
+        axialTargetAxis: number;
+        transform: unknown;
+        targetSpaceScaleXyz: [number, number, number];
+        transformSha256: string;
+      }>;
+      adjacentConnectors: Array<{
+        firstField: string;
+        secondField: string;
+        axialOverlap: number;
+        status: string;
+      }>;
+      orientationFrame: {
+        targetAxialAxis: number;
+        targetWidthAxis: number;
+        targetDepthAxis: number;
+        widthToDepthRatio: number;
+        handednessDeterminant: number;
+        status: string;
+      };
+    };
+    expect(fitReport).toMatchObject({
+      schemaVersion: 3,
+      algorithm: "ITEM_MODELTYPE2_FULL_FRAME_CONNECTOR_FIT_V4_AURORA_YZX",
+      status: "PASSED",
+      solutionSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      parts: fields.map((field) => ({
+        field,
+        axialTargetAxis: 1,
+        transformSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      })),
+      adjacentConnectors: [
+        {
+          firstField: "ModelPart1",
+          secondField: "ModelPart2",
+          axialOverlap: expect.any(Number),
+          status: "OVERLAPPING",
+        },
+        {
+          firstField: "ModelPart2",
+          secondField: "ModelPart3",
+          axialOverlap: expect.any(Number),
+          status: "OVERLAPPING",
+        },
+      ],
+      orientationFrame: {
+        targetAxialAxis: 1,
+        targetWidthAxis: 2,
+        targetDepthAxis: 0,
+        widthToDepthRatio: expect.any(Number),
+        handednessDeterminant: 1,
+        status: "PASSED",
+      },
+    });
+    wasmReady ??= initWasm();
+    await wasmReady;
+    const referenceMdls = sources.map((source, index) => {
+      const result = buildMeshyItemPartWithOptionsV2(
+        new Uint8Array(source),
+        modelResrefs[index],
+        `reftex${index}`,
+        JSON.stringify({
+          schemaVersion: 1,
+          transform: fitReport.parts[index].transform,
+          sourceNode: null,
+          textureEncoding: "DIRECT_COLOR",
+          iconSize: null,
+          iconProjectionBounds: null,
+        }),
+      );
+      try {
+        const mdl = result.takeMdlBytes().slice().buffer;
+        result.takeTextureBytes();
+        result.takeIconBytes();
+        return mdl;
+      } finally {
+        result.free();
+      }
+    });
+    const profileBaseitems = baseitemsTwoDa.slice(0);
+    const profileResponse = await client.request({
+      requestId: "item-attachment-profile",
+      type: "BUILD_ITEM_ATTACHMENT_PROFILE",
+      baseitemsTwoDa: profileBaseitems,
+      baseItem: 4,
+      referenceKind: "EXPLICIT_VARIANTS",
+      referenceId: "worker-integration-reference",
+      models: fields.map((field, index) => ({
+        field,
+        modelResref: modelResrefs[index],
+        bytes: referenceMdls[index],
+      })),
+    }, [profileBaseitems, ...referenceMdls]);
+    expect(profileResponse).toMatchObject({
+      ok: true,
+      type: "ITEM_ATTACHMENT_PROFILE_BUILT",
+    });
+    if (!profileResponse.ok || profileResponse.type !== "ITEM_ATTACHMENT_PROFILE_BUILT") {
+      throw new Error("real Worker did not return an Item attachment profile");
+    }
+    const attachmentProfile = JSON.parse(profileResponse.attachmentProfileJson) as {
+      profileSha256: string;
+    };
+    const profileFitSources = sources.map((source) => source.slice(0));
+    const profileFitted = await client.request({
+      requestId: "item-reference-fit",
+      type: "FIT_ITEM_PARTS",
+      tolerance: 10,
+      attachmentProfileJson: profileResponse.attachmentProfileJson,
+      parts: fields.map((field, index) => ({
+        field,
+        modelResref: modelResrefs[index],
+        sourceGlb: profileFitSources[index],
+        sourceNode: null,
+      })),
+    }, profileFitSources);
+    expect(profileFitted).toMatchObject({ ok: true, type: "ITEM_PARTS_FITTED" });
+    if (!profileFitted.ok || profileFitted.type !== "ITEM_PARTS_FITTED") {
+      throw new Error("real Worker did not return a profile-bound Item fit report");
+    }
+    fitReport = JSON.parse(profileFitted.fitReportJson) as typeof fitReport;
+    expect(fitReport).toMatchObject({
+      schemaVersion: 4,
+      algorithm: "ITEM_REFERENCE_SLOT_FRAME_FIT_V1",
+      status: "PASSED",
+      referenceProfileSha256: attachmentProfile.profileSha256,
+      parts: fields.map((field) => ({
+        field,
+        sourceSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+        transformSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      })),
+    });
+    const fittedParts = new Map(fitReport.parts.map((part) => [part.field, part]));
+    const sourceHashes = await Promise.all(sources.map(sha256));
+    const sourceLengths = sources.map((source) => source.byteLength);
+    const generationSessionJson = JSON.stringify({
+      schemaVersion: 1,
+      sessionId: "item-worker-generation",
+      createdAt: "2026-08-02T12:00:00.000Z",
+      baseitemsSha256: await sha256(baseitemsTwoDa),
+      baseItem: 4,
+      itemClass: "sw",
+      modelType: 2,
+      status: "ARTIFACTS_VERIFIED",
+      ownerCreditCap: 90,
+      balanceAtReview: 120,
+      maximumCredits: 90,
+      slots: fields.map((field, index) => ({
+        field,
+        label: ["Bottom", "Middle", "Top"][index],
+        token: ["b", "m", "t"][index],
+        role: ["BOTTOM", "MIDDLE", "TOP"][index],
+        profileId: "S1-static-prop/v1",
+        targetPolycount: [5000, 8000, 3000][index],
+        status: "ARTIFACT_VERIFIED",
+        concept: {
+          fileName: `${field}.png`,
+          mimeType: "image/png",
+          byteLength: 4,
+          sha256: String(index + 1).repeat(64),
+        },
+        preview: null,
+        run: {
+          runId: `run-${index + 1}`,
+          taskId: `task-${index + 1}`,
+          createdAt: "2026-08-02T12:01:00.000Z",
+        },
+        artifact: {
+          sha256: sourceHashes[index],
+          byteLength: sources[index].byteLength,
+          consumedCredits: 30,
+          finishedAt: "2026-08-02T12:03:00.000Z",
+        },
+      })),
+    });
+    const generationArtifactsJson = JSON.stringify({
+      schemaVersion: 1,
+      artifacts: fields.map((field, index) => ({
+        field,
+        profileId: "S1-static-prop/v1",
+        bridgeProtocolVersion: 1,
+        sha256: sourceHashes[index],
+        byteLength: sourceLengths[index],
+        taskIds: { PREVIEW: `task-${index + 1}` },
+        consumedCredits: 30,
+        createdAt: "2026-08-02T12:01:00.000Z",
+        finishedAt: "2026-08-02T12:03:00.000Z",
+      })),
+    });
     const itemRequest = {
       requestId: "item-build",
       type: "BUILD_ITEM_PACKAGE",
@@ -248,11 +468,19 @@ describe("Item Worker/WASM integration", () => {
       areaResref: "m2aitemarea4",
       areaName: "Meshy2Aurora Item Assembly Proof",
       blueprintResref: "m2aitemuti4",
+      generationSessionJson,
+      generationArtifactsJson,
+      fitReportJson: profileFitted.fitReportJson,
+      attachmentProfileJson: profileResponse.attachmentProfileJson,
       occupiedResourceKeys: [],
       seamValidation: {
         tolerance: 10,
       },
-      referenceTables: [],
+      referenceTables: [{
+        tableName: "APPEARANCE",
+        fileName: "appearance.2da",
+        bytes: appearance,
+      }],
       referenceResources: [],
       referenceResourceManifest: null,
       capartContext: null,
@@ -265,7 +493,7 @@ describe("Item Worker/WASM integration", () => {
         description: "Worker integration item.",
         identifiedDescription: "Worker integration item.",
         comment: "Generated by the Item integration test.",
-        parts: fields.map((field) => ({ field, value: 7 })),
+        parts: fields.map((field) => ({ field, value: 251 })),
         colors: {
           leather1Color: null,
           leather2Color: null,
@@ -284,23 +512,30 @@ describe("Item Worker/WASM integration", () => {
         cursed: false,
         plot: false,
       }),
-      parts: fields.map((field, index) => ({
-        field,
-        variant: 7,
-        sourceKind: "MESHY_GLB",
-        modelResref: modelResrefs[index],
-        iconResref: iconResrefs[index],
-        textureResref: `m2ait4${index}`,
-        sourceGlb: sources[index],
-        sourceNode: null,
-        textureEncoding: "DIRECT_COLOR",
-        transformJson: JSON.stringify({
-          translation: [index * 2, 0, 0],
-          rotationXyzw: [0, 0, 0, 1],
-          uniformScale: 1,
-          pivot: [0, 0, 0],
-        }),
-      })),
+      parts: fields.map((field, index) => {
+        const token = ["b", "m", "t"][index];
+        const weaponColorways = ([1, 2, 3, 4] as const).map((color) => ({
+          color,
+          variant: 250 + color,
+          modelResref: `sw_${token}_${250 + color}`,
+          iconResref: `isw_${token}_${250 + color}`,
+          textureResref: `m2ait4${index}c${color}`,
+        }));
+        return {
+          field,
+          variant: 251,
+          sourceKind: "MESHY_GLB" as const,
+          modelResref: modelResrefs[index],
+          iconResref: iconResrefs[index],
+          textureResref: `m2ait4${index}c1`,
+          weaponColorways,
+          sourceGlb: sources[index],
+          sourceNode: null,
+          textureEncoding: "DIRECT_COLOR" as const,
+          transformJson: JSON.stringify(fittedParts.get(field)?.transform),
+          targetSpaceScaleXyz: fittedParts.get(field)?.targetSpaceScaleXyz,
+        };
+      }),
     } satisfies Parameters<StudioWorkerClient["request"]>[0];
     const response = await client.request(itemRequest, [baseitemsTwoDa, ...sources]);
 
@@ -315,15 +550,28 @@ describe("Item Worker/WASM integration", () => {
       profile: "ITEM",
       baseItem: 4,
       partCount: 3,
-      iconLayerCount: 3,
-      iconLayerMode: "GEOMETRY_RASTER_TGA_V2",
-      iconRuntimeParity: "offline_semantic_readback_only",
+      iconLayerCount: 12,
+      weaponColorwayCoverage: {
+        status: "COMPLETE",
+        expectedResourceCount: 12,
+        emittedResourceCount: 12,
+        colors: [1, 2, 3, 4],
+        geometryReuse: "ONE_MESHY_GLB_PER_PART",
+      },
+      baseitemsModelRange: {
+        status: "PATCHED",
+        sourceMinRange: 10,
+        sourceMaxRange: 100,
+        effectiveMaxRange: 250,
+      },
+      iconLayerMode: "AURORA_MODELTYPE2_ICON_LAYERS_V3",
+      iconRuntimeParity: "offline_native_layer_composite_validated",
       seamValidation: {
         status: "PASSED",
         results: [
           {
-            status: "TOUCHING",
-            requiredRelation: "ADJACENT_TOUCH",
+            status: "OVERLAP",
+            requiredRelation: "ADJACENT_CONNECTED",
             algorithm: "TRIANGLE_SURFACE_BVH_CONTAINMENT_V1",
             measurementSha256: expect.any(String),
           },
@@ -334,14 +582,95 @@ describe("Item Worker/WASM integration", () => {
             measurementSha256: expect.any(String),
           },
           {
-            status: "TOUCHING",
-            requiredRelation: "ADJACENT_TOUCH",
+            status: "OVERLAP",
+            requiredRelation: "ADJACENT_CONNECTED",
             algorithm: "TRIANGLE_SURFACE_BVH_CONTAINMENT_V1",
             measurementSha256: expect.any(String),
           },
         ],
       },
       triangleBudget: { triangleBudget: 300000, warning: false },
+      generation: {
+        sessionId: "item-worker-generation",
+        status: "ARTIFACTS_VERIFIED",
+        maximumCredits: 90,
+        actualConsumedCredits: 90,
+        slots: fields.map((field, index) => ({
+          field,
+          role: ["BOTTOM", "MIDDLE", "TOP"][index],
+          taskId: `task-${index + 1}`,
+          glbSha256: sourceHashes[index],
+          consumedCredits: 30,
+        })),
+      },
+      fit: {
+        status: "PASSED",
+        algorithm: "ITEM_REFERENCE_SLOT_FRAME_FIT_V1",
+        solutionSha256: fitReport.solutionSha256,
+        referenceProfileSha256: attachmentProfile.profileSha256,
+        parts: fitReport.parts.map((part) => ({
+          field: part.field,
+          transformSha256: part.transformSha256,
+        })),
+      },
+      iconPresentationFit: {
+        status: "PASSED",
+        algorithm: "ITEM_MODELTYPE2_FULL_FRAME_CONNECTOR_FIT_V4_AURORA_YZX",
+        solutionSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+        targetAxialLengths: [0.22, 0.08, 0.90],
+        worldAttachmentUnaffected: true,
+        parts: fields.map((field) => ({
+          field,
+          sourceSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+          transformSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+        })),
+      },
+      attachmentProfile: {
+        profileSha256: attachmentProfile.profileSha256,
+      },
+      itemPropertiesModelConformance: {
+        status: "PASSED",
+        algorithm: "ITEM_MODELTYPE2_AURORA_APPEND_CONFORMANCE_V2",
+        axialTargetAxis: 1,
+        checkedMdlCount: 12,
+        appendOrder: fields,
+        colorways: [
+          { color: 1, totalTriangleCount: expect.any(Number) },
+          { color: 2, totalTriangleCount: expect.any(Number) },
+          { color: 3, totalTriangleCount: expect.any(Number) },
+          { color: 4, totalTriangleCount: expect.any(Number) },
+        ],
+      },
+      itemIconConformance: {
+        status: "PASSED",
+        algorithm: "AURORA_MODELTYPE2_ICON_LAYER_COMPOSITE_V3",
+        layoutProfile: "LONG_VERTICAL_PART_ORDER_V2",
+        colorways: [
+          { color: 1, axialFillRatio: expect.any(Number), partOrderStatus: "PASSED" },
+          { color: 2, axialFillRatio: expect.any(Number), partOrderStatus: "PASSED" },
+          { color: 3, axialFillRatio: expect.any(Number), partOrderStatus: "PASSED" },
+          { color: 4, axialFillRatio: expect.any(Number), partOrderStatus: "PASSED" },
+        ],
+      },
+      proofModule: {
+        fixtureProfile: "ITEM_ONLY_GROUND_ITEM_V1",
+        groundItemCount: 1,
+        creatureCount: 0,
+        semanticReadbackStatus: "PASS",
+      },
+      sourceBundle: {
+        schema: "meshy2aurora.sample-3d/v1",
+        assetId: "item-4-item-worker-generation",
+        manifestFileName: "manifest.yaml",
+        manifestSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+        files: fields.map((field, index) => ({
+          field,
+          role: `source-modelpart-${["bottom", "middle", "top"][index]}`,
+          fileName: `${["bottom", "middle", "top"][index]}.glb`,
+          byteLength: sourceLengths[index],
+          sha256: sourceHashes[index],
+        })),
+      },
       modelVisibility: "not_tested",
       proofCompleteness: "missing",
       readyForOwnerProof: false,
@@ -356,14 +685,26 @@ describe("Item Worker/WASM integration", () => {
     expect(JSON.parse(response.partReadbacksJson).map(
       (part: { modelResref: string }) => part.modelResref,
     )).toEqual(modelResrefs);
+    expect(response.artifacts.filter(({ kind }) => kind === "MODEL")).toHaveLength(12);
     expect(response.artifacts.filter(({ kind }) => kind === "MODEL").map(
       ({ fileName }) => fileName,
-    )).toEqual(modelResrefs.map((resref) => `${resref}.mdl`));
-    expect(response.artifacts.filter(({ kind }) => kind === "TEXTURE")).toHaveLength(6);
+    )).toEqual(itemRequest.parts.flatMap((part) => (
+      part.weaponColorways.map((colorway) => `${colorway.modelResref}.mdl`)
+    )));
+    expect(response.artifacts.filter(({ kind }) => kind === "TEXTURE")).toHaveLength(24);
+    const concreteColorwayTextures = response.artifacts.filter(
+      ({ artifactId }) => artifactId.startsWith("item-part-") && artifactId.endsWith("-texture"),
+    );
+    expect(concreteColorwayTextures).toHaveLength(12);
+    for (let partIndex = 0; partIndex < 3; partIndex += 1) {
+      expect(new Set(concreteColorwayTextures.slice(partIndex * 4, partIndex * 4 + 4).map(
+        ({ sha256: textureSha256 }) => textureSha256,
+      )).size).toBe(4);
+    }
     const iconLayers = response.artifacts.filter(
       ({ artifactId }) => artifactId.startsWith("item-part-") && artifactId.endsWith("-icon"),
     );
-    expect(iconLayers).toHaveLength(3);
+    expect(iconLayers).toHaveLength(12);
     for (const layer of iconLayers) {
       const bytes = new Uint8Array(layer.bytes);
       expect(bytes[2]).toBe(2);
@@ -381,17 +722,130 @@ describe("Item Worker/WASM integration", () => {
       expect.objectContaining({ kind: "HAK", fileName: "m2aitemhak4.hak" }),
       expect.objectContaining({ kind: "MODULE", fileName: "m2aitemmod4.mod" }),
       expect.objectContaining({ kind: "ITEM_BLUEPRINT", fileName: "m2aitemuti4.uti" }),
+      expect.objectContaining({ kind: "SOURCE_MANIFEST", fileName: "manifest.yaml" }),
     ]));
+    const sourceModels = response.artifacts.filter(({ kind }) => kind === "SOURCE_MODEL");
+    expect(sourceModels.map(({ fileName, byteLength, sha256 }) => ({ fileName, byteLength, sha256 })))
+      .toEqual(["bottom", "middle", "top"].map((role, index) => ({
+        fileName: `${role}.glb`,
+        byteLength: sourceLengths[index],
+        sha256: sourceHashes[index],
+      })));
+    const sourceManifest = response.artifacts.find(({ kind }) => kind === "SOURCE_MANIFEST");
+    const sourceManifestText = new TextDecoder().decode(sourceManifest!.bytes);
+    expect(sourceManifest!.sha256).toBe(await sha256(sourceManifest!.bytes));
+    expect(sourceManifestText).toContain("schema: meshy2aurora.sample-3d/v1");
+    expect(sourceManifestText).toContain("asset_id: item-4-item-worker-generation");
+    expect(sourceManifestText).toContain(`sha256: ${sourceHashes[0]}`);
+    expect(sourceManifestText).toContain(`solution_sha256: ${fitReport.solutionSha256}`);
+    expect(sourceManifestText).not.toMatch(/https?:\/\/|authorization|api[_-]?key|signedUrl/i);
     const hak = response.artifacts.find(({ kind }) => kind === "HAK");
     const module = response.artifacts.find(({ kind }) => kind === "MODULE");
     const uti = response.artifacts.find(({ kind }) => kind === "ITEM_BLUEPRINT");
     const report = response.artifacts.find(({ fileName }) => fileName === "item-build-report.json");
     expect(new TextDecoder().decode(hak!.bytes.slice(0, 8))).toBe("HAK V1.0");
     expect(new TextDecoder().decode(module!.bytes.slice(0, 8))).toBe("MOD V1.0");
+    expect(new TextDecoder().decode(module!.bytes)).not.toContain("m2aitemnpc4");
     expect(new TextDecoder().decode(uti!.bytes.slice(0, 8))).toBe("UTI V3.2");
     expect(hak!.sha256).toBe(await sha256(hak!.bytes));
     expect(uti!.sha256).toBe(await sha256(uti!.bytes));
     expect(new TextDecoder().decode(report!.bytes)).toBe(response.reportJson);
+
+    const incompleteColorwayBaseitems = await fetchBytes(baseitemsUrl);
+    const incompleteColorwaySources = await Promise.all([
+      fetchBytes(sourceUrl).then(asStaticItemPart),
+      fetchBytes(sourceUrl).then(asStaticItemPart),
+      fetchBytes(sourceUrl).then(asStaticItemPart),
+    ]);
+    await expect(client.request({
+      ...itemRequest,
+      requestId: "item-colorway-incomplete",
+      baseitemsTwoDa: incompleteColorwayBaseitems,
+      parts: itemRequest.parts.map((part, index) => ({
+        ...part,
+        sourceGlb: incompleteColorwaySources[index],
+        weaponColorways: index === 0 ? part.weaponColorways.slice(0, 3) : part.weaponColorways,
+      })),
+    }, [incompleteColorwayBaseitems, ...incompleteColorwaySources])).rejects.toThrow(
+      "ITEM-WEAPON-COLORWAY-COVERAGE-INCOMPLETE",
+    );
+
+    const weaponPltBaseitems = await fetchBytes(baseitemsUrl);
+    const weaponPltSources = await Promise.all([
+      fetchBytes(sourceUrl).then(asStaticItemPart),
+      fetchBytes(sourceUrl).then(asStaticItemPart),
+      fetchBytes(sourceUrl).then(asStaticItemPart),
+    ]);
+    await expect(client.request({
+      ...itemRequest,
+      requestId: "item-modeltype2-plt",
+      baseitemsTwoDa: weaponPltBaseitems,
+      parts: itemRequest.parts.map((part, index) => ({
+        ...part,
+        sourceGlb: weaponPltSources[index],
+        textureEncoding: index === 0 ? "PLT_METAL1" as const : part.textureEncoding,
+      })),
+    }, [weaponPltBaseitems, ...weaponPltSources])).rejects.toThrow(
+      "ITEM-MODELTYPE2-PLT-UNSUPPORTED",
+    );
+
+    const taskTamperBaseitems = await fetchBytes(baseitemsUrl);
+    const taskTamperSources = await Promise.all([
+      fetchBytes(sourceUrl).then(asStaticItemPart),
+      fetchBytes(sourceUrl).then(asStaticItemPart),
+      fetchBytes(sourceUrl).then(asStaticItemPart),
+    ]);
+    const taskTamperSession = JSON.parse(generationSessionJson);
+    taskTamperSession.slots[0].run.taskId = "task-substituted";
+    await expect(client.request({
+      ...itemRequest,
+      requestId: "item-generation-task-tamper",
+      baseitemsTwoDa: taskTamperBaseitems,
+      generationSessionJson: JSON.stringify(taskTamperSession),
+      parts: itemRequest.parts.map((part, index) => ({ ...part, sourceGlb: taskTamperSources[index] })),
+    }, [taskTamperBaseitems, ...taskTamperSources])).rejects.toThrow(
+      "ITEM-GENERATION-PROVENANCE-TASK-MISMATCH",
+    );
+
+    const tamperedBaseitems = await fetchBytes(baseitemsUrl);
+    const tamperedSources = await Promise.all([
+      fetchBytes(sourceUrl).then(asStaticItemPart),
+      fetchBytes(sourceUrl).then(asStaticItemPart),
+      fetchBytes(sourceUrl).then(asStaticItemPart),
+    ]);
+    const tamperedFirst = new Uint8Array(tamperedSources[0]);
+    tamperedFirst[tamperedFirst.length - 1] ^= 1;
+    await expect(client.request({
+      ...itemRequest,
+      requestId: "item-generation-source-tamper",
+      baseitemsTwoDa: tamperedBaseitems,
+      parts: itemRequest.parts.map((part, index) => ({ ...part, sourceGlb: tamperedSources[index] })),
+    }, [tamperedBaseitems, ...tamperedSources])).rejects.toThrow(
+      "ITEM-GENERATION-PROVENANCE-SLOT-MISMATCH",
+    );
+
+    const fitTamperBaseitems = await fetchBytes(baseitemsUrl);
+    const fitTamperSources = await Promise.all([
+      fetchBytes(sourceUrl).then(asStaticItemPart),
+      fetchBytes(sourceUrl).then(asStaticItemPart),
+      fetchBytes(sourceUrl).then(asStaticItemPart),
+    ]);
+    await expect(client.request({
+      ...itemRequest,
+      requestId: "item-fit-transform-tamper",
+      baseitemsTwoDa: fitTamperBaseitems,
+      generationSessionJson: null,
+      generationArtifactsJson: null,
+      parts: itemRequest.parts.map((part, index) => ({
+        ...part,
+        sourceGlb: fitTamperSources[index],
+        transformJson: index === 0
+          ? JSON.stringify({ ...JSON.parse(part.transformJson), translation: [99, 0, 0] })
+          : part.transformJson,
+      })),
+    }, [fitTamperBaseitems, ...fitTamperSources])).rejects.toThrow(
+      "ITEM-FIT-PROVENANCE-MISMATCH",
+    );
 
     const collisionBaseitems = await fetchBytes(baseitemsUrl);
     const collisionSources = await Promise.all([
@@ -441,6 +895,9 @@ describe("Item Worker/WASM integration", () => {
       ...itemRequest,
       requestId: "item-non-adjacent-overlap",
       baseitemsTwoDa: overlapBaseitems,
+      generationSessionJson: null,
+      generationArtifactsJson: null,
+      fitReportJson: null,
       parts: itemRequest.parts.map((part, index) => ({
         ...part,
         sourceGlb: overlapSources[index],
@@ -452,7 +909,7 @@ describe("Item Worker/WASM integration", () => {
         }),
       })),
     }, [overlapBaseitems, ...overlapSources])).rejects.toThrow(
-      "ITEM-SEAM-VALIDATION-FAILED",
+      "ITEM-MODELTYPE2-FIT-REQUIRED",
     );
   }, 60_000);
 
@@ -470,8 +927,8 @@ describe("Item Worker/WASM integration", () => {
       "2DA V2.0",
       "",
       "Label ItemClass ModelType GenderSpecific DefaultModel DefaultIcon EquipableSlots InvSlotWidth InvSlotHeight",
-      "16 Armor armor 3 0 it_bag iit_chest 1 2 3",
-      "80 Cloak cloak 1 1 it_bag icloak 1 2 2",
+      "16 Armor armor 3 0 it_bag iit_chest 2 2 3",
+      "80 Cloak cloak 1 1 it_bag icloak 8192 2 2",
       "",
     ].join("\n")).buffer;
     const capart = capartFixture();
@@ -538,6 +995,9 @@ describe("Item Worker/WASM integration", () => {
       areaResref: "m2aarmorarea",
       areaName: "CAPART Item Assembly Proof",
       blueprintResref: "m2aarmoruti",
+      generationSessionJson: null,
+      generationArtifactsJson: null,
+      fitReportJson: null,
       occupiedResourceKeys: [],
       seamValidation: { tolerance: 0.01 },
       blueprintJson: JSON.stringify({
@@ -641,7 +1101,7 @@ describe("Item Worker/WASM integration", () => {
       "2DA V2.0",
       "",
       "Label ItemClass ModelType GenderSpecific DefaultModel DefaultIcon EquipableSlots InvSlotWidth InvSlotHeight",
-      "80 Cloak cloak 1 1 it_bag icloak 1 2 2",
+      "80 Cloak cloak 1 1 it_bag icloak 8192 2 2",
       "",
     ].join("\n")).buffer;
     const cloakModel = new TextEncoder().encode(
@@ -685,6 +1145,9 @@ describe("Item Worker/WASM integration", () => {
       areaResref: "m2acloakarea",
       areaName: "Cloak Item Assembly Proof",
       blueprintResref: "m2acloakuti",
+      generationSessionJson: null,
+      generationArtifactsJson: null,
+      fitReportJson: null,
       occupiedResourceKeys: [],
       seamValidation: { tolerance: 0.01 },
       blueprintJson: JSON.stringify({

@@ -100,7 +100,7 @@ describe("InMemoryMeshyBridgeClient", () => {
       .resolves.toMatchObject({ status: "QUEUED", mode: "IMAGE_TO_IMAGE" });
   });
 
-  it("never returns a credential and requires a fresh confirmation nonce before creating a run", async () => {
+  it("never returns a credential and idempotently returns the exact run for a repeated confirmation", async () => {
     const bridge = new InMemoryMeshyBridgeClient({ availableCredits: 120 });
     const pairing = await bridge.pair({ pairingCode: "local-proof" });
     const health = await bridge.health();
@@ -124,6 +124,15 @@ describe("InMemoryMeshyBridgeClient", () => {
     expect(run.status).toBe("QUEUED");
     await expect(bridge.createRun(pairing.sessionToken, {
       previewId: preview.previewId,
+      confirmationNonce: "confirm-once",
+    })).resolves.toMatchObject({ id: run.id, status: "QUEUED" });
+    const differentPreview = await bridge.previewRun(pairing.sessionToken, {
+      profileId: "S1-static-prop/v1",
+      prompt: "A different static prop",
+      geometryTarget: "BALANCED",
+    });
+    await expect(bridge.createRun(pairing.sessionToken, {
+      previewId: differentPreview.previewId,
       confirmationNonce: "confirm-once",
     })).rejects.toMatchObject({ code: "CONFIRMATION_ALREADY_USED" });
   });
@@ -164,5 +173,27 @@ describe("InMemoryMeshyBridgeClient", () => {
     expect(artifact.file.name).toBe("meshy-s1-static-prop.glb");
     expect(artifact.provenance.profileId).toBe("S1-static-prop/v1");
     expect(artifact.provenance.sha256).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("recovers an exact completed Image-to-3D artifact with durable task and cost provenance", async () => {
+    const bridge = new InMemoryMeshyBridgeClient();
+    const { sessionToken } = await bridge.pair({ pairingCode: "local-proof" });
+    const bytes = new Uint8Array([0x67, 0x6c, 0x54, 0x46]);
+    await bridge.addRecoverableImageTo3dForTest({
+      taskId: "image-task-1",
+      consumedCredits: 30,
+      createdAt: "2026-08-02T10:00:00.000Z",
+      finishedAt: "2026-08-02T10:01:00.000Z",
+    }, bytes);
+
+    const artifact = await bridge.recoverImageTo3dArtifact(sessionToken, "image-task-1");
+    expect(artifact.file.name).toBe("meshy-recovered-image-to-3d.glb");
+    expect(artifact.provenance).toMatchObject({
+      profileId: "RECOVERED-image-to-3d/v1",
+      taskIds: { PREVIEW: "image-task-1" },
+      consumedCredits: 30,
+      createdAt: "2026-08-02T10:00:00.000Z",
+      finishedAt: "2026-08-02T10:01:00.000Z",
+    });
   });
 });

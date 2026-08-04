@@ -868,7 +868,7 @@ export function App({
   };
 
   if (session.target === "ITEM") {
-    return <ItemWorkflow onTargetChange={selectTarget} />;
+    return <ItemWorkflow onTargetChange={selectTarget} meshyBridge={meshyBridgeRef.current} />;
   }
 
   const unlockedSteps = getUnlockedWorkflowSteps(session);

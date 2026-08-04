@@ -52,6 +52,28 @@ const DIRECT_CREATURE_MODEL_BOUNDS_MIN: [f32; 3] = [-5.0, -5.0, -1.0];
 const DIRECT_CREATURE_MODEL_BOUNDS_MAX: [f32; 3] = [5.0, 5.0, 10.0];
 const DIRECT_CREATURE_MODEL_RADIUS: f32 = 7.0;
 
+fn is_item_aurora_composer_profile(profile: MdlFormatProfileV1) -> bool {
+    profile == MdlFormatProfileV1::ItemPartStaticRigidAuroraComposerV2
+}
+
+fn mesh_node_name(
+    profile: MdlFormatProfileV1,
+    model_resref: &str,
+    segment_index: usize,
+    segment_count: usize,
+    segment_id: u32,
+) -> String {
+    if is_item_aurora_composer_profile(profile) {
+        if segment_count == 1 {
+            format!("g_{model_resref}")
+        } else {
+            format!("g_{model_resref}_{:02}", segment_index + 1)
+        }
+    } else {
+        format!("m2a_seg_{segment_id}")
+    }
+}
+
 struct RigPlan {
     source_index: usize,
     id: u32,
@@ -568,6 +590,7 @@ fn plan_with_face_plane_policy(
         MdlFormatProfileV1::M0StaticRigidNativeV1 => 3,
         MdlFormatProfileV1::PlaceableStaticRigidNativeV1 => 3,
         MdlFormatProfileV1::ItemPartStaticRigidNativeV1 => 3,
+        MdlFormatProfileV1::ItemPartStaticRigidAuroraComposerV2 => 3,
         MdlFormatProfileV1::TileStaticV1 => 3,
         MdlFormatProfileV1::SourceTopologyPreservingRigidExperimentV1 => 3,
         MdlFormatProfileV1::SourceTopologyPreservingRigidCandidateV1 => 3,
@@ -578,6 +601,7 @@ fn plan_with_face_plane_policy(
         MdlFormatProfileV1::M0StaticRigidNativeV1
             | MdlFormatProfileV1::PlaceableStaticRigidNativeV1
             | MdlFormatProfileV1::ItemPartStaticRigidNativeV1
+            | MdlFormatProfileV1::ItemPartStaticRigidAuroraComposerV2
             | MdlFormatProfileV1::TileStaticV1
             | MdlFormatProfileV1::SourceTopologyPreservingRigidExperimentV1
             | MdlFormatProfileV1::SourceTopologyPreservingRigidCandidateV1
@@ -611,7 +635,13 @@ fn plan_with_face_plane_policy(
         }
     }
     for (index, segment) in creature.segments.iter().enumerate() {
-        let generated_name = format!("m2a_seg_{}", segment.segment_id);
+        let generated_name = mesh_node_name(
+            options.format_profile,
+            &options.model_resource_resref,
+            index,
+            creature.segments.len(),
+            segment.segment_id,
+        );
         if !output_node_names.insert(generated_name.to_ascii_lowercase()) {
             return Err(error(
                 "M4-NODE-NAME-DUPLICATE",
@@ -646,8 +676,13 @@ fn plan_with_face_plane_policy(
     let controllerless_root_index = if matches!(
         options.format_profile,
         MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedControllerlessRootV3
-    ) {
-        validate_controllerless_identity_root(creature, options, roots[0])?;
+    ) || is_item_aurora_composer_profile(options.format_profile)
+    {
+        if is_item_aurora_composer_profile(options.format_profile) {
+            validate_item_aurora_composer_root(creature, options, roots[0])?;
+        } else {
+            validate_controllerless_identity_root(creature, options, roots[0])?;
+        }
         Some(roots[0])
     } else {
         None
@@ -889,7 +924,7 @@ fn plan_with_face_plane_policy(
         }
     }
     for item in &mut mesh {
-        if item.skin.is_some() {
+        if item.skin.is_some() || is_item_aurora_composer_profile(options.format_profile) {
             item.bind_controller_keys = Some(take(
                 &mut cursor,
                 mul(
@@ -911,7 +946,7 @@ fn plan_with_face_plane_policy(
         }
     }
     for item in &mut mesh {
-        if item.skin.is_some() {
+        if item.skin.is_some() || is_item_aurora_composer_profile(options.format_profile) {
             item.bind_controller_data = Some(take(
                 &mut cursor,
                 mul(CONTROLLER_DATA_COUNT, 4, "layout.skinBindControllerData")?,
@@ -1826,6 +1861,7 @@ fn validate_public_contract(
             | MdlFormatProfileV1::M0StaticRigidNativeV1
             | MdlFormatProfileV1::PlaceableStaticRigidNativeV1
             | MdlFormatProfileV1::ItemPartStaticRigidNativeV1
+            | MdlFormatProfileV1::ItemPartStaticRigidAuroraComposerV2
             | MdlFormatProfileV1::TileStaticV1
             | MdlFormatProfileV1::SourceTopologyPreservingRigidExperimentV1
             | MdlFormatProfileV1::SourceTopologyPreservingRigidCandidateV1
@@ -1842,6 +1878,7 @@ fn validate_public_contract(
         MdlFormatProfileV1::M0StaticRigidNativeV1
             | MdlFormatProfileV1::PlaceableStaticRigidNativeV1
             | MdlFormatProfileV1::ItemPartStaticRigidNativeV1
+            | MdlFormatProfileV1::ItemPartStaticRigidAuroraComposerV2
             | MdlFormatProfileV1::TileStaticV1
             | MdlFormatProfileV1::SourceTopologyPreservingRigidExperimentV1
             | MdlFormatProfileV1::SourceTopologyPreservingRigidCandidateV1
@@ -1913,6 +1950,53 @@ fn validate_controllerless_identity_root(
             "M4-CONTROLLERLESS-ROOT-INVALID",
             &format!("creature.segments[{segment_index}].weights"),
             "controllerless root must not be referenced by skin weights",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_item_aurora_composer_root(
+    creature: &AuroraCreatureIrV1,
+    options: &MdlWriterOptionsV1,
+    root_index: usize,
+) -> Result<(), MdlWriteError> {
+    let root = &creature.nodes[root_index];
+    let path = format!("creature.nodes[{root_index}]");
+    if root.name != options.model_resource_resref {
+        return Err(error(
+            "ITEM-MDL-COMPOSER-ROOT-INVALID",
+            &format!("{path}.name"),
+            "Aurora Item composer root must be named exactly like the model resref",
+        ));
+    }
+    if creature.nodes.len() != 1 {
+        return Err(error(
+            "ITEM-MDL-COMPOSER-HIERARCHY-INVALID",
+            "creature.nodes",
+            "Aurora Item composer profile requires one controllerless model root and direct Trimesh children",
+        ));
+    }
+    if let Some((segment_index, _)) = creature
+        .segments
+        .iter()
+        .enumerate()
+        .find(|(_, segment)| segment.parent_node_id != root.id)
+    {
+        return Err(error(
+            "ITEM-MDL-COMPOSER-HIERARCHY-INVALID",
+            &format!("creature.segments[{segment_index}].parentNodeId"),
+            "every Item composer Trimesh must be a direct child of the model root",
+        ));
+    }
+    if root
+        .bind_local_matrix
+        .iter()
+        .any(|value| !value.is_finite())
+    {
+        return Err(error(
+            "ITEM-MDL-COMPOSER-TRANSFORM-INVALID",
+            &format!("{path}.bindLocalMatrix"),
+            "Item composer child transform carrier must be finite",
         ));
     }
     Ok(())
@@ -2421,7 +2505,13 @@ fn emit_meshes(
             core,
             base + 0x20,
             32,
-            &format!("m2a_seg_{}", segment.segment_id),
+            &mesh_node_name(
+                options.format_profile,
+                &options.model_resource_resref,
+                item.segment_index,
+                creature.segments.len(),
+                segment.segment_id,
+            ),
         )?;
         write_u32(
             core,
@@ -2433,9 +2523,36 @@ fn emit_meshes(
             write_array(core, base + 0x60, data, CONTROLLER_DATA_COUNT)?;
             write_controller_key(core, keys, 8, 0, 1, 3)?;
             write_controller_key(core, keys + CONTROLLER_KEY_SIZE, 20, 4, 5, 4)?;
-            for (data_index, value) in [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
-                .into_iter()
-                .enumerate()
+            let bind_matrix = if is_item_aurora_composer_profile(options.format_profile) {
+                creature.nodes[plan.rig[item.parent_part as usize].source_index].bind_local_matrix
+            } else {
+                [
+                    1.0, 0.0, 0.0, 0.0, //
+                    0.0, 1.0, 0.0, 0.0, //
+                    0.0, 0.0, 1.0, 0.0, //
+                    0.0, 0.0, 0.0, 1.0,
+                ]
+            };
+            let quaternion = matrix_quaternion(
+                bind_matrix,
+                &format!(
+                    "creature.segments[{}].composerBindMatrix",
+                    item.segment_index
+                ),
+            )?;
+            for (data_index, value) in [
+                0.0,
+                bind_matrix[12],
+                bind_matrix[13],
+                bind_matrix[14],
+                0.0,
+                quaternion[0],
+                quaternion[1],
+                quaternion[2],
+                quaternion[3],
+            ]
+            .into_iter()
+            .enumerate()
             {
                 write_f32(core, data + data_index * 4, value)?;
             }
@@ -2923,18 +3040,31 @@ fn expected_readback(
         nodes.push(ExpectedNode {
             ir_node_id: None,
             part_number: item.part,
-            name: format!("m2a_seg_{}", segment.segment_id),
+            name: mesh_node_name(
+                options.format_profile,
+                &options.model_resource_resref,
+                item.segment_index,
+                creature.segments.len(),
+                segment.segment_id,
+            ),
             parent_part_number: Some(item.parent_part),
             bind_matrix: None,
             controllerless_identity: false,
-            mesh_bind_matrix: item.skin.as_ref().map(|_| {
-                [
-                    1.0, 0.0, 0.0, 0.0, //
-                    0.0, 1.0, 0.0, 0.0, //
-                    0.0, 0.0, 1.0, 0.0, //
-                    0.0, 0.0, 0.0, 1.0,
-                ]
-            }),
+            mesh_bind_matrix: if is_item_aurora_composer_profile(options.format_profile) {
+                Some(
+                    creature.nodes[plan.rig[item.parent_part as usize].source_index]
+                        .bind_local_matrix,
+                )
+            } else {
+                item.skin.as_ref().map(|_| {
+                    [
+                        1.0, 0.0, 0.0, 0.0, //
+                        0.0, 1.0, 0.0, 0.0, //
+                        0.0, 0.0, 1.0, 0.0, //
+                        0.0, 0.0, 0.0, 1.0,
+                    ]
+                })
+            },
             content_flags: if item.skin.is_some() { 0x61 } else { 0x21 },
             mesh: Some(ExpectedMesh {
                 texture_resref: plan.textures[&segment.material_slot].clone(),
@@ -4343,6 +4473,7 @@ fn face_adjacency_for_profile(
         profile,
         MdlFormatProfileV1::PlaceableStaticRigidNativeV1
             | MdlFormatProfileV1::ItemPartStaticRigidNativeV1
+            | MdlFormatProfileV1::ItemPartStaticRigidAuroraComposerV2
             | MdlFormatProfileV1::TileStaticV1
     ) {
         checked_face_adjacency(positions, indices, path)

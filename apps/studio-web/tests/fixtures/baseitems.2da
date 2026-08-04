@@ -1,4 +1,4 @@
 2DA V2.0
 
-Label ItemClass ModelType GenderSpecific DefaultModel DefaultIcon EquipableSlots InvSlotWidth InvSlotHeight
-4 ThreePartTestItem sw 2 0 it_bag isw 1 2 3
+Label ItemClass ModelType GenderSpecific DefaultModel DefaultIcon EquipableSlots InvSlotWidth InvSlotHeight MinRange MaxRange
+4 ThreePartTestItem sw 2 0 it_bag isw 0x1C030 1 4 10 100

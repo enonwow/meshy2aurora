@@ -208,8 +208,10 @@ export function createLocalBridge({
   const retexturePreviews = new Map();
   const retextureRuns = new Map();
   const recoveredArtifacts = new Map();
+  const recoveredImageArtifacts = new Map();
   const recoveredThumbnails = new Map();
   const usedNonces = new Set();
+  const confirmedRunsByNonce = new Map();
   let pairingCodeUsed = false;
 
   const mintSession = () => {
@@ -300,6 +302,35 @@ export function createLocalBridge({
       },
     };
     recoveredArtifacts.set(taskId, recovered);
+    return recovered;
+  };
+
+  const recoverImageTo3dArtifact = async (taskId) => {
+    const cached = recoveredImageArtifacts.get(taskId);
+    if (cached) return cached;
+    const task = await meshJson(`/openapi/v1/image-to-3d/${encodeURIComponent(taskId)}`);
+    if (task.id !== taskId || task.type !== "image-to-3d" || task.status !== "SUCCEEDED") {
+      throw bridgeError("ARTIFACT_NOT_READY", "Only the exact completed Image-to-3D task can be recovered.", 409);
+    }
+    const assetUrl = task.model_urls?.glb;
+    if (typeof assetUrl !== "string") {
+      throw bridgeError("ARTIFACT_NOT_READY", "Meshy did not expose a GLB for this completed Image-to-3D task.", 409);
+    }
+    const artifactBytes = await downloadVerifiedGlb(assetUrl, "The signed Meshy Image-to-3D GLB download failed.");
+    const recovered = {
+      artifactBytes,
+      provenance: {
+        profileId: "RECOVERED-image-to-3d/v1",
+        bridgeProtocolVersion: PROTOCOL_VERSION,
+        sha256: createHash("sha256").update(artifactBytes).digest("hex"),
+        byteLength: artifactBytes.byteLength,
+        taskIds: { PREVIEW: taskId },
+        ...(Number.isFinite(task.consumed_credits) ? { consumedCredits: task.consumed_credits } : {}),
+        ...(Number.isFinite(task.created_at) ? { createdAt: new Date(task.created_at).toISOString() } : {}),
+        ...(Number.isFinite(task.finished_at) ? { finishedAt: new Date(task.finished_at).toISOString() } : {}),
+      },
+    };
+    recoveredImageArtifacts.set(taskId, recovered);
     return recovered;
   };
 
@@ -447,6 +478,9 @@ export function createLocalBridge({
         sha256: createHash("sha256").update(artifactBytes).digest("hex"),
         byteLength: artifactBytes.byteLength,
         taskIds: run.taskIds,
+        ...(Number.isFinite(output.consumed_credits) ? { consumedCredits: output.consumed_credits } : {}),
+        ...(Number.isFinite(output.created_at) ? { createdAt: new Date(output.created_at).toISOString() } : {}),
+        ...(Number.isFinite(output.finished_at) ? { finishedAt: new Date(output.finished_at).toISOString() } : {}),
         ...(run.artifacts?.length ? {
           animationArtifacts: run.artifacts.map(({ actionId, sha256, byteLength }) => ({ actionId, sha256, byteLength })),
         } : {}),
@@ -708,7 +742,13 @@ export function createLocalBridge({
       if (request.method === "POST" && url.pathname === "/v1/runs") {
         const body = await readBody();
         if (typeof body.confirmationNonce !== "string" || !body.confirmationNonce.trim()) throw bridgeError("CONFIRMATION_REQUIRED", "Confirm generation before creating a Meshy task.");
-        if (usedNonces.has(body.confirmationNonce)) throw bridgeError("CONFIRMATION_ALREADY_USED", "This confirmation was already used.", 409);
+        if (usedNonces.has(body.confirmationNonce)) {
+          const confirmed = confirmedRunsByNonce.get(body.confirmationNonce);
+          if (confirmed?.previewId === body.previewId) {
+            json(response, 200, safeRun(confirmed.run), origin); return;
+          }
+          throw bridgeError("CONFIRMATION_ALREADY_USED", "This confirmation was already used.", 409);
+        }
         const preview = previews.get(body.previewId);
         if (!preview) throw bridgeError("PREVIEW_NOT_FOUND", "The generation preview is no longer available.", 404);
         const balance = await meshJson("/openapi/v1/balance");
@@ -719,6 +759,7 @@ export function createLocalBridge({
         const timestamp = new Date().toISOString();
         const run = { id: randomUUID(), profile: preview.profile, prompt: preview.prompt, source: preview.source, imageDataUrls: preview.imageDataUrls, inputTaskId: preview.inputTaskId, geometryTarget: preview.geometryTarget, apiOptions: preview.apiOptions, status: "QUEUED", progress: 0, taskIds: {}, createdAt: timestamp, updatedAt: timestamp };
         runs.set(run.id, run);
+        confirmedRunsByNonce.set(body.confirmationNonce, { previewId: body.previewId, run });
         json(response, 200, safeRun(run), origin);
         if (startRuns) void executeRun(run);
         return;
@@ -734,6 +775,18 @@ export function createLocalBridge({
         }
         const recovered = await recoverArtifact(taskId);
         if (historyMatch[2] === "provenance") {
+          json(response, 200, recovered.provenance, origin); return;
+        }
+        response.writeHead(200, { "Content-Type": "model/gltf-binary", "Content-Length": recovered.artifactBytes.byteLength, "Cache-Control": "no-store", "Access-Control-Allow-Origin": origin, "Vary": "Origin" });
+        response.end(recovered.artifactBytes); return;
+      }
+
+      const imageTo3dRecoveryMatch = url.pathname.match(/^\/v1\/image-to-3d\/([^/]+)\/(artifact|provenance)$/);
+      if (imageTo3dRecoveryMatch && request.method === "GET") {
+        const taskId = decodeURIComponent(imageTo3dRecoveryMatch[1]);
+        if (!validInputTaskId(taskId)) throw bridgeError("TASK_REJECTED", "The Image-to-3D recovery task identity is invalid.");
+        const recovered = await recoverImageTo3dArtifact(taskId);
+        if (imageTo3dRecoveryMatch[2] === "provenance") {
           json(response, 200, recovered.provenance, origin); return;
         }
         response.writeHead(200, { "Content-Type": "model/gltf-binary", "Content-Length": recovered.artifactBytes.byteLength, "Cache-Control": "no-store", "Access-Control-Allow-Origin": origin, "Vary": "Origin" });

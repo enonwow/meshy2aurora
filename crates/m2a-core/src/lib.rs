@@ -13,6 +13,7 @@ pub mod hierarchy_candidate;
 pub mod hierarchy_experiment;
 pub mod hook_horror_clone_diagnostic;
 pub mod item;
+pub mod key_bif;
 pub mod m7_corpus;
 pub mod mdl;
 pub mod model_ir;

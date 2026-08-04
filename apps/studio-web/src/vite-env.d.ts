@@ -5,6 +5,16 @@ declare module "@m2a-wasm" {
   export function ingestGlbJson(bytes: Uint8Array): string;
   export function ingestStaticRigidGlbJson(bytes: Uint8Array): string;
   export function inspectItemBaseitemsV1Json(bytes: Uint8Array): string;
+  export function extendItemBaseitemModelRangeV1(
+    bytes: Uint8Array,
+    baseItem: number,
+    model: number,
+  ): Uint8Array;
+  export function extendItemBaseitemModelRangeV1ReportJson(
+    bytes: Uint8Array,
+    baseItem: number,
+    model: number,
+  ): string;
   export function inspectItemReferenceTwoDaV1Json(
     tableName: string,
     bytes: Uint8Array,
@@ -62,6 +72,19 @@ declare module "@m2a-wasm" {
     takeIconBytes(): Uint8Array;
     free(): void;
   };
+  export function buildMeshyItemPartWithOptionsV3(
+    sourceGlb: Uint8Array,
+    modelResref: string,
+    textureResref: string,
+    optionsJson: string,
+  ): {
+    readonly readbackJson: string;
+    readonly reportJson: string;
+    takeMdlBytes(): Uint8Array;
+    takeTextureBytes(): Uint8Array;
+    takeIconBytes(): Uint8Array;
+    free(): void;
+  };
   export function measureMeshyItemSeamV1Json(
     firstField: string,
     firstSourceGlb: Uint8Array,
@@ -72,6 +95,52 @@ declare module "@m2a-wasm" {
     secondModelResref: string,
     secondOptionsJson: string,
     tolerance: number,
+  ): string;
+  export function fitMeshyItemPartsV1Json(
+    sourceBundle: Uint8Array,
+    requestJson: string,
+  ): string;
+  export function validateItemFitReportV1Json(reportJson: string): string;
+  export function fitMeshyItemPartsV2Json(
+    sourceBundle: Uint8Array,
+    requestJson: string,
+  ): string;
+  export function validateItemFitReportV2Json(reportJson: string): string;
+  export function fitMeshyItemPartsV3Json(
+    sourceBundle: Uint8Array,
+    requestJson: string,
+  ): string;
+  export function validateItemFitReportV3Json(reportJson: string): string;
+  export function fitMeshyItemPartsV4Json(
+    sourceBundle: Uint8Array,
+    requestJson: string,
+    attachmentProfileJson: string,
+  ): string;
+  export function buildItemAttachmentProfileV1Json(
+    baseitemsTwoDa: Uint8Array,
+    baseItem: number,
+    mdlBundle: Uint8Array,
+    requestJson: string,
+  ): string;
+  export function validateItemFitReportV4Json(reportJson: string): string;
+  export function validateItemModelType2ComposerV2Json(
+    mdlBundle: Uint8Array,
+    requestJson: string,
+    fitReportJson: string,
+  ): string;
+  export function validateItemModelType2ComposerV3Json(
+    mdlBundle: Uint8Array,
+    requestJson: string,
+    fitReportJson: string,
+  ): string;
+  export function validateItemModelType2ComposerV4Json(
+    mdlBundle: Uint8Array,
+    requestJson: string,
+    fitReportJson: string,
+  ): string;
+  export function validateItemModelType2IconLayersV3Json(
+    iconBundle: Uint8Array,
+    requestJson: string,
   ): string;
   export function resolveItemCapartPartV1Json(
     field: string,
@@ -122,6 +191,9 @@ declare module "@m2a-wasm" {
     gender: number,
     phenotype: number,
   ): string;
+  export function resolveItemModelType2EquipmentSlotV1(equipableSlots: number): number;
+  export function encodeItemWeaponPartAppearanceV1(model: number, color: number): number;
+  export function decodeItemWeaponPartAppearanceV1Json(encodedValue: number): string;
   export function writeItemUtiV1(
     baseitemsTwoDa: Uint8Array,
     baseItem: number,

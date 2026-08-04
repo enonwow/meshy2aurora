@@ -4395,7 +4395,7 @@ pub(crate) fn sanitize_meshy_h1_degenerate_triangles_v1(
     )
 }
 
-fn sanitize_meshy_h1_degenerate_triangles_exact_v1(
+pub(crate) fn sanitize_meshy_h1_degenerate_triangles_exact_v1(
     source: &mut GlbIngestResult,
 ) -> Result<(), M6PipelineErrorV1> {
     sanitize_meshy_h1_degenerate_triangles_with_policy_v1(

@@ -20,6 +20,33 @@ export type StudioWorkerRequest =
   | { requestId: string; type: "INSPECT_ITEM_BASEITEMS"; baseitemsTwoDa: ArrayBuffer }
   | {
       requestId: string;
+      type: "BUILD_ITEM_ATTACHMENT_PROFILE";
+      baseitemsTwoDa: ArrayBuffer;
+      baseItem: number;
+      referenceKind: "REFERENCE_UTI" | "EXPLICIT_VARIANTS" | "APPROVED_PROFILE";
+      referenceId: string;
+      models: Array<{
+        field: string;
+        modelResref: string;
+        bytes: ArrayBuffer;
+      }>;
+    }
+  | {
+      requestId: string;
+      type: "FIT_ITEM_PARTS";
+      tolerance: number;
+      targetAxialLengths?: number[];
+      targetAxialScaleFactors?: number[];
+      attachmentProfileJson?: string;
+      parts: Array<{
+        field: string;
+        modelResref: string;
+        sourceGlb: ArrayBuffer;
+        sourceNode: string | null;
+      }>;
+    }
+  | {
+      requestId: string;
       type: "BUILD_MODEL_PACKAGE";
       sourceGlb: ArrayBuffer;
       appearanceTwoDa: ArrayBuffer;
@@ -93,6 +120,10 @@ export type StudioWorkerRequest =
       areaName: string;
       blueprintResref: string;
       blueprintJson: string;
+      generationSessionJson: string | null;
+      generationArtifactsJson: string | null;
+      fitReportJson: string | null;
+      attachmentProfileJson?: string | null;
       occupiedResourceKeys: string[];
       seamValidation: {
         tolerance: number;
@@ -131,8 +162,16 @@ export type StudioWorkerRequest =
         modelResref: string;
         iconResref: string;
         textureResref: string;
+        weaponColorways?: Array<{
+          color: 1 | 2 | 3 | 4;
+          variant: number;
+          modelResref: string;
+          iconResref: string;
+          textureResref: string;
+        }>;
         sourceGlb?: ArrayBuffer;
         transformJson: string;
+        targetSpaceScaleXyz?: [number, number, number];
         sourceNode: string | null;
         textureEncoding:
           | "DIRECT_COLOR"
@@ -162,7 +201,7 @@ export type StudioWorkerRequest =
 
 export interface WorkerArtifact {
   artifactId: string;
-  kind: "HAK" | "MODEL" | "MODULE" | "WOK" | "SET" | "TEXTURE" | "ITEM_BLUEPRINT" | "JSON_REPORT";
+  kind: "HAK" | "MODEL" | "MODULE" | "WOK" | "SET" | "TEXTURE" | "ITEM_BLUEPRINT" | "JSON_REPORT" | "SOURCE_MODEL" | "SOURCE_MANIFEST";
   fileName: string;
   mediaType: string;
   byteLength: number;
@@ -182,6 +221,13 @@ export type StudioWorkerSuccess =
     }
   | { requestId: string; ok: true; type: "APPEARANCE_INSPECTED"; inspectionJson: string }
   | { requestId: string; ok: true; type: "ITEM_BASEITEMS_INSPECTED"; catalogJson: string }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ITEM_ATTACHMENT_PROFILE_BUILT";
+      attachmentProfileJson: string;
+    }
+  | { requestId: string; ok: true; type: "ITEM_PARTS_FITTED"; fitReportJson: string }
   | {
       requestId: string;
       ok: true;
