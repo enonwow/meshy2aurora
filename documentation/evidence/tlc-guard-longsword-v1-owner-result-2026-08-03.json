@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "candidateId": "tlc-guard-longsword-v1-20260802",
+  "testModuleFileName": "m2atgls1.mod",
+  "toolsetModuleName": "Meshy2Aurora TLC Guard Longsword v1",
+  "areaName": "TLC Guard Longsword Assembly Proof",
+  "ownerReportedDate": "2026-08-03",
+  "evidenceKind": "owner_visual_report_in_current_candidate_task",
+  "identityBinding": {
+    "modSha256": "08bbebc18905d4b1ed6e6d9f3b9bb50f02afa08e12e86709551274013ae53dc0",
+    "hakFileName": "m2atglh1.hak",
+    "hakSha256": "9dba2282a123177df29acabc6c543ececf135d63aed38871e01d8e7dab9fae22",
+    "blueprintResref": "m2atglu1"
+  },
+  "toolset": {
+    "modelVisibility": "not_visible",
+    "proofCompleteness": "failed",
+    "ownerObservation": "The current demo presents a color/icon representation instead of the expected assembled 3D item model."
+  },
+  "visualAcceptance": {
+    "status": "failed",
+    "ownerObservation": "The handle is too large relative to the blade and the lower hilt/guard composition."
+  },
+  "diagnosedCause": {
+    "modelPresentation": "The V1 MOD placed the UTI in the GIT ground-item List and contained no creature Equip_ItemList entry, so it did not force the equipped ModelType 2 renderer to assemble the three MDLs.",
+    "proportions": "The independent later correction remains required: V1 auto-fit imposed fixed axial ratios 0.30/0.10/0.60 and checked seams but not silhouette proportions."
+  },
+  "admittedNextIteration": {
+    "candidateId": "tlc-guard-longsword-equipped-v2-20260803",
+    "minimalDelta": "Replace only the proof MOD fixture with one creature carrying the byte-identical UTI in native Equip_ItemList slot 16. Reuse the exact V1 HAK, UTI, MDLs, textures, icons and transforms without modification.",
+    "proportionChangeDeferred": true
+  }
+}

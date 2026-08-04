@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "candidateId": "tlc-guard-longsword-item-properties-v6-20260804",
+  "testModuleFileName": "m2atgls6.mod",
+  "moduleSha256": "e783d1fb6e896ed65cff501ee342531860912ca64b6ae35989aeed7ef7d047bd",
+  "orderedHakFiles": [
+    {
+      "fileName": "m2atglh6.hak",
+      "sha256": "8869c79d1cd75a88d4ebc3bca42451e258d5b714084ebd3d669928a273a483d3"
+    }
+  ],
+  "toolsetModuleName": "Meshy2Aurora TLC Guard Longsword item v6",
+  "areaName": "TLC Guard Longsword Item Properties V6",
+  "object": {
+    "name": "Last City Bronze Guard Longsword",
+    "blueprintResref": "m2atglu6",
+    "baseItem": 1,
+    "modelParts": [23, 63, 23]
+  },
+  "surface": "Aurora Toolset Item Properties / Appearance",
+  "reportedBy": "owner",
+  "reportedAtLocalDate": "2026-08-04",
+  "modelVisibility": "visible",
+  "proofCompleteness": "verified",
+  "visualAcceptance": "failed",
+  "observations": [
+    "The exact V6 assembled Item is visible in the Area and in the large Item Properties viewport.",
+    "The large left Item Properties viewport is now upright, connected and front-facing; its MDL orientation is accepted and must not change.",
+    "The small composed Appearance icon is rotated 180 degrees: the pommel is at the top and the blade points down.",
+    "The next delta is limited to one shared 180-degree icon-layout rotation applied before emitting the three aligned Bottom/Middle/Top TGA layers."
+  ],
+  "captures": [
+    {
+      "role": "exact-v6-area-and-model-accepted",
+      "captureFileName": "codex-clipboard-6a7668a1-22e5-49c9-b43f-5f53e61840d1.png",
+      "captureSha256": "896ea1a43592fe4b2256cc6bd4b8ac6e848d7a8cc3321c0ed6ab0774284da6f3",
+      "captureByteLength": 1342440,
+      "storage": "owner-supplied-conversation-attachment"
+    },
+    {
+      "role": "exact-v6-item-properties-model-accepted-icon-inverted",
+      "captureFileName": "codex-clipboard-306439b1-a614-4569-9b97-42cd954f0b9b.png",
+      "captureSha256": "d09223e9b5dc0345eaa0763b614f48aadfc42c99034a653979cca8c81de08146",
+      "captureByteLength": 226040,
+      "storage": "owner-supplied-conversation-attachment"
+    }
+  ],
+  "diagnosedCause": {
+    "model": "No remaining model-orientation defect was reported. The V6 full Aurora Y/Z/X frame is visually accepted in the large viewport.",
+    "icon": "The V6 front orthographic projection produces a complete silhouette but uses the opposite 2D axial direction required by Aurora's native icon presentation. The raw layer order places ModelPart1 above ModelPart3, so the composed Toolset icon shows the pommel above the blade."
+  },
+  "minimalNextArtifactDelta": [
+    "Preserve the exact V6 ItemFitReportV3, MDL transforms, connector overlap, model resources and texture payloads.",
+    "Rotate the shared 2D icon coordinate system by 180 degrees for all three layers together; do not independently rotate, recenter or rescale a part.",
+    "Require the decoded TGA layer order Top above Middle above Bottom before package success."
+  ],
+  "nextIterationAdmitted": true
+}

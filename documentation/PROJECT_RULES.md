@@ -218,12 +218,19 @@ Obowiazuje nastepujaca bramka:
    Area, fixture, Appearance row oraz pozycje.
 2. W Toolsecie potwierdzic tozsamosc i wybor dokladnego obiektu oraz zrobic
    swiezy capture zwalidowanego `TScrollBox`.
-3. Jezeli model jest widoczny, nie wolno tworzyc kolejnej iteracji. Nastepny
-   krok to NWN na tym samym lancuchu artefaktow.
-4. Jezeli model nie jest widoczny w Toolsecie albo NWN, zachowac swiezy obraz
+3. Jezeli model jest widoczny i zaakceptowany dla badanego kryterium Toolsetu,
+   nastepny krok to NWN na tym samym lancuchu artefaktow.
+4. Decyzja wlasciciela 2026-08-03: jezeli dokladny, zwiazany z kandydatem i
+   jednoznaczny widok Toolsetu pokazuje blad kryterium nalezacego do tej
+   powierzchni (np. miecz lezy w `Item Properties`, blednie skladaja sie party,
+   skala albo material sa bledne), zapisac `modelVisibility=visible`,
+   `proofCompleteness=verified` i `visualAcceptance=failed`. Taki wynik
+   dopuszcza minimalna iteracje naprawcza bez posredniego testu NWN, poniewaz
+   NWN nie moze uniewaznic blednego wyniku tej powierzchni Toolsetu.
+5. Jezeli model nie jest widoczny w Toolsecie albo NWN, zachowac swiezy obraz
    lub runtime packet, zdiagnozowac przyczyne i zadeklarowac minimalna delte
    kolejnej iteracji przed jej utworzeniem.
-5. `missing` proofu, zly placement, HAK/build/save, lock hasha, niedomknieta
+6. `missing` proofu, zly placement, HAK/build/save, lock hasha, niedomknieta
    geometria, timeout albo blad automatyzacji nie sa dowodem awarii modelu i
    nie zezwalaja na nowy `rNN`.
 
@@ -236,9 +243,15 @@ Wyniki Aurora i NWN maja dwie osobne osie:
 - `modelVisibility = visible | not_visible | not_tested`;
 - `proofCompleteness = verified | failed | missing`.
 
+Dla judgeable powierzchni obowiazuje dodatkowo niezalezna os:
+
+- `visualAcceptance = accepted | failed | not_tested`.
+
 Slowa `missing` nie wolno uzywac jako wyniku widocznosci modelu. Kolejna
-iteracje dopuszcza wylacznie swiezy, zwiazany z kandydatem wynik
-`modelVisibility=not_visible` w Toolsecie albo NWN. Niekompletny packet ma
+iteracje dopuszcza swiezy, zwiazany z kandydatem wynik
+`modelVisibility=not_visible` w Toolsecie albo NWN lub swiezy
+`visualAcceptance=failed` z `proofCompleteness=verified` na jednoznacznej
+powierzchni Toolsetu/NWN. Niekompletny packet ma
 `proofCompleteness=missing` i wymaga dokonczenia tego samego kandydata.
 
 Dowod jest monotoniczny: brak swiezego proofu w pozniejszym module nie

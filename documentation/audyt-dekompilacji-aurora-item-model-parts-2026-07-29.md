@@ -246,6 +246,13 @@ więc gotowe w modelach.
 Retailowe `nw_wswmls002.uti` ma:
 
 ```text
+> Korekta implementacyjna 2026-08-04: pozycja kontrolera Middle
+> `-0.0206093` nie jest minimalnym Y geometrii. Exact ponowny odczyt triangle
+> surfaces z `wswls_m_063` daje world-in-model Y
+> `[0.042125102, 0.1570407]`. Wcześniejsza tabela envelope pozostaje dowodem
+> historycznego audytu, ale fitter referencyjny używa osobnych controller
+> transforms i rzeczywistych surface bounds.
+
 BaseItem=1
 ModelPart1=23
 ModelPart2=63

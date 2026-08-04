@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "candidateId": "tlc-guard-longsword-item-range-envelope-v9-20260804",
+  "testModuleFileName": "m2atgls9.mod",
+  "moduleSha256": "0d65199b43977fba57872deed2f0742a24bd6549c8a2958c0a58e6ae534a1c7e",
+  "orderedHakFiles": [
+    {
+      "fileName": "m2atglh9.hak",
+      "sha256": "4dd051a3808bd30765579da9ee0e611c87e0b00fedee8b96c916aae3e6742d07"
+    }
+  ],
+  "toolsetModuleName": "Meshy2Aurora TLC Guard Longsword range envelope v9",
+  "areaName": "TLC Guard Longsword Range Envelope V9",
+  "object": {
+    "name": "Last City Bronze Guard Longsword",
+    "blueprintResref": "m2atglu9",
+    "baseItem": 1,
+    "itemClass": "WSwLs",
+    "modelType": 2,
+    "modelParts": [253, 253, 253]
+  },
+  "reportedBy": "owner",
+  "reportedAtLocalDate": "2026-08-04",
+  "modelVisibility": "visible",
+  "proofCompleteness": "verified",
+  "visualAcceptance": "not_tested",
+  "surfaces": {
+    "auroraToolset": {
+      "modelVisibility": "visible",
+      "proofCompleteness": "verified",
+      "visualAcceptance": "not_tested"
+    },
+    "nwnRuntime": {
+      "modelVisibility": "visible",
+      "proofCompleteness": "verified",
+      "visualAcceptance": "not_tested"
+    }
+  },
+  "observations": [
+    "The owner reports that the exact V9 item is visible in Aurora Toolset.",
+    "The owner reports that the exact V9 item is visible in NWN runtime.",
+    "The report proves model visibility on both required surfaces but does not yet state whether the Item Properties model selectors, part proportions and assembly are visually accepted."
+  ],
+  "outstandingAcceptance": [
+    "Confirm that Top, Middle and Bottom show model 25 rather than blank Model selectors in Item Properties.",
+    "Confirm that Bottom, Middle and Top are connected, front-facing and proportioned correctly for a one-handed longsword.",
+    "Confirm that the ground Item and composed icon are acceptable."
+  ],
+  "nextIterationAdmitted": false
+}

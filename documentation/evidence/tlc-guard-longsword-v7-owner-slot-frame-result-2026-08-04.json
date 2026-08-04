@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "candidateId": "tlc-guard-longsword-item-properties-v7-20260804",
+  "testModuleFileName": "m2atgls7.mod",
+  "moduleSha256": "9cab09be040c5451461a1f65d904eacf1d28322e2c197fe96fd140dfdb277081",
+  "orderedHakFiles": [
+    {
+      "fileName": "m2atglh7.hak",
+      "sha256": "6c45a4fc242cb2b744a501361b75c1fd848d4b43350082dd80eed02b9e17f74f"
+    }
+  ],
+  "toolsetModuleName": "Meshy2Aurora TLC Guard Longsword item v7",
+  "areaName": "TLC Guard Longsword Item Properties V7",
+  "object": {
+    "name": "Last City Bronze Guard Longsword",
+    "blueprintResref": "m2atglu7",
+    "baseItem": 1,
+    "itemClass": "WSwLs",
+    "modelType": 2,
+    "modelParts": [23, 63, 23]
+  },
+  "reportedBy": "owner",
+  "reportedAtLocalDate": "2026-08-04",
+  "modelVisibility": "visible",
+  "proofCompleteness": "verified",
+  "visualAcceptance": "failed",
+  "surfaces": {
+    "itemProperties": {
+      "modelVisibility": "visible",
+      "proofCompleteness": "verified",
+      "visualAcceptance": "failed"
+    },
+    "nwnEquippedRuntime": {
+      "modelVisibility": "visible",
+      "proofCompleteness": "verified",
+      "visualAcceptance": "failed"
+    }
+  },
+  "observations": [
+    "The exact V7 custom 2/6/2 Item is visible and internally connected in Item Properties, and its icon has the accepted upright order.",
+    "Replacing custom Bottom 2 with native Bottom 3 leaves the native hilt detached below the custom Middle/Top assembly.",
+    "Replacing custom Middle 6 with native Middle 7 leaves the custom Top detached above the native Bottom/Middle assembly.",
+    "The all-native 3/7/3 comparison assembles coherently in one shared Item-local coordinate frame.",
+    "In NWN the exact V7 equipped sword is visible but displaced relative to the character hand; the Item origin does not coincide with the native longsword grip region.",
+    "Blade length is not the reported defect. The rejected criterion is the slot-local scale and translation of Bottom, Middle and Top and the resulting equipped grip offset."
+  ],
+  "captures": [
+    {
+      "role": "exact-v7-custom-2-6-2-item-properties",
+      "captureFileName": "codex-clipboard-5a88a8fa-49d9-406c-bd62-02ec8363e6ed.png",
+      "captureSha256": "7ff9e3ff5a9b9f89b16f470b915b658c97d9886f842407fcaf4c64bf68487961",
+      "captureByteLength": 233396,
+      "storage": "owner-supplied-conversation-attachment"
+    },
+    {
+      "role": "exact-v7-custom-top-middle-with-native-bottom-detached",
+      "captureFileName": "codex-clipboard-b96a3cb2-fae8-4977-bf34-5a90aab9165a.png",
+      "captureSha256": "be8662ee7334ad022aa70e1a6a3b4e6c448c784b89182bdf7e3f5b68a64b4641",
+      "captureByteLength": 404005,
+      "storage": "owner-supplied-conversation-attachment"
+    },
+    {
+      "role": "exact-v7-custom-top-with-native-middle-bottom-detached",
+      "captureFileName": "codex-clipboard-708c93df-c240-4782-8654-6f07d808e886.png",
+      "captureSha256": "0c696ffcd0297a8aa415d8cc6ec5dc740759540d92467637742d402740a564e9",
+      "captureByteLength": 550182,
+      "storage": "owner-supplied-conversation-attachment"
+    },
+    {
+      "role": "native-3-7-3-item-properties-reference",
+      "captureFileName": "codex-clipboard-3bbdbb54-8e63-4c80-bcf6-bad5d39c18f0.png",
+      "captureSha256": "b3b6e29a59f3173ca8d6e515276cf098bac7d90baa89cc740045d5fbe669d815",
+      "captureByteLength": 377065,
+      "storage": "owner-supplied-conversation-attachment"
+    },
+    {
+      "role": "exact-v7-nwn-equipped-grip-displacement",
+      "captureFileName": "codex-clipboard-17396da4-5ae8-49ab-b759-b46c27ba9ac7.png",
+      "captureSha256": "f671da918d15ca046375db57f922225ed576673900d55fccecce405f10ac6d60",
+      "captureByteLength": 1127388,
+      "storage": "owner-supplied-conversation-attachment"
+    }
+  ],
+  "diagnosedCause": {
+    "classification": "MODELTYPE2_SHARED_SLOT_FRAME_AND_GRIP_ORIGIN_MISMATCH",
+    "summary": "The current fitter creates a new sequential bounding-box chain at Item-local Y=0 instead of fitting every generated part into the retail BaseItem/ItemClass slot frame. Aurora appends the part MDLs without inventing slot offsets, and equipped rendering attaches the shared Item-local origin to the character hand. The custom origin is at the lower end of the pommel assembly rather than inside the native WSwLs grip frame.",
+    "baseitemsBoundary": "baseitems.2da selects ModelType, ItemClass and equipability but contains no XYZ grip or per-part translation columns. The spatial contract is authored in each MDL node controller and is interpreted relative to the creature hand attachment; creature appearance may additionally apply WEAPONSCALE.",
+    "currentV7RangesY": {
+      "bottom": [0.0, 0.2199999988],
+      "middle": [0.2119999975, 0.2919999957],
+      "top": [0.2840000093, 1.1839998960]
+    },
+    "retailReferenceRangesY": {
+      "bottom": [-0.2025382, 0.0841520],
+      "middle": [-0.0206093, 0.1570407],
+      "top": [0.1283190, 0.9313860]
+    }
+  },
+  "minimalNextArtifactDelta": [
+    "Replace the WSwLs sequential target-length/cursor fitter with a retail-reference-derived shared Item-local slot-frame profile.",
+    "Fit and bake each Meshy Bottom, Middle and Top independently into its corresponding native slot envelope while preserving the common Item origin; do not recenter the first part to Y=0 and do not stack later parts from a bounding-box cursor.",
+    "Bind the frame profile to the effective BaseItem, ItemClass, ModelType and attachment route, with in-place retail reader provenance and numeric invariant readback.",
+    "Add mixed native/custom slot-frame conformance tests and a distinct equipped-render witness using the same real UTI; a ground Item-only fixture cannot close grip acceptance.",
+    "Keep CAPART robes/body parts and cloaks on their own skeleton/body-node attachment profiles rather than reusing the weapon-hand frame."
+  ],
+  "nextIterationAdmitted": true
+}

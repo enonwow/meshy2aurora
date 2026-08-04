@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "candidateId": "tlc-guard-longsword-item-properties-v5-20260804",
+  "testModuleFileName": "m2atgls5.mod",
+  "moduleSha256": "53ca31ad585a2fe682d04bc4fe22d8bb1ab7588db9b4508d60b644d6bdd4bb30",
+  "orderedHakFiles": [
+    {
+      "fileName": "m2atglh5.hak",
+      "sha256": "c6a08633be45ff79981245d5537132320c7243c977148514a3636fe845037791"
+    }
+  ],
+  "toolsetModuleName": "Meshy2Aurora TLC Guard Longsword item v5",
+  "areaName": "TLC Guard Longsword Item Properties V5",
+  "object": {
+    "name": "Last City Bronze Guard Longsword",
+    "blueprintResref": "m2atglu5",
+    "baseItem": 1,
+    "modelParts": [23, 63, 23]
+  },
+  "surface": "Aurora Toolset Item Properties / Appearance",
+  "reportedBy": "owner",
+  "reportedAtLocalDate": "2026-08-04",
+  "modelVisibility": "visible",
+  "proofCompleteness": "verified",
+  "visualAcceptance": "failed",
+  "observations": [
+    "The assembled three-part item is visible and upright in Item Properties.",
+    "The item is rolled around its +Y length axis and presents its edge instead of its broad front face.",
+    "The composed inventory icon is a thin diagonal line instead of a complete upright item.",
+    "The owner-provided native Toolset item shows the expected broad front-facing presentation and complete layered icon."
+  ],
+  "captures": [
+    {
+      "role": "exact-v5-failure",
+      "captureFileName": "codex-clipboard-89934b62-651a-4b65-a6f0-f3dc3ad7c6f4.png",
+      "captureSha256": "6f00e1366d8b20779de70f278ee8de81574713aa922c30af3859eb19120c2ced",
+      "captureByteLength": 193758,
+      "storage": "owner-supplied-conversation-attachment"
+    },
+    {
+      "role": "native-toolset-reference",
+      "captureFileName": "codex-clipboard-54385249-76f6-4342-b45f-8c9e5ebc3b64.png",
+      "captureSha256": "7d1bc33455a376a8bb27e488a7fc1098543d506f03c7c03c0823e930c50b9490",
+      "captureByteLength": 350206,
+      "storage": "owner-supplied-conversation-attachment"
+    }
+  ],
+  "diagnosedCause": {
+    "model": "The V5 fitter maps only the source axial direction to Aurora +Y. It leaves the transverse roll unconstrained, placing the generated broad axis in Aurora X instead of retail WSwLs Z.",
+    "icon": "The V5 isometric authoring projection emits three nearly empty 32x128 layers. The final selected layers contain only 6, 14 and 34 non-transparent pixels."
+  },
+  "minimalNextArtifactDelta": [
+    "Resolve and bind a complete proper source-to-Aurora item frame: axial +Y, width Z, front normal X.",
+    "Replace the isometric icon route with three independently emitted full-canvas layers sharing one approved vertical icon layout.",
+    "Block package success when the model is edge-on or the composed icon is incomplete."
+  ],
+  "nextIterationAdmitted": true
+}

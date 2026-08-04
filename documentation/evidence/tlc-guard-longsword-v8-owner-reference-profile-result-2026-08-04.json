@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "candidateId": "tlc-guard-longsword-item-reference-profile-v8-20260804",
+  "testModuleFileName": "m2atgls8.mod",
+  "moduleSha256": "c84acd3113e5ebeb91181b3d61335ab0de5492d43ae223a62a9fbbe09f63a4dd",
+  "orderedHakFiles": [
+    {
+      "fileName": "m2atglh8.hak",
+      "sha256": "1791986315b4ccc4a443eea4473007bab1c14ac176c28daa2c5d76a264076778"
+    }
+  ],
+  "toolsetModuleName": "Meshy2Aurora TLC Guard Longsword reference profile v8",
+  "areaName": "TLC Guard Longsword Reference Profile V8",
+  "object": {
+    "name": "Last City Bronze Guard Longsword",
+    "blueprintResref": "m2atglu8",
+    "baseItem": 1,
+    "itemClass": "WSwLs",
+    "modelType": 2,
+    "modelParts": [253, 253, 253]
+  },
+  "reportedBy": "owner",
+  "reportedAtLocalDate": "2026-08-04",
+  "modelVisibility": "visible",
+  "proofCompleteness": "verified",
+  "visualAcceptance": "failed",
+  "surfaces": {
+    "itemProperties": {
+      "modelVisibility": "visible",
+      "proofCompleteness": "verified",
+      "visualAcceptance": "failed"
+    },
+    "equippedRenderWitness": {
+      "modelVisibility": "not_visible",
+      "proofCompleteness": "verified",
+      "visualAcceptance": "failed"
+    }
+  },
+  "observations": [
+    "The exact V8 assembled sword is visible and connected in the large Item Properties viewport and in the composed icon.",
+    "All three Model selectors are blank even though the UTI stores Bottom, Middle and Top as 253 and the renderer resolves the corresponding custom resources.",
+    "The custom Middle guard is visibly too wide for the intended one-handed longsword profile.",
+    "The object named Equipped Item model render witness is not a usable equipped-item proof: the expected sword is absent and the creature geometry is rendered as a crumpled ball.",
+    "Per the owner decision, the creature witness must be removed from the next demo scope rather than iterated further now."
+  ],
+  "captures": [
+    {
+      "role": "exact-v8-item-properties-blank-model-selectors-and-wide-middle",
+      "captureFileName": "codex-clipboard-54bfd881-3d48-43b4-a7ab-9ee37acc9775.png",
+      "captureSha256": "1e1b710e32f4a8732d04837bc87fa07b00fa839a506a4e2838bab54dc61fbe3a",
+      "captureByteLength": 297832,
+      "storage": "owner-supplied-conversation-attachment"
+    },
+    {
+      "role": "exact-v8-invalid-equipped-render-witness",
+      "captureFileName": "codex-clipboard-1d05de53-6dca-4ed2-a7e3-2bbd0e56ddfe.png",
+      "captureSha256": "17b63dd014d7693e5684e6d2493bb3b680173dcba3f6db35faba90fe179f05ff",
+      "captureByteLength": 1162468,
+      "storage": "owner-supplied-conversation-attachment"
+    }
+  ],
+  "diagnosedCause": {
+    "blankModelSelectors": {
+      "classification": "MODELTYPE2_VARIANT_OUTSIDE_BASEITEM_ENUMERATION_RANGE",
+      "auroraFact": "Aurora populates ModelType 2 model selectors by scanning ten-value model buckets between baseitems.2da MinRange and MaxRange, then selects the bucket ModelPart - (ModelPart % 10).",
+      "retailBaseItemFact": "Retail BaseItem 1 / WSwLs declares MinRange=10 and MaxRange=100, which enumerates visible model values 1 through 10.",
+      "v8Fact": "V8 stores ModelPart=253, whose model bucket is 250 and visible model value is 25. Direct resource resolution can render wswls_*_253, but bucket 250 is outside the Toolset selector enumeration range, so no combo entry can be selected.",
+      "rejectedHypothesis": "The blank selector is not caused by missing V8 MDL or icon payloads: the same Item Properties view visibly renders the assembled model and composed icon."
+    },
+    "wideMiddle": {
+      "classification": "REFERENCE_FIT_OMITS_TRANSVERSE_ENVELOPE_CONFORMANCE",
+      "pipelineFact": "ITEM_REFERENCE_SLOT_FRAME_FIT_V1 fits the axial Y range and transverse center, but uses one uniform scale and does not cap the X/Z envelope against the selected retail slot.",
+      "v8OutputBounds": {
+        "x": [-0.0518479198, 0.0519314706],
+        "z": [-0.2275332063, 0.2276764065]
+      },
+      "retailMiddleBounds": {
+        "x": [-0.025861626, 0.025945174],
+        "z": [-0.09729305, 0.09743625]
+      },
+      "summary": "The emitted Middle is about 2.00 times the retail depth and 2.34 times the retail guard width. The current PASSED result therefore proves only axial placement and seam overlap, not one-handed-weapon proportions."
+    },
+    "equippedRenderWitness": {
+      "classification": "INVALID_CREATURE_FIXTURE",
+      "summary": "The creature fixture does not provide a judgeable equipped-item result and is outside the next demo scope by owner decision. It must not be treated as evidence that the sword is held correctly."
+    }
+  },
+  "minimalNextPipelineDelta": [
+    "Parse and enforce BaseItem MinRange/MaxRange as encoded ModelPart model buckets during variant allocation; a Toolset-selectable WSwLs variant must remain within 10..100 and still pass collision checks for every required MDL and TGA.",
+    "Add a per-slot transverse X/Z envelope policy and blocking conformance gate. Axial fit and seam overlap alone must not yield PASSED for a one-handed weapon whose Middle exceeds the selected retail envelope.",
+    "Remove the creature/equipped-render witness from the next demo and acceptance checklist. Keep the fixture item-only until a separate equipped-item route is deliberately implemented and proven."
+  ],
+  "nextIterationAdmitted": true
+}

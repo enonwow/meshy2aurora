@@ -187,11 +187,26 @@ same candidate.
   `modelVisibility = visible | not_visible | not_tested` and
   `proofCompleteness = verified | failed | missing`. Never use `missing` as a
   model-visibility result.
+- Track a third, independent axis for a judgeable render or authoring surface:
+  `visualAcceptance = accepted | failed | not_tested`. A model may be visible
+  while still failing visual acceptance because its geometry, orientation,
+  scale, part composition, material binding or animation is visibly wrong.
 - A build, save/hash lock, HAK attachment, placement, geometry, proof-profile,
   capture, timeout, or automation failure is a lane failure, not a visual
   model failure.
-- After the model is visible in Toolset, test that same module/HAK/model
-  lineage in NWN before changing or copying any artifact in the lineage.
+- **Determinative Toolset failure - OWNER DECISION 2026-08-03:** when the
+  exact candidate and object are bound and a fresh, judgeable Toolset surface
+  shows a defect whose acceptance criterion belongs to that Toolset surface,
+  record `modelVisibility=visible`, `proofCompleteness=verified` and
+  `visualAcceptance=failed`. This fresh failure admits the minimal corrective
+  iteration without an intervening NWN test. Examples include a weapon lying
+  sideways in `Item Properties`, incorrect Bottom/Middle/Top composition,
+  wrong scale or material in the Toolset model preview, or another defect that
+  NWN cannot negate for that authoring surface.
+- After the model is visible **and accepted for the relevant Toolset
+  criterion**, test that same module/HAK/model lineage in NWN before changing
+  or copying another artifact in the lineage. A Toolset-specific accepted
+  result does not claim NWN runtime success; it only closes that Toolset gate.
 - A Toolset model verdict requires exact candidate/object identity, exact
   object selection/readback, and a fresh validated `TScrollBox` capture.
   A capture without exact object identity is observational evidence; it must
@@ -214,8 +229,10 @@ same candidate.
 - Preserve successful evidence monotonically. A later run with missing proof
   cannot erase or invert an earlier verified observation for another exact
   module/hash.
-- Admit a new iteration only from a fresh candidate-bound
-  `modelVisibility=not_visible` result in Toolset or NWN. A
+- Admit a new iteration only from either a fresh candidate-bound
+  `modelVisibility=not_visible` result in Toolset or NWN, or a fresh,
+  candidate-bound `visualAcceptance=failed` result with
+  `proofCompleteness=verified` on a judgeable Toolset/NWN surface. A
   `proofCompleteness=missing` result requires completing the same candidate.
 - A new iteration requires a durable record of the failing capture/runtime
   packet, exact candidate hashes, diagnosed cause, and the minimal intended

@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "candidateId": "tlc-guard-longsword-item-model-color-v3-20260803",
+  "testModuleFileName": "m2atgls3.mod",
+  "toolsetModuleName": "Meshy2Aurora TLC Guard Longsword item v3",
+  "areaName": "TLC Guard Longsword Item Model Color V3",
+  "ownerReportedDate": "2026-08-03",
+  "evidenceKind": "owner_supplied_exact_toolset_screenshots",
+  "identityBinding": {
+    "modSha256": "7ca0760645d88660eaec96c524adf0d3c7dbe823aa68c4280c2e43487efe7748",
+    "hakFileName": "m2atglh3.hak",
+    "hakSha256": "00f40b6585c0942e95b03feb0ec6f588427ca2420e19f46e1ac23b02c0325c2d",
+    "blueprintResref": "m2atglu3",
+    "blueprintSha256": "5456b41c32e410231d7a5810981e3e02d9fc4f09262e144c3648e987f26af9a0"
+  },
+  "toolset": {
+    "modelVisibility": "visible",
+    "proofCompleteness": "verified",
+    "visualAcceptance": "failed",
+    "failureClass": "ITEM_PART_COMPOSER_AXIS_MISMATCH",
+    "ownerObservation": "The generated longsword lies horizontally in the Item Properties model view while retail longsword part selections stand upright."
+  },
+  "screenshots": [
+    {
+      "role": "exact-v3-horizontal-model",
+      "path": "documentation/evidence/tlc-guard-longsword-v3-owner-toolset-horizontal-2026-08-03.png",
+      "sha256": "474855e8892521bad3aaa338585b290de4faffc746579535b3ba7ebc020af768",
+      "byteLength": 26659
+    },
+    {
+      "role": "retail-upright-comparison-in-exact-v3-module",
+      "path": "documentation/evidence/tlc-guard-longsword-v3-owner-toolset-retail-upright-comparison-2026-08-03.png",
+      "sha256": "9aa4539c06d5ca73ae36ee8d63decb8678afced12d860b144d70653ec303019e",
+      "byteLength": 211090
+    }
+  ],
+  "offlineDiagnosis": {
+    "retailContract": "Retail WSwLs Bottom/Middle/Top geometry composes along local +Y and uses part position controllers on Y.",
+    "v3Contract": "V3 auto-fit rotates and stacks every part along local +Z using cursor_z; its exact selected MDLs have Z envelopes 0..0.22, 0.2225..0.3025 and 0.305..1.205.",
+    "codeCause": "item_fit_axis_rotation_v1 targets +Z rather than Aurora modular-weapon +Y."
+  },
+  "nextRequiredStage": {
+    "sameCandidateNwnTestRequired": true,
+    "nwnModelVisibility": "not_tested",
+    "nwnProofCompleteness": "missing",
+    "newArtifactIterationAdmitted": false,
+    "reason": "The exact model is visible in Toolset; the same frozen V3 MOD/HAK lineage must be tested in NWN before any V4 artifact is generated or copied."
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "candidateId": "tlc-guard-longsword-equipped-v2-20260803",
+  "testModuleFileName": "m2atgls2.mod",
+  "toolsetModuleName": "Meshy2Aurora TLC Guard Longsword equipped v2",
+  "areaName": "TLC Guard Longsword Equipped Model Proof",
+  "ownerReportedDate": "2026-08-03",
+  "evidenceKind": "owner_visual_report_in_current_candidate_task",
+  "identityBinding": {
+    "modSha256": "249a63d794f0d719f804e3fe05419e49ee5ac079e048eeb512e4c3c094c20cb4",
+    "hakFileName": "m2atglh1.hak",
+    "hakSha256": "9dba2282a123177df29acabc6c543ececf135d63aed38871e01d8e7dab9fae22",
+    "blueprintResref": "m2atglu1",
+    "blueprintSha256": "b018aca195a5bf7cb4f8d1993bf1957f089ae590c332b3d9aae112971c4d5087"
+  },
+  "ownerVisualResult": {
+    "modelVisibility": "not_visible",
+    "proofCompleteness": "failed",
+    "ownerObservation": "V2 was not visible; the owner rejected the creature-centric presentation as not being a correct Item demo."
+  },
+  "diagnosedCause": {
+    "fixture": "V2 contained a real UTI equipped in one creature's native Equip_ItemList, but exposed no simultaneous placed Item instance and reused the pre-model/color HAK containing only three legacy part variants.",
+    "pipeline": "V2 therefore did not exercise the newly implemented complete ModelType 2 model/color resource matrix and did not present a clearly separate Item fixture."
+  },
+  "admittedNextIteration": {
+    "candidateId": "tlc-guard-longsword-item-model-color-v3-20260803",
+    "minimalDelta": "Build a fresh identified BaseItem 1 UTI through the model/color pipeline, select model/color bytes 23/63/23, package four concrete MDL/TGA/icon colorways for each of Bottom/Middle/Top, and create one MOD containing a placed Item plus a separate equipped-render witness bound to the same byte-identical UTI.",
+    "sourceGlbDelta": "none; reuse the exact three canonical Meshy part GLBs",
+    "agentLiveProofAuthorized": false
+  }
+}
