@@ -263,6 +263,19 @@
 .item-proof-boundary { padding: 14px; border-color: #83682f; }
 .item-proof-boundary strong { color: #e5c36f; }
 .item-proof-boundary p { margin: 5px 0; color: var(--color-text-muted); }
+.item-semantic-review { display: flex; flex-direction: column; gap: 16px; padding: 16px; }
+.item-semantic-review > header { display: flex; justify-content: space-between; gap: 16px; }
+.item-semantic-review h2,
+.item-semantic-review p { margin: 0; }
+.item-semantic-review p,
+.item-semantic-review small { color: var(--color-text-muted); }
+.item-semantic-review fieldset { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin: 0; padding: 12px; border: 1px solid var(--color-border-subtle); border-radius: 7px; }
+.item-semantic-review legend { padding: 0 6px; font-weight: 700; }
+.item-semantic-review label { display: flex; gap: 9px; align-items: start; padding: 9px; border: 1px solid var(--color-border-subtle); border-radius: 6px; background: var(--color-surface-raised); }
+.item-semantic-review label span { display: flex; flex-direction: column; gap: 2px; }
+.item-semantic-review__acceptance { border-color: #83682f !important; }
+.item-semantic-review__status { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; }
+.item-semantic-review__status > b { color: var(--color-accent); }
 .item-download-complete { margin: 24px 32px; padding: 18px; }
 
 .item-generation { display: flex; flex-direction: column; gap: 14px; padding: 16px; border-color: #345b61; }

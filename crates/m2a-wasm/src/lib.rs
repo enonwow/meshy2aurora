@@ -523,6 +523,43 @@ pub fn inspect_item_baseitems_v1_json(bytes: &[u8]) -> Result<String, JsValue> {
         .map_err(|error| JsValue::from_str(&serialize_json(&error)))
 }
 
+fn append_item_custom_weapon_baseitem_artifact_v2(
+    bytes: &[u8],
+    request_json: &str,
+) -> Result<m2a_core::item::ItemCustomWeaponBaseItemArtifactV2, JsValue> {
+    let request =
+        serde_json::from_str::<m2a_core::item::ItemCustomWeaponBaseItemRequestV2>(request_json)
+            .map_err(|_| {
+                JsValue::from_str(&m5_boundary_error(
+                    "ITEM-CUSTOM-BASEITEM-V2-REQUEST-JSON-INVALID",
+                    "requestJson",
+                    "custom weapon BaseItem V2 request JSON is invalid",
+                ))
+            })?;
+    m2a_core::item::append_item_custom_weapon_baseitem_v2(bytes, &request)
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+/// Appends an exact custom weapon BaseItem at the caller-bound physical index
+/// by cloning one audited retail runtime donor row.
+#[wasm_bindgen(js_name = appendItemCustomWeaponBaseitemV2)]
+pub fn append_item_custom_weapon_baseitem_v2(
+    bytes: &[u8],
+    request_json: &str,
+) -> Result<Vec<u8>, JsValue> {
+    append_item_custom_weapon_baseitem_artifact_v2(bytes, request_json)
+        .map(|artifact| artifact.payload)
+}
+
+#[wasm_bindgen(js_name = appendItemCustomWeaponBaseitemV2ReportJson)]
+pub fn append_item_custom_weapon_baseitem_v2_report_json(
+    bytes: &[u8],
+    request_json: &str,
+) -> Result<String, JsValue> {
+    append_item_custom_weapon_baseitem_artifact_v2(bytes, request_json)
+        .map(|artifact| serialize_json(&artifact.report))
+}
+
 fn extend_item_baseitem_model_range_artifact_v1(
     bytes: &[u8],
     base_item: u32,
@@ -1031,6 +1068,149 @@ pub fn measure_meshy_item_seam_v1_json(
         second_model_resref,
         &second_options,
         tolerance,
+    )
+    .map(|report| serialize_json(&report))
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ItemManualFitPackedRequestV2 {
+    schema_version: u32,
+    tolerance: f32,
+    parts: Vec<ItemManualFitPackedPartV2>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ItemManualFitPackedPartV2 {
+    field: String,
+    model_resref: String,
+    byte_offset: usize,
+    byte_length: usize,
+    source_node: Option<String>,
+    authored_rotation_degrees: [f32; 3],
+    transform: m2a_core::item::ItemPartTransformV1,
+    target_space_scale_xyz: [f32; 3],
+}
+
+fn item_euler_xyz_quaternion_v2(rotation: [f32; 3]) -> [f32; 4] {
+    let [x, y, z] = rotation.map(|value| value.to_radians());
+    let (sx, cx) = (x * 0.5).sin_cos();
+    let (sy, cy) = (y * 0.5).sin_cos();
+    let (sz, cz) = (z * 0.5).sin_cos();
+    [
+        sx * cy * cz + cx * sy * sz,
+        cx * sy * cz - sx * cy * sz,
+        cx * cy * sz + sx * sy * cz,
+        cx * cy * cz - sx * sy * sz,
+    ]
+}
+
+/// Recomputes the authoritative fit contract from exact editor Q/T/S values.
+/// This public route never asks the automatic fitter for another solution.
+#[wasm_bindgen(js_name = validateMeshyItemPartsManualFitV2Json)]
+pub fn validate_meshy_item_parts_manual_fit_v2_json(
+    source_bundle: &[u8],
+    request_json: &str,
+    attachment_profile_json: &str,
+    baseline_fit_report_json: &str,
+) -> Result<String, JsValue> {
+    let request =
+        serde_json::from_str::<ItemManualFitPackedRequestV2>(request_json).map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-MANUAL-FIT-V2-REQUEST-JSON-INVALID",
+                "requestJson",
+                "manual fit V2 request JSON is invalid",
+            ))
+        })?;
+    if request.schema_version != 2 || request.parts.len() != 3 {
+        return Err(JsValue::from_str(&m5_boundary_error(
+            "ITEM-MANUAL-FIT-V2-REQUEST-SCHEMA-INVALID",
+            "requestJson.schemaVersion",
+            "manual fit V2 requires schemaVersion 2 and exactly three parts",
+        )));
+    }
+    let profile =
+        serde_json::from_str::<m2a_core::item::ItemAttachmentProfileV1>(attachment_profile_json)
+            .map_err(|_| {
+                JsValue::from_str(&m5_boundary_error(
+                    "ITEM-MANUAL-FIT-V2-PROFILE-JSON-INVALID",
+                    "attachmentProfileJson",
+                    "attachment profile JSON does not match ItemAttachmentProfileV1",
+                ))
+            })?;
+    let baseline = serde_json::from_str::<m2a_core::item::ItemFitReportV4>(
+        baseline_fit_report_json,
+    )
+    .map_err(|_| {
+        JsValue::from_str(&m5_boundary_error(
+            "ITEM-MANUAL-FIT-V2-BASELINE-JSON-INVALID",
+            "baselineFitReportJson",
+            "baseline fit JSON does not match ItemFitReportV4",
+        ))
+    })?;
+    let mut ranges = Vec::with_capacity(3);
+    for (index, part) in request.parts.iter().enumerate() {
+        let end = part
+            .byte_offset
+            .checked_add(part.byte_length)
+            .ok_or_else(|| {
+                JsValue::from_str(&m5_boundary_error(
+                    "ITEM-MANUAL-FIT-V2-SOURCE-RANGE-INVALID",
+                    &format!("requestJson.parts[{index}]"),
+                    "manual fit source byte range overflowed",
+                ))
+            })?;
+        let expected = item_euler_xyz_quaternion_v2(part.authored_rotation_degrees);
+        let quaternion_dot = expected
+            .iter()
+            .zip(part.transform.rotation_xyzw)
+            .map(|(first, second)| first * second)
+            .sum::<f32>()
+            .abs();
+        if part.byte_length == 0
+            || end > source_bundle.len()
+            || part
+                .authored_rotation_degrees
+                .iter()
+                .any(|value| !value.is_finite())
+            || quaternion_dot < 0.9999
+        {
+            return Err(JsValue::from_str(&m5_boundary_error(
+                "ITEM-MANUAL-FIT-V2-AUTHORED-TRANSFORM-INVALID",
+                &format!("requestJson.parts[{index}]"),
+                "source range and visible Euler values must match the exact quaternion transform",
+            )));
+        }
+        ranges.push((part.byte_offset, end));
+    }
+    let sources = request
+        .parts
+        .iter()
+        .zip(&ranges)
+        .map(|(part, &(start, end))| m2a_core::item::ItemFitSourceV1 {
+            field: &part.field,
+            model_resref: &part.model_resref,
+            source_glb: &source_bundle[start..end],
+            source_node: part.source_node.as_deref(),
+        })
+        .collect::<Vec<_>>();
+    let authored_parts = request
+        .parts
+        .iter()
+        .map(|part| m2a_core::item::ItemManualFitPartV2 {
+            field: part.field.clone(),
+            transform: part.transform,
+            target_space_scale_xyz: part.target_space_scale_xyz,
+        })
+        .collect::<Vec<_>>();
+    m2a_core::item::validate_meshy_item_parts_manual_fit_v2(
+        &sources,
+        request.tolerance,
+        &profile,
+        &baseline,
+        &authored_parts,
     )
     .map(|report| serialize_json(&report))
     .map_err(|error| JsValue::from_str(&serialize_json(&error)))

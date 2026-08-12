@@ -1,0 +1,443 @@
+import type {
+  ItemBaseItemRow,
+  ItemBaseItemsCatalog,
+  ItemFitReport,
+  ItemPartDraft,
+} from "./types";
+
+export type ItemModelPartFieldV2 = "ModelPart1" | "ModelPart2" | "ModelPart3";
+
+export type ItemAuthoringScopeV2 =
+  | "ASSEMBLY"
+  | "ITEM_PROPERTIES"
+  | "GROUND"
+  | "EQUIPPED"
+  | "INVENTORY_ICON";
+
+export type ItemSemanticCheckIdV2 =
+  | "BUTT_OUTER"
+  | "GRIP_AT_HAND"
+  | "TRIGGER_DOWN"
+  | "CORE_CENTERED"
+  | "MUZZLE_FORWARD"
+  | "BROAD_SIDE_VISIBLE";
+
+export interface ItemAuthoringIdentityV2 {
+  readonly schemaVersion: 2;
+  readonly archetypeId: "HEXTECH_SHOTGUN";
+  /** Existing Aurora behavior donor. It is never the product identity. */
+  readonly runtimeDonor: {
+    readonly baseItem: 6;
+    readonly label: "heavy_crossbow";
+    readonly itemClass: "WBwXh";
+    readonly runtimeClip: "xbowshot";
+  };
+  /** Custom product identity emitted by the BaseItem authoring lane. */
+  readonly output: {
+    readonly baseItem: 113;
+    readonly label: "hextech_shotgun";
+    readonly itemClass: "WHxSh";
+    readonly modelType: 2;
+  };
+  readonly sources: Readonly<Record<ItemModelPartFieldV2, {
+    readonly role:
+      | "source-modelpart-bottom"
+      | "source-modelpart-middle"
+      | "source-modelpart-top";
+    readonly sha256: string;
+  }>>;
+  readonly reference: {
+    readonly id: string;
+    readonly baseitemsSha256: string;
+    readonly attachmentProfileSha256: string;
+  };
+}
+
+export interface ItemAssemblyPartV2 {
+  readonly field: ItemModelPartFieldV2;
+  readonly sourceSha256: string;
+  readonly translation: readonly [number, number, number];
+  readonly rotationXyzw: readonly [number, number, number, number];
+  readonly authoredRotationDegrees: readonly [number, number, number];
+  /** Exact reference-derived scale. 100% is not synonymous with 1. */
+  readonly uniformScale: number;
+  readonly pivot: readonly [number, number, number];
+  readonly targetSpaceScaleXyz: readonly [number, number, number];
+}
+
+export interface ItemAuthoringRecipeV2 {
+  readonly schemaVersion: 2;
+  readonly identity: ItemAuthoringIdentityV2;
+  readonly assembly: {
+    readonly mode: "AUTO_FIT" | "MANUAL_FIT";
+    readonly baselineFitSolutionSha256: string;
+    readonly validatedFitSolutionSha256: string;
+    readonly parts: readonly ItemAssemblyPartV2[];
+  };
+  readonly contexts: {
+    readonly ITEM_PROPERTIES: {
+      readonly cameraPreset: "AURORA_ITEM_PROPERTIES";
+      readonly axialRotationDegrees: 0 | 90 | 180 | 270;
+    };
+    readonly GROUND: {
+      readonly bearingDegrees: 0 | 90 | 180 | 270;
+    };
+    readonly EQUIPPED: {
+      readonly attachmentRoute: "HAND";
+      readonly attachmentProfileSha256: string;
+    };
+    readonly INVENTORY_ICON: {
+      readonly invSlotWidth: number;
+      readonly invSlotHeight: number;
+      readonly rotationDegrees: 0 | 90 | 180 | 270;
+      readonly zoom: number;
+      readonly padding: number;
+      readonly offset: readonly [number, number];
+    };
+  };
+  readonly review: {
+    readonly candidateSha256: string | null;
+    readonly technicalStatus: "NOT_VALIDATED" | "PASSED" | "FAILED";
+    readonly semanticChecks: readonly {
+      readonly id: ItemSemanticCheckIdV2;
+      readonly status: "NOT_EVALUATED" | "PASSED" | "FAILED";
+      readonly evidence: "CANDIDATE_BOUND_REVIEW" | "MISSING";
+    }[];
+    readonly ownerStatus: "NOT_REVIEWED" | "OWNER_ACCEPTED" | "OWNER_REJECTED";
+  };
+}
+
+export interface ItemManualFitSnapshotV2 {
+  readonly schemaVersion: 2;
+  readonly baselineFitSolutionSha256: string;
+  readonly baselineFitReportJson: string;
+  readonly parts: readonly ItemAssemblyPartV2[];
+}
+
+export interface ItemAuthoringRecipeValidationV2 {
+  readonly ok: boolean;
+  readonly issues: readonly string[];
+}
+
+const MODEL_PART_FIELDS: readonly ItemModelPartFieldV2[] = [
+  "ModelPart1",
+  "ModelPart2",
+  "ModelPart3",
+];
+
+const SEMANTIC_CHECKS: readonly ItemSemanticCheckIdV2[] = [
+  "BUTT_OUTER",
+  "GRIP_AT_HAND",
+  "TRIGGER_DOWN",
+  "CORE_CENTERED",
+  "MUZZLE_FORWARD",
+  "BROAD_SIDE_VISIBLE",
+];
+
+const SCOPES: readonly ItemAuthoringScopeV2[] = [
+  "ASSEMBLY",
+  "ITEM_PROPERTIES",
+  "GROUND",
+  "EQUIPPED",
+  "INVENTORY_ICON",
+];
+
+const SHA256 = /^[0-9a-f]{64}$/;
+
+export const HEXTECH_SHOTGUN_BASEITEM_V2 = {
+  runtimeDonorBaseItem: 6,
+  outputBaseItem: 113,
+  outputLabel: "hextech_shotgun",
+  outputItemClass: "WHxSh",
+  invSlotWidth: 2,
+  invSlotHeight: 4,
+} as const;
+
+/**
+ * Projects the editor row only after proving that the exact next physical 2DA
+ * index is 113 and the audited retail donor is present. The source table is
+ * not mutated here; the worker repeats these checks while appending the row.
+ */
+export function deriveHextechShotgunOutputRowV2(
+  catalog: ItemBaseItemsCatalog,
+): ItemBaseItemRow {
+  const identity = HEXTECH_SHOTGUN_BASEITEM_V2;
+  if (catalog.physicalRowCount !== identity.outputBaseItem) {
+    throw new Error(
+      `Hextech Shotgun requires exact next BaseItem ${identity.outputBaseItem}; got ${catalog.physicalRowCount}.`,
+    );
+  }
+  if (catalog.rows.some(({ baseItem }) => baseItem === identity.outputBaseItem)) {
+    throw new Error(`BaseItem ${identity.outputBaseItem} already exists in the selected table.`);
+  }
+  const donor = catalog.rows.find(({ baseItem }) => baseItem === identity.runtimeDonorBaseItem);
+  if (
+    !donor
+    || donor.label !== "heavy_crossbow"
+    || donor.itemClass !== "WBwXh"
+    || donor.modelType !== 2
+    || donor.capability.compositionProfile !== "BOTTOM_MIDDLE_TOP"
+    || donor.partSlots.length !== 3
+  ) {
+    throw new Error("BaseItem 6 is not the exact audited WBwXh heavy-crossbow donor.");
+  }
+  return {
+    ...donor,
+    baseItem: identity.outputBaseItem,
+    label: identity.outputLabel,
+    itemClass: identity.outputItemClass,
+    invSlotWidth: identity.invSlotWidth,
+    invSlotHeight: identity.invSlotHeight,
+  };
+}
+
+function canonicalValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+      .sort(([first], [second]) => first.localeCompare(second))
+      .map(([key, nested]) => [key, canonicalValue(nested)]));
+  }
+  return value;
+}
+
+export function canonicalItemAuthoringRecipeV2(recipe: ItemAuthoringRecipeV2): string {
+  return JSON.stringify(canonicalValue(recipe));
+}
+
+export async function hashItemAuthoringRecipeV2(recipe: ItemAuthoringRecipeV2): Promise<string> {
+  const bytes = new TextEncoder().encode(canonicalItemAuthoringRecipeV2(recipe));
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)]
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function identityFingerprint(identity: ItemAuthoringIdentityV2) {
+  return JSON.stringify(canonicalValue(identity));
+}
+
+function finiteTuple(values: readonly number[], size: number) {
+  return values.length === size && values.every(Number.isFinite);
+}
+
+export function validateItemAuthoringRecipeV2(
+  recipe: ItemAuthoringRecipeV2,
+): ItemAuthoringRecipeValidationV2 {
+  const issues: string[] = [];
+  const { identity } = recipe;
+  if (recipe.schemaVersion !== 2 || identity.schemaVersion !== 2) {
+    issues.push("recipe and identity must use schema version 2");
+  }
+  if (
+    identity.runtimeDonor.baseItem !== 6
+    || identity.runtimeDonor.itemClass !== "WBwXh"
+    || identity.output.baseItem !== 113
+    || identity.output.itemClass !== "WHxSh"
+    || identity.output.label !== "hextech_shotgun"
+  ) {
+    issues.push("runtime donor BaseItem 6 and output BaseItem 113 must remain distinct");
+  }
+  if (!SHA256.test(identity.reference.baseitemsSha256)) {
+    issues.push("baseitemsSha256 is invalid");
+  }
+  if (!SHA256.test(identity.reference.attachmentProfileSha256)) {
+    issues.push("attachmentProfileSha256 is invalid");
+  }
+  for (const field of MODEL_PART_FIELDS) {
+    if (!SHA256.test(identity.sources[field]?.sha256 ?? "")) {
+      issues.push(`${field} source SHA-256 is invalid`);
+    }
+  }
+  if (!SHA256.test(recipe.assembly.baselineFitSolutionSha256)) {
+    issues.push("baseline fit solution SHA-256 is invalid");
+  }
+  if (!SHA256.test(recipe.assembly.validatedFitSolutionSha256)) {
+    issues.push("validated fit solution SHA-256 is invalid");
+  }
+  const assemblyFields = recipe.assembly.parts.map(({ field }) => field);
+  if (
+    assemblyFields.length !== MODEL_PART_FIELDS.length
+    || new Set(assemblyFields).size !== MODEL_PART_FIELDS.length
+    || MODEL_PART_FIELDS.some((field) => !assemblyFields.includes(field))
+  ) {
+    issues.push("assembly must bind ModelPart1, ModelPart2 and ModelPart3 exactly once");
+  }
+  for (const part of recipe.assembly.parts) {
+    if (part.sourceSha256 !== identity.sources[part.field]?.sha256) {
+      issues.push(`${part.field} assembly source does not match recipe identity`);
+    }
+    if (
+      !finiteTuple(part.translation, 3)
+      || !finiteTuple(part.rotationXyzw, 4)
+      || !finiteTuple(part.authoredRotationDegrees, 3)
+      || !finiteTuple(part.pivot, 3)
+      || !finiteTuple(part.targetSpaceScaleXyz, 3)
+      || !Number.isFinite(part.uniformScale)
+      || part.uniformScale <= 0
+    ) {
+      issues.push(`${part.field} contains an invalid authored transform`);
+    }
+  }
+  if (
+    recipe.contexts.EQUIPPED.attachmentProfileSha256
+    !== identity.reference.attachmentProfileSha256
+  ) {
+    issues.push("equipped context is not bound to the identity attachment profile");
+  }
+  if (
+    recipe.contexts.INVENTORY_ICON.invSlotWidth !== 2
+    || recipe.contexts.INVENTORY_ICON.invSlotHeight !== 4
+  ) {
+    issues.push("Hextech Shotgun inventory footprint must be 2x4");
+  }
+  if (recipe.review.technicalStatus !== "PASSED") {
+    issues.push("technical validation is not PASSED");
+  }
+  if (!SHA256.test(recipe.review.candidateSha256 ?? "")) {
+    issues.push("review is not bound to an exact candidate SHA-256");
+  }
+  for (const id of SEMANTIC_CHECKS) {
+    const matches = recipe.review.semanticChecks.filter((check) => check.id === id);
+    if (matches.length !== 1) {
+      issues.push(`semantic check ${id} must occur exactly once`);
+    } else if (matches[0].status !== "PASSED") {
+      issues.push(`semantic check ${id} is not PASSED`);
+    } else if (matches[0].evidence !== "CANDIDATE_BOUND_REVIEW") {
+      issues.push(`semantic check ${id} has no candidate-bound evidence`);
+    }
+  }
+  if (recipe.review.ownerStatus !== "OWNER_ACCEPTED") {
+    issues.push("recipe is not owner-accepted");
+  }
+  return { ok: issues.length === 0, issues };
+}
+
+/**
+ * Deliberately empty. An accepted recipe is added only after exact candidate
+ * review; file recognition alone must never activate an approximate preset.
+ */
+const ACCEPTED_ITEM_AUTHORING_RECIPES_V2: readonly ItemAuthoringRecipeV2[] = [];
+
+export function resolveAcceptedItemAuthoringRecipeV2(
+  identity: ItemAuthoringIdentityV2,
+): ItemAuthoringRecipeV2 | undefined {
+  const fingerprint = identityFingerprint(identity);
+  return ACCEPTED_ITEM_AUTHORING_RECIPES_V2.find((recipe) => (
+    identityFingerprint(recipe.identity) === fingerprint
+    && validateItemAuthoringRecipeV2(recipe).ok
+  ));
+}
+
+export function applyAcceptedItemAuthoringRecipeV2(
+  parts: readonly ItemPartDraft[],
+  recipe: ItemAuthoringRecipeV2,
+  observedIdentity: ItemAuthoringIdentityV2,
+): ItemPartDraft[] {
+  if (identityFingerprint(recipe.identity) !== identityFingerprint(observedIdentity)) {
+    throw new Error("Item authoring recipe identity does not match the current candidate inputs.");
+  }
+  const validation = validateItemAuthoringRecipeV2(recipe);
+  if (!validation.ok) {
+    throw new Error(`Item authoring recipe is not owner-accepted: ${validation.issues.join("; ")}`);
+  }
+  const transforms = new Map(recipe.assembly.parts.map((part) => [part.field, part]));
+  const meshFields = parts
+    .filter(({ sourceKind }) => sourceKind === "MESHY_GLB")
+    .map(({ field }) => field);
+  if (
+    meshFields.length !== MODEL_PART_FIELDS.length
+    || MODEL_PART_FIELDS.some((field) => !meshFields.includes(field))
+  ) {
+    throw new Error("Current Item parts do not match the accepted ModelPart1/2/3 recipe.");
+  }
+  return parts.map((part) => {
+    const transform = transforms.get(part.field as ItemModelPartFieldV2);
+    if (!transform) return part;
+    return {
+      ...part,
+      translation: [...transform.translation],
+      rotationDegrees: [...transform.authoredRotationDegrees],
+      rotationXyzw: [...transform.rotationXyzw],
+      uniformScale: transform.uniformScale,
+      pivot: [...transform.pivot],
+      targetSpaceScaleXyz: [...transform.targetSpaceScaleXyz],
+    };
+  });
+}
+
+export function buildItemManualFitSnapshotV2(
+  parts: readonly ItemPartDraft[],
+  baseline: ItemFitReport,
+): ItemManualFitSnapshotV2 {
+  if (!SHA256.test(baseline.solutionSha256)) {
+    throw new Error("Manual fit baseline has no exact solution SHA-256.");
+  }
+  const fittedParts = baseline.parts.map((fitPart) => {
+    const part = parts.find((candidate) => candidate.field === fitPart.field);
+    if (!part || part.sourceKind !== "MESHY_GLB") {
+      throw new Error(`${fitPart.field} is missing from the manual fit editor state.`);
+    }
+    if (!SHA256.test(fitPart.sourceSha256)) {
+      throw new Error(`${fitPart.field} has no exact source SHA-256.`);
+    }
+    return {
+      field: fitPart.field as ItemModelPartFieldV2,
+      sourceSha256: fitPart.sourceSha256,
+      translation: [...part.translation] as [number, number, number],
+      rotationXyzw: [...part.rotationXyzw] as [number, number, number, number],
+      authoredRotationDegrees: [...part.rotationDegrees] as [number, number, number],
+      uniformScale: part.uniformScale,
+      pivot: [...part.pivot] as [number, number, number],
+      targetSpaceScaleXyz: [...part.targetSpaceScaleXyz] as [number, number, number],
+    };
+  });
+  const meshPartCount = parts.filter(({ sourceKind }) => sourceKind === "MESHY_GLB").length;
+  if (
+    fittedParts.length !== meshPartCount
+    || new Set(fittedParts.map(({ field }) => field)).size !== fittedParts.length
+  ) {
+    throw new Error("Manual fit snapshot must bind every fitted Meshy part exactly once.");
+  }
+  return {
+    schemaVersion: 2,
+    baselineFitSolutionSha256: baseline.solutionSha256,
+    baselineFitReportJson: JSON.stringify(baseline),
+    parts: fittedParts,
+  };
+}
+
+function itemAuthoringScopeFingerprintsV2(recipe: ItemAuthoringRecipeV2) {
+  const assembly = JSON.stringify(canonicalValue({
+    identity: recipe.identity,
+    assembly: recipe.assembly,
+  }));
+  return {
+    ASSEMBLY: assembly,
+    ITEM_PROPERTIES: JSON.stringify(canonicalValue({
+      assembly,
+      presentation: recipe.contexts.ITEM_PROPERTIES,
+    })),
+    GROUND: JSON.stringify(canonicalValue({
+      assembly,
+      presentation: recipe.contexts.GROUND,
+    })),
+    EQUIPPED: JSON.stringify(canonicalValue({
+      assembly,
+      presentation: recipe.contexts.EQUIPPED,
+    })),
+    INVENTORY_ICON: JSON.stringify(canonicalValue({
+      assembly,
+      presentation: recipe.contexts.INVENTORY_ICON,
+    })),
+  } as const;
+}
+
+export function diffItemAuthoringScopesV2(
+  before: ItemAuthoringRecipeV2,
+  after: ItemAuthoringRecipeV2,
+): ItemAuthoringScopeV2[] {
+  const first = itemAuthoringScopeFingerprintsV2(before);
+  const second = itemAuthoringScopeFingerprintsV2(after);
+  return SCOPES.filter((scope) => first[scope] !== second[scope]);
+}

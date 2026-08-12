@@ -5,6 +5,20 @@ declare module "@m2a-wasm" {
   export function ingestGlbJson(bytes: Uint8Array): string;
   export function ingestStaticRigidGlbJson(bytes: Uint8Array): string;
   export function inspectItemBaseitemsV1Json(bytes: Uint8Array): string;
+  export function validateMeshyItemPartsManualFitV2Json(
+    sourceBundle: Uint8Array,
+    requestJson: string,
+    attachmentProfileJson: string,
+    baselineFitReportJson: string,
+  ): string;
+  export function appendItemCustomWeaponBaseitemV2(
+    bytes: Uint8Array,
+    requestJson: string,
+  ): Uint8Array;
+  export function appendItemCustomWeaponBaseitemV2ReportJson(
+    bytes: Uint8Array,
+    requestJson: string,
+  ): string;
   export function extendItemBaseitemModelRangeV1(
     bytes: Uint8Array,
     baseItem: number,

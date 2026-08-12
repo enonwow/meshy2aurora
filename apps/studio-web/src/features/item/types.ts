@@ -122,9 +122,9 @@ export interface ItemFitReportV3 {
     readonly sourceAxialAxis: 0 | 1 | 2;
     readonly sourceWidthAxis: 0 | 1 | 2;
     readonly sourceDepthAxis: 0 | 1 | 2;
-    readonly targetAxialAxis: 1;
-    readonly targetWidthAxis: 2;
-    readonly targetDepthAxis: 0;
+    readonly targetAxialAxis: 0 | 1 | 2;
+    readonly targetWidthAxis: 0 | 1 | 2;
+    readonly targetDepthAxis: 0 | 1 | 2;
     readonly widthToDepthRatio: number;
     readonly handednessDeterminant: number;
     readonly evidence: "GROUP_NORMALIZED_TRANSVERSE_EXTENTS_WITH_PROPER_HANDEDNESS_V1";
@@ -138,7 +138,7 @@ export interface ItemFitReportV3 {
     readonly inputBoundsMin: readonly [number, number, number];
     readonly inputBoundsMax: readonly [number, number, number];
     readonly axialSourceAxis: 0 | 1 | 2;
-    readonly axialTargetAxis: 1;
+    readonly axialTargetAxis: 0 | 1 | 2;
     readonly targetAxialLength: number;
     readonly transform: {
       readonly translation: readonly [number, number, number];
@@ -152,12 +152,12 @@ export interface ItemFitReportV3 {
     readonly outputBoundsMax: readonly [number, number, number];
     readonly bottomConnector: null | {
       readonly kind: "BOTTOM";
-      readonly axialAxis: 1;
+      readonly axialAxis: 0 | 1 | 2;
       readonly position: readonly [number, number, number];
     };
     readonly topConnector: null | {
       readonly kind: "TOP";
-      readonly axialAxis: 1;
+      readonly axialAxis: 0 | 1 | 2;
       readonly position: readonly [number, number, number];
     };
   }[];
@@ -174,7 +174,7 @@ export interface ItemFitReportV3 {
     readonly firstConnector: "TOP";
     readonly secondField: string;
     readonly secondConnector: "BOTTOM";
-    readonly axialAxis: 1;
+    readonly axialAxis: 0 | 1 | 2;
     readonly axialOverlap: number;
     readonly requiredMinOverlap: number;
     readonly requiredMaxOverlap: number;
@@ -237,7 +237,7 @@ export interface ItemFitReportV4 extends Omit<ItemFitReportV3,
   "schemaVersion" | "algorithm"
 > {
   readonly schemaVersion: 4;
-  readonly algorithm: "ITEM_REFERENCE_SLOT_FRAME_FIT_V1";
+  readonly algorithm: "ITEM_REFERENCE_SLOT_FRAME_FIT_V1" | "ITEM_REFERENCE_MANUAL_FIT_V2";
   readonly referenceProfileSha256: string;
   readonly commonOrigin: readonly [number, number, number];
 }
@@ -270,7 +270,7 @@ export interface ItemBuildSnapshot {
     readonly itemPropertiesModelConformance: {
       readonly status: "PASSED" | "NOT_APPLICABLE";
       readonly algorithm: "ITEM_MODELTYPE2_AURORA_APPEND_CONFORMANCE_V2" | null;
-      readonly axialTargetAxis: 1 | null;
+      readonly axialTargetAxis: 0 | 1 | 2 | null;
       readonly checkedMdlCount: number;
       readonly appendOrder: readonly string[];
       readonly colorways: readonly {
@@ -308,7 +308,7 @@ export interface ItemBuildSnapshot {
     };
     readonly seamValidation: {
       readonly tolerance: number;
-      readonly status: "PASSED";
+      readonly status: "PASSED" | "NOT_APPLICABLE";
       readonly results: readonly {
         readonly firstField: string;
         readonly secondField: string;
@@ -330,6 +330,41 @@ export interface ItemBuildSnapshot {
     readonly proofCompleteness: "missing";
     readonly readyForOwnerProof: false;
     readonly proofBlocker: string;
+    readonly hakSha256: string;
+    readonly moduleSha256: string;
+    readonly customWeaponBaseItem?: {
+      readonly schemaVersion: 2;
+      readonly status: "APPENDED_EXACT";
+      readonly donorBaseItem: number;
+      readonly outputBaseItem: number;
+      readonly label: string;
+      readonly itemClass: string;
+      readonly invSlotWidth: number;
+      readonly invSlotHeight: number;
+      readonly sourceSha256: string;
+      readonly outputSha256: string;
+      readonly runtimeRoute: {
+        readonly schemaVersion: 1;
+        readonly baseItem: number;
+        readonly weaponWield: number;
+        readonly weaponType: number;
+        readonly rangedWeapon: number;
+        readonly runtimeClip: string;
+        readonly animatedPartField: string;
+        readonly animatedPartLabel: string;
+        readonly referenceFamily: string;
+      };
+    } | null;
+    readonly proofModule: {
+      readonly schemaVersion: number;
+      readonly fixtureProfile: string;
+      readonly groundItemCount: number;
+      readonly equippedItemCount?: number;
+      readonly outputSha256: string;
+      readonly semanticReadbackStatus: string;
+      readonly modelVisibility: "not_tested";
+      readonly proofCompleteness: "missing";
+    };
   };
   readonly partReadbacks: readonly {
     readonly field: string;

@@ -85,8 +85,27 @@ function catalogJson() {
   });
 }
 
+function hextechDonorCatalogJson() {
+  const catalog = JSON.parse(catalogJson()) as {
+    physicalRowCount: number;
+    rows: Array<Record<string, unknown>>;
+  };
+  catalog.physicalRowCount = 113;
+  catalog.rows[0] = {
+    ...catalog.rows[0],
+    baseItem: 6,
+    label: "heavy_crossbow",
+    itemClass: "WBwXh",
+    invSlotWidth: 2,
+    invSlotHeight: 4,
+  };
+  return JSON.stringify(catalog);
+}
+
 class FakeItemClient implements ItemWorkerClient {
   readonly requests: StudioWorkerRequest[] = [];
+
+  constructor(private readonly inspectedCatalogJson = catalogJson()) {}
 
   async request(request: StudioWorkerRequest): Promise<StudioWorkerResponse> {
     this.requests.push(request);
@@ -95,7 +114,7 @@ class FakeItemClient implements ItemWorkerClient {
         requestId: request.requestId,
         ok: true,
         type: "ITEM_BASEITEMS_INSPECTED",
-        catalogJson: catalogJson(),
+        catalogJson: this.inspectedCatalogJson,
       };
     }
     if (request.type === "BUILD_ITEM_ATTACHMENT_PROFILE") {
@@ -111,8 +130,8 @@ class FakeItemClient implements ItemWorkerClient {
             schemaVersion: 1,
             resourceContextSha256: "c".repeat(64),
             baseitemsSha256: "a".repeat(64),
-            baseItem: 4,
-            itemClass: "sw",
+            baseItem: request.baseItem,
+            itemClass: request.baseItem === 6 ? "WBwXh" : "sw",
             modelType: 2,
             referenceKind: "EXPLICIT_VARIANTS",
             referenceId: request.referenceId,
@@ -153,7 +172,9 @@ class FakeItemClient implements ItemWorkerClient {
         type: "ITEM_PARTS_FITTED",
         fitReportJson: JSON.stringify({
           schemaVersion: 4,
-          algorithm: "ITEM_REFERENCE_SLOT_FRAME_FIT_V1",
+          algorithm: request.manualFit
+            ? "ITEM_REFERENCE_MANUAL_FIT_V2"
+            : "ITEM_REFERENCE_SLOT_FRAME_FIT_V1",
           status: "PASSED",
           tolerance: request.tolerance,
           iterations: 1,
@@ -173,7 +194,9 @@ class FakeItemClient implements ItemWorkerClient {
             status: "PASSED",
           },
           parts: request.parts.map((part, index) => {
-            const targetAxialLength = baseLengths[index] * axialScaleFactors[index];
+            const authored = request.manualFit?.parts[index];
+            const targetAxialLength = authored?.uniformScale
+              ?? baseLengths[index] * axialScaleFactors[index];
             const axialMin = [0, 0.29, 0.38][index];
             return ({
             field: part.field,
@@ -186,12 +209,12 @@ class FakeItemClient implements ItemWorkerClient {
             axialTargetAxis: 1,
             targetAxialLength,
             transform: {
-              translation: [0, axialMin, 0],
-              rotationXyzw: [0, 0, 0, 1],
-              uniformScale: targetAxialLength,
-              pivot: [0, 0, 0],
+              translation: authored?.translation ?? [0, axialMin, 0],
+              rotationXyzw: authored?.rotationXyzw ?? [0, 0, 0, 1],
+              uniformScale: authored?.uniformScale ?? targetAxialLength,
+              pivot: authored?.pivot ?? [0, 0, 0],
             },
-            targetSpaceScaleXyz: [1, 1, 1],
+            targetSpaceScaleXyz: authored?.targetSpaceScaleXyz ?? [1, 1, 1],
             transformSha256: "a".repeat(64),
             outputBoundsMin: [0, axialMin, 0],
             outputBoundsMax: [1, axialMin + targetAxialLength, 1],
@@ -313,6 +336,19 @@ class FakeItemClient implements ItemWorkerClient {
           proofCompleteness: "missing",
           readyForOwnerProof: false,
           proofBlocker: "Owner test module has not been emitted.",
+          hakSha256: "b".repeat(64),
+          moduleSha256: "a".repeat(64),
+          customWeaponBaseItem: null,
+          proofModule: {
+            schemaVersion: 3,
+            fixtureProfile: "ITEM_AND_EQUIPPED_MODELTYPE2_PARTS_V3",
+            groundItemCount: 1,
+            equippedItemCount: 1,
+            outputSha256: "a".repeat(64),
+            semanticReadbackStatus: "PASS",
+            modelVisibility: "not_tested",
+            proofCompleteness: "missing",
+          },
         }),
         partReadbacksJson: JSON.stringify(request.parts.map((part) => ({
           field: part.field,
@@ -368,6 +404,28 @@ afterEach(async () => {
 });
 
 describe("ItemWorkflow", () => {
+  it("requires an explicit action before projecting donor 6 as output 113", async () => {
+    const client = new FakeItemClient(hextechDonorCatalogJson());
+    const container = await render(
+      <ItemWorkflow client={client} onTargetChange={vi.fn()} />,
+    );
+    await chooseFile(
+      container.querySelector<HTMLInputElement>('input[aria-label="Base items table"]')!,
+      localFile("baseitems.2da", 1),
+    );
+
+    expect(container.textContent).toContain("BaseItem 6");
+    expect(container.textContent).toContain("WBwXh");
+    expect(container.textContent).not.toContain("BaseItem 113");
+
+    await act(async () => button(container, "Author Hextech Shotgun V2")?.click());
+
+    expect(container.textContent).toContain("BaseItem 113");
+    expect(container.textContent).toContain("WHxSh");
+    expect(container.textContent).toContain("64 × 128");
+    expect(button(container, "Use retail BaseItem 6")).not.toBeNull();
+  });
+
   it("shows one Item case and builds the exact three-part Aurora recipe", async () => {
     const client = new FakeItemClient();
     const container = await render(
@@ -457,11 +515,21 @@ describe("ItemWorkflow", () => {
     expect(button(container, "Continue to Build")?.disabled).toBe(true);
 
     await act(async () => {
-      button(container, "Validate fit")?.click();
+      button(container, "Validate exact fit")?.click();
       await new Promise((resolve) => window.setTimeout(resolve, 0));
     });
     const validatedFit = client.requests.filter((request) => request.type === "FIT_ITEM_PARTS").at(-1);
-    expect(validatedFit).toMatchObject({ targetAxialScaleFactors: [1, 1, 1.25] });
+    expect(validatedFit).toMatchObject({
+      manualFit: {
+        schemaVersion: 2,
+        baselineFitSolutionSha256: "f".repeat(64),
+        parts: [
+          { field: "ModelPart1" },
+          { field: "ModelPart2" },
+          { field: "ModelPart3", uniformScale: 0.75 },
+        ],
+      },
+    });
     expect(container.querySelector<HTMLInputElement>('input[aria-label="Part size percent"]')?.value).toBe("125");
     expect(container.textContent).toContain("Fit validated");
     expect(button(container, "Continue to Build")?.disabled).toBe(false);
@@ -479,11 +547,19 @@ describe("ItemWorkflow", () => {
     expect(container.querySelector<HTMLInputElement>('input[aria-label="Part size percent"]')?.value).toBe("100");
     expect(button(container, "Continue to Build")?.disabled).toBe(true);
     await act(async () => {
-      button(container, "Validate fit")?.click();
+      button(container, "Validate exact fit")?.click();
       await new Promise((resolve) => window.setTimeout(resolve, 0));
     });
     const resetFit = client.requests.filter((request) => request.type === "FIT_ITEM_PARTS").at(-1);
-    expect(resetFit).toMatchObject({ targetAxialScaleFactors: [1, 1, 1] });
+    expect(resetFit).toMatchObject({
+      manualFit: {
+        parts: [
+          { field: "ModelPart1" },
+          { field: "ModelPart2" },
+          { field: "ModelPart3", uniformScale: 0.6 },
+        ],
+      },
+    });
     expect(button(container, "Continue to Build")?.disabled).toBe(false);
 
     await act(async () => button(container, "Continue to Build")?.click());

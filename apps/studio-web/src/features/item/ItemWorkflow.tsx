@@ -22,6 +22,19 @@ import { ItemCompositionViewport } from "./ItemCompositionViewport";
 import { ItemIconArtifactPreview } from "./ItemIconArtifactPreview";
 import { ItemGenerationPanel } from "./ItemGenerationPanel";
 import { serializeItemGenerationSession, type ItemGenerationSessionV1 } from "./itemGeneration";
+import {
+  buildItemManualFitSnapshotV2,
+  deriveHextechShotgunOutputRowV2,
+  HEXTECH_SHOTGUN_BASEITEM_V2,
+} from "./itemAuthoringRecipeV2";
+import {
+  canonicalItemSemanticReviewV2,
+  ITEM_REVIEW_VIEWS_V2,
+  ITEM_SEMANTIC_CHECKS_V2,
+  validateItemSemanticReviewV2,
+  type ItemReviewViewIdV2,
+  type ItemSemanticReviewV2,
+} from "./itemSemanticReviewV2";
 import type { MeshyArtifactProvenance, MeshyBridgeClient } from "../meshy/bridge";
 import type { ItemSeamResult } from "./itemPreview";
 import type {
@@ -236,6 +249,9 @@ function ItemSource({
   error,
   onBaseitems,
   onSelectRow,
+  sourceBaseItem,
+  customWeaponAuthoring,
+  onCustomWeaponAuthoring,
   onPartFile,
   onGeneratedPart,
   onGenerationSessionChange,
@@ -256,6 +272,9 @@ function ItemSource({
   readonly error?: string;
   readonly onBaseitems: (file: File) => void;
   readonly onSelectRow: (baseItem: number) => void;
+  readonly sourceBaseItem?: number;
+  readonly customWeaponAuthoring: boolean;
+  readonly onCustomWeaponAuthoring: () => void;
   readonly onPartFile: (field: string, file: File) => void;
   readonly onGeneratedPart: (field: string, file: File, provenance: MeshyArtifactProvenance) => void;
   readonly onGenerationSessionChange: (session: ItemGenerationSessionV1) => void;
@@ -319,12 +338,12 @@ function ItemSource({
               />
             </label>
             <span>→</span>
-            <label>
+            <div>
               <span>2 · Printed BaseItem row</span>
               <select
                 aria-label="Target BaseItem"
                 disabled={!catalog || busy}
-                value={selected?.baseItem ?? ""}
+                value={sourceBaseItem ?? ""}
                 onChange={(event) => onSelectRow(Number(event.currentTarget.value))}
               >
                 <option value="">Select BaseItem</option>
@@ -334,7 +353,17 @@ function ItemSource({
                   </option>
                 ))}
               </select>
-            </label>
+              <button
+                type="button"
+                disabled={!catalog || busy}
+                data-active={customWeaponAuthoring}
+                onClick={onCustomWeaponAuthoring}
+              >
+                {customWeaponAuthoring
+                  ? "Use retail BaseItem 6"
+                  : "Author Hextech Shotgun V2"}
+              </button>
+            </div>
             <span>→</span>
             <div>
               <span>3 · Derived schema</span>
@@ -516,6 +545,7 @@ function ItemPrepare({
   onSeamToleranceChange,
   onFitTargetLengthsChange,
   onAutoFit,
+  onValidateFit,
   onDiscardFit,
   onSeams,
   onBack,
@@ -558,6 +588,7 @@ function ItemPrepare({
   readonly onSeamToleranceChange: (next: number) => void;
   readonly onFitTargetLengthsChange: (next: number[]) => void;
   readonly onAutoFit: (targetAxialScaleFactors?: readonly number[]) => void;
+  readonly onValidateFit: () => void;
   readonly onDiscardFit: () => void;
   readonly onSeams: (next: ItemSeamResult[]) => void;
   readonly onBack: () => void;
@@ -652,11 +683,6 @@ function ItemPrepare({
       uniformScale: fittedUniformScale * clamped / fittedPercent,
     });
   };
-  const targetAxialScaleFactors = parts
-    .filter((part) => part.sourceKind === "MESHY_GLB")
-    .map((part) => Math.round(
-      itemReferenceScalePercent(part, fitReport, attachmentProfile) * 10_000,
-    ) / 1_000_000);
   return (
     <section className="item-prepare">
       <header className="item-page-heading">
@@ -900,7 +926,7 @@ function ItemPrepare({
             </p>
             <div className="item-fit-actions">
               <button type="button" className="button button--secondary" disabled={!hasManualFit || busy} onClick={onDiscardFit}>Discard changes</button>
-              <button type="button" className="button button--primary" disabled={!hasManualFit || busy} onClick={() => onAutoFit(targetAxialScaleFactors)}>{busy ? "Validating…" : "Validate fit"}</button>
+              <button type="button" className="button button--primary" disabled={!hasManualFit || busy} onClick={onValidateFit}>{busy ? "Validating…" : "Validate exact fit"}</button>
             </div>
           </section>
           <details className="item-advanced-inspector">
@@ -1254,18 +1280,108 @@ function ItemBuild({
   );
 }
 
-function ItemReview({
+export function ItemReview({
   snapshot,
+  requiresSemanticReview,
   onDownload,
   onError,
 }: {
   readonly snapshot: ItemBuildSnapshot;
+  readonly requiresSemanticReview: boolean;
   readonly onDownload: () => void;
   readonly onError: (message: string) => void;
 }) {
+  const [reviewedViews, setReviewedViews] = useState<readonly ItemReviewViewIdV2[]>([]);
+  const [passedSemantics, setPassedSemantics] = useState<readonly string[]>([]);
+  const [ownerAccepted, setOwnerAccepted] = useState(false);
+  const candidateSha256 = snapshot.report.moduleSha256;
+  const hakSha256 = snapshot.report.hakSha256;
+  const customBaseItem = snapshot.report.customWeaponBaseItem;
+  const validSha256 = (value: string) => /^[0-9a-f]{64}$/.test(value);
+  const technicalViewStatus = useMemo(() => ({
+    ASSEMBLY: snapshot.report.meshyPartCount === 3
+      && snapshot.partReadbacks.length === 3
+      && snapshot.report.seamValidation.status === "PASSED",
+    ITEM_PROPERTIES: snapshot.report.baseItem === HEXTECH_SHOTGUN_BASEITEM_V2.outputBaseItem
+      && snapshot.report.itemPropertiesModelConformance.status === "PASSED",
+    GROUND: validSha256(candidateSha256)
+      && snapshot.report.proofModule.outputSha256 === candidateSha256
+      && snapshot.report.proofModule.semanticReadbackStatus === "PASS"
+      && snapshot.report.proofModule.groundItemCount === 1,
+    EQUIPPED: validSha256(candidateSha256)
+      && validSha256(hakSha256)
+      && customBaseItem?.status === "APPENDED_EXACT"
+      && customBaseItem.donorBaseItem === HEXTECH_SHOTGUN_BASEITEM_V2.runtimeDonorBaseItem
+      && customBaseItem.outputBaseItem === HEXTECH_SHOTGUN_BASEITEM_V2.outputBaseItem
+      && customBaseItem.runtimeRoute.baseItem === HEXTECH_SHOTGUN_BASEITEM_V2.runtimeDonorBaseItem
+      && customBaseItem.runtimeRoute.runtimeClip === "xbowshot"
+      && snapshot.report.proofModule.equippedItemCount === 1,
+    INVENTORY_ICON: snapshot.report.itemIconConformance.status === "PASSED"
+      && customBaseItem?.invSlotWidth === HEXTECH_SHOTGUN_BASEITEM_V2.invSlotWidth
+      && customBaseItem.invSlotHeight === HEXTECH_SHOTGUN_BASEITEM_V2.invSlotHeight,
+  }), [candidateSha256, customBaseItem, hakSha256, snapshot]);
+  const allTechnicalViewsReady = ITEM_REVIEW_VIEWS_V2.every((viewId) => (
+    technicalViewStatus[viewId]
+  ));
+  const allViewsReviewed = ITEM_REVIEW_VIEWS_V2.every((viewId) => (
+    reviewedViews.includes(viewId)
+  ));
+  const allSemanticsPassed = ITEM_SEMANTIC_CHECKS_V2.every((checkId) => (
+    passedSemantics.includes(checkId)
+  ));
+  const review = useMemo<ItemSemanticReviewV2>(() => ({
+    schemaVersion: 2,
+    candidateSha256,
+    lineage: {
+      moduleSha256: candidateSha256,
+      hakSha256,
+    },
+    views: ITEM_REVIEW_VIEWS_V2.map((viewId) => ({
+      id: viewId,
+      technicalStatus: technicalViewStatus[viewId] ? "PASSED" : "FAILED",
+      ownerReviewed: reviewedViews.includes(viewId),
+      candidateSha256,
+    })),
+    semanticChecks: ITEM_SEMANTIC_CHECKS_V2.map((checkId) => ({
+      id: checkId,
+      status: passedSemantics.includes(checkId) ? "PASSED" : "NOT_EVALUATED",
+      candidateSha256,
+    })),
+    ownerStatus: ownerAccepted ? "OWNER_ACCEPTED" : "NOT_REVIEWED",
+  }), [candidateSha256, hakSha256, ownerAccepted, passedSemantics, reviewedViews, technicalViewStatus]);
+  const semanticReviewValidation = validateItemSemanticReviewV2(review);
+  const toggleView = (viewId: ItemReviewViewIdV2) => {
+    setReviewedViews((current) => current.includes(viewId)
+      ? current.filter((id) => id !== viewId)
+      : [...current, viewId]);
+    setOwnerAccepted(false);
+  };
+  const toggleSemantic = (checkId: string) => {
+    setPassedSemantics((current) => current.includes(checkId)
+      ? current.filter((id) => id !== checkId)
+      : [...current, checkId]);
+    setOwnerAccepted(false);
+  };
+  const downloadSemanticReview = () => {
+    try {
+      const payload = new Blob(
+        [`${canonicalItemSemanticReviewV2(review)}\n`],
+        { type: "application/json" },
+      );
+      const url = URL.createObjectURL(payload);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `item-semantic-review-v2-${candidateSha256.slice(0, 12)}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (caught) {
+      onError(caught instanceof Error ? caught.message : String(caught));
+    }
+  };
+
   return (
     <section className="item-review">
-      <header className="item-page-heading"><div><p className="eyebrow">Item · Review Output</p><h1>Verify every part, UTI field and icon layer</h1><p>Offline package admission passed. Visual composition remains explicitly untested.</p></div><span className="status-badge status-badge--neutral">OWNER PROOF PENDING</span></header>
+      <header className="item-page-heading"><div><p className="eyebrow">Item · Review Output</p><h1>Verify every part, UTI field and icon layer</h1><p>Offline package admission passed. Toolset/NWN visibility remains explicitly untested.</p></div><span className="status-badge status-badge--neutral">{requiresSemanticReview && semanticReviewValidation.ok ? "OFFLINE REVIEW ACCEPTED" : "OWNER PROOF PENDING"}</span></header>
       <div className="item-review-summary">
         <article><strong>{snapshot.report.meshyPartCount}</strong><span>authored Meshy MDL parts</span></article>
         <article><strong>{snapshot.report.referenceSelectorCount}</strong><span>retail numeric selectors</span></article>
@@ -1325,8 +1441,64 @@ function ItemReview({
         <code>{snapshot.report.iconLayerMode} · iconRuntimeParity={snapshot.report.iconRuntimeParity}</code>
         <code>modelVisibility=not_tested · proofCompleteness=missing</code>
       </section>
+      {requiresSemanticReview ? (
+        <section className="panel item-semantic-review">
+          <header>
+            <div>
+              <h2>Candidate-bound five-view semantic review</h2>
+              <p>This offline acceptance records composition intent only. It does not claim Toolset or NWN visibility.</p>
+            </div>
+            <code>MOD {candidateSha256.slice(0, 12)} · HAK {hakSha256.slice(0, 12)}</code>
+          </header>
+          <fieldset>
+            <legend>Five independent views</legend>
+            {ITEM_REVIEW_VIEWS_V2.map((viewId) => (
+              <label key={viewId}>
+                <input
+                  type="checkbox"
+                  aria-label={`Review ${viewId}`}
+                  checked={reviewedViews.includes(viewId)}
+                  disabled={!technicalViewStatus[viewId]}
+                  onChange={() => toggleView(viewId)}
+                />
+                <span><strong>{viewId.replaceAll("_", " ")}</strong><small>{technicalViewStatus[viewId] ? "exact candidate artifacts ready" : "technical evidence missing"}</small></span>
+              </label>
+            ))}
+          </fieldset>
+          <fieldset>
+            <legend>Weapon semantics</legend>
+            {ITEM_SEMANTIC_CHECKS_V2.map((checkId) => (
+              <label key={checkId}>
+                <input
+                  type="checkbox"
+                  aria-label={`Pass ${checkId}`}
+                  checked={passedSemantics.includes(checkId)}
+                  disabled={!allTechnicalViewsReady}
+                  onChange={() => toggleSemantic(checkId)}
+                />
+                <span><strong>{checkId.replaceAll("_", " ")}</strong><small>reviewed against MOD {candidateSha256.slice(0, 12)}</small></span>
+              </label>
+            ))}
+          </fieldset>
+          <label className="item-semantic-review__acceptance">
+            <input
+              type="checkbox"
+              aria-label="Accept exact offline composition"
+              checked={ownerAccepted}
+              disabled={!allTechnicalViewsReady || !allViewsReviewed || !allSemanticsPassed}
+              onChange={(event) => setOwnerAccepted(event.target.checked)}
+            />
+            <span><strong>Owner accepts this exact offline composition</strong><small>Changing any review answer revokes acceptance.</small></span>
+          </label>
+          <div className="item-semantic-review__status">
+            <b>{semanticReviewValidation.ok ? "PASSED" : "INCOMPLETE"}</b>
+            <span>{semanticReviewValidation.ok ? "The downloadable record is bound to the exact MOD/HAK hashes." : semanticReviewValidation.issues[0]}</span>
+            <button type="button" className="button button--secondary" onClick={downloadSemanticReview}>Download review JSON</button>
+          </div>
+        </section>
+      ) : null}
       <ArtifactDownloads artifacts={snapshot.artifacts} onError={onError} />
-      <footer className="item-action-bar"><p><strong>Offline Item package complete.</strong><span>The app does not claim Toolset/NWN visibility.</span></p><button type="button" className="button button--primary" onClick={onDownload}>Continue to Download</button></footer>
+      <footer className="item-action-bar"><p><strong>Offline Item package complete.</strong><span>{requiresSemanticReview && !semanticReviewValidation.ok ? "Complete the exact candidate review before download handoff." : "The app does not claim Toolset/NWN visibility."}</span></p><button type="button" className="button button--primary" disabled={requiresSemanticReview && !semanticReviewValidation.ok} onClick={onDownload}>Continue to Download</button></footer>
     </section>
   );
 }
@@ -1338,6 +1510,7 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
   const [baseitems, setBaseitems] = useState<File>();
   const [catalog, setCatalog] = useState<ItemBaseItemsCatalog>();
   const [selectedBaseItem, setSelectedBaseItem] = useState<number>();
+  const [customWeaponAuthoring, setCustomWeaponAuthoring] = useState(false);
   const [parts, setParts] = useState<ItemPartDraft[]>([]);
   const [generationProvenance, setGenerationProvenance] = useState<Record<string, MeshyArtifactProvenance>>({});
   const [generationSession, setGenerationSession] = useState<ItemGenerationSessionV1>();
@@ -1375,7 +1548,12 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
     };
   }, [client]);
 
-  const selected = catalog?.rows.find((row) => row.baseItem === selectedBaseItem);
+  const sourceSelected = catalog?.rows.find((row) => row.baseItem === selectedBaseItem);
+  const selected = useMemo(() => (
+    customWeaponAuthoring && catalog
+      ? deriveHextechShotgunOutputRowV2(catalog)
+      : sourceSelected
+  ), [catalog, customWeaponAuthoring, sourceSelected]);
   const namespaceAllocation = useMemo(() => {
     if (!selected) return undefined;
     try {
@@ -1402,6 +1580,7 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
     const row = catalog?.rows.find((candidate) => candidate.baseItem === baseItem);
     if (!row) return;
     const next = initialItemPartDrafts(row);
+    setCustomWeaponAuthoring(false);
     setSelectedBaseItem(baseItem);
     setParts(next);
     setGenerationProvenance({});
@@ -1426,6 +1605,40 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
     setError(undefined);
   };
 
+  const toggleHextechShotgunAuthoring = () => {
+    if (customWeaponAuthoring) {
+      selectRow(HEXTECH_SHOTGUN_BASEITEM_V2.runtimeDonorBaseItem);
+      return;
+    }
+    if (!catalog) {
+      setError("Load the exact baseitems.2da before authoring a custom weapon BaseItem.");
+      return;
+    }
+    try {
+      const row = deriveHextechShotgunOutputRowV2(catalog);
+      const next = initialItemPartDrafts(row);
+      setSelectedBaseItem(HEXTECH_SHOTGUN_BASEITEM_V2.runtimeDonorBaseItem);
+      setCustomWeaponAuthoring(true);
+      setParts(next);
+      setGenerationProvenance({});
+      setGenerationSession(undefined);
+      setReferenceResources([]);
+      setReferenceModels({});
+      setAttachmentProfile(undefined);
+      setAttachmentProfileJson(undefined);
+      setUtiNumeric(initialUtiNumeric(row));
+      setProperties([]);
+      setSelectedField(next[0]?.field ?? "");
+      setSeams([]);
+      setFitReport(undefined);
+      setFitTargetLengths(initialFitTargetLengths(row));
+      setBuild(undefined);
+      setError(undefined);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
+  };
+
   const inspectBaseitems = (file: File) => {
     const worker = workerRef.current;
     if (!worker) {
@@ -1441,6 +1654,7 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
     setError(undefined);
     setCatalog(undefined);
     setSelectedBaseItem(undefined);
+    setCustomWeaponAuthoring(false);
     setParts([]);
     setGenerationProvenance({});
     setGenerationSession(undefined);
@@ -1502,7 +1716,6 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
   const updatePart = (next: ItemPartDraft) => {
     setParts((current) => current.map((part) => part.field === next.field ? next : part));
     setSeams([]);
-    setFitReport(undefined);
     setBuild(undefined);
     setError(undefined);
   };
@@ -1531,7 +1744,10 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
     setError(undefined);
   };
 
-  const startAutoFit = (targetAxialScaleFactors?: readonly number[]) => {
+  const startAutoFit = (
+    targetAxialScaleFactors?: readonly number[],
+    manualFitOverride?: readonly ItemPartDraft[],
+  ) => {
     const worker = workerRef.current;
     const fitParts = resolvedParts.filter((part) => part.sourceKind === "MESHY_GLB");
     if (!worker || !selected || fitParts.length !== selected.capability.meshySourceCount || fitParts.some((part) => !part.file)) {
@@ -1552,6 +1768,10 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
       setError("Reference-relative part scales must contain one value from 50% through 200% per Meshy slot.");
       return;
     }
+    if (manualFitOverride && (!fitReport || !attachmentProfileJson)) {
+      setError("Exact manual fit validation requires the current baseline and reference profile.");
+      return;
+    }
     if (selected.modelType !== 2 && (
       fitTargetLengths.length !== fitParts.length
       || fitTargetLengths.some((value) => !Number.isFinite(value) || value <= 0)
@@ -1566,6 +1786,9 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
     void (async () => {
       let currentProfileJson = attachmentProfileJson;
       if (selected.modelType === 2 && !currentProfileJson) {
+        const referenceBaseItem = customWeaponAuthoring
+          ? HEXTECH_SHOTGUN_BASEITEM_V2.runtimeDonorBaseItem
+          : selected.baseItem;
         const baseitemsTwoDa = await baseitems!.arrayBuffer();
         const models = await Promise.all(selected.partSlots.map(async (slot) => {
           const reference = referenceModels[slot.field];
@@ -1579,7 +1802,7 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
           requestId: id(),
           type: "BUILD_ITEM_ATTACHMENT_PROFILE",
           baseitemsTwoDa,
-          baseItem: selected.baseItem,
+          baseItem: referenceBaseItem,
           referenceKind: "EXPLICIT_VARIANTS",
           referenceId: models.map((model) => model.modelResref).join("/"),
           models,
@@ -1592,7 +1815,7 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
         if (
           profile.schemaVersion !== 1
           || profile.algorithm !== "AURORA_ITEM_REFERENCE_PROFILE_V1"
-          || profile.identity.baseItem !== selected.baseItem
+          || profile.identity.baseItem !== referenceBaseItem
           || profile.slots.length !== selected.partSlots.length
         ) {
           throw new Error("Reference attachment profile does not match the selected BaseItem.");
@@ -1606,6 +1829,9 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
         sourceGlb: await part.file!.arrayBuffer(),
         sourceNode: part.sourceNode.trim() || null,
       })));
+      const manualFit = manualFitOverride && fitReport
+        ? buildItemManualFitSnapshotV2(manualFitOverride, fitReport)
+        : undefined;
       return worker.request({
         requestId: id(),
         type: "FIT_ITEM_PARTS",
@@ -1615,6 +1841,17 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
           ? [...targetAxialScaleFactors]
           : undefined,
         attachmentProfileJson: currentProfileJson,
+        manualFit: manualFit ? {
+          ...manualFit,
+          parts: manualFit.parts.map((part) => ({
+            ...part,
+            translation: [...part.translation] as [number, number, number],
+            rotationXyzw: [...part.rotationXyzw] as [number, number, number, number],
+            authoredRotationDegrees: [...part.authoredRotationDegrees] as [number, number, number],
+            pivot: [...part.pivot] as [number, number, number],
+            targetSpaceScaleXyz: [...part.targetSpaceScaleXyz] as [number, number, number],
+          })),
+        } : undefined,
         parts: requestParts,
       }, requestParts.map((part) => part.sourceGlb));
     })().then((response) => {
@@ -1624,9 +1861,12 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
       }
       const report = JSON.parse(response.fitReportJson) as ItemFitReport;
       const expectsReferenceFit = selected.modelType === 2;
+      const expectedReferenceAlgorithm = manualFitOverride
+        ? "ITEM_REFERENCE_MANUAL_FIT_V2"
+        : "ITEM_REFERENCE_SLOT_FRAME_FIT_V1";
       if (
         (expectsReferenceFit
-          ? report.schemaVersion !== 4 || report.algorithm !== "ITEM_REFERENCE_SLOT_FRAME_FIT_V1"
+          ? report.schemaVersion !== 4 || report.algorithm !== expectedReferenceAlgorithm
           : report.schemaVersion !== 3 || report.algorithm !== "ITEM_MODELTYPE2_FULL_FRAME_CONNECTOR_FIT_V4_AURORA_YZX")
         || report.parts.length !== fitParts.length
       ) {
@@ -1663,7 +1903,9 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
       setBuild(undefined);
       setStep("INSPECT");
       if (report.status !== "PASSED") {
-        setError("Auto-fit proposed deterministic transforms, but the authoritative seam gate requires manual adjustment.");
+        setError(manualFitOverride
+          ? "The exact authored transforms failed the authoritative geometry gate."
+          : "Auto-fit proposed deterministic transforms, but the authoritative seam gate requires manual adjustment.");
       }
     }).catch((reason: unknown) => {
       if (epoch === requestEpoch.current) setError(reason instanceof Error ? reason.message : String(reason));
@@ -1863,6 +2105,18 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
         type: "BUILD_ITEM_PACKAGE",
         baseitemsTwoDa,
         baseItem: selected.baseItem,
+        customWeaponBaseItem: customWeaponAuthoring
+          ? {
+              schemaVersion: 2,
+              donorBaseItem: HEXTECH_SHOTGUN_BASEITEM_V2.runtimeDonorBaseItem,
+              outputBaseItem: HEXTECH_SHOTGUN_BASEITEM_V2.outputBaseItem,
+              label: HEXTECH_SHOTGUN_BASEITEM_V2.outputLabel,
+              itemClass: HEXTECH_SHOTGUN_BASEITEM_V2.outputItemClass,
+              nameStrref: null,
+              invSlotWidth: HEXTECH_SHOTGUN_BASEITEM_V2.invSlotWidth,
+              invSlotHeight: HEXTECH_SHOTGUN_BASEITEM_V2.invSlotHeight,
+            }
+          : undefined,
         hakResref,
         hakFileName: `${hakResref}.hak`,
         moduleResref,
@@ -1939,6 +2193,9 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
       error={error}
       onBaseitems={inspectBaseitems}
       onSelectRow={selectRow}
+      sourceBaseItem={selectedBaseItem}
+      customWeaponAuthoring={customWeaponAuthoring}
+      onCustomWeaponAuthoring={toggleHextechShotgunAuthoring}
       referenceTables={referenceTables}
       onReferenceTable={(tableName, file) => {
         if (!file.name.toLowerCase().endsWith(".2da")) {
@@ -2077,6 +2334,7 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
         setError(undefined);
       }}
       onAutoFit={startAutoFit}
+      onValidateFit={() => startAutoFit(undefined, parts)}
       onDiscardFit={discardFitPreview}
       onSeams={(next) => {
         setSeams((current) => (
@@ -2099,6 +2357,7 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
     <>
       <ItemReview
         snapshot={build}
+        requiresSemanticReview={customWeaponAuthoring}
         onDownload={() => setStep("DOWNLOAD")}
         onError={setError}
       />

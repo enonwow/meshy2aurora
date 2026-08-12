@@ -38,6 +38,21 @@ export type StudioWorkerRequest =
       targetAxialLengths?: number[];
       targetAxialScaleFactors?: number[];
       attachmentProfileJson?: string;
+      manualFit?: {
+        schemaVersion: 2;
+        baselineFitSolutionSha256: string;
+        baselineFitReportJson: string;
+        parts: Array<{
+          field: "ModelPart1" | "ModelPart2" | "ModelPart3";
+          sourceSha256: string;
+          translation: [number, number, number];
+          rotationXyzw: [number, number, number, number];
+          authoredRotationDegrees: [number, number, number];
+          uniformScale: number;
+          pivot: [number, number, number];
+          targetSpaceScaleXyz: [number, number, number];
+        }>;
+      };
       parts: Array<{
         field: string;
         modelResref: string;
@@ -111,6 +126,16 @@ export type StudioWorkerRequest =
       type: "BUILD_ITEM_PACKAGE";
       baseitemsTwoDa: ArrayBuffer;
       baseItem: number;
+      customWeaponBaseItem?: {
+        schemaVersion: 2;
+        donorBaseItem: number;
+        outputBaseItem: number;
+        label: string;
+        itemClass: string;
+        nameStrref: number | null;
+        invSlotWidth: number;
+        invSlotHeight: number;
+      };
       hakResref: string;
       hakFileName: string;
       moduleResref: string;

@@ -1,6 +1,8 @@
 /// <reference lib="webworker" />
 
 import init, {
+  appendItemCustomWeaponBaseitemV2,
+  appendItemCustomWeaponBaseitemV2ReportJson,
   buildItemEquippedProofModuleV2,
   buildM7CorpusBatchV1,
   buildItemProofModuleV1,
@@ -44,6 +46,7 @@ import init, {
   validateItemModelType2ComposerV4Json,
   validateItemModelType2IconLayersV3Json,
   validateItemTriangleBudgetV1Json,
+  validateMeshyItemPartsManualFitV2Json,
   writeHakV1,
   writeItemUtiV1,
 } from "@m2a-wasm";
@@ -228,11 +231,63 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
       byteOffset += bytes.byteLength;
       return descriptor;
     });
+    const manualDescriptors = request.manualFit?.parts.map((authored, index) => {
+      const source = descriptors[index];
+      if (!source || source.field !== authored.field) {
+        throw new Error(
+          "ITEM-MANUAL-FIT-V2-SOURCE-ORDER-MISMATCH: authored transforms must match the exact source order",
+        );
+      }
+      return {
+        ...source,
+        authoredRotationDegrees: authored.authoredRotationDegrees,
+        transform: {
+          translation: authored.translation,
+          rotationXyzw: authored.rotationXyzw,
+          uniformScale: authored.uniformScale,
+          pivot: authored.pivot,
+        },
+        targetSpaceScaleXyz: authored.targetSpaceScaleXyz,
+      };
+    });
+    if (request.manualFit) {
+      const baseline = JSON.parse(request.manualFit.baselineFitReportJson) as {
+        solutionSha256?: string;
+      };
+      if (
+        request.manualFit.schemaVersion !== 2
+        || !request.attachmentProfileJson
+        || manualDescriptors?.length !== descriptors.length
+        || baseline.solutionSha256 !== request.manualFit.baselineFitSolutionSha256
+      ) {
+        throw new Error(
+          "ITEM-MANUAL-FIT-V2-CONTEXT-MISSING: exact baseline and reference profile are required",
+        );
+      }
+      for (const [index, part] of request.parts.entries()) {
+        if (await sha256(part.sourceGlb) !== request.manualFit.parts[index].sourceSha256) {
+          throw new Error(
+            `ITEM-MANUAL-FIT-V2-SOURCE-HASH-MISMATCH: ${part.field} differs from the frozen editor snapshot`,
+          );
+        }
+      }
+    }
     return {
       requestId: request.requestId,
       ok: true,
       type: "ITEM_PARTS_FITTED",
-          fitReportJson: request.attachmentProfileJson
+      fitReportJson: request.manualFit && request.attachmentProfileJson
+        ? validateMeshyItemPartsManualFitV2Json(
+            sourceBundle,
+            JSON.stringify({
+              schemaVersion: 2,
+              tolerance: request.tolerance,
+              parts: manualDescriptors,
+            }),
+            request.attachmentProfileJson,
+            request.manualFit.baselineFitReportJson,
+          )
+        : request.attachmentProfileJson
         ? fitMeshyItemPartsV4Json(sourceBundle, JSON.stringify({
             schemaVersion: 4,
             tolerance: request.tolerance,
@@ -359,8 +414,10 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
     const attachmentProfileJson = request.attachmentProfileJson ?? null;
     type Catalog = {
       sourceSha256: string;
+      physicalRowCount: number;
       rows: Array<{
         baseItem: number;
+        label: string;
         itemClass: string;
         modelType: number;
         minRange: number | null;
@@ -410,8 +467,54 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         };
       };
     };
+    type CustomWeaponBaseItemReportV2 = {
+      schemaVersion: 2;
+      status: "APPENDED_EXACT";
+      donorBaseItem: number;
+      outputBaseItem: number;
+      label: string;
+      itemClass: string;
+      sourceSha256: string;
+      outputSha256: string;
+      runtimeRoute: {
+        baseItem: number;
+        runtimeClip: "xbowshot" | "bowshot";
+      };
+    };
+    let effectiveBaseitemsTwoDa: ArrayBuffer = request.baseitemsTwoDa;
+    let customWeaponBaseItem: CustomWeaponBaseItemReportV2 | null = null;
+    if (request.customWeaponBaseItem) {
+      if (request.baseItem !== request.customWeaponBaseItem.outputBaseItem) {
+        throw new Error(
+          "ITEM-CUSTOM-BASEITEM-OUTPUT-MISMATCH: build BaseItem must equal the requested custom output BaseItem",
+        );
+      }
+      const requestJson = JSON.stringify(request.customWeaponBaseItem);
+      customWeaponBaseItem = JSON.parse(appendItemCustomWeaponBaseitemV2ReportJson(
+        new Uint8Array(request.baseitemsTwoDa),
+        requestJson,
+      )) as CustomWeaponBaseItemReportV2;
+      effectiveBaseitemsTwoDa = exactBuffer(appendItemCustomWeaponBaseitemV2(
+        new Uint8Array(request.baseitemsTwoDa),
+        requestJson,
+      ));
+      if (
+        customWeaponBaseItem.schemaVersion !== 2
+        || customWeaponBaseItem.status !== "APPENDED_EXACT"
+        || customWeaponBaseItem.donorBaseItem !== request.customWeaponBaseItem.donorBaseItem
+        || customWeaponBaseItem.outputBaseItem !== request.baseItem
+        || customWeaponBaseItem.label !== request.customWeaponBaseItem.label
+        || customWeaponBaseItem.itemClass !== request.customWeaponBaseItem.itemClass
+        || customWeaponBaseItem.runtimeRoute.baseItem
+          !== request.customWeaponBaseItem.donorBaseItem
+      ) {
+        throw new Error(
+          "ITEM-CUSTOM-BASEITEM-REPORT-MISMATCH: appended BaseItem report is not bound to the requested donor/output identity",
+        );
+      }
+    }
     const catalog = JSON.parse(
-      inspectItemBaseitemsV1Json(new Uint8Array(request.baseitemsTwoDa)),
+      inspectItemBaseitemsV1Json(new Uint8Array(effectiveBaseitemsTwoDa)),
     ) as Catalog;
     const selected = catalog.rows.find((row) => row.baseItem === request.baseItem);
     if (!selected) throw new Error(`ITEM-BASEITEM-NOT-FOUND: ${request.baseItem}`);
@@ -474,7 +577,6 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
     const orderedParts = selected.partSlots.map((slot) => request.parts.find(
       (part) => part.field.toLowerCase() === slot.field.toLowerCase(),
     )!);
-    let effectiveBaseitemsTwoDa = request.baseitemsTwoDa;
     type BaseitemsModelRangeReport = {
       status: "PATCHED" | "NOT_REQUIRED";
       baseItem: number;
@@ -491,13 +593,13 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
       const selectedModels = orderedParts.map((part) => Math.floor(part.variant / 10));
       const highestModel = Math.max(...selectedModels);
       const rangeReport = JSON.parse(extendItemBaseitemModelRangeV1ReportJson(
-        new Uint8Array(request.baseitemsTwoDa),
+        new Uint8Array(effectiveBaseitemsTwoDa),
         request.baseItem,
         highestModel,
       )) as BaseitemsModelRangeReport;
       baseitemsModelRange = rangeReport;
       effectiveBaseitemsTwoDa = exactBuffer(extendItemBaseitemModelRangeV1(
-        new Uint8Array(request.baseitemsTwoDa),
+        new Uint8Array(effectiveBaseitemsTwoDa),
         request.baseItem,
         highestModel,
       ));
@@ -872,7 +974,7 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
       ], "generationSession") as Record<string, unknown> & { slots: unknown[] };
       if (
         root.schemaVersion !== 1
-        || root.baseitemsSha256 !== catalog.sourceSha256
+        || root.baseitemsSha256 !== (customWeaponBaseItem?.sourceSha256 ?? catalog.sourceSha256)
         || root.baseItem !== request.baseItem
         || root.itemClass !== selected.itemClass
         || root.modelType !== selected.modelType
@@ -1013,6 +1115,7 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
       algorithm: string;
       solutionSha256: string;
       referenceProfileSha256: string | null;
+      targetAxialAxis: 0 | 1 | 2;
       parts: Array<{ field: string; sourceSha256: string; transformSha256: string }>;
       adjacentConnectors: Array<{
         firstField: string;
@@ -1075,6 +1178,7 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         || ![
           "ITEM_MODELTYPE2_FULL_FRAME_CONNECTOR_FIT_V4_AURORA_YZX",
           "ITEM_REFERENCE_SLOT_FRAME_FIT_V1",
+          "ITEM_REFERENCE_MANUAL_FIT_V2",
         ].includes(fit.algorithm ?? "")
         || (fit.schemaVersion === 4 && (
           attachmentProfileJson === null
@@ -1084,9 +1188,16 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         || (fit.schemaVersion === 3 && attachmentProfileJson !== null)
         || !fit.orientationFrame
         || fit.orientationFrame.status !== "PASSED"
-        || fit.orientationFrame.targetAxialAxis !== 1
-        || fit.orientationFrame.targetWidthAxis !== 2
-        || fit.orientationFrame.targetDepthAxis !== 0
+        || new Set([
+          fit.orientationFrame.targetAxialAxis,
+          fit.orientationFrame.targetWidthAxis,
+          fit.orientationFrame.targetDepthAxis,
+        ]).size !== 3
+        || [
+          fit.orientationFrame.targetAxialAxis,
+          fit.orientationFrame.targetWidthAxis,
+          fit.orientationFrame.targetDepthAxis,
+        ].some((axis) => !Number.isInteger(axis) || axis < 0 || axis > 2)
         || fit.orientationFrame.widthToDepthRatio < 1.10
         || Math.abs(fit.orientationFrame.handednessDeterminant - 1) > 1e-5
         || !Array.isArray(fit.parts)
@@ -1098,11 +1209,11 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
           || connector.surfaceStatus === "GAP"
           || !Number.isFinite(connector.axialOverlap)
           || connector.axialOverlap <= 0
-          || connector.axialOverlap < connector.requiredMinOverlap
-          || connector.axialOverlap > connector.requiredMaxOverlap
+          || connector.axialOverlap + 1e-6 < connector.requiredMinOverlap
+          || connector.axialOverlap > connector.requiredMaxOverlap + 1e-6
         ))
         || fit.parts.some((part, index) => (
-          part.axialTargetAxis !== 1
+          part.axialTargetAxis !== fit.orientationFrame!.targetAxialAxis
           || !Number.isFinite(part.targetAxialLength)
           || part.targetAxialLength <= 0
           || part.outputBoundsMin.length !== 3
@@ -1112,8 +1223,8 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
           || part.targetSpaceScaleXyz.some((value) => !Number.isFinite(value) || value <= 0)
           || [...part.outputBoundsMin, ...part.outputBoundsMax].some((value) => !Number.isFinite(value))
           || Math.abs(
-            part.outputBoundsMax[1]
-            - part.outputBoundsMin[1]
+            part.outputBoundsMax[fit.orientationFrame!.targetAxialAxis]
+            - part.outputBoundsMin[fit.orientationFrame!.targetAxialAxis]
             - part.targetAxialLength
           ) > 1e-4
           || Boolean(part.bottomConnector) !== (index > 0)
@@ -1148,6 +1259,7 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         algorithm: fit.algorithm!,
         solutionSha256: fit.solutionSha256!,
         referenceProfileSha256: fit.referenceProfileSha256 ?? null,
+        targetAxialAxis: fit.orientationFrame.targetAxialAxis as 0 | 1 | 2,
         parts: boundParts,
         adjacentConnectors: fit.adjacentConnectors!.map((connector) => ({
           firstField: connector.firstField,
@@ -1159,7 +1271,7 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
     }
     if (selected.modelType === 2 && fitPartContracts.size !== meshyParts.length) {
       throw new Error(
-        "ITEM-MODELTYPE2-FIT-REQUIRED: Item Properties output requires one +Y fit contract per Meshy part",
+        "ITEM-MODELTYPE2-FIT-REQUIRED: Item Properties output requires one exact fit contract per Meshy part",
       );
     }
     if (selected.modelType === 2 && attachmentProfileJson !== null && emitsCustomIcons) {
@@ -1551,7 +1663,7 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
     let itemPropertiesModelConformance: {
       status: "PASSED" | "NOT_APPLICABLE";
       algorithm: "ITEM_MODELTYPE2_AURORA_APPEND_CONFORMANCE_V2" | null;
-      axialTargetAxis: 1 | null;
+      axialTargetAxis: 0 | 1 | 2 | null;
       checkedMdlCount: number;
       appendOrder: string[];
       colorways: Array<{
@@ -1637,7 +1749,7 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
       itemPropertiesModelConformance = {
         status: "PASSED",
         algorithm: "ITEM_MODELTYPE2_AURORA_APPEND_CONFORMANCE_V2",
-        axialTargetAxis: 1,
+        axialTargetAxis: fitBindingReport!.targetAxialAxis,
         checkedMdlCount: outputs.length,
         appendOrder: colorways[0].appendOrder,
         colorways: colorways.map((colorway) => ({
@@ -1924,7 +2036,7 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         : []),
     ]);
     resources.push({ resref: request.blueprintResref, resourceType: 2025, payload: uti });
-    if (baseitemsModelRange?.status === "PATCHED") {
+    if (customWeaponBaseItem || baseitemsModelRange?.status === "PATCHED") {
       resources.push({
         resref: "baseitems",
         resourceType: 2017,
@@ -2140,6 +2252,7 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
       attachmentProfile: attachmentProfileJson
         ? JSON.parse(attachmentProfileJson)
         : null,
+      customWeaponBaseItem,
       baseitemsModelRange,
       itemPropertiesModelConformance,
       itemIconConformance,

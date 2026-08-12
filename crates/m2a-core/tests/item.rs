@@ -3,30 +3,36 @@ use m2a_core::{
     gff::{GffFileTypeV1, GffLimitsV1, GffValueV1, read_gff_v32},
     item::{
         ARMOR_PART_FIELDS_V1, CAPART_REQUIRED_REFERENCE_TABLES_V1, ITEM_COLOR_FIELDS_V1,
-        ITEM_RETAIL_NWN_BASE_KEY_SHA256_V1, ItemBlueprintV1, ItemCapartContextV1,
-        ItemColorValuesV1, ItemComposerMdlInputV2, ItemCompositionProfileV1,
-        ItemEquippedProofIdentityV2, ItemEquippedProofProfileV2, ItemFitSourceV1,
-        ItemIconLayerInputV3, ItemIconProfileV1, ItemPartBuildOptionsV2, ItemPartTextureEncodingV1,
+        ITEM_RETAIL_NWN_BASE_KEY_SHA256_V1, ItemAttachmentProfileV1, ItemAttachmentRouteV1,
+        ItemBlueprintV1, ItemCapartContextV1, ItemColorValuesV1, ItemComposerMdlInputV2,
+        ItemCompositionProfileV1, ItemCustomWeaponBaseItemRequestV2, ItemEquippedProofIdentityV2,
+        ItemEquippedProofProfileV2, ItemFitSourceV1, ItemIconLayerInputV3, ItemIconProfileV1,
+        ItemManualFitPartV2, ItemPartBuildOptionsV2, ItemPartTextureEncodingV1,
         ItemPartTransformV1, ItemPartValueV1, ItemProofModuleIdentityV1, ItemProofPlacementV1,
-        ItemPropertyV1, ItemResourceInventoryEntryV2, ItemResourceProvenanceV1,
-        ItemTextureProfileV1, build_item_and_equipped_proof_module_v3,
+        ItemPropertyV1, ItemReferenceMdlInputV1, ItemReferenceProfileIdentityV1,
+        ItemReferenceSlotFrameV1, ItemResourceInventoryEntryV2, ItemResourceProvenanceV1,
+        ItemTextureProfileV1, append_item_custom_weapon_baseitem_v2,
+        build_item_and_equipped_proof_module_v3, build_item_attachment_profile_v1,
         build_item_equipped_proof_module_v2, build_item_proof_module_v1, build_meshy_item_part_v1,
         build_meshy_item_part_with_options_v2, build_meshy_item_part_with_options_v3,
         decode_item_weapon_part_appearance_v1, encode_item_weapon_part_appearance_v1,
         extend_item_baseitem_model_range_v1, fit_meshy_item_parts_aurora_v3,
-        fit_meshy_item_parts_v1, fit_meshy_item_parts_with_target_lengths_aurora_v3,
+        fit_meshy_item_parts_to_attachment_profile_v1, fit_meshy_item_parts_v1,
+        fit_meshy_item_parts_with_target_lengths_aurora_v3,
         fit_meshy_item_parts_with_target_lengths_aurora_v4,
         fit_meshy_item_parts_with_target_lengths_aurora_v5,
         fit_meshy_item_parts_with_target_lengths_v2, inspect_item_baseitems_v1,
         inspect_item_reference_resource_v1, inspect_item_reference_two_da_v1,
-        measure_meshy_item_seam_v1, resolve_item_baseitem_v1, resolve_item_capability_v1,
-        resolve_item_capart_part_v1, resolve_item_capart_part_v2, resolve_item_cast_spell_icon_v1,
-        resolve_item_cloak_v2, resolve_item_cloak_v3, resolve_item_equipped_appearance_v1,
-        resolve_item_modeltype2_equipment_slot_v1, resolve_item_part_resource_v1,
+        item_attachment_profile_sha256_v1, measure_meshy_item_seam_v1, resolve_item_baseitem_v1,
+        resolve_item_capability_v1, resolve_item_capart_part_v1, resolve_item_capart_part_v2,
+        resolve_item_cast_spell_icon_v1, resolve_item_cloak_v2, resolve_item_cloak_v3,
+        resolve_item_equipped_appearance_v1, resolve_item_modeltype2_equipment_slot_v1,
+        resolve_item_part_resource_v1, resolve_item_weapon_runtime_route_v1,
         validate_item_fit_report_v1, validate_item_fit_report_v2, validate_item_fit_report_v3,
         validate_item_modeltype2_aurora_append_conformance_v2,
+        validate_item_modeltype2_aurora_append_conformance_v4,
         validate_item_modeltype2_icon_layers_v3, validate_item_triangle_budget_v1,
-        write_item_uti_v1,
+        validate_meshy_item_parts_manual_fit_v2, write_item_uti_v1,
     },
     owned_fixture::synthetic_owned_m6_glb_v1,
     tga::{TGA_SCHEMA_VERSION, TgaImageV1, TgaPixelFormatV1, TgaWriterOptionsV1, write_tga_v1},
@@ -46,6 +52,119 @@ Label Name ItemClass ModelType GenderSpecific DefaultModel DefaultIcon Equipable
 43 DELETED **** **** * **** it_bag **** 0 1 1 **** ****
 83 padding **** **** **** **** **** **** **** **** **** **** ****
 "#;
+
+const RANGED_BASEITEMS: &[u8] = br#"2DA V2.0
+
+Label Name ItemClass ModelType GenderSpecific DefaultModel DefaultIcon EquipableSlots InvSlotWidth InvSlotHeight MinRange MaxRange WeaponWield WeaponType RangedWeapon
+6 heavy_crossbow 173 WBwXh 2 0 it_bag iwbwxh 0x00030 2 4 10 100 6 1 25
+8 longbow 175 WBLN 2 0 it_bag iwbln 0x00030 2 4 10 100 5 1 20
+9 static_sword 166 WSwLs 2 0 it_bag iwswls 0x1C030 1 4 10 100 **** **** ****
+"#;
+
+fn baseitems_ready_for_exact_113_append() -> Vec<u8> {
+    let mut table = b"2DA V2.0\n\nLabel Name ItemClass ModelType GenderSpecific DefaultModel DefaultIcon EquipableSlots InvSlotWidth InvSlotHeight MinRange MaxRange WeaponWield WeaponType RangedWeapon\n".to_vec();
+    for index in 0..113u32 {
+        let row = if index == 6 {
+            "6 heavy_crossbow 173 WBwXh 2 0 it_bag iwbwxh 0x00030 2 4 10 100 6 1 25\n".to_owned()
+        } else {
+            format!(
+                "{index} filler_{index} **** Ring 0 0 it_bag iring 8 1 1 **** **** **** **** ****\n"
+            )
+        };
+        table.extend_from_slice(row.as_bytes());
+    }
+    table
+}
+
+fn hextech_baseitem_request(output_base_item: u32) -> ItemCustomWeaponBaseItemRequestV2 {
+    ItemCustomWeaponBaseItemRequestV2 {
+        schema_version: 2,
+        donor_base_item: 6,
+        output_base_item,
+        label: "hextech_shotgun".to_owned(),
+        item_class: "WHxSh".to_owned(),
+        name_strref: Some(16_777_216),
+        inv_slot_width: Some(2),
+        inv_slot_height: Some(4),
+    }
+}
+
+#[test]
+fn baseitems_runtime_columns_select_only_audited_weapon_routes() {
+    let crossbow = resolve_item_baseitem_v1(RANGED_BASEITEMS, 6).unwrap();
+    assert_eq!(crossbow.weapon_wield, Some(6));
+    assert_eq!(crossbow.weapon_type, Some(1));
+    assert_eq!(crossbow.ranged_weapon, Some(25));
+    let route = resolve_item_weapon_runtime_route_v1(&crossbow)
+        .unwrap()
+        .unwrap();
+    assert_eq!(route.base_item, 6);
+    assert_eq!(route.runtime_clip, "xbowshot");
+    assert_eq!(route.animated_part_field, "ModelPart3");
+    assert_eq!(route.animated_part_label, "Top");
+
+    let bow = resolve_item_baseitem_v1(RANGED_BASEITEMS, 8).unwrap();
+    assert_eq!(
+        resolve_item_weapon_runtime_route_v1(&bow)
+            .unwrap()
+            .unwrap()
+            .runtime_clip,
+        "bowshot"
+    );
+    let static_item = resolve_item_baseitem_v1(RANGED_BASEITEMS, 9).unwrap();
+    assert_eq!(
+        resolve_item_weapon_runtime_route_v1(&static_item).unwrap(),
+        None
+    );
+}
+
+#[test]
+fn exact_baseitem_113_clones_donor_6_runtime_but_owns_whxsh_namespace() {
+    let source = baseitems_ready_for_exact_113_append();
+    let artifact =
+        append_item_custom_weapon_baseitem_v2(&source, &hextech_baseitem_request(113)).unwrap();
+
+    assert_eq!(artifact.report.status, "APPENDED_EXACT");
+    assert_eq!(artifact.report.donor_base_item, 6);
+    assert_eq!(artifact.report.output_base_item, 113);
+    assert_eq!(artifact.report.runtime_route.base_item, 6);
+    assert_eq!(artifact.report.runtime_route.runtime_clip, "xbowshot");
+    assert_eq!(artifact.selected.base_item, 113);
+    assert_eq!(artifact.selected.label, "hextech_shotgun");
+    assert_eq!(artifact.selected.item_class, "WHxSh");
+    assert_eq!(artifact.selected.weapon_wield, Some(6));
+    assert_eq!(artifact.selected.weapon_type, Some(1));
+    assert_eq!(artifact.selected.ranged_weapon, Some(25));
+    assert_eq!(
+        (
+            artifact.selected.inv_slot_width,
+            artifact.selected.inv_slot_height
+        ),
+        (2, 4)
+    );
+    assert!(artifact.payload.starts_with(&source));
+
+    let resolved =
+        resolve_item_part_resource_v1(&artifact.selected, "ModelPart1", 53, None, None).unwrap();
+    assert_eq!(resolved.model_resref, "whxsh_b_053");
+    assert_eq!(resolved.icon_resref, "iwhxsh_b_053");
+
+    let donor = resolve_item_baseitem_v1(&artifact.payload, 6).unwrap();
+    assert_eq!(donor.item_class, "WBwXh");
+    assert_eq!(donor.label, "heavy_crossbow");
+    assert_eq!(donor.inv_slot_width, 2);
+    assert_eq!(donor.inv_slot_height, 4);
+}
+
+#[test]
+fn custom_weapon_append_rejects_any_physical_index_other_than_requested_output() {
+    let source = baseitems_ready_for_exact_113_append();
+    let error =
+        append_item_custom_weapon_baseitem_v2(&source, &hextech_baseitem_request(114)).unwrap_err();
+
+    assert_eq!(error.code, "ITEM-CUSTOM-BASEITEM-OUTPUT-INDEX-MISMATCH");
+    assert_eq!(error.path, "request.outputBaseItem");
+}
 
 #[test]
 fn modeltype2_range_override_changes_only_selected_baseitem_max_range() {
@@ -67,6 +186,100 @@ fn modeltype2_range_override_changes_only_selected_baseitem_max_range() {
     let unchanged = extend_item_baseitem_model_range_v1(BASEITEMS, 2, 10).unwrap();
     assert_eq!(unchanged.report.status, "NOT_REQUIRED");
     assert_eq!(unchanged.payload, BASEITEMS);
+}
+
+#[test]
+fn manual_fit_v2_validates_the_exact_authored_transform_without_autofit_replacement() {
+    let source_glbs = [
+        build_synthetic_glb::rectangular_prism(1.0, 2.0, 4.0),
+        build_synthetic_glb::rectangular_prism(1.0, 2.0, 4.0),
+        build_synthetic_glb::rectangular_prism(1.0, 2.0, 4.0),
+    ];
+    let fields = ["ModelPart1", "ModelPart2", "ModelPart3"];
+    let model_resrefs = ["whxsh_b_001", "whxsh_m_001", "whxsh_t_001"];
+    let sources = fields
+        .iter()
+        .zip(&model_resrefs)
+        .zip(&source_glbs)
+        .map(|((&field, &model_resref), source_glb)| ItemFitSourceV1 {
+            field,
+            model_resref,
+            source_glb,
+            source_node: None,
+        })
+        .collect::<Vec<_>>();
+    let axial_ranges = [(0.0, 0.30), (0.29, 0.39), (0.38, 0.98)];
+    let mut profile = ItemAttachmentProfileV1 {
+        schema_version: 1,
+        algorithm: "AURORA_ITEM_REFERENCE_PROFILE_V1".to_owned(),
+        status: "PASSED".to_owned(),
+        identity: ItemReferenceProfileIdentityV1 {
+            schema_version: 1,
+            resource_context_sha256: "a".repeat(64),
+            baseitems_sha256: "b".repeat(64),
+            base_item: 6,
+            item_class: "WBwXh".to_owned(),
+            model_type: 2,
+            reference_kind: "EXPLICIT_VARIANTS".to_owned(),
+            reference_id: "wbwxh_b_014/wbwxh_m_014/wbwxh_t_014".to_owned(),
+        },
+        attachment_route: ItemAttachmentRouteV1::Hand,
+        equipable_slots: 0x30,
+        common_origin: [0.0, 0.29, 0.0],
+        axial_axis: 1,
+        width_axis: 2,
+        depth_axis: 0,
+        attachment_zone_min: [-0.1, 0.28, -0.1],
+        attachment_zone_max: [0.1, 0.30, 0.1],
+        attachment_evidence: "ORIGIN_CONTAINING_REFERENCE_PARTS_V1".to_owned(),
+        slots: fields
+            .iter()
+            .zip(&model_resrefs)
+            .zip(axial_ranges)
+            .enumerate()
+            .map(
+                |(index, ((&field, &model_resref), (min_y, max_y)))| ItemReferenceSlotFrameV1 {
+                    field: field.to_owned(),
+                    label: ["Bottom", "Middle", "Top"][index].to_owned(),
+                    token: ["b", "m", "t"][index].to_owned(),
+                    model_resref: model_resref.to_owned(),
+                    model_sha256: format!("{}", index + 3).repeat(64),
+                    controller_node_name: format!("g_{model_resref}"),
+                    controller_translation: [0.0, (min_y + max_y) * 0.5, 0.0],
+                    controller_rotation_xyzw: [0.0, 0.0, 0.0, 1.0],
+                    bounds_min: [-0.5, min_y, -0.5],
+                    bounds_max: [0.5, max_y, 0.5],
+                    allow_axial_extension_at_min: false,
+                    allow_axial_extension_at_max: index == 2,
+                },
+            )
+            .collect(),
+        profile_sha256: String::new(),
+    };
+    profile.profile_sha256 = item_attachment_profile_sha256_v1(&profile).unwrap();
+    let baseline =
+        fit_meshy_item_parts_to_attachment_profile_v1(&sources, 0.005, &profile).unwrap();
+    assert_eq!(baseline.status, "PASSED");
+
+    let mut authored = baseline
+        .parts
+        .iter()
+        .map(|part| ItemManualFitPartV2 {
+            field: part.field.clone(),
+            transform: part.transform,
+            target_space_scale_xyz: part.target_space_scale_xyz,
+        })
+        .collect::<Vec<_>>();
+    authored[0].transform.translation[1] += 0.001;
+    let validated =
+        validate_meshy_item_parts_manual_fit_v2(&sources, 0.005, &profile, &baseline, &authored)
+            .unwrap();
+
+    assert_eq!(validated.algorithm, "ITEM_REFERENCE_MANUAL_FIT_V2");
+    assert_eq!(validated.status, "PASSED");
+    assert_eq!(validated.parts[0].transform, authored[0].transform);
+    assert_ne!(validated.parts[0].transform, baseline.parts[0].transform);
+    assert_ne!(validated.solution_sha256, baseline.solution_sha256);
 }
 
 fn test_icon_layer_v3(
@@ -1901,6 +2114,181 @@ fn env_gated_real_longsword_parts_fit_with_exact_canonical_hashes() {
         "real candidate regressed to an edge-on Aurora frame: width={composite_width}, depth={composite_depth}"
     );
     validate_item_fit_report_v3(&full_frame).unwrap();
+}
+
+#[test]
+fn env_gated_real_hextech_glbs_fit_to_exact_retail_mdl_frames() {
+    if std::env::var("M2A_RUN_HEXTECH_ITEM_CORPUS").as_deref() != Ok("1") {
+        return;
+    }
+    let source_root = std::path::Path::new(r"C:\Projects\meshy2aurora")
+        .join("sample-3d/tlc-hextech-shotgun-parts-v1");
+    let reference_root = std::path::PathBuf::from(
+        std::env::var("M2A_HEXTECH_REFERENCE_MDL_DIR")
+            .expect("M2A_HEXTECH_REFERENCE_MDL_DIR must name the exact extracted retail MDL set"),
+    );
+    let sources = [
+        std::fs::read(source_root.join("bottom.glb")).unwrap(),
+        std::fs::read(source_root.join("middle.glb")).unwrap(),
+        std::fs::read(source_root.join("top.glb")).unwrap(),
+    ];
+    let expected_source_hashes = [
+        "69c78999590b248bf9c642516ffa595d33774ead3436166963b27dfaa71ad48d",
+        "8fafe6a55dd77107a67f29c7519f3b6edc390b310f918a89131b003517720147",
+        "6ce1281a4ed8a239bf0d6fc9388fe8a977a2811750d40eab4320e13b642c77bf",
+    ];
+    for (payload, expected) in sources.iter().zip(expected_source_hashes) {
+        assert_eq!(format!("{:x}", Sha256::digest(payload)), expected);
+    }
+
+    let fields = ["ModelPart1", "ModelPart2", "ModelPart3"];
+    let reference_resrefs = ["wbwxh_b_014", "wbwxh_m_014", "wbwxh_t_014"];
+    let expected_reference_hashes = [
+        "66a9c08a9af50181442086cade525a185d9047447f62451ec92952f6f56ca3ec",
+        "29274c2ccb02e72cd706c6948d0ba0ff0ecc2225dfc4be7126c6b93265c24524",
+        "996ec5b3878fabfb451c4b6d2e13291beca47144d34bd138833b432d9fe46c0a",
+    ];
+    let reference_mdls = reference_resrefs
+        .map(|resref| std::fs::read(reference_root.join(format!("{resref}.mdl"))).unwrap());
+    for (payload, expected) in reference_mdls.iter().zip(expected_reference_hashes) {
+        assert_eq!(format!("{:x}", Sha256::digest(payload)), expected);
+    }
+
+    let catalog = inspect_item_baseitems_v1(RANGED_BASEITEMS).unwrap();
+    assert!(catalog.rows.iter().any(|row| row.base_item == 6));
+    let donor = resolve_item_baseitem_v1(RANGED_BASEITEMS, 6).unwrap();
+    assert_eq!(donor.item_class, "WBwXh");
+    assert_eq!(
+        resolve_item_weapon_runtime_route_v1(&donor)
+            .unwrap()
+            .unwrap()
+            .runtime_clip,
+        "xbowshot"
+    );
+    let mut reference_context = Sha256::new();
+    for payload in &reference_mdls {
+        reference_context.update(payload);
+    }
+    let reference_inputs = (0..3)
+        .map(|index| ItemReferenceMdlInputV1 {
+            field: fields[index],
+            model_resref: reference_resrefs[index],
+            mdl_payload: &reference_mdls[index],
+        })
+        .collect::<Vec<_>>();
+    let profile = build_item_attachment_profile_v1(
+        &donor,
+        &format!("{:x}", reference_context.finalize()),
+        &format!("{:x}", Sha256::digest(RANGED_BASEITEMS)),
+        "EXPLICIT_VARIANTS",
+        "wbwxh_b_014/wbwxh_m_014/wbwxh_t_014",
+        &reference_inputs,
+    )
+    .unwrap();
+    assert_eq!(profile.identity.base_item, 6);
+    assert_eq!(profile.attachment_route, ItemAttachmentRouteV1::Hand);
+
+    let fit_sources = (0..3)
+        .map(|index| ItemFitSourceV1 {
+            field: fields[index],
+            model_resref: ["whxsh_b_053", "whxsh_m_053", "whxsh_t_053"][index],
+            source_glb: &sources[index],
+            source_node: None,
+        })
+        .collect::<Vec<_>>();
+    let baseline =
+        fit_meshy_item_parts_to_attachment_profile_v1(&fit_sources, 0.005, &profile).unwrap();
+    assert_eq!(baseline.status, "MANUAL_REQUIRED", "{baseline:#?}");
+    assert_eq!(baseline.reference_profile_sha256, profile.profile_sha256);
+    assert_eq!(baseline.parts.len(), 3);
+
+    let longitudinal =
+        fit_meshy_item_parts_with_target_lengths_v2(&fit_sources, 0.005, &[0.30, 0.40, 0.25])
+            .unwrap();
+    let overlap = 0.005_f32;
+    let anchor = profile.slots[1].controller_translation;
+    let mut authored = longitudinal
+        .parts
+        .iter()
+        .map(|part| ItemManualFitPartV2 {
+            field: part.field.clone(),
+            transform: part.transform,
+            target_space_scale_xyz: [1.0; 3],
+        })
+        .collect::<Vec<_>>();
+    let first_shift = overlap * 0.5 - longitudinal.parts[0].output_bounds_max[2];
+    authored[0].transform.translation[2] += first_shift;
+    let second_shift = -overlap * 0.5 - longitudinal.parts[1].output_bounds_min[2];
+    authored[1].transform.translation[2] += second_shift;
+    let second_max = longitudinal.parts[1].output_bounds_max[2] + second_shift;
+    let third_shift = second_max - overlap - longitudinal.parts[2].output_bounds_min[2];
+    authored[2].transform.translation[2] += third_shift;
+    for (index, part) in authored.iter_mut().enumerate() {
+        for axis in [0_usize, 1_usize] {
+            let center = (longitudinal.parts[index].output_bounds_min[axis]
+                + longitudinal.parts[index].output_bounds_max[axis])
+                * 0.5;
+            part.transform.translation[axis] += anchor[axis] - center;
+        }
+    }
+    let manual = validate_meshy_item_parts_manual_fit_v2(
+        &fit_sources,
+        0.005,
+        &profile,
+        &baseline,
+        &authored,
+    )
+    .unwrap();
+    assert_eq!(manual.algorithm, "ITEM_REFERENCE_MANUAL_FIT_V2");
+    assert_eq!(manual.orientation_frame.target_axial_axis, 2);
+    assert_eq!(manual.orientation_frame.target_width_axis, 1);
+    assert_eq!(manual.orientation_frame.target_depth_axis, 0);
+    assert_eq!(
+        manual
+            .parts
+            .iter()
+            .map(|part| part.transform)
+            .collect::<Vec<_>>(),
+        authored
+            .iter()
+            .map(|part| part.transform)
+            .collect::<Vec<_>>()
+    );
+    let materialized = (0..3)
+        .map(|index| {
+            build_meshy_item_part_with_options_v3(
+                &sources[index],
+                fit_sources[index].model_resref,
+                ["whxshb53", "whxshm53", "whxsht53"][index],
+                &ItemPartBuildOptionsV2 {
+                    transform: manual.parts[index].transform,
+                    target_space_scale_xyz: manual.parts[index].target_space_scale_xyz,
+                    ..ItemPartBuildOptionsV2::default()
+                },
+            )
+            .unwrap()
+        })
+        .collect::<Vec<_>>();
+    let composer_inputs = (0..3)
+        .map(|index| ItemComposerMdlInputV2 {
+            field: fields[index],
+            model_resref: fit_sources[index].model_resref,
+            mdl_payload: &materialized[index].mdl_payload,
+        })
+        .collect::<Vec<_>>();
+    let conformance =
+        validate_item_modeltype2_aurora_append_conformance_v4(&composer_inputs, &manual).unwrap();
+    assert_eq!(conformance.status, "PASSED");
+    assert_eq!(conformance.total_triangle_count, 28_620);
+    assert!(
+        materialized
+            .iter()
+            .all(|artifact| artifact.report.semantic_readback_status == "PASS")
+    );
+    println!(
+        "hextech real corpus profile={} baseline={} manual={}",
+        profile.profile_sha256, baseline.solution_sha256, manual.solution_sha256
+    );
 }
 
 #[test]

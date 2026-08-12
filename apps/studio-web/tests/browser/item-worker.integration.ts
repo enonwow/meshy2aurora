@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import sourceUrl from "../.generated/owned-package/generated/source.glb?url";
 import baseitemsUrl from "../fixtures/baseitems.2da?url";
 import { StudioWorkerClient } from "../../src/worker/client";
-import initWasm, { buildMeshyItemPartWithOptionsV2 } from "@m2a-wasm";
+import initWasm, {
+  appendItemCustomWeaponBaseitemV2,
+  appendItemCustomWeaponBaseitemV2ReportJson,
+  buildMeshyItemPartWithOptionsV2,
+  inspectItemBaseitemsV1Json,
+} from "@m2a-wasm";
 
 const clients: StudioWorkerClient[] = [];
 
@@ -169,6 +174,19 @@ function twoDa(text: string) {
   return new TextEncoder().encode(text).buffer;
 }
 
+function exact113RowBaseitemsFixture() {
+  const rows = Array.from({ length: 113 }, (_, index) => index === 6
+    ? "6 heavy_crossbow 173 WBwXh 2 0 it_bag iwbwxh 0x00030 2 4 10 100 6 1 25"
+    : `${index} filler_${index} **** Ring 0 0 it_bag iring 8 1 1 **** **** **** **** ****`);
+  return twoDa([
+    "2DA V2.0",
+    "",
+    "Label Name ItemClass ModelType GenderSpecific DefaultModel DefaultIcon EquipableSlots InvSlotWidth InvSlotHeight MinRange MaxRange WeaponWield WeaponType RangedWeapon",
+    ...rows,
+    "",
+  ].join("\n"));
+}
+
 function capartFixture() {
   return twoDa([
     "2DA V2.0",
@@ -208,6 +226,47 @@ afterEach(() => {
 });
 
 describe("Item Worker/WASM integration", () => {
+  it("carries exact donor 6 to output 113 across the public WASM boundary", async () => {
+    wasmReady ??= initWasm();
+    await wasmReady;
+    const source = exact113RowBaseitemsFixture();
+    const requestJson = JSON.stringify({
+      schemaVersion: 2,
+      donorBaseItem: 6,
+      outputBaseItem: 113,
+      label: "hextech_shotgun",
+      itemClass: "WHxSh",
+      nameStrref: null,
+      invSlotWidth: 2,
+      invSlotHeight: 4,
+    });
+
+    const report = JSON.parse(appendItemCustomWeaponBaseitemV2ReportJson(
+      new Uint8Array(source),
+      requestJson,
+    ));
+    const output = appendItemCustomWeaponBaseitemV2(new Uint8Array(source), requestJson);
+    const catalog = JSON.parse(inspectItemBaseitemsV1Json(output));
+
+    expect(report).toMatchObject({
+      status: "APPENDED_EXACT",
+      donorBaseItem: 6,
+      outputBaseItem: 113,
+      runtimeRoute: { baseItem: 6, runtimeClip: "xbowshot" },
+    });
+    expect(catalog.rows.find((row: { baseItem: number }) => row.baseItem === 113)).toMatchObject({
+      label: "hextech_shotgun",
+      itemClass: "WHxSh",
+      weaponWield: 6,
+      weaponType: 1,
+      rangedWeapon: 25,
+    });
+    expect(catalog.rows.find((row: { baseItem: number }) => row.baseItem === 6)).toMatchObject({
+      label: "heavy_crossbow",
+      itemClass: "WBwXh",
+    });
+  });
+
   it("builds ModelType 2 as three independent +Y MDLs in an item-only proof MOD", async () => {
     const baseitemsTwoDa = await fetchBytes(baseitemsUrl);
     const appearance = appearanceFixture();
