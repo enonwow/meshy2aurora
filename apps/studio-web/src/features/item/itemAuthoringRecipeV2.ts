@@ -115,6 +115,34 @@ export interface ItemManualFitSnapshotV2 {
   readonly parts: readonly ItemAssemblyPartV2[];
 }
 
+export interface ItemDirectedCompositionIdentityV2 {
+  readonly outputBaseItem: number;
+  readonly referenceId: string;
+  readonly sourceSha256ByField: Readonly<Record<ItemModelPartFieldV2, string>>;
+}
+
+export interface ItemDirectedCompositionContractV2 {
+  readonly schemaVersion: 2;
+  readonly id: "HEXTECH_SHOTGUN_OWNER_DIRECTED_COMPOSITION_V2";
+  readonly archetypeId: "HEXTECH_SHOTGUN";
+  readonly outputBaseItem: 113;
+  readonly concept: {
+    readonly sha256: string;
+    readonly description: "owner-provided Hextech Shotgun side concept";
+  };
+  readonly referenceId: string;
+  readonly validationTolerance: 0.005;
+  readonly sourceSha256ByField: Readonly<Record<ItemModelPartFieldV2, string>>;
+  readonly parts: readonly ItemAssemblyPartV2[];
+  /** Technical candidate only. This is deliberately separate from accepted recipes. */
+  readonly ownerStatus: "NOT_REVIEWED";
+  readonly correction: {
+    readonly field: "ModelPart2";
+    readonly reason: "OWNER_REJECTED_END_FOR_END_ORIENTATION";
+    readonly allowedTransformFields: readonly ["translation", "rotation"];
+  };
+}
+
 export interface ItemAuthoringRecipeValidationV2 {
   readonly ok: boolean;
   readonly issues: readonly string[];
@@ -153,6 +181,139 @@ export const HEXTECH_SHOTGUN_BASEITEM_V2 = {
   invSlotWidth: 2,
   invSlotHeight: 4,
 } as const;
+
+/**
+ * Exact web candidate assembled from the owner's immutable Bottom/Top contract
+ * and the single permitted Middle direction correction. It may be applied and
+ * technically validated, but it is not an owner-accepted authoring recipe.
+ */
+export const HEXTECH_SHOTGUN_OWNER_DIRECTED_COMPOSITION_V2:
+ItemDirectedCompositionContractV2 = {
+  schemaVersion: 2,
+  id: "HEXTECH_SHOTGUN_OWNER_DIRECTED_COMPOSITION_V2",
+  archetypeId: "HEXTECH_SHOTGUN",
+  outputBaseItem: 113,
+  concept: {
+    sha256: "cfa31ccea74b53b1e0c55182ec3e1ed4a2072041b433009a448b7717509bd8f9",
+    description: "owner-provided Hextech Shotgun side concept",
+  },
+  referenceId: "wbwxh_b_014/wbwxh_m_014/wbwxh_t_014",
+  validationTolerance: 0.005,
+  sourceSha256ByField: {
+    ModelPart1: "69c78999590b248bf9c642516ffa595d33774ead3436166963b27dfaa71ad48d",
+    ModelPart2: "8fafe6a55dd77107a67f29c7519f3b6edc390b310f918a89131b003517720147",
+    ModelPart3: "6ce1281a4ed8a239bf0d6fc9388fe8a977a2811750d40eab4320e13b642c77bf",
+  },
+  parts: [
+    {
+      field: "ModelPart1",
+      sourceSha256: "69c78999590b248bf9c642516ffa595d33774ead3436166963b27dfaa71ad48d",
+      translation: [-0.00431, 0.12917034, 0.15773459],
+      rotationXyzw: [0.5, -0.5, 0.5, 0.5],
+      authoredRotationDegrees: [90, 0, 90],
+      uniformScale: 0.15796308,
+      pivot: [0, 0, 0],
+      targetSpaceScaleXyz: [1, 1, 1],
+    },
+    {
+      field: "ModelPart2",
+      sourceSha256: "8fafe6a55dd77107a67f29c7519f3b6edc390b310f918a89131b003517720147",
+      translation: [-0.00431, -0.00852164987, -0.18716540565],
+      rotationXyzw: [-0.5, -0.5, -0.5, 0.5],
+      authoredRotationDegrees: [-90, 0, -90],
+      uniformScale: 0.21066014,
+      pivot: [0, 0, 0],
+      targetSpaceScaleXyz: [1, 1, 1],
+    },
+    {
+      field: "ModelPart3",
+      sourceSha256: "6ce1281a4ed8a239bf0d6fc9388fe8a977a2811750d40eab4320e13b642c77bf",
+      translation: [-0.00431, 0.008945521, -0.49844033],
+      rotationXyzw: [-0.5, -0.5, -0.5, 0.5],
+      authoredRotationDegrees: [-90, 0, -90],
+      uniformScale: 0.13161969,
+      pivot: [0, 0, 0],
+      targetSpaceScaleXyz: [1, 1, 1],
+    },
+  ],
+  ownerStatus: "NOT_REVIEWED",
+  correction: {
+    field: "ModelPart2",
+    reason: "OWNER_REJECTED_END_FOR_END_ORIENTATION",
+    allowedTransformFields: ["translation", "rotation"],
+  },
+};
+
+function directedCompositionIdentityMatchesV2(
+  contract: ItemDirectedCompositionContractV2,
+  observed: ItemDirectedCompositionIdentityV2,
+) {
+  return contract.outputBaseItem === observed.outputBaseItem
+    && contract.referenceId === observed.referenceId
+    && MODEL_PART_FIELDS.every((field) => (
+      contract.sourceSha256ByField[field] === observed.sourceSha256ByField[field]
+    ));
+}
+
+export function resolveOwnerDirectedItemCompositionV2(
+  observed: ItemDirectedCompositionIdentityV2,
+): ItemDirectedCompositionContractV2 | undefined {
+  return directedCompositionIdentityMatchesV2(
+    HEXTECH_SHOTGUN_OWNER_DIRECTED_COMPOSITION_V2,
+    observed,
+  ) ? HEXTECH_SHOTGUN_OWNER_DIRECTED_COMPOSITION_V2 : undefined;
+}
+
+export function applyOwnerDirectedItemCompositionV2(
+  parts: readonly ItemPartDraft[],
+  contract: ItemDirectedCompositionContractV2,
+  observed: ItemDirectedCompositionIdentityV2,
+): ItemPartDraft[] {
+  if (!directedCompositionIdentityMatchesV2(contract, observed)) {
+    throw new Error("Owner-directed composition identity does not match the current candidate inputs.");
+  }
+  const meshFields = parts
+    .filter(({ sourceKind }) => sourceKind === "MESHY_GLB")
+    .map(({ field }) => field);
+  if (
+    meshFields.length !== MODEL_PART_FIELDS.length
+    || MODEL_PART_FIELDS.some((field) => !meshFields.includes(field))
+  ) {
+    throw new Error("Current Item parts do not match the directed ModelPart1/2/3 composition.");
+  }
+  const transforms = new Map(contract.parts.map((part) => [part.field, part]));
+  return parts.map((part) => {
+    const transform = transforms.get(part.field as ItemModelPartFieldV2);
+    if (!transform) return part;
+    return {
+      ...part,
+      translation: [...transform.translation],
+      rotationDegrees: [...transform.authoredRotationDegrees],
+      rotationXyzw: [...transform.rotationXyzw],
+      uniformScale: transform.uniformScale,
+      pivot: [...transform.pivot],
+      targetSpaceScaleXyz: [...transform.targetSpaceScaleXyz],
+    };
+  });
+}
+
+export function itemPartsMatchDirectedCompositionV2(
+  parts: readonly ItemPartDraft[],
+  contract: ItemDirectedCompositionContractV2,
+) {
+  const transforms = new Map(contract.parts.map((part) => [part.field, part]));
+  return parts.filter(({ sourceKind }) => sourceKind === "MESHY_GLB").length === 3
+    && parts.every((part) => {
+      if (part.sourceKind !== "MESHY_GLB") return true;
+      const transform = transforms.get(part.field as ItemModelPartFieldV2);
+      return Boolean(transform)
+        && JSON.stringify(part.translation) === JSON.stringify(transform!.translation)
+        && JSON.stringify(part.rotationXyzw) === JSON.stringify(transform!.rotationXyzw)
+        && part.uniformScale === transform!.uniformScale
+        && JSON.stringify(part.pivot) === JSON.stringify(transform!.pivot)
+        && JSON.stringify(part.targetSpaceScaleXyz) === JSON.stringify(transform!.targetSpaceScaleXyz);
+    });
+}
 
 export function itemPartSupportsReferenceScalingV2(
   baseItem: number,

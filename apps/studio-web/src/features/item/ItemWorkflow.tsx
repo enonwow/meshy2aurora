@@ -23,10 +23,13 @@ import { ItemIconArtifactPreview } from "./ItemIconArtifactPreview";
 import { ItemGenerationPanel } from "./ItemGenerationPanel";
 import { serializeItemGenerationSession, type ItemGenerationSessionV1 } from "./itemGeneration";
 import {
+  applyOwnerDirectedItemCompositionV2,
   buildItemManualFitSnapshotV2,
   deriveHextechShotgunOutputRowV2,
   HEXTECH_SHOTGUN_BASEITEM_V2,
+  itemPartsMatchDirectedCompositionV2,
   itemPartSupportsReferenceScalingV2,
+  resolveOwnerDirectedItemCompositionV2,
 } from "./itemAuthoringRecipeV2";
 import {
   canonicalItemSemanticReviewV2,
@@ -668,6 +671,18 @@ function ItemPrepare({
     part.sourceKind === "MESHY_GLB" && !partMatchesFitContract(part, fitReport)
   ));
   const hasManualFit = manualFitParts.length > 0;
+  const directedComposition = fitReport && attachmentProfile
+    ? resolveOwnerDirectedItemCompositionV2({
+      outputBaseItem: row.baseItem,
+      referenceId: attachmentProfile.identity.referenceId,
+      sourceSha256ByField: Object.fromEntries(fitReport.parts.map((part) => (
+        [part.field, part.sourceSha256]
+      ))) as Record<"ModelPart1" | "ModelPart2" | "ModelPart3", string>,
+    })
+    : undefined;
+  const directedCompositionApplied = Boolean(
+    directedComposition && itemPartsMatchDirectedCompositionV2(parts, directedComposition),
+  );
   const selectedHasManualSize = Boolean(
     selectedFitPart && !partMatchesFitContract(selected, fitReport),
   );
@@ -690,6 +705,13 @@ function ItemPrepare({
         <div><p className="eyebrow">Item · Prepare</p><h1>Prepare Item</h1><p>BaseItem {row.baseItem} · {row.label} · {row.capability.compositionProfile}. Meshy sources become independent MDLs; retail selectors stay numeric.</p></div>
         <code>{row.capability.meshySourceCount} source GLB → {row.capability.meshySourceCount} MDL</code>
       </header>
+      {directedCompositionApplied && directedComposition ? (
+        <p className="item-reference-note" role="status">
+          <strong>Owner-directed concept candidate loaded.</strong>{" "}
+          Exact source hashes and reference parts match; technical fit is validated.
+          Visual owner acceptance is still pending. Concept SHA-256 {directedComposition.concept.sha256.slice(0, 16)}...
+        </p>
+      ) : null}
       <div className="item-editor">
         <nav className="item-preview-modes" aria-label="Item preview mode">
           {(["COMPOSED", "EXPLODED", "ICON"] as const).map((mode) => (
@@ -1843,45 +1865,107 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
         setAttachmentProfile(profile);
         setAttachmentProfileJson(currentProfileJson);
       }
-      const requestParts = await Promise.all(fitParts.map(async (part) => ({
-        field: part.field,
-        modelResref: part.modelResref,
-        sourceGlb: await part.file!.arrayBuffer(),
-        sourceNode: part.sourceNode.trim() || null,
-      })));
+      const requestFit = async (
+        manualFit?: ReturnType<typeof buildItemManualFitSnapshotV2>,
+        requestedScaleFactors = targetAxialScaleFactors,
+        requestedTolerance = seamTolerance,
+      ) => {
+        const requestParts = await Promise.all(fitParts.map(async (part) => ({
+          field: part.field,
+          modelResref: part.modelResref,
+          sourceGlb: await part.file!.arrayBuffer(),
+          sourceNode: part.sourceNode.trim() || null,
+        })));
+        return worker.request({
+          requestId: id(),
+          type: "FIT_ITEM_PARTS",
+          tolerance: requestedTolerance,
+          targetAxialLengths: selected.modelType === 2 ? undefined : fitTargetLengths,
+          targetAxialScaleFactors: selected.modelType === 2 && requestedScaleFactors
+            ? [...requestedScaleFactors]
+            : undefined,
+          attachmentProfileJson: currentProfileJson,
+          manualFit: manualFit ? {
+            ...manualFit,
+            parts: manualFit.parts.map((part) => ({
+              ...part,
+              translation: [...part.translation] as [number, number, number],
+              rotationXyzw: [...part.rotationXyzw] as [number, number, number, number],
+              authoredRotationDegrees: [...part.authoredRotationDegrees] as [number, number, number],
+              pivot: [...part.pivot] as [number, number, number],
+              targetSpaceScaleXyz: [...part.targetSpaceScaleXyz] as [number, number, number],
+            })),
+          } : undefined,
+          parts: requestParts,
+        }, requestParts.map((part) => part.sourceGlb));
+      };
       const manualFit = manualFitOverride && fitReport
         ? buildItemManualFitSnapshotV2(manualFitOverride, fitReport)
         : undefined;
-      return worker.request({
-        requestId: id(),
-        type: "FIT_ITEM_PARTS",
-        tolerance: seamTolerance,
-        targetAxialLengths: selected.modelType === 2 ? undefined : fitTargetLengths,
-        targetAxialScaleFactors: selected.modelType === 2 && targetAxialScaleFactors
-          ? [...targetAxialScaleFactors]
-          : undefined,
-        attachmentProfileJson: currentProfileJson,
-        manualFit: manualFit ? {
-          ...manualFit,
-          parts: manualFit.parts.map((part) => ({
-            ...part,
-            translation: [...part.translation] as [number, number, number],
-            rotationXyzw: [...part.rotationXyzw] as [number, number, number, number],
-            authoredRotationDegrees: [...part.authoredRotationDegrees] as [number, number, number],
-            pivot: [...part.pivot] as [number, number, number],
-            targetSpaceScaleXyz: [...part.targetSpaceScaleXyz] as [number, number, number],
-          })),
-        } : undefined,
-        parts: requestParts,
-      }, requestParts.map((part) => part.sourceGlb));
-    })().then((response) => {
+      const response = await requestFit(manualFit);
+      if (
+        manualFit
+        || !customWeaponAuthoring
+        || selected.baseItem !== HEXTECH_SHOTGUN_BASEITEM_V2.outputBaseItem
+        || !currentProfileJson
+        || !response.ok
+        || response.type !== "ITEM_PARTS_FITTED"
+      ) {
+        return { response, directedParts: undefined, directedTolerance: undefined };
+      }
+      const baseline = JSON.parse(response.fitReportJson) as ItemFitReport;
+      const profile = JSON.parse(currentProfileJson) as ItemAttachmentProfileV1;
+      const observedIdentity = {
+        outputBaseItem: selected.baseItem,
+        referenceId: profile.identity.referenceId,
+        sourceSha256ByField: Object.fromEntries(baseline.parts.map((part) => (
+          [part.field, part.sourceSha256]
+        ))) as Record<"ModelPart1" | "ModelPart2" | "ModelPart3", string>,
+      };
+      const directedComposition = resolveOwnerDirectedItemCompositionV2(observedIdentity);
+      if (!directedComposition) {
+        return { response, directedParts: undefined, directedTolerance: undefined };
+      }
+      const baselineByField = new Map(baseline.parts.map((part) => [part.field, part]));
+      const baselineParts = parts.map((part) => {
+        if (part.sourceKind !== "MESHY_GLB") return part;
+        const fitted = baselineByField.get(part.field);
+        if (!fitted || fitted.sourceNode !== (part.sourceNode.trim() || null)) {
+          throw new Error(`${part.field} directed-fit baseline differs from the active sourceNode.`);
+        }
+        return {
+          ...part,
+          translation: fitted.transform.translation,
+          rotationXyzw: fitted.transform.rotationXyzw,
+          rotationDegrees: quaternionToEulerDegrees(fitted.transform.rotationXyzw),
+          uniformScale: fitted.transform.uniformScale,
+          pivot: fitted.transform.pivot,
+          targetSpaceScaleXyz: fitted.targetSpaceScaleXyz,
+        };
+      });
+      const directedParts = applyOwnerDirectedItemCompositionV2(
+        baselineParts,
+        directedComposition,
+        observedIdentity,
+      );
+      const directedResponse = await requestFit(
+        buildItemManualFitSnapshotV2(directedParts, baseline),
+        undefined,
+        directedComposition.validationTolerance,
+      );
+      return {
+        response: directedResponse,
+        directedParts,
+        directedTolerance: directedComposition.validationTolerance,
+      };
+    })().then(({ response, directedParts, directedTolerance }) => {
       if (epoch !== requestEpoch.current) return;
       if (!response.ok || response.type !== "ITEM_PARTS_FITTED") {
         throw new Error("Unexpected Item auto-fit response");
       }
       const report = JSON.parse(response.fitReportJson) as ItemFitReport;
       const expectsReferenceFit = selected.modelType === 2;
-      const expectedReferenceAlgorithm = manualFitOverride
+      const expectedReferenceAlgorithm = manualFitOverride || directedParts
         ? "ITEM_REFERENCE_MANUAL_FIT_V2"
         : "ITEM_REFERENCE_SLOT_FRAME_FIT_V1";
       if (
@@ -1893,7 +1977,10 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
         throw new Error("Item auto-fit report does not match the resolved slot count.");
       }
       const transforms = new Map(report.parts.map((part) => [part.field, part]));
-      if (!manualFitOverride) {
+      if (directedParts) {
+        setParts(directedParts);
+        setSeamTolerance(directedTolerance!);
+      } else if (!manualFitOverride) {
         setParts((current) => current.map((part) => {
           if (part.sourceKind !== "MESHY_GLB") return part;
           const fitted = transforms.get(part.field);
@@ -1925,7 +2012,7 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
       setBuild(undefined);
       setStep("INSPECT");
       if (report.status !== "PASSED") {
-        setError(manualFitOverride
+        setError(manualFitOverride || directedParts
           ? "The exact authored transforms failed the authoritative geometry gate."
           : "Auto-fit proposed deterministic transforms, but the authoritative seam gate requires manual adjustment.");
       }

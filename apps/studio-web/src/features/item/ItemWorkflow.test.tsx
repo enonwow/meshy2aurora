@@ -105,7 +105,14 @@ function hextechDonorCatalogJson() {
 class FakeItemClient implements ItemWorkerClient {
   readonly requests: StudioWorkerRequest[] = [];
 
-  constructor(private readonly inspectedCatalogJson = catalogJson()) {}
+  constructor(
+    private readonly inspectedCatalogJson = catalogJson(),
+    private readonly fitSourceHashes: readonly string[] = [
+      "1".repeat(64),
+      "2".repeat(64),
+      "3".repeat(64),
+    ],
+  ) {}
 
   async request(request: StudioWorkerRequest): Promise<StudioWorkerResponse> {
     this.requests.push(request);
@@ -200,7 +207,7 @@ class FakeItemClient implements ItemWorkerClient {
             const axialMin = [0, 0.29, 0.38][index];
             return ({
             field: part.field,
-            sourceSha256: String(index + 1).repeat(64),
+            sourceSha256: this.fitSourceHashes[index],
             sourceNode: part.sourceNode,
             triangleCount: 12,
             inputBoundsMin: [0, 0, 0],
@@ -424,6 +431,74 @@ describe("ItemWorkflow", () => {
     expect(container.textContent).toContain("WHxSh");
     expect(container.textContent).toContain("64 × 128");
     expect(button(container, "Use retail BaseItem 6")).not.toBeNull();
+  });
+
+  it("loads and validates the exact concept-bound Hextech Shotgun composition", async () => {
+    const client = new FakeItemClient(hextechDonorCatalogJson(), [
+      "69c78999590b248bf9c642516ffa595d33774ead3436166963b27dfaa71ad48d",
+      "8fafe6a55dd77107a67f29c7519f3b6edc390b310f918a89131b003517720147",
+      "6ce1281a4ed8a239bf0d6fc9388fe8a977a2811750d40eab4320e13b642c77bf",
+    ]);
+    const container = await render(
+      <ItemWorkflow client={client} onTargetChange={vi.fn()} />,
+    );
+    await chooseFile(
+      container.querySelector<HTMLInputElement>('input[aria-label="Base items table"]')!,
+      localFile("baseitems.2da", 1),
+    );
+    await act(async () => button(container, "Author Hextech Shotgun V2")?.click());
+
+    const partInputs = Array.from(container.querySelectorAll<HTMLInputElement>(
+      'input[accept=".glb,model/gltf-binary"]',
+    ));
+    for (const [index, input] of partInputs.entries()) {
+      await chooseFile(input, localFile(["bottom.glb", "middle.glb", "top.glb"][index], index + 2));
+    }
+    const referenceInputs = Array.from(container.querySelectorAll<HTMLInputElement>(
+      'input[aria-label$="reference MDL"]',
+    ));
+    for (const [index, input] of referenceInputs.entries()) {
+      await chooseFile(input, localFile(`wbwxh_${["b", "m", "t"][index]}_014.mdl`, index + 10));
+    }
+
+    await act(async () => {
+      button(container, "Continue to Prepare Item")?.click();
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+
+    const fitRequests = client.requests.filter((request) => request.type === "FIT_ITEM_PARTS");
+    expect(fitRequests).toHaveLength(2);
+    expect(fitRequests[1]).toMatchObject({
+      tolerance: 0.005,
+      manualFit: {
+        parts: [
+          {
+            field: "ModelPart1",
+            translation: [-0.00431, 0.12917034, 0.15773459],
+            rotationXyzw: [0.5, -0.5, 0.5, 0.5],
+            uniformScale: 0.15796308,
+          },
+          {
+            field: "ModelPart2",
+            translation: [-0.00431, -0.00852164987, -0.18716540565],
+            rotationXyzw: [-0.5, -0.5, -0.5, 0.5],
+            uniformScale: 0.21066014,
+          },
+          {
+            field: "ModelPart3",
+            translation: [-0.00431, 0.008945521, -0.49844033],
+            rotationXyzw: [-0.5, -0.5, -0.5, 0.5],
+            uniformScale: 0.13161969,
+          },
+        ],
+      },
+    });
+    expect(container.textContent).toContain("Owner-directed concept candidate loaded");
+    expect(container.textContent).toContain("Visual owner acceptance is still pending");
+    expect(container.textContent).toContain("Fit validated");
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="Seam tolerance"]')?.value)
+      .toBe("0.005");
+    expect(button(container, "Continue to Build")?.disabled).toBe(false);
   });
 
   it("shows one Item case and builds the exact three-part Aurora recipe", async () => {

@@ -2254,6 +2254,56 @@ fn env_gated_real_hextech_glbs_fit_to_exact_retail_mdl_frames() {
             .map(|part| part.transform)
             .collect::<Vec<_>>()
     );
+    let directed = [
+        ItemManualFitPartV2 {
+            field: fields[0].to_owned(),
+            transform: ItemPartTransformV1 {
+                translation: [-0.00431, 0.12917034, 0.15773459],
+                rotation_xyzw: [0.5, -0.5, 0.5, 0.5],
+                uniform_scale: 0.15796308,
+                pivot: [0.0; 3],
+            },
+            target_space_scale_xyz: [1.0; 3],
+        },
+        ItemManualFitPartV2 {
+            field: fields[1].to_owned(),
+            transform: ItemPartTransformV1 {
+                translation: [-0.00431, -0.00852165, -0.18716541],
+                rotation_xyzw: [-0.5, -0.5, -0.5, 0.5],
+                uniform_scale: 0.21066014,
+                pivot: [0.0; 3],
+            },
+            target_space_scale_xyz: [1.0; 3],
+        },
+        ItemManualFitPartV2 {
+            field: fields[2].to_owned(),
+            transform: ItemPartTransformV1 {
+                translation: [-0.00431, 0.008945521, -0.49844033],
+                rotation_xyzw: [-0.5, -0.5, -0.5, 0.5],
+                uniform_scale: 0.13161969,
+                pivot: [0.0; 3],
+            },
+            target_space_scale_xyz: [1.0; 3],
+        },
+    ];
+    let directed_report = validate_meshy_item_parts_manual_fit_v2(
+        &fit_sources,
+        0.005,
+        &profile,
+        &baseline,
+        &directed,
+    )
+    .unwrap();
+    assert_eq!(directed_report.status, "PASSED");
+    assert_eq!(directed_report.parts[0].transform, directed[0].transform);
+    assert_eq!(directed_report.parts[2].transform, directed[2].transform);
+    assert_eq!(directed_report.adjacent_connectors.len(), 2);
+    assert!(
+        directed_report
+            .adjacent_connectors
+            .iter()
+            .all(|connector| connector.status == "OVERLAPPING")
+    );
     let materialized = (0..3)
         .map(|index| {
             build_meshy_item_part_with_options_v3(

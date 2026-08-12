@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   applyAcceptedItemAuthoringRecipeV2,
+  applyOwnerDirectedItemCompositionV2,
   buildItemManualFitSnapshotV2,
   deriveHextechShotgunOutputRowV2,
   diffItemAuthoringScopesV2,
   hashItemAuthoringRecipeV2,
+  HEXTECH_SHOTGUN_OWNER_DIRECTED_COMPOSITION_V2,
   itemPartSupportsReferenceScalingV2,
   resolveAcceptedItemAuthoringRecipeV2,
+  resolveOwnerDirectedItemCompositionV2,
   validateItemAuthoringRecipeV2,
   type ItemAuthoringIdentityV2,
   type ItemAuthoringRecipeV2,
@@ -188,6 +191,76 @@ describe("ItemAuthoringRecipeV2", () => {
 
   it("has no implicit accepted recipe for the canonical source hashes", () => {
     expect(resolveAcceptedItemAuthoringRecipeV2(identity)).toBeUndefined();
+  });
+
+  it("resolves the concept-bound directed candidate only for the exact output, references and sources", () => {
+    const observed = {
+      outputBaseItem: 113,
+      referenceId: identity.reference.id,
+      sourceSha256ByField: Object.fromEntries(Object.entries(identity.sources).map(
+        ([field, source]) => [field, source.sha256],
+      )) as Record<"ModelPart1" | "ModelPart2" | "ModelPart3", string>,
+    };
+
+    expect(resolveOwnerDirectedItemCompositionV2(observed)).toBe(
+      HEXTECH_SHOTGUN_OWNER_DIRECTED_COMPOSITION_V2,
+    );
+    expect(resolveOwnerDirectedItemCompositionV2({
+      ...observed,
+      sourceSha256ByField: { ...observed.sourceSha256ByField, ModelPart2: sha("f") },
+    })).toBeUndefined();
+    expect(HEXTECH_SHOTGUN_OWNER_DIRECTED_COMPOSITION_V2).toMatchObject({
+      concept: {
+        sha256: "cfa31ccea74b53b1e0c55182ec3e1ed4a2072041b433009a448b7717509bd8f9",
+      },
+      ownerStatus: "NOT_REVIEWED",
+      validationTolerance: 0.005,
+      correction: {
+        field: "ModelPart2",
+        allowedTransformFields: ["translation", "rotation"],
+      },
+    });
+  });
+
+  it("applies the exact Bottom and protected Top while limiting the correction to Middle", () => {
+    const observed = {
+      outputBaseItem: 113,
+      referenceId: identity.reference.id,
+      sourceSha256ByField: Object.fromEntries(Object.entries(identity.sources).map(
+        ([field, source]) => [field, source.sha256],
+      )) as Record<"ModelPart1" | "ModelPart2" | "ModelPart3", string>,
+    };
+    const directed = applyOwnerDirectedItemCompositionV2(
+      draftParts,
+      HEXTECH_SHOTGUN_OWNER_DIRECTED_COMPOSITION_V2,
+      observed,
+    );
+
+    expect(directed.map(({ translation }) => translation)).toEqual([
+      [-0.00431, 0.12917034, 0.15773459],
+      [-0.00431, -0.00852164987, -0.18716540565],
+      [-0.00431, 0.008945521, -0.49844033],
+    ]);
+    expect(directed.map(({ rotationDegrees }) => rotationDegrees)).toEqual([
+      [90, 0, 90],
+      [-90, 0, -90],
+      [-90, 0, -90],
+    ]);
+    expect(directed.map(({ rotationXyzw }) => rotationXyzw)).toEqual([
+      [0.5, -0.5, 0.5, 0.5],
+      [-0.5, -0.5, -0.5, 0.5],
+      [-0.5, -0.5, -0.5, 0.5],
+    ]);
+    expect(directed.map(({ uniformScale }) => uniformScale)).toEqual([
+      0.15796308,
+      0.21066014,
+      0.13161969,
+    ]);
+    expect(directed.map(({ targetSpaceScaleXyz }) => targetSpaceScaleXyz)).toEqual([
+      [1, 1, 1],
+      [1, 1, 1],
+      [1, 1, 1],
+    ]);
   });
 
   it("rejects draft and owner-rejected recipes before they can alter editor parts", () => {
