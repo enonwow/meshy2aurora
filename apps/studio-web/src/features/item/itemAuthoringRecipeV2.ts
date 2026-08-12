@@ -1,6 +1,7 @@
 import type {
   ItemBaseItemRow,
   ItemBaseItemsCatalog,
+  ItemAttachmentProfileV1,
   ItemFitReport,
   ItemPartDraft,
 } from "./types";
@@ -28,7 +29,7 @@ export interface ItemAuthoringIdentityV2 {
   /** Existing Aurora behavior donor. It is never the product identity. */
   readonly runtimeDonor: {
     readonly baseItem: 6;
-    readonly label: "heavy_crossbow";
+    readonly label: "heavycrossbow";
     readonly itemClass: "WBwXh";
     readonly runtimeClip: "xbowshot";
   };
@@ -153,6 +154,16 @@ export const HEXTECH_SHOTGUN_BASEITEM_V2 = {
   invSlotHeight: 4,
 } as const;
 
+export function itemPartSupportsReferenceScalingV2(
+  baseItem: number,
+  field: string,
+  attachmentProfile: ItemAttachmentProfileV1 | undefined,
+) {
+  if (baseItem === HEXTECH_SHOTGUN_BASEITEM_V2.outputBaseItem) return true;
+  const slot = attachmentProfile?.slots.find((candidate) => candidate.field === field);
+  return !slot || slot.allowAxialExtensionAtMin || slot.allowAxialExtensionAtMax;
+}
+
 /**
  * Projects the editor row only after proving that the exact next physical 2DA
  * index is 113 and the audited retail donor is present. The source table is
@@ -173,7 +184,7 @@ export function deriveHextechShotgunOutputRowV2(
   const donor = catalog.rows.find(({ baseItem }) => baseItem === identity.runtimeDonorBaseItem);
   if (
     !donor
-    || donor.label !== "heavy_crossbow"
+    || donor.label !== "heavycrossbow"
     || donor.itemClass !== "WBwXh"
     || donor.modelType !== 2
     || donor.capability.compositionProfile !== "BOTTOM_MIDDLE_TOP"

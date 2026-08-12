@@ -94,7 +94,7 @@ function hextechDonorCatalogJson() {
   catalog.rows[0] = {
     ...catalog.rows[0],
     baseItem: 6,
-    label: "heavy_crossbow",
+    label: "heavycrossbow",
     itemClass: "WBwXh",
     invSlotWidth: 2,
     invSlotHeight: 4,
@@ -506,6 +506,11 @@ describe("ItemWorkflow", () => {
       'input[aria-label="Part size percent"]',
     );
     expect(partSize).not.toBeNull();
+    const exactPartSize = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Exact part size percent"]',
+    );
+    expect(exactPartSize?.max).toBe("400");
+    expect(exactPartSize?.step).toBe("any");
     expect(partSize?.value).toBe("100");
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(partSize, "125");
@@ -535,10 +540,10 @@ describe("ItemWorkflow", () => {
     expect(button(container, "Continue to Build")?.disabled).toBe(false);
 
     await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(partSize, "150");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(partSize, "345");
       partSize?.dispatchEvent(new window.Event("input", { bubbles: true }));
     });
-    expect(container.querySelector<HTMLInputElement>('input[aria-label="Part size percent"]')?.value).toBe("150");
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="Part size percent"]')?.value).toBe("345");
     await act(async () => button(container, "Discard changes")?.click());
     expect(container.querySelector<HTMLInputElement>('input[aria-label="Part size percent"]')?.value).toBe("125");
     expect(button(container, "Continue to Build")?.disabled).toBe(false);

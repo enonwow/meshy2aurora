@@ -5,6 +5,7 @@ import {
   deriveHextechShotgunOutputRowV2,
   diffItemAuthoringScopesV2,
   hashItemAuthoringRecipeV2,
+  itemPartSupportsReferenceScalingV2,
   resolveAcceptedItemAuthoringRecipeV2,
   validateItemAuthoringRecipeV2,
   type ItemAuthoringIdentityV2,
@@ -19,7 +20,7 @@ const identity: ItemAuthoringIdentityV2 = {
   archetypeId: "HEXTECH_SHOTGUN",
   runtimeDonor: {
     baseItem: 6,
-    label: "heavy_crossbow",
+    label: "heavycrossbow",
     itemClass: "WBwXh",
     runtimeClip: "xbowshot",
   },
@@ -134,10 +135,23 @@ ItemAuthoringRecipeV2 {
 }
 
 describe("ItemAuthoringRecipeV2", () => {
+  it("allows every custom BaseItem 113 part to enter exact manual-fit scaling", () => {
+    const profile = {
+      slots: [{
+        field: "ModelPart1",
+        allowAxialExtensionAtMin: false,
+        allowAxialExtensionAtMax: false,
+      }],
+    } as unknown as import("./types").ItemAttachmentProfileV1;
+
+    expect(itemPartSupportsReferenceScalingV2(113, "ModelPart1", profile)).toBe(true);
+    expect(itemPartSupportsReferenceScalingV2(6, "ModelPart1", profile)).toBe(false);
+  });
+
   it("projects output 113 only from an exact 113-row table and audited donor 6", () => {
     const donor = {
       baseItem: 6,
-      label: "heavy_crossbow",
+      label: "heavycrossbow",
       itemClass: "WBwXh",
       modelType: 2,
       capability: { compositionProfile: "BOTTOM_MIDDLE_TOP" },

@@ -56,7 +56,7 @@ Label Name ItemClass ModelType GenderSpecific DefaultModel DefaultIcon Equipable
 const RANGED_BASEITEMS: &[u8] = br#"2DA V2.0
 
 Label Name ItemClass ModelType GenderSpecific DefaultModel DefaultIcon EquipableSlots InvSlotWidth InvSlotHeight MinRange MaxRange WeaponWield WeaponType RangedWeapon
-6 heavy_crossbow 173 WBwXh 2 0 it_bag iwbwxh 0x00030 2 4 10 100 6 1 25
+6 heavycrossbow 173 WBwXh 2 0 it_bag iwbwxh 0x00030 2 4 10 100 6 1 25
 8 longbow 175 WBLN 2 0 it_bag iwbln 0x00030 2 4 10 100 5 1 20
 9 static_sword 166 WSwLs 2 0 it_bag iwswls 0x1C030 1 4 10 100 **** **** ****
 "#;
@@ -65,7 +65,7 @@ fn baseitems_ready_for_exact_113_append() -> Vec<u8> {
     let mut table = b"2DA V2.0\n\nLabel Name ItemClass ModelType GenderSpecific DefaultModel DefaultIcon EquipableSlots InvSlotWidth InvSlotHeight MinRange MaxRange WeaponWield WeaponType RangedWeapon\n".to_vec();
     for index in 0..113u32 {
         let row = if index == 6 {
-            "6 heavy_crossbow 173 WBwXh 2 0 it_bag iwbwxh 0x00030 2 4 10 100 6 1 25\n".to_owned()
+            "6 heavycrossbow 173 WBwXh 2 0 it_bag iwbwxh 0x00030 2 4 10 100 6 1 25\n".to_owned()
         } else {
             format!(
                 "{index} filler_{index} **** Ring 0 0 it_bag iring 8 1 1 **** **** **** **** ****\n"
@@ -151,7 +151,7 @@ fn exact_baseitem_113_clones_donor_6_runtime_but_owns_whxsh_namespace() {
 
     let donor = resolve_item_baseitem_v1(&artifact.payload, 6).unwrap();
     assert_eq!(donor.item_class, "WBwXh");
-    assert_eq!(donor.label, "heavy_crossbow");
+    assert_eq!(donor.label, "heavycrossbow");
     assert_eq!(donor.inv_slot_width, 2);
     assert_eq!(donor.inv_slot_height, 4);
 }

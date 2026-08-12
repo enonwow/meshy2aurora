@@ -176,7 +176,7 @@ function twoDa(text: string) {
 
 function exact113RowBaseitemsFixture() {
   const rows = Array.from({ length: 113 }, (_, index) => index === 6
-    ? "6 heavy_crossbow 173 WBwXh 2 0 it_bag iwbwxh 0x00030 2 4 10 100 6 1 25"
+    ? "6 heavycrossbow 173 WBwXh 2 0 it_bag iwbwxh 0x00030 2 4 10 100 6 1 25"
     : `${index} filler_${index} **** Ring 0 0 it_bag iring 8 1 1 **** **** **** **** ****`);
   return twoDa([
     "2DA V2.0",
@@ -262,7 +262,7 @@ describe("Item Worker/WASM integration", () => {
       rangedWeapon: 25,
     });
     expect(catalog.rows.find((row: { baseItem: number }) => row.baseItem === 6)).toMatchObject({
-      label: "heavy_crossbow",
+      label: "heavycrossbow",
       itemClass: "WBwXh",
     });
   });

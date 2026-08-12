@@ -26,6 +26,7 @@ import {
   buildItemManualFitSnapshotV2,
   deriveHextechShotgunOutputRowV2,
   HEXTECH_SHOTGUN_BASEITEM_V2,
+  itemPartSupportsReferenceScalingV2,
 } from "./itemAuthoringRecipeV2";
 import {
   canonicalItemSemanticReviewV2,
@@ -126,9 +127,13 @@ function validPartTransform(part: ItemPartDraft) {
     && part.uniformScale > 0;
 }
 
+function fitNumberEquals(first: number, second: number) {
+  return first === second || Math.fround(first) === Math.fround(second);
+}
+
 function tupleEquals(first: readonly number[], second: readonly number[]) {
   return first.length === second.length
-    && first.every((value, index) => value === second[index]);
+    && first.every((value, index) => fitNumberEquals(value, second[index]));
 }
 
 function partMatchesFitContract(
@@ -140,7 +145,7 @@ function partMatchesFitContract(
   return Boolean(
     fitted
     && fitted.sourceNode === (part.sourceNode.trim() || null)
-    && fitted.transform.uniformScale === part.uniformScale
+    && fitNumberEquals(fitted.transform.uniformScale, part.uniformScale)
     && tupleEquals(fitted.transform.translation, part.translation)
     && tupleEquals(fitted.transform.rotationXyzw, part.rotationXyzw)
     && tupleEquals(fitted.transform.pivot, part.pivot)
@@ -161,14 +166,6 @@ function itemReferenceScalePercent(
     ? fitted.targetAxialLength / referenceLength * 100
     : 100;
   return fittedPercent * part.uniformScale / fitted.transform.uniformScale;
-}
-
-function itemPartSupportsReferenceScaling(
-  part: ItemPartDraft,
-  attachmentProfile: ItemAttachmentProfileV1 | undefined,
-) {
-  const slot = attachmentProfile?.slots.find((candidate) => candidate.field === part.field);
-  return !slot || slot.allowAxialExtensionAtMin || slot.allowAxialExtensionAtMax;
 }
 
 function stepIndex(step: WorkflowStep) {
@@ -662,7 +659,11 @@ function ItemPrepare({
     fitReport,
     attachmentProfile,
   );
-  const selectedSupportsScaling = itemPartSupportsReferenceScaling(selected, attachmentProfile);
+  const selectedSupportsScaling = itemPartSupportsReferenceScalingV2(
+    row.baseItem,
+    selected.field,
+    attachmentProfile,
+  );
   const manualFitParts = parts.filter((part) => (
     part.sourceKind === "MESHY_GLB" && !partMatchesFitContract(part, fitReport)
   ));
@@ -672,7 +673,7 @@ function ItemPrepare({
   );
   const setSelectedSizePercent = (nextPercent: number) => {
     if (!fittedUniformScale || !selectedSupportsScaling || !Number.isFinite(nextPercent)) return;
-    const clamped = Math.min(200, Math.max(50, nextPercent));
+    const clamped = Math.min(400, Math.max(50, nextPercent));
     const fittedPercent = itemReferenceScalePercent(
       { ...selected, uniformScale: fittedUniformScale },
       fitReport,
@@ -866,7 +867,11 @@ function ItemPrepare({
             {parts.filter((part) => part.sourceKind === "MESHY_GLB").map((part) => {
               const percent = itemReferenceScalePercent(part, fitReport, attachmentProfile);
               const changed = !partMatchesFitContract(part, fitReport);
-              const scalable = itemPartSupportsReferenceScaling(part, attachmentProfile);
+              const scalable = itemPartSupportsReferenceScalingV2(
+                row.baseItem,
+                part.field,
+                attachmentProfile,
+              );
               return (
                 <button
                   key={part.field}
@@ -883,20 +888,35 @@ function ItemPrepare({
             })}
           </div>
           <section className="item-fit-size" aria-label="Selected part size">
-            <header><label htmlFor="item-part-size"><strong>Size {selected.label}</strong></label><output>{selectedSizePercent.toFixed(0)}%</output></header>
+            <header>
+              <label htmlFor="item-part-size"><strong>Size {selected.label}</strong></label>
+              <label className="item-fit-size-exact">
+                <input
+                  aria-label="Exact part size percent"
+                  type="number"
+                  min="50"
+                  max="400"
+                  step="any"
+                  disabled={!selectedFitPart || !selectedSupportsScaling || busy}
+                  value={Number(selectedSizePercent.toFixed(8))}
+                  onChange={(event) => setSelectedSizePercent(Number(event.currentTarget.value))}
+                />
+                <span>%</span>
+              </label>
+            </header>
             <input
               id="item-part-size"
               aria-label="Part size percent"
               type="range"
               min="50"
-              max="200"
-              step="1"
+              max="400"
+              step="0.01"
               disabled={!selectedFitPart || !selectedSupportsScaling || busy}
-              value={Math.min(200, Math.max(50, selectedSizePercent))}
+              value={Math.min(400, Math.max(50, selectedSizePercent))}
               onChange={(event) => setSelectedSizePercent(Number(event.currentTarget.value))}
             />
             <div className="item-part-size-presets" aria-label="Part size presets">
-              {[75, 100, 125, 150, 200].map((percent) => (
+              {[75, 100, 125, 150, 200, 250, 300, 350, 400].map((percent) => (
                 <button
                   key={percent}
                   type="button"
@@ -1873,22 +1893,24 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
         throw new Error("Item auto-fit report does not match the resolved slot count.");
       }
       const transforms = new Map(report.parts.map((part) => [part.field, part]));
-      setParts((current) => current.map((part) => {
-        if (part.sourceKind !== "MESHY_GLB") return part;
-        const fitted = transforms.get(part.field);
-        if (!fitted || fitted.sourceNode !== (part.sourceNode.trim() || null)) {
-          throw new Error(`${part.field} auto-fit binding differs from the active sourceNode.`);
-        }
-        return {
-          ...part,
-          translation: fitted.transform.translation,
-          rotationXyzw: fitted.transform.rotationXyzw,
-          rotationDegrees: quaternionToEulerDegrees(fitted.transform.rotationXyzw),
-          uniformScale: fitted.transform.uniformScale,
-          pivot: fitted.transform.pivot,
-          targetSpaceScaleXyz: fitted.targetSpaceScaleXyz,
-        };
-      }));
+      if (!manualFitOverride) {
+        setParts((current) => current.map((part) => {
+          if (part.sourceKind !== "MESHY_GLB") return part;
+          const fitted = transforms.get(part.field);
+          if (!fitted || fitted.sourceNode !== (part.sourceNode.trim() || null)) {
+            throw new Error(`${part.field} auto-fit binding differs from the active sourceNode.`);
+          }
+          return {
+            ...part,
+            translation: fitted.transform.translation,
+            rotationXyzw: fitted.transform.rotationXyzw,
+            rotationDegrees: quaternionToEulerDegrees(fitted.transform.rotationXyzw),
+            uniformScale: fitted.transform.uniformScale,
+            pivot: fitted.transform.pivot,
+            targetSpaceScaleXyz: fitted.targetSpaceScaleXyz,
+          };
+        }));
+      }
       setFitReport(report);
       if (selected.modelType === 2 && report.parts.length === 3) {
         setSelectedField(report.parts[2].field);

@@ -187,7 +187,8 @@
 .item-fit-part-tabs button[data-selected="true"] { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 11%, var(--color-surface-base)); box-shadow: inset 0 -2px var(--color-accent); }
 .item-fit-size { display: grid; gap: 13px; padding: 14px; border: 1px solid color-mix(in srgb, var(--color-accent) 48%, var(--color-border-subtle)); border-radius: 10px; background: linear-gradient(145deg, rgb(124 58 237 / 12%), rgb(15 23 42 / 35%)); }
 .item-fit-size > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.item-fit-size output { font-size: 1.5rem; font-weight: 750; color: #c4b5fd; }
+.item-fit-size-exact { display: inline-flex; align-items: center; gap: 6px; color: #c4b5fd; font-weight: 750; }
+.item-fit-size-exact input { width: 7rem; text-align: right; }
 .item-fit-size > input[type="range"] { width: 100%; accent-color: #8b5cf6; }
 .item-part-size-presets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
 .item-part-size-presets button { padding: 7px 5px; border: 1px solid var(--color-border-subtle); border-radius: 6px; background: var(--color-surface); color: var(--color-text); cursor: pointer; }
