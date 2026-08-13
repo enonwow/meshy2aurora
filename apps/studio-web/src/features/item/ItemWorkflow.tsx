@@ -41,6 +41,7 @@ import {
 } from "./itemSemanticReviewV2";
 import type { MeshyArtifactProvenance, MeshyBridgeClient } from "../meshy/bridge";
 import type { ItemSeamResult } from "./itemPreview";
+import hextechShotgunConceptUrl from "../../../../../documentation/concepts/firearm-hextech-shotgun-v1/hextech-shotgun-concept.png";
 import type {
   ItemBaseItemRow,
   ItemBaseItemsCatalog,
@@ -706,11 +707,25 @@ function ItemPrepare({
         <code>{row.capability.meshySourceCount} source GLB → {row.capability.meshySourceCount} MDL</code>
       </header>
       {directedCompositionApplied && directedComposition ? (
-        <p className="item-reference-note" role="status">
-          <strong>Owner-directed concept candidate loaded.</strong>{" "}
-          Exact source hashes and reference parts match; technical fit is validated.
-          Visual owner acceptance is still pending. Concept SHA-256 {directedComposition.concept.sha256.slice(0, 16)}...
-        </p>
+        <>
+          <p className="item-reference-note item-directed-status" role="status">
+            <strong>Owner-directed concept candidate loaded.</strong>{" "}
+            Exact source hashes and reference parts match; technical fit is validated.
+            Visual owner acceptance is still pending.
+          </p>
+          <figure className="item-concept-comparison" aria-label="Exact tracked concept comparison">
+            <img src={hextechShotgunConceptUrl} alt="Hextech Shotgun owner concept" />
+            <figcaption>
+              <span className="eyebrow">Exact tracked concept</span>
+              <strong>Hextech Shotgun · owner reference</strong>
+              <code>SHA-256 {directedComposition.concept.sha256}</code>
+              <small>
+                This image is shown only for the exact three source hashes and retail reference set.
+                The 3D camera may present the same side mirrored; no model transform is changed for display.
+              </small>
+            </figcaption>
+          </figure>
+        </>
       ) : null}
       <div className="item-editor">
         <nav className="item-preview-modes" aria-label="Item preview mode">
