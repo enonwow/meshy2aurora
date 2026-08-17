@@ -2205,6 +2205,28 @@ fn env_gated_real_hextech_glbs_fit_to_exact_retail_mdl_frames() {
     let longitudinal =
         fit_meshy_item_parts_with_target_lengths_v2(&fit_sources, 0.005, &[0.30, 0.40, 0.25])
             .unwrap();
+    let icon_presentation =
+        fit_meshy_item_parts_with_target_lengths_aurora_v5(
+            &fit_sources,
+            0.005,
+            &[0.22, 0.08, 0.90],
+        )
+        .unwrap();
+    assert_eq!(icon_presentation.status, "MANUAL_REQUIRED");
+    assert_eq!(icon_presentation.orientation_frame.status, "PASSED");
+    assert_eq!(icon_presentation.orientation_frame.target_axial_axis, 1);
+    assert_eq!(icon_presentation.orientation_frame.target_width_axis, 2);
+    assert_eq!(icon_presentation.orientation_frame.target_depth_axis, 0);
+    assert_eq!(icon_presentation.parts.len(), 3);
+    assert_eq!(icon_presentation.adjacent_connectors.len(), 2);
+    assert!(
+        icon_presentation
+            .adjacent_connectors
+            .iter()
+            .all(|connector| connector.axial_overlap > 0.0)
+    );
+    assert_eq!(icon_presentation.adjacent_connectors[1].surface_status, "GAP");
+    assert_eq!(icon_presentation.adjacent_connectors[1].status, "FAILED");
     let overlap = 0.005_f32;
     let anchor = profile.slots[1].controller_translation;
     let mut authored = longitudinal

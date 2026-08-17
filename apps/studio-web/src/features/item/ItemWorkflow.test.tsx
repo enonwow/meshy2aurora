@@ -112,6 +112,7 @@ class FakeItemClient implements ItemWorkerClient {
       "2".repeat(64),
       "3".repeat(64),
     ],
+    private readonly roundManualFitToFloat32 = false,
   ) {}
 
   async request(request: StudioWorkerRequest): Promise<StudioWorkerResponse> {
@@ -173,6 +174,12 @@ class FakeItemClient implements ItemWorkerClient {
     if (request.type === "FIT_ITEM_PARTS") {
       const axialScaleFactors = request.targetAxialScaleFactors ?? [1, 1, 1];
       const baseLengths = [0.3, 0.1, 0.6];
+      const fitNumber = (value: number) => request.manualFit && this.roundManualFitToFloat32
+        ? Math.fround(value)
+        : value;
+      const fitTuple = <T extends readonly number[]>(values: T) => (
+        values.map(fitNumber) as unknown as T
+      );
       return {
         requestId: request.requestId,
         ok: true,
@@ -216,12 +223,12 @@ class FakeItemClient implements ItemWorkerClient {
             axialTargetAxis: 1,
             targetAxialLength,
             transform: {
-              translation: authored?.translation ?? [0, axialMin, 0],
-              rotationXyzw: authored?.rotationXyzw ?? [0, 0, 0, 1],
-              uniformScale: authored?.uniformScale ?? targetAxialLength,
-              pivot: authored?.pivot ?? [0, 0, 0],
+              translation: authored ? fitTuple(authored.translation) : [0, axialMin, 0],
+              rotationXyzw: authored ? fitTuple(authored.rotationXyzw) : [0, 0, 0, 1],
+              uniformScale: authored ? fitNumber(authored.uniformScale) : targetAxialLength,
+              pivot: authored ? fitTuple(authored.pivot) : [0, 0, 0],
             },
-            targetSpaceScaleXyz: authored?.targetSpaceScaleXyz ?? [1, 1, 1],
+            targetSpaceScaleXyz: authored ? fitTuple(authored.targetSpaceScaleXyz) : [1, 1, 1],
             transformSha256: "a".repeat(64),
             outputBoundsMin: [0, axialMin, 0],
             outputBoundsMax: [1, axialMin + targetAxialLength, 1],
@@ -433,12 +440,12 @@ describe("ItemWorkflow", () => {
     expect(button(container, "Use retail BaseItem 6")).not.toBeNull();
   });
 
-  it("loads and validates the exact concept-bound Hextech Shotgun composition", async () => {
+  it("loads, validates and builds the exact owner-directed Hextech Shotgun composition", async () => {
     const client = new FakeItemClient(hextechDonorCatalogJson(), [
       "69c78999590b248bf9c642516ffa595d33774ead3436166963b27dfaa71ad48d",
       "8fafe6a55dd77107a67f29c7519f3b6edc390b310f918a89131b003517720147",
       "6ce1281a4ed8a239bf0d6fc9388fe8a977a2811750d40eab4320e13b642c77bf",
-    ]);
+    ], true);
     const container = await render(
       <ItemWorkflow client={client} onTargetChange={vi.fn()} />,
     );
@@ -501,6 +508,25 @@ describe("ItemWorkflow", () => {
     expect(container.querySelector<HTMLInputElement>('input[aria-label="Seam tolerance"]')?.value)
       .toBe("0.005");
     expect(button(container, "Continue to Build")?.disabled).toBe(false);
+
+    await act(async () => {
+      button(container, "Continue to Build")?.click();
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+      button(container, "Build Item package")?.click();
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+
+    const buildRequest = client.requests.find((request) => request.type === "BUILD_ITEM_PACKAGE");
+    expect(buildRequest?.type).toBe("BUILD_ITEM_PACKAGE");
+    if (buildRequest?.type !== "BUILD_ITEM_PACKAGE") return;
+    const middle = buildRequest.parts.find((part) => part.field === "ModelPart2");
+    expect(middle).toBeDefined();
+    expect(JSON.parse(middle!.transformJson)).toEqual({
+      translation: [-0.00431, -0.00852164987, -0.18716540565].map(Math.fround),
+      rotationXyzw: [-0.5, -0.5, -0.5, 0.5].map(Math.fround),
+      uniformScale: Math.fround(0.21066014),
+      pivot: [0, 0, 0].map(Math.fround),
+    });
   });
 
   it("shows one Item case and builds the exact three-part Aurora recipe", async () => {

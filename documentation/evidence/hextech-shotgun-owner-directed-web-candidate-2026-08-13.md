@@ -102,3 +102,57 @@ live UI retained `2/2 connected`, `HAND preserved`, `Fit validated` and the
 pending owner decision, while both the concept image count and concept-label
 count were zero. The production Vite build emitted no
 `hextech-shotgun-concept` asset.
+
+## Build-boundary repair 2026-08-17
+
+The first live package attempt exposed
+`ITEM-FIT-PROVENANCE-MISMATCH: ModelPart2 source, sourceNode or transform
+changed after fit`. The source and node identities were unchanged. The cause
+was numeric representation at the JavaScript/WASM boundary: the directed
+editor values are JavaScript numbers, while `ItemPartTransformV1` validates,
+hashes and serializes `f32`. ModelPart2 contained additional decimal digits,
+so its authored JavaScript tuple and the authoritative returned `f32` tuple
+were equivalent for geometry but not identical under the Worker's strict JSON
+provenance comparison.
+
+Studio now rebinds every editor part to the exact transform returned by the
+successful fit report before enabling the package build. The directed-candidate
+recognizer treats only `f32`-identical numeric representations as equivalent;
+the Worker still requires exact JSON equality between the build request and
+the validated fit snapshot. A regression test simulates the WASM `f32`
+round-trip and requires the emitted ModelPart2 build request to contain the
+validated representation.
+
+The next attempt exposed a separate presentation-only issue:
+`ITEM-ICON-PRESENTATION-FIT-INVALID`. The real source corpus proves that the
+deterministic icon layout has a valid Aurora YZX frame and positive axial
+overlap for both ordered part pairs, while the second pair has a physical
+surface gap and therefore reports `MANUAL_REQUIRED`. Surface continuity is a
+world-model requirement, not an inventory-icon requirement. The icon binding
+now accepts that state only when all three source hashes and nodes match, the
+frame is exactly YZX with proper handedness, both axial overlaps remain inside
+their required ranges, and all transform hashes are valid. The emitted icon
+still has to pass the independent shared-canvas silhouette, clipping and
+Bottom/Middle/Top order conformance gate.
+
+After both boundary repairs, the same source/reference candidate completed a
+fresh live offline build in Studio:
+
+- status: `OFFLINE_ITEM_PACKAGE_PASSED`;
+- UTI: BaseItem `113`, ModelType `2`, numeric part readback `PASS`;
+- concrete model resources: `12` MDLs, all append-conformance `PASS`;
+- icon resources: `12` TGA layers and `4` native composites, conformance
+  `PASS`;
+- triangle count: `28,620 / 300,000`;
+- persisted world seam gate: both adjacent pairs overlap, Bottom/Top remains
+  separated;
+- candidate HAK: `m2aihak35.hak`, SHA-256
+  `72fe7a79b0e894547cc4624ff9df05d9b23f184fc1f80faec18b8f061cf66ef0`;
+- candidate MOD: `m2aimod35.mod`, SHA-256
+  `8aafcd1e61420e164b1f31ad0476c19cdfb35077ce7dfdab390bd2af6ffb62ed`.
+
+These artifacts remain in the live Studio review result. They have not been
+owner-accepted, downloaded, installed or byte-verified in the native NWN user
+directories. Accordingly the candidate remains `modelVisibility=not_tested`,
+`proofCompleteness=missing` and not ready for owner proof. No Toolset or NWN
+session was started.

@@ -55,6 +55,10 @@ import type {
   StudioWorkerResponse,
   WorkerArtifact,
 } from "./types";
+import {
+  bindItemIconPresentationFitV1,
+  type ItemIconPresentationFitSummaryV1,
+} from "./itemIconPresentationFit";
 
 function proceduralBuildOptionsJson(
   textureArtifactCleanup: boolean,
@@ -1124,18 +1128,7 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         status: string;
       }>;
     } = null;
-    let iconPresentationFit: null | {
-      status: "PASSED";
-      algorithm: string;
-      solutionSha256: string;
-      targetAxialLengths: [number, number, number];
-      worldAttachmentUnaffected: true;
-      parts: Array<{
-        field: string;
-        sourceSha256: string;
-        transformSha256: string;
-      }>;
-    } = null;
+    let iconPresentationFit: ItemIconPresentationFitSummaryV1 | null = null;
     const iconPresentationTransforms = new Map<string, unknown>();
     let validatedFitReportJson: string | null = null;
     if (request.fitReportJson !== null) {
@@ -1303,57 +1296,19 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
           parts: descriptors,
         })),
       );
-      const iconFit = JSON.parse(validatedIconFitJson) as {
-        schemaVersion?: number;
-        status?: string;
-        algorithm?: string;
-        solutionSha256?: string;
-        parts?: Array<{
-          field: string;
-          sourceSha256: string;
-          sourceNode: string | null;
-          transform: unknown;
-          transformSha256: string;
-        }>;
-      };
-      if (
-        iconFit.schemaVersion !== 3
-        || iconFit.status !== "PASSED"
-        || iconFit.algorithm !== "ITEM_MODELTYPE2_FULL_FRAME_CONNECTOR_FIT_V4_AURORA_YZX"
-        || !/^[a-f0-9]{64}$/.test(iconFit.solutionSha256 ?? "")
-        || !Array.isArray(iconFit.parts)
-        || iconFit.parts.length !== meshyParts.length
-      ) {
-        throw new Error(
-          "ITEM-ICON-PRESENTATION-FIT-INVALID: the presentation-only fit is incomplete or changed",
-        );
-      }
-      for (const part of meshyParts) {
-        const fitted = iconFit.parts.find((candidate) => candidate.field === part.field);
-        if (
-          !fitted
-          || fitted.sourceSha256 !== sourceHashes.get(part.field)
-          || fitted.sourceNode !== part.sourceNode
-          || !/^[a-f0-9]{64}$/.test(fitted.transformSha256)
-        ) {
-          throw new Error(
-            `ITEM-ICON-PRESENTATION-FIT-MISMATCH: ${part.field} is not bound to its exact source`,
-          );
-        }
-        iconPresentationTransforms.set(part.field, fitted.transform);
-      }
-      iconPresentationFit = {
-        status: "PASSED",
-        algorithm: iconFit.algorithm,
-        solutionSha256: iconFit.solutionSha256!,
-        targetAxialLengths,
-        worldAttachmentUnaffected: true,
-        parts: iconFit.parts.map((part) => ({
+      const iconBinding = bindItemIconPresentationFitV1(
+        JSON.parse(validatedIconFitJson),
+        meshyParts.map((part) => ({
           field: part.field,
-          sourceSha256: part.sourceSha256,
-          transformSha256: part.transformSha256,
+          sourceSha256: sourceHashes.get(part.field)!,
+          sourceNode: part.sourceNode,
         })),
-      };
+        targetAxialLengths,
+      );
+      for (const [field, transform] of iconBinding.transforms) {
+        iconPresentationTransforms.set(field, transform);
+      }
+      iconPresentationFit = iconBinding.summary;
     }
     const partOptionsJson = (part: typeof meshyParts[number] & { weaponColor?: number | null }) => JSON.stringify({
       schemaVersion: 1,

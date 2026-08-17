@@ -156,6 +156,29 @@ function partMatchesFitContract(
   );
 }
 
+function bindPartsToValidatedFitReport(
+  parts: readonly ItemPartDraft[],
+  fitReport: ItemFitReport,
+): ItemPartDraft[] {
+  const fittedByField = new Map(fitReport.parts.map((part) => [part.field, part]));
+  return parts.map((part) => {
+    if (part.sourceKind !== "MESHY_GLB") return part;
+    const fitted = fittedByField.get(part.field);
+    if (!fitted || fitted.sourceNode !== (part.sourceNode.trim() || null)) {
+      throw new Error(`${part.field} validated fit differs from the active sourceNode.`);
+    }
+    return {
+      ...part,
+      translation: [...fitted.transform.translation],
+      rotationXyzw: [...fitted.transform.rotationXyzw],
+      rotationDegrees: quaternionToEulerDegrees(fitted.transform.rotationXyzw),
+      uniformScale: fitted.transform.uniformScale,
+      pivot: [...fitted.transform.pivot],
+      targetSpaceScaleXyz: [...fitted.targetSpaceScaleXyz],
+    };
+  });
+}
+
 function itemReferenceScalePercent(
   part: ItemPartDraft,
   fitReport: ItemFitReport | undefined,
@@ -1978,7 +2001,10 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
       }
       const transforms = new Map(report.parts.map((part) => [part.field, part]));
       if (directedParts) {
-        setParts(directedParts);
+        // Rust validates and emits transforms as f32. Bind the editor and the
+        // subsequent build request to that exact validated representation so
+        // provenance hashes cannot diverge from the geometry being written.
+        setParts(bindPartsToValidatedFitReport(directedParts, report));
         setSeamTolerance(directedTolerance!);
       } else if (!manualFitOverride) {
         setParts((current) => current.map((part) => {

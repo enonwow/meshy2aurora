@@ -293,17 +293,24 @@ export function itemPartsMatchDirectedCompositionV2(
   parts: readonly ItemPartDraft[],
   contract: ItemDirectedCompositionContractV2,
 ) {
+  const numberMatches = (first: number, second: number) => (
+    first === second || Math.fround(first) === Math.fround(second)
+  );
+  const tupleMatches = (first: readonly number[], second: readonly number[]) => (
+    first.length === second.length
+    && first.every((value, index) => numberMatches(value, second[index]))
+  );
   const transforms = new Map(contract.parts.map((part) => [part.field, part]));
   return parts.filter(({ sourceKind }) => sourceKind === "MESHY_GLB").length === 3
     && parts.every((part) => {
       if (part.sourceKind !== "MESHY_GLB") return true;
       const transform = transforms.get(part.field as ItemModelPartFieldV2);
       return Boolean(transform)
-        && JSON.stringify(part.translation) === JSON.stringify(transform!.translation)
-        && JSON.stringify(part.rotationXyzw) === JSON.stringify(transform!.rotationXyzw)
-        && part.uniformScale === transform!.uniformScale
-        && JSON.stringify(part.pivot) === JSON.stringify(transform!.pivot)
-        && JSON.stringify(part.targetSpaceScaleXyz) === JSON.stringify(transform!.targetSpaceScaleXyz);
+        && tupleMatches(part.translation, transform!.translation)
+        && tupleMatches(part.rotationXyzw, transform!.rotationXyzw)
+        && numberMatches(part.uniformScale, transform!.uniformScale)
+        && tupleMatches(part.pivot, transform!.pivot)
+        && tupleMatches(part.targetSpaceScaleXyz, transform!.targetSpaceScaleXyz);
     });
 }
 
