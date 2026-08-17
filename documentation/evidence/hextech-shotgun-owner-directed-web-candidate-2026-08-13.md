@@ -89,3 +89,30 @@ No new MOD, HAK, resref or model iteration was created for this web candidate.
 On 2026-08-13 automated control of the local in-app browser was rejected by the
 browser URL policy. No screenshot or visual acceptance is inferred from that
 lane failure. The application can still be opened for the owner's direct review.
+
+## Live application amendment 2026-08-17
+
+The same committed candidate was loaded in the local Studio with the exact
+retail `baseitems.2da`, exact three canonical GLBs and exact three retail MDL
+references listed above. Studio resolved BaseItem `113`, displayed the tracked
+concept and applied the owner-directed transforms without creating another
+model iteration.
+
+The live UI reported all of the following simultaneously:
+
+- `Owner-directed concept candidate loaded`;
+- `Visual owner acceptance is still pending`;
+- `Connections 2/2 connected`;
+- `HAND preserved`;
+- `Fit validated`.
+
+Tracked screenshots:
+
+| Surface | File | SHA-256 |
+|---|---|---|
+| Exact concept and pending-owner boundary | `documentation/evidence/hextech-shotgun-owner-directed-web-concept-comparison-2026-08-17.png` | `49bb76dd0d28b2f9258c4c467f9a79fe8f39eb7032e50773c7bcbf1d87d75b8e` |
+| Composed WebGL model and technical fit status | `documentation/evidence/hextech-shotgun-owner-directed-web-model-2026-08-17.png` | `1482ef6370e3e4e8246d3f696e986bc5528e993a40f6906d1b94ca44ba109983` |
+
+These screenshots prove the current web surface and its exact technical
+status. They do not convert `NOT_REVIEWED` into owner visual acceptance and do
+not claim Aurora Toolset or NWN proof.
