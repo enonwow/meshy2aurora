@@ -1,6 +1,6 @@
 # Hextech Shotgun owner concept
 
-Status: tracked product reference for the exact owner-directed web candidate.
+Status: documentation-only comparison reference for implementation review.
 
 ## Asset identity
 
@@ -9,10 +9,9 @@ Status: tracked product reference for the exact owner-directed web candidate.
 - byte length: `1,180,762`
 - provenance: concept art supplied by the project owner in the Item authoring task
 
-The Studio imports these exact tracked bytes and shows them only when the
-BaseItem, three source GLB hashes and three retail reference resrefs match the
-`HEXTECH_SHOTGUN_OWNER_DIRECTED_COMPOSITION_V2` contract. A regression test
-hashes this file and compares it with the contract hash.
+Owner clarification 2026-08-17: this image is for agent-side visual comparison
+only. Studio must not import, render or bundle it, and the runtime composition
+contract must not depend on its bytes or hash.
 
 The concept is a visual reference, not an Aurora runtime payload. It must not
 be copied into a HAK/MOD or treated as a substitute for the canonical Meshy

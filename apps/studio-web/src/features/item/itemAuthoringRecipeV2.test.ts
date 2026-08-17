@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import {
   applyAcceptedItemAuthoringRecipeV2,
   applyOwnerDirectedItemCompositionV2,
@@ -212,9 +210,6 @@ describe("ItemAuthoringRecipeV2", () => {
       sourceSha256ByField: { ...observed.sourceSha256ByField, ModelPart2: sha("f") },
     })).toBeUndefined();
     expect(HEXTECH_SHOTGUN_OWNER_DIRECTED_COMPOSITION_V2).toMatchObject({
-      concept: {
-        sha256: "cfa31ccea74b53b1e0c55182ec3e1ed4a2072041b433009a448b7717509bd8f9",
-      },
       ownerStatus: "NOT_REVIEWED",
       validationTolerance: 0.005,
       correction: {
@@ -222,17 +217,6 @@ describe("ItemAuthoringRecipeV2", () => {
         allowedTransformFields: ["translation", "rotation"],
       },
     });
-  });
-
-  it("binds the directed candidate to the exact tracked owner concept bytes", async () => {
-    const concept = await readFile(new URL(
-      "../../../../../documentation/concepts/firearm-hextech-shotgun-v1/hextech-shotgun-concept.png",
-      import.meta.url,
-    ));
-
-    expect(createHash("sha256").update(concept).digest("hex")).toBe(
-      HEXTECH_SHOTGUN_OWNER_DIRECTED_COMPOSITION_V2.concept.sha256,
-    );
   });
 
   it("applies the exact Bottom and protected Top while limiting the correction to Middle", () => {

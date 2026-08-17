@@ -20,7 +20,7 @@ This is a technical web-candidate result. `ownerStatus` remains
 
 | Input | Identity |
 |---|---|
-| Concept | `documentation/concepts/firearm-hextech-shotgun-v1/hextech-shotgun-concept.png` · SHA-256 `cfa31ccea74b53b1e0c55182ec3e1ed4a2072041b433009a448b7717509bd8f9` |
+| Agent-only comparison reference | `documentation/concepts/firearm-hextech-shotgun-v1/hextech-shotgun-concept.png` · SHA-256 `cfa31ccea74b53b1e0c55182ec3e1ed4a2072041b433009a448b7717509bd8f9` |
 | Bottom GLB | `sample-3d/tlc-hextech-shotgun-parts-v1/bottom.glb` · SHA-256 `69c78999590b248bf9c642516ffa595d33774ead3436166963b27dfaa71ad48d` |
 | Middle GLB | `sample-3d/tlc-hextech-shotgun-parts-v1/middle.glb` · SHA-256 `8fafe6a55dd77107a67f29c7519f3b6edc390b310f918a89131b003517720147` |
 | Top GLB | `sample-3d/tlc-hextech-shotgun-parts-v1/top.glb` · SHA-256 `6ce1281a4ed8a239bf0d6fc9388fe8a977a2811750d40eab4320e13b642c77bf` |
@@ -40,9 +40,8 @@ These files were copied from the earlier temporary extraction only after
 before/after SHA-256 equality was confirmed. They remain Git-ignored reference
 inputs and are not product, fixture, HAK or MOD payloads.
 
-The tracked concept bytes are hashed by the Vitest regression suite. The
-concept comparison card is rendered only after the exact GLB hashes and retail
-reference ID resolve this contract.
+The concept identity above records documentation provenance only. It is not a
+Studio input, product asset or directed-composition identity field.
 
 ## Exact directed transforms
 
@@ -70,19 +69,18 @@ by the real-corpus regression.
 
 ## Regression coverage
 
-- `itemAuthoringRecipeV2.test.ts` binds the exact tracked concept bytes, exact
-  source hashes, reference ID, protected Bottom/Top transforms and Middle-only
-  correction scope;
+- `itemAuthoringRecipeV2.test.ts` binds the exact source hashes, reference ID,
+  protected Bottom/Top transforms and Middle-only correction scope;
 - `ItemWorkflow.test.tsx` proves that the exact candidate performs the baseline
-  request followed by manual-fit validation and exposes the concept comparison
-  without marking it owner-accepted;
+  request followed by manual-fit validation without rendering the agent-only
+  concept reference or marking the candidate owner-accepted;
 - `crates/m2a-core/tests/item.rs` validates these exact transforms against the
   real canonical GLBs and exact retail MDL frames under the env-gated corpus.
 
 ## Remaining owner decision
 
 The final visual decision belongs to the owner. The Studio explicitly shows
-`Visual owner acceptance is still pending` beside the exact concept. Agent-run
+`Visual owner acceptance is still pending` in the candidate status. Agent-run
 Toolset/NWN proof remains forbidden by the project decision dated 2026-07-24.
 No new MOD, HAK, resref or model iteration was created for this web candidate.
 
@@ -90,29 +88,17 @@ On 2026-08-13 automated control of the local in-app browser was rejected by the
 browser URL policy. No screenshot or visual acceptance is inferred from that
 lane failure. The application can still be opened for the owner's direct review.
 
-## Live application amendment 2026-08-17
+## Owner scope correction 2026-08-17
 
-The same committed candidate was loaded in the local Studio with the exact
-retail `baseitems.2da`, exact three canonical GLBs and exact three retail MDL
-references listed above. Studio resolved BaseItem `113`, displayed the tracked
-concept and applied the owner-directed transforms without creating another
-model iteration.
+The owner clarified that the supplied concept art was intended only for the
+agent's implementation comparison, not for display or packaging in Studio.
+The product import, UI comparison card, CSS, runtime contract field and
+concept-bound tests were removed. The PNG remains only under `documentation`
+as implementation-review provenance. Previously captured screenshots of the
+incorrect concept-bearing UI were removed from the active evidence set.
 
-The live UI reported all of the following simultaneously:
-
-- `Owner-directed concept candidate loaded`;
-- `Visual owner acceptance is still pending`;
-- `Connections 2/2 connected`;
-- `HAND preserved`;
-- `Fit validated`.
-
-Tracked screenshots:
-
-| Surface | File | SHA-256 |
-|---|---|---|
-| Exact concept and pending-owner boundary | `documentation/evidence/hextech-shotgun-owner-directed-web-concept-comparison-2026-08-17.png` | `49bb76dd0d28b2f9258c4c467f9a79fe8f39eb7032e50773c7bcbf1d87d75b8e` |
-| Composed WebGL model and technical fit status | `documentation/evidence/hextech-shotgun-owner-directed-web-model-2026-08-17.png` | `1482ef6370e3e4e8246d3f696e986bc5528e993a40f6906d1b94ca44ba109983` |
-
-These screenshots prove the current web surface and its exact technical
-status. They do not convert `NOT_REVIEWED` into owner visual acceptance and do
-not claim Aurora Toolset or NWN proof.
+Post-correction verification loaded the exact candidate again in Studio. The
+live UI retained `2/2 connected`, `HAND preserved`, `Fit validated` and the
+pending owner decision, while both the concept image count and concept-label
+count were zero. The production Vite build emitted no
+`hextech-shotgun-concept` asset.

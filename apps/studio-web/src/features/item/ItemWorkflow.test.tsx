@@ -493,12 +493,10 @@ describe("ItemWorkflow", () => {
         ],
       },
     });
-    expect(container.textContent).toContain("Owner-directed concept candidate loaded");
+    expect(container.textContent).toContain("Owner-directed candidate loaded");
     expect(container.textContent).toContain("Visual owner acceptance is still pending");
-    expect(container.querySelector<HTMLImageElement>(
-      'img[alt="Hextech Shotgun owner concept"]',
-    )?.getAttribute("src")).toContain("hextech-shotgun-concept");
-    expect(container.textContent).toContain("Exact tracked concept");
+    expect(container.querySelector('img[alt="Hextech Shotgun owner concept"]')).toBeNull();
+    expect(container.textContent).not.toContain("Exact tracked concept");
     expect(container.textContent).toContain("Fit validated");
     expect(container.querySelector<HTMLInputElement>('input[aria-label="Seam tolerance"]')?.value)
       .toBe("0.005");

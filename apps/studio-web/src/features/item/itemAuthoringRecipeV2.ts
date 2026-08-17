@@ -126,10 +126,6 @@ export interface ItemDirectedCompositionContractV2 {
   readonly id: "HEXTECH_SHOTGUN_OWNER_DIRECTED_COMPOSITION_V2";
   readonly archetypeId: "HEXTECH_SHOTGUN";
   readonly outputBaseItem: 113;
-  readonly concept: {
-    readonly sha256: string;
-    readonly description: "owner-provided Hextech Shotgun side concept";
-  };
   readonly referenceId: string;
   readonly validationTolerance: 0.005;
   readonly sourceSha256ByField: Readonly<Record<ItemModelPartFieldV2, string>>;
@@ -193,10 +189,6 @@ ItemDirectedCompositionContractV2 = {
   id: "HEXTECH_SHOTGUN_OWNER_DIRECTED_COMPOSITION_V2",
   archetypeId: "HEXTECH_SHOTGUN",
   outputBaseItem: 113,
-  concept: {
-    sha256: "cfa31ccea74b53b1e0c55182ec3e1ed4a2072041b433009a448b7717509bd8f9",
-    description: "owner-provided Hextech Shotgun side concept",
-  },
   referenceId: "wbwxh_b_014/wbwxh_m_014/wbwxh_t_014",
   validationTolerance: 0.005,
   sourceSha256ByField: {
