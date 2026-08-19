@@ -16,3 +16,17 @@ contract must not depend on its bytes or hash.
 The concept is a visual reference, not an Aurora runtime payload. It must not
 be copied into a HAK/MOD or treated as a substitute for the canonical Meshy
 sources under `sample-3d/tlc-hextech-shotgun-parts-v1`.
+
+## Hextech Shell concept
+
+- file: `hextech-shell-concept-v1.png`
+- SHA-256: `4af93ef0b2b07d85bb0fc5950e5da06c310afaf4f7bb3673cc2037301867d3e1`
+- byte length: `2,035,109`
+- provenance: Codex ImageGen concept selected by the project owner on
+  2026-08-17 as the lower-detail projectile reference
+- Meshy source asset: `sample-3d/tlc-hextech-shell-s1-p1500-v1/source.glb`
+
+This concept remains documentation-only. Its approved use is as the exact
+image-to-3D source reference recorded by the Meshy asset manifest; Studio and
+the eventual NWN package must use the generated model and converted runtime
+resources, not render or bundle this PNG as product UI content.

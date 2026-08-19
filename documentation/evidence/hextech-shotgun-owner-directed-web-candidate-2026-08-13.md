@@ -6,6 +6,13 @@ Scope: Meshy2Aurora web application and offline geometry gates
 
 Branch: `codex/items-agent-remediation`
 
+> **Superseded on 2026-08-17.** The owner rejected the composition recorded in
+> the original packet below: it incorrectly depended on retail heavy-crossbow
+> BaseItem `6` and placed the assembled longitudinal frame on Aurora `Z` rather
+> than `Y`. The final amendment at the end of this file is authoritative for
+> the repaired web candidate. The earlier values remain only as failure
+> provenance.
+
 ## Result
 
 The Studio recognizes one exact candidate from immutable source and reference
@@ -156,3 +163,159 @@ owner-accepted, downloaded, installed or byte-verified in the native NWN user
 directories. Accordingly the candidate remains `modelVisibility=not_tested`,
 `proofCompleteness=missing` and not ready for owner proof. No Toolset or NWN
 session was started.
+
+## Owner rejection and standalone manual repair 2026-08-17
+
+The owner explicitly rejected the preceding candidate and clarified four
+requirements:
+
+1. Studio must create a new BaseItem rather than clone or use an existing base.
+2. Bottom, Middle and Top must be manually assembled from the exact canonical
+   GLBs according to the agent-only visual reference.
+3. The author must perform the direction and rotation correction explicitly;
+   an automatic fit is not the source of truth.
+4. The concept image must not be an application input, display, package asset
+   or acceptance criterion.
+
+The confirmed implementation defect was a frame mismatch. The earlier
+candidate's fit report used `targetAxialAxis=2` (Aurora `Z`), while Studio's
+diagnostic text incorrectly claimed axial `Y`. A manually authored rigid
+`+90°` rotation around Aurora `X` maps the complete ordered chain from `-Z` to
+`+Y` without changing either connector overlap. The repaired order is Bottom
+(stock) → Middle (receiver) → Top (barrels), with ascending centers on `Y`.
+
+### Repaired standalone BaseItem contract
+
+- physical append index and output identity: BaseItem `113`, label
+  `hextech_shotgun`, ItemClass `WHxSh`;
+- schema: standalone request V3;
+- definition source: `EXPLICIT_COLUMN_ASSIGNMENTS`;
+- no donor BaseItem is resolved, read, cloned or referenced by the product
+  flow;
+- explicit cells include ModelType `2`, `2x4` inventory footprint, item model
+  and icon defaults, equipable slots, ranges and weapon behavior columns;
+- the application no longer requests retail `WBwXh` Bottom/Middle/Top MDLs for
+  this authoring route.
+
+### Repaired manual transforms
+
+| Part | Translation | Quaternion XYZW | Authored Euler | Internal scale |
+|---|---|---|---|---:|
+| Bottom / ModelPart1 | `[-0.00431, -0.15773459, 0.13717034]` | `[0.70710678, -0.70710678, 0, 0]` | `[180, 0, 90]` | `0.15796308` |
+| Middle / ModelPart2 | `[-0.00431, 0.18716541, -0.00852165]` | `[0, 0, -0.70710678, 0.70710678]` | `[0, 0, -90]` | `0.21066014` |
+| Top / ModelPart3 | `[-0.00431, 0.49844033, 0.008945521]` | `[0, 0, -0.70710678, 0.70710678]` | `[0, 0, -90]` | `0.13161969` |
+
+The application consumes only this numeric author-authored profile and the
+three exact source hashes. Its identity is
+`hextech-shotgun-manual-assembly-v3`; the concept filename and concept hash are
+absent from the runtime contract.
+
+### Repaired gate results
+
+- target frame: axial `Y`, width `Z`, depth `X`;
+- Bottom → Middle overlap: approximately `0.0051`;
+- Middle → Top overlap: approximately `0.0137`;
+- adjacent connector status: `2/2 OVERLAPPING`;
+- exact GLB source hashes: unchanged from the immutable identity table above;
+- standalone append regression uses a synthetic 113-row table containing no
+  `heavycrossbow` or `WBwXh` text and passes;
+- core Item suite: `52 passed`;
+- Studio suite: `268 passed`, `1 skipped`;
+- TypeScript typecheck: passed;
+- production WASM/Vite build: passed.
+
+Studio now blocks the custom build unless the exact source hashes, authored
+profile identity and all three validated transforms still match this manual
+contract. That is a technical gate for the authored numeric result, not an
+image-comparison criterion. Visual owner acceptance remains pending, and no
+Toolset or NWN session was started.
+
+### Live Studio readback
+
+The repaired production build was then opened in the in-app browser. A
+113-row input table containing only neutral filler rows was loaded, followed by
+the three exact canonical GLBs from `sample-3d`. Studio read back:
+
+- `BaseItem 113 · hextech_shotgun · BOTTOM_MIDDLE_TOP`;
+- `Manually assembled candidate loaded`;
+- `ITEM_REFERENCE_MANUAL_FIT_V2` and `FULL FRAME PASSED`;
+- frame `depth X · axial Y · width Z`;
+- Bottom → Middle `+Y overlap 0.0051`;
+- Middle → Top `+Y overlap 0.0137`;
+- `2/2 connected`, `HAND preserved` and `Fit validated`;
+- stock, receiver and twin barrels rendered as one ordered composition.
+
+No retail donor MDL and no concept image was supplied to Studio. The live tab
+was left on this exact Prepare Item result for owner inspection. Build Package
+was deliberately not invoked: this amendment changes the web authoring
+contract but does not claim or allocate a new Toolset/NWN proof iteration.
+
+### Visible in-page proof panel
+
+At the owner's request, the Prepare Item page now renders the candidate-bound
+technical proof directly above the composition viewport. It exposes the
+standalone V3 identity, `No donor BaseItem`, authoring evidence, YZX frame,
+ordered assembly, all three complete GLB SHA-256 values, validated T/Q/S
+transforms, both connector overlaps, and the exact profile and fit hashes.
+The panel appears only when the exact custom identity, source hashes, authored
+profile and transforms all match; otherwise it is absent and the build remains
+blocked. It contains no concept image and makes no Toolset/NWN visibility
+claim. Live browser readback showed `VERIFIED`, `+Y 0.0051` and `+Y 0.0137`.
+
+## Visible weapon proof correction 2026-08-17
+
+The owner correctly rejected the preceding in-page evidence as insufficient:
+the technical panel was visible, but the actual weapon appeared only lower in
+the page and the Item Properties camera presented Aurora axial `+Y` as
+screen-up. That produced a narrow vertical silhouette even though the authored
+Bottom/stock → Middle/receiver → Top/barrels chain was present.
+
+The Studio proof presentation now keeps the exact emitted model transforms and
+the Aurora YZX frame unchanged, but rolls the broadside camera so the authored
+axial direction reads left-to-right. The exact standalone candidate therefore
+opens with a visible horizontal weapon viewport before the detailed hash panel:
+
+- label: `Visible standalone weapon`;
+- identity: `BaseItem 113 · authored broadside assembly`;
+- accessible viewport identity:
+  `Assembled standalone BaseItem 113 Hextech Shotgun`;
+- camera presentation: `HORIZONTAL_BROADSIDE`;
+- reference envelopes hidden by default for this standalone proof;
+- no concept image, filename, hash or bytes imported into the application.
+
+The owner-supplied concept was inspected only outside Studio to check the
+left-to-right stock, receiver and barrel order. This correction is a camera and
+page-order change, not a new model, MOD, HAK, resref or emitted-transform
+iteration. Visual owner acceptance remains pending.
+
+### Persistent local proof URL
+
+The transient Item workflow depended on browser-selected `File` objects, so a
+new tab at the same root URL could not reproduce the proof. The local Vite
+server now exposes one read-only, allowlisted proof route that streams only the
+three canonical GLBs from `sample-3d/tlc-hextech-shotgun-parts-v1`. The page at
+`/proof/hextech-shotgun.html` hashes every payload in the browser, rejects any
+identity mismatch, applies the exact authored transforms from the product
+contract and renders the complete horizontal broadside assembly. It shows
+BaseItem `113`, `WHxSh`, ModelType `2`, `No donor BaseItem`, `VERIFIED`, all
+three full SHA-256 values and T/Q/S readback. No owner reference image is
+served by this route.
+
+Fresh live readback from the persistent URL showed the full, unobstructed
+stock → receiver → twin-barrel silhouette and all three expected source hashes.
+Unlike the transient file-picker state, this URL can be reopened directly
+while the local development server is running.
+
+### Owner broadside refinement
+
+After reviewing the persistent broadside proof, the owner requested that only
+the Bottom/stock sit slightly lower relative to the Middle/receiver. The
+minimal authored delta is Bottom translation `Z 0.12917034 → 0.13717034`
+(`+0.008`); Bottom axial `Y`, rotation, scale and pivot remain unchanged, and
+Middle/Top are byte-for-byte unchanged. The authored Bottom slot bounds and
+attachment-zone maximum were shifted by the same `+0.008` in width `Z`.
+
+Fresh browser readback showed the adjusted complete silhouette and the exact
+Bottom transform. The env-gated real-corpus test over all three canonical GLBs
+and the exact retail reference frames passed, including both adjacent
+connections. No MOD, HAK, resref or source payload was created or changed.

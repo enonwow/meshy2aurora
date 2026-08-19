@@ -1,0 +1,7 @@
+2DA V2.0
+
+Label Name ItemClass ModelType GenderSpecific DefaultModel DefaultIcon EquipableSlots InvSlotWidth InvSlotHeight MinRange MaxRange WeaponWield WeaponType RangedWeapon AmmunitionType
+1 testgun **** M2aGun 0 0 it_bag im2agun 0x00030 2 2 10 100 6 1 27 3
+20 arrow **** WAmAr 0 0 it_bag iwamar 0 1 1 **** **** **** **** **** ****
+25 bolt **** WAmBo 0 0 it_bag iwambo 0 1 1 **** **** **** **** **** ****
+27 bullet **** WAmBu 0 0 it_bag iwambu 0 1 1 **** **** **** **** **** ****

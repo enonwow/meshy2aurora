@@ -560,6 +560,134 @@ pub fn append_item_custom_weapon_baseitem_v2_report_json(
         .map(|artifact| serialize_json(&artifact.report))
 }
 
+fn append_item_standalone_weapon_baseitem_artifact_v3(
+    bytes: &[u8],
+    request_json: &str,
+) -> Result<m2a_core::item::ItemStandaloneWeaponBaseItemArtifactV3, JsValue> {
+    let request =
+        serde_json::from_str::<m2a_core::item::ItemStandaloneWeaponBaseItemRequestV3>(request_json)
+            .map_err(|_| {
+                JsValue::from_str(&m5_boundary_error(
+                    "ITEM-STANDALONE-BASEITEM-V3-REQUEST-JSON-INVALID",
+                    "requestJson",
+                    "standalone weapon BaseItem V3 request JSON is invalid",
+                ))
+            })?;
+    m2a_core::item::append_item_standalone_weapon_baseitem_v3(bytes, &request)
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+/// Appends an exact standalone weapon BaseItem from explicit column
+/// assignments without consulting or cloning any existing BaseItem row.
+#[wasm_bindgen(js_name = appendItemStandaloneWeaponBaseitemV3)]
+pub fn append_item_standalone_weapon_baseitem_v3(
+    bytes: &[u8],
+    request_json: &str,
+) -> Result<Vec<u8>, JsValue> {
+    append_item_standalone_weapon_baseitem_artifact_v3(bytes, request_json)
+        .map(|artifact| artifact.payload)
+}
+
+#[wasm_bindgen(js_name = appendItemStandaloneWeaponBaseitemV3ReportJson)]
+pub fn append_item_standalone_weapon_baseitem_v3_report_json(
+    bytes: &[u8],
+    request_json: &str,
+) -> Result<String, JsValue> {
+    append_item_standalone_weapon_baseitem_artifact_v3(bytes, request_json)
+        .map(|artifact| serialize_json(&artifact.report))
+}
+
+fn append_item_ammunition_variant_block_artifact_v1(
+    bytes: &[u8],
+    request_json: &str,
+) -> Result<m2a_core::item::ItemAmmunitionVariantBlockArtifactV1, JsValue> {
+    let request =
+        serde_json::from_str::<m2a_core::item::ItemAmmunitionVariantBlockRequestV1>(request_json)
+            .map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-AMMUNITION-VARIANT-REQUEST-JSON-INVALID",
+                "requestJson",
+                "ammunition variant request JSON does not match schema 1",
+            ))
+        })?;
+    m2a_core::item::append_item_ammunition_variant_block_v1(bytes, &request)
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[wasm_bindgen(js_name = appendItemAmmunitionVariantBlockV1)]
+pub fn append_item_ammunition_variant_block_v1(
+    bytes: &[u8],
+    request_json: &str,
+) -> Result<Vec<u8>, JsValue> {
+    append_item_ammunition_variant_block_artifact_v1(bytes, request_json)
+        .map(|artifact| artifact.payload)
+}
+
+#[wasm_bindgen(js_name = appendItemAmmunitionVariantBlockV1ReportJson)]
+pub fn append_item_ammunition_variant_block_v1_report_json(
+    bytes: &[u8],
+    request_json: &str,
+) -> Result<String, JsValue> {
+    append_item_ammunition_variant_block_artifact_v1(bytes, request_json)
+        .map(|artifact| serialize_json(&artifact.report))
+}
+
+fn patch_item_damage_ranged_projectile_artifact_v1(
+    bytes: &[u8],
+    request_json: &str,
+) -> Result<m2a_core::item::ItemDamageRangedProjectileArtifactV1, JsValue> {
+    let request =
+        serde_json::from_str::<m2a_core::item::ItemDamageRangedProjectileRequestV1>(request_json)
+            .map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-DAMAGE-RANGED-PROJECTILE-REQUEST-JSON-INVALID",
+                "requestJson",
+                "damage ranged projectile request JSON does not match schema 1",
+            ))
+        })?;
+    m2a_core::item::patch_item_damage_ranged_projectile_v1(bytes, &request)
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
+#[wasm_bindgen(js_name = patchItemDamageRangedProjectileV1)]
+pub fn patch_item_damage_ranged_projectile_v1(
+    bytes: &[u8],
+    request_json: &str,
+) -> Result<Vec<u8>, JsValue> {
+    patch_item_damage_ranged_projectile_artifact_v1(bytes, request_json)
+        .map(|artifact| artifact.payload)
+}
+
+#[wasm_bindgen(js_name = patchItemDamageRangedProjectileV1ReportJson)]
+pub fn patch_item_damage_ranged_projectile_v1_report_json(
+    bytes: &[u8],
+    request_json: &str,
+) -> Result<String, JsValue> {
+    patch_item_damage_ranged_projectile_artifact_v1(bytes, request_json)
+        .map(|artifact| serialize_json(&artifact.report))
+}
+
+#[wasm_bindgen(js_name = resolveItemRangedWeaponProfileV1Json)]
+pub fn resolve_item_ranged_weapon_profile_v1_json(
+    baseitems_two_da: &[u8],
+    base_item: u32,
+    profile_json: &str,
+) -> Result<String, JsValue> {
+    let profile = serde_json::from_str::<m2a_core::item::ItemRangedWeaponProfileV1>(profile_json)
+        .map_err(|_| {
+        JsValue::from_str(&m5_boundary_error(
+            "ITEM-RANGED-WEAPON-PROFILE-JSON-INVALID",
+            "profileJson",
+            "ranged weapon profile JSON does not match schema 1",
+        ))
+    })?;
+    let selected = m2a_core::item::resolve_item_baseitem_v1(baseitems_two_da, base_item)
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+    m2a_core::item::resolve_item_ranged_weapon_profile_v1(&selected, &profile)
+        .map(|binding| serialize_json(&binding))
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
 fn extend_item_baseitem_model_range_artifact_v1(
     bytes: &[u8],
     base_item: u32,
@@ -1024,6 +1152,40 @@ pub fn build_meshy_item_part_with_options_v3(
         mdl_bytes: artifact.mdl_payload,
         texture_bytes: artifact.texture_payload,
         icon_bytes: artifact.icon_payload.unwrap_or_default(),
+        report_json: serialize_json(&artifact.report),
+        readback_json: serialize_json(&artifact.readback),
+    })
+}
+
+/// Builds one explicitly oriented static projectile. The declared source nose
+/// axis must resolve to Aurora +Y after the authored quaternion is applied.
+#[wasm_bindgen(js_name = buildMeshyRangedProjectileV1)]
+pub fn build_meshy_ranged_projectile_v1(
+    source_glb: &[u8],
+    model_resref: &str,
+    texture_resref: &str,
+    options_json: &str,
+) -> Result<StudioItemPartArtifactV1, JsValue> {
+    let options =
+        serde_json::from_str::<m2a_core::item::ItemProjectileBuildOptionsV1>(options_json)
+            .map_err(|_| {
+                JsValue::from_str(&m5_boundary_error(
+                    "ITEM-PROJECTILE-OPTIONS-JSON-INVALID",
+                    "optionsJson",
+                    "projectile options JSON does not match ItemProjectileBuildOptionsV1",
+                ))
+            })?;
+    let artifact = m2a_core::item::build_meshy_ranged_projectile_v1(
+        source_glb,
+        model_resref,
+        texture_resref,
+        &options,
+    )
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+    Ok(StudioItemPartArtifactV1 {
+        mdl_bytes: artifact.mdl_payload,
+        texture_bytes: artifact.texture_payload,
+        icon_bytes: Vec::new(),
         report_json: serialize_json(&artifact.report),
         readback_json: serialize_json(&artifact.readback),
     })
@@ -1618,6 +1780,23 @@ pub fn build_item_attachment_profile_v1_json(
     .map_err(|error| JsValue::from_str(&serialize_json(&error)))
 }
 
+#[wasm_bindgen(js_name = finalizeItemAuthoredAttachmentProfileV1Json)]
+pub fn finalize_item_authored_attachment_profile_v1_json(
+    profile_json: &str,
+) -> Result<String, JsValue> {
+    let profile = serde_json::from_str::<m2a_core::item::ItemAttachmentProfileV1>(profile_json)
+        .map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-AUTHORED-PROFILE-JSON-INVALID",
+                "profileJson",
+                "authored attachment profile JSON does not match schema 1",
+            ))
+        })?;
+    m2a_core::item::finalize_item_authored_attachment_profile_v1(profile)
+        .map(|profile| serialize_json(&profile))
+        .map_err(|error| JsValue::from_str(&serialize_json(&error)))
+}
+
 #[wasm_bindgen(js_name = validateItemFitReportV4Json)]
 pub fn validate_item_fit_report_v4_json(report_json: &str) -> Result<String, JsValue> {
     let report =
@@ -2051,6 +2230,49 @@ pub fn build_item_proof_module_v1(
         })?;
     let artifact = m2a_core::item::build_item_proof_module_v1(uti_payload, &identity, placement)
         .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
+    Ok(StudioItemProofModuleArtifactV1 {
+        module_bytes: artifact.payload,
+        report_json: serialize_json(&artifact.report),
+    })
+}
+
+#[wasm_bindgen(js_name = buildItemRangedWeaponProofModuleV1)]
+pub fn build_item_ranged_weapon_proof_module_v1(
+    weapon_uti_payload: &[u8],
+    ammunition_uti_payload: &[u8],
+    identity_json: &str,
+    weapon_placement_json: &str,
+    ammunition_placement_json: &str,
+) -> Result<StudioItemProofModuleArtifactV1, JsValue> {
+    let identity =
+        serde_json::from_str::<m2a_core::item::ItemRangedWeaponProofIdentityV1>(identity_json)
+            .map_err(|_| {
+                JsValue::from_str(&m5_boundary_error(
+                    "ITEM-RANGED-PROOF-IDENTITY-JSON-INVALID",
+                    "identityJson",
+                    "identity JSON does not match ItemRangedWeaponProofIdentityV1",
+                ))
+            })?;
+    let parse_placement = |value: &str, path: &str| {
+        serde_json::from_str::<m2a_core::item::ItemProofPlacementV1>(value).map_err(|_| {
+            JsValue::from_str(&m5_boundary_error(
+                "ITEM-RANGED-PROOF-PLACEMENT-JSON-INVALID",
+                path,
+                "placement JSON does not match ItemProofPlacementV1",
+            ))
+        })
+    };
+    let weapon_placement = parse_placement(weapon_placement_json, "weaponPlacementJson")?;
+    let ammunition_placement =
+        parse_placement(ammunition_placement_json, "ammunitionPlacementJson")?;
+    let artifact = m2a_core::item::build_item_ranged_weapon_proof_module_v1(
+        weapon_uti_payload,
+        ammunition_uti_payload,
+        &identity,
+        weapon_placement,
+        ammunition_placement,
+    )
+    .map_err(|error| JsValue::from_str(&serialize_json(&error)))?;
     Ok(StudioItemProofModuleArtifactV1 {
         module_bytes: artifact.payload,
         report_json: serialize_json(&artifact.report),

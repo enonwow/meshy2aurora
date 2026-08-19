@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hextech Shotgun · standalone proof</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #071014; color: #ecf7f5; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-width: 960px; background: radial-gradient(circle at 50% 42%, #173238 0, #0b171c 48%, #071014 100%); }
+      main { display: grid; grid-template-rows: auto minmax(520px, 1fr) auto; min-height: 100vh; }
+      header { display: flex; align-items: center; justify-content: space-between; gap: 28px; padding: 20px 28px; border-bottom: 1px solid #294149; background: #081217e8; }
+      h1, p { margin: 0; }
+      h1 { margin-top: 4px; font-size: 26px; }
+      .eyebrow { color: #50d5dc; font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+      .identity { display: flex; gap: 8px; align-items: center; }
+      .identity span, .status { padding: 7px 10px; border: 1px solid #35545c; border-radius: 999px; background: #102126; font-size: 12px; }
+      .status { border-color: #2e7c51; color: #a6efbf; background: #10291c; font-weight: 800; }
+      .stage { position: relative; min-height: 520px; overflow: hidden; }
+      canvas { display: block; width: 100%; height: 100%; min-height: 520px; }
+      .stage-label { position: absolute; z-index: 2; top: 18px; left: 22px; display: grid; gap: 5px; padding: 11px 13px; border: 1px solid #35545c; border-radius: 8px; background: #0b171de8; }
+      .stage-label strong { font-size: 15px; }
+      .stage-label span { color: #9bb1b5; font-size: 12px; }
+      .loading { position: absolute; z-index: 3; inset: 0; display: grid; place-items: center; background: #071014; color: #9bb1b5; }
+      .loading[data-ready="true"] { display: none; }
+      .proof { display: grid; gap: 12px; padding: 16px 24px 22px; border-top: 1px solid #294149; background: #081217e8; }
+      .proof-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+      article { display: grid; gap: 5px; min-width: 0; padding: 11px; border: 1px solid #294149; border-radius: 8px; background: #102126; }
+      article strong { font-size: 13px; }
+      article code { overflow: hidden; color: #8eeab3; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+      article small { color: #9bb1b5; overflow-wrap: anywhere; }
+      .proof footer { display: flex; justify-content: space-between; gap: 20px; color: #9bb1b5; font-size: 11px; }
+      .proof footer strong { color: #8eeab3; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <p class="eyebrow">Persistent candidate-bound visual proof</p>
+          <h1>Hextech Shotgun · standalone proof</h1>
+        </div>
+        <div class="identity">
+          <span>BaseItem 113</span>
+          <span>WHxSh</span>
+          <span>ModelType 2</span>
+          <span>No donor BaseItem</span>
+          <b class="status" id="status">VERIFYING</b>
+        </div>
+      </header>
+      <section class="stage" aria-label="Assembled standalone BaseItem 113 Hextech Shotgun">
+        <div class="stage-label">
+          <strong>Visible standalone weapon</strong>
+          <span>Bottom stock → Middle receiver → Top twin barrels</span>
+        </div>
+        <div class="loading" id="loading">Loading and hashing three canonical GLB sources…</div>
+        <canvas id="viewport" aria-label="Exact assembled Hextech Shotgun model"></canvas>
+      </section>
+      <section class="proof" aria-label="Exact source and transform proof">
+        <div class="proof-grid" id="parts"></div>
+        <footer>
+          <span>Authored frame: depth X · axial Y · width Z · horizontal broadside presentation</span>
+          <strong>Standalone V3 · explicit column assignments · 2/2 connected</strong>
+        </footer>
+      </section>
+    </main>
+    <script type="module" src="/src/proof/hextechShotgunProof.ts"></script>
+  </body>
+</html>

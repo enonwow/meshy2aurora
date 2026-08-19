@@ -59,6 +59,34 @@ export function itemPropertiesCameraFrame(
   };
 }
 
+export function itemHorizontalBroadsideCameraFrame(
+  bounds: ItemPreviewGroundingBounds,
+  aspect: number,
+): ItemPropertiesCameraFrame {
+  const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
+  const center = bounds.min.clone().add(bounds.max).multiplyScalar(0.5);
+  const size = bounds.max.clone().sub(bounds.min);
+
+  // After P(x,y,z)=(x,z,y), Three Z is Aurora axial +Y and Three Y is
+  // Aurora width +Z. Keep the same broadside depth view as Item Properties,
+  // but roll the proof camera clockwise so Bottom -> Middle -> Top reads
+  // left-to-right without changing any authored or emitted model transform.
+  const widthHalfHeight = size.y / 2;
+  const axialHalfHeight = size.z / (2 * safeAspect);
+  const halfHeight = Math.max(widthHalfHeight, axialHalfHeight, 0.125) * 1.18;
+  const depth = Math.max(size.x, halfHeight * 2, 0.25);
+  const distance = Math.max(depth * 3, 1);
+
+  return {
+    position: [center.x + distance, center.y, center.z],
+    target: center.toArray() as [number, number, number],
+    up: [0, -1, 0],
+    halfHeight,
+    near: Math.max(distance - depth * 2, 0.001),
+    far: Math.max(distance + depth * 2, 100),
+  };
+}
+
 export function authoredItemMatrix(transform: ItemAuthoredTransform) {
   const translation = new THREE.Matrix4().makeTranslation(...transform.translation);
   const rotation = new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion(

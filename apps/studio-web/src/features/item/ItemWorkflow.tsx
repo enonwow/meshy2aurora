@@ -24,9 +24,11 @@ import { ItemGenerationPanel } from "./ItemGenerationPanel";
 import { serializeItemGenerationSession, type ItemGenerationSessionV1 } from "./itemGeneration";
 import {
   applyOwnerDirectedItemCompositionV2,
+  buildHextechShotgunAuthoredAttachmentProfileV3,
   buildItemManualFitSnapshotV2,
   deriveHextechShotgunOutputRowV2,
   HEXTECH_SHOTGUN_BASEITEM_V2,
+  HEXTECH_SHOTGUN_STANDALONE_CELLS_V3,
   itemPartsMatchDirectedCompositionV2,
   itemPartSupportsReferenceScalingV2,
   resolveOwnerDirectedItemCompositionV2,
@@ -39,6 +41,17 @@ import {
   type ItemReviewViewIdV2,
   type ItemSemanticReviewV2,
 } from "./itemSemanticReviewV2";
+import {
+  buildRangedAmmunitionBlueprintV1,
+  buildRangedAmmunitionItemOptionsV1,
+  buildRangedProjectileOptionsV1,
+  defaultRangedAmmunitionDraftV1,
+  rangedAmmunitionChannelProfileV1,
+  rangedAmmunitionFilesReadyV1,
+  validateRangedAmmunitionDraftV1,
+  withRangedAmmunitionChannelV1,
+  type ItemRangedAmmunitionDraftV1,
+} from "./rangedAmmunition";
 import type { MeshyArtifactProvenance, MeshyBridgeClient } from "../meshy/bridge";
 import type { ItemSeamResult } from "./itemPreview";
 import type {
@@ -54,6 +67,25 @@ import type {
 import "./item.css";
 
 const id = () => crypto.randomUUID();
+
+const initialRangedAmmunitionDraft = (
+  row?: ItemBaseItemRow,
+): ItemRangedAmmunitionDraftV1 => {
+  const base = { ...defaultRangedAmmunitionDraftV1(), enabled: false };
+  if (!row) return base;
+  const channel = (["ARROW", "BOLT", "BULLET"] as const).find((candidate) => {
+    const profile = rangedAmmunitionChannelProfileV1(candidate);
+    return row.rangedWeapon === profile.ammoBaseItem
+      && row.ammunitionType === profile.ammunitionType;
+  });
+  const withChannel = channel
+    ? withRangedAmmunitionChannelV1(base, channel)
+    : base;
+  return {
+    ...withChannel,
+    wielderClip: row.weaponWield === 5 ? "BOWSHOT" : "XBOWSHOT",
+  };
+};
 
 export interface ItemWorkflowProps {
   readonly onTargetChange: (target: StudioTarget) => void;
@@ -261,6 +293,37 @@ function TargetRail({ onTargetChange }: ItemWorkflowProps) {
   );
 }
 
+function NumberField({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  readonly label: string;
+  readonly value: number;
+  readonly min?: number;
+  readonly max?: number;
+  readonly step?: number;
+  readonly onChange: (value: number) => void;
+}) {
+  return (
+    <label>
+      <span>{label}</span>
+      <input
+        aria-label={label}
+        type="number"
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        onChange={(event) => onChange(Number(event.currentTarget.value))}
+      />
+    </label>
+  );
+}
+
 function ItemSource({
   onTargetChange,
   meshyBridge,
@@ -275,6 +338,8 @@ function ItemSource({
   sourceBaseItem,
   customWeaponAuthoring,
   onCustomWeaponAuthoring,
+  rangedAmmunition,
+  onRangedAmmunitionChange,
   onPartFile,
   onGeneratedPart,
   onGenerationSessionChange,
@@ -298,6 +363,8 @@ function ItemSource({
   readonly sourceBaseItem?: number;
   readonly customWeaponAuthoring: boolean;
   readonly onCustomWeaponAuthoring: () => void;
+  readonly rangedAmmunition: ItemRangedAmmunitionDraftV1;
+  readonly onRangedAmmunitionChange: (next: ItemRangedAmmunitionDraftV1) => void;
   readonly onPartFile: (field: string, file: File) => void;
   readonly onGeneratedPart: (field: string, file: File, provenance: MeshyArtifactProvenance) => void;
   readonly onGenerationSessionChange: (session: ItemGenerationSessionV1) => void;
@@ -320,6 +387,18 @@ function ItemSource({
   const resourcePayloadCount = referenceResources.filter(
     (file) => /\.(?:mdl|plt)$/i.test(file.name),
   ).length;
+  const rangedChannel = selected
+    ? (["ARROW", "BOLT", "BULLET"] as const)
+        .map(rangedAmmunitionChannelProfileV1)
+        .find((profile) => (
+          selected.weaponType === 1
+          && selected.rangedWeapon === profile.ammoBaseItem
+          && selected.ammunitionType === profile.ammunitionType
+        ))
+    : undefined;
+  const rangedIssues = selected
+    ? validateRangedAmmunitionDraftV1(rangedAmmunition, selected)
+    : [];
   const ready = Boolean(
     selected
     && parts.length > 0
@@ -333,13 +412,18 @@ function ItemSource({
     )
     && (
       selected.modelType !== 2
+      || customWeaponAuthoring
       || selected.partSlots.every((slot) => referenceModels[slot.field])
     )
+    && (!rangedAmmunition.enabled || (
+      rangedAmmunitionFilesReadyV1(rangedAmmunition)
+      && validateRangedAmmunitionDraftV1(rangedAmmunition, selected).length === 0
+    ))
   );
   return (
     <section className="item-source">
       <header className="item-page-heading">
-        <div><p className="eyebrow">Item · Source</p><h1>Create an Aurora item</h1><p>Choose BaseItem first. Its composer decides whether the inputs are Meshy GLBs or retail numeric selectors.</p></div>
+        <div><p className="eyebrow">Item · Source</p><h1>Create an Aurora item</h1><p>Choose an existing BaseItem or author a new standalone definition from explicit fields.</p></div>
         <span className="status-badge status-badge--neutral">Local-first</span>
       </header>
       <div className="item-source-grid">
@@ -383,8 +467,8 @@ function ItemSource({
                 onClick={onCustomWeaponAuthoring}
               >
                 {customWeaponAuthoring
-                  ? "Use retail BaseItem 6"
-                  : "Author Hextech Shotgun V2"}
+                  ? "Cancel standalone BaseItem 113"
+                  : "Create standalone Hextech Shotgun"}
               </button>
             </div>
             <span>→</span>
@@ -394,7 +478,220 @@ function ItemSource({
               <small>{selected?.partSlots.map((slot) => slot.label).join(" · ") ?? "No row selected"}</small>
             </div>
           </section>
-          {selected?.modelType === 2 ? (
+          {selected && rangedChannel ? (
+            <section className="item-ranged-ammunition panel" aria-label="Ammunition and projectile">
+              <header>
+                <div>
+                  <p className="eyebrow">Amunicja i pocisk</p>
+                  <h2>Własny stos, model pocisku i natywny clip strzału</h2>
+                  <p>Pipeline używa bieżących tabel EE. Concept art nie jest dodawany do aplikacji ani pakietu.</p>
+                </div>
+                <label className="item-ranged-toggle">
+                  <input
+                    aria-label="Add custom ranged ammunition"
+                    type="checkbox"
+                    checked={rangedAmmunition.enabled}
+                    onChange={(event) => onRangedAmmunitionChange({
+                      ...rangedAmmunition,
+                      enabled: event.currentTarget.checked,
+                    })}
+                  />
+                  <span>{rangedAmmunition.enabled ? "Włączone" : "Wyłączone"}</span>
+                </label>
+              </header>
+              <p className="item-ranged-route">
+                <code>
+                  BaseItem {selected.baseItem} → {rangedChannel.channel} BaseItem {rangedChannel.ammoBaseItem}
+                  {" → "}AmmunitionType {rangedChannel.ammunitionType}
+                  {" → "}DamageRangedProjectile {rangedAmmunition.damageRangedProjectile}
+                  {" → "}row {rangedAmmunition.damageRangedProjectile * 6 + rangedChannel.ammunitiontypesOffset}
+                  {" → "}{rangedAmmunition.projectileModelResref}
+                  {" → "}{rangedAmmunition.wielderClip.toLowerCase()}
+                </code>
+              </p>
+              {rangedAmmunition.enabled ? (
+                <>
+                  <div className="item-ranged-files">
+                    <label>
+                      <span>Aktualne ammunitiontypes.2da</span>
+                      <strong>{rangedAmmunition.ammunitiontypesFile?.name ?? "required"}</strong>
+                      <input
+                        aria-label="Ammunition types table"
+                        type="file"
+                        accept=".2da"
+                        onChange={(event) => {
+                          const file = event.currentTarget.files?.[0];
+                          if (file) onRangedAmmunitionChange({ ...rangedAmmunition, ammunitiontypesFile: file });
+                        }}
+                      />
+                    </label>
+                    <label>
+                      <span>Aktualne DamageTypes.2DA</span>
+                      <strong>{rangedAmmunition.damageTypesFile?.name ?? "required"}</strong>
+                      <input
+                        aria-label="Damage types table"
+                        type="file"
+                        accept=".2da"
+                        onChange={(event) => {
+                          const file = event.currentTarget.files?.[0];
+                          if (file) onRangedAmmunitionChange({ ...rangedAmmunition, damageTypesFile: file });
+                        }}
+                      />
+                    </label>
+                    <label>
+                      <span>Kanoniczny model pocisku GLB</span>
+                      <strong>{rangedAmmunition.projectileFile?.name ?? "required .glb"}</strong>
+                      <input
+                        aria-label="Projectile source GLB"
+                        type="file"
+                        accept=".glb,model/gltf-binary"
+                        onChange={(event) => {
+                          const file = event.currentTarget.files?.[0];
+                          if (file) onRangedAmmunitionChange({ ...rangedAmmunition, projectileFile: file });
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <div className="item-ranged-controls">
+                    <label>
+                      <span>Natywny kanał</span>
+                      <select
+                        aria-label="Ammunition channel"
+                        value={rangedAmmunition.ammunitionChannel}
+                        onChange={(event) => onRangedAmmunitionChange(
+                          withRangedAmmunitionChannelV1(
+                            rangedAmmunition,
+                            event.currentTarget.value as "ARROW" | "BOLT" | "BULLET",
+                          ),
+                        )}
+                      >
+                        <option value="ARROW">Arrow</option>
+                        <option value="BOLT">Bolt</option>
+                        <option value="BULLET">Bullet</option>
+                      </select>
+                    </label>
+                    <NumberField
+                      label="DamageRangedProjectile"
+                      value={rangedAmmunition.damageRangedProjectile}
+                      min={6}
+                      max={255}
+                      step={1}
+                      onChange={(damageRangedProjectile) => onRangedAmmunitionChange({
+                        ...rangedAmmunition,
+                        damageRangedProjectile,
+                      })}
+                    />
+                    <label>
+                      <span>Clip postaci</span>
+                      <select
+                        aria-label="Ranged wielder clip"
+                        value={rangedAmmunition.wielderClip}
+                        onChange={(event) => onRangedAmmunitionChange({
+                          ...rangedAmmunition,
+                          wielderClip: event.currentTarget.value as "BOWSHOT" | "XBOWSHOT",
+                        })}
+                      >
+                        <option value="BOWSHOT">bowshot</option>
+                        <option value="XBOWSHOT">xbowshot</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>Jawna oś przodu źródła</span>
+                      <select
+                        aria-label="Projectile source forward axis"
+                        value={rangedAmmunition.sourceForwardAxis}
+                        onChange={(event) => onRangedAmmunitionChange({
+                          ...rangedAmmunition,
+                          sourceForwardAxis: event.currentTarget.value as ItemRangedAmmunitionDraftV1["sourceForwardAxis"],
+                        })}
+                      >
+                        {(["POSITIVE_X", "NEGATIVE_X", "POSITIVE_Y", "NEGATIVE_Y", "POSITIVE_Z", "NEGATIVE_Z"] as const).map((axis) => (
+                          <option key={axis} value={axis}>{axis}</option>
+                        ))}
+                      </select>
+                    </label>
+                    {(["X", "Y", "Z"] as const).map((axis, index) => (
+                      <NumberField
+                        key={axis}
+                        label={`Korekta rotacji ${axis} (°)`}
+                        value={rangedAmmunition.rotationDegrees[index]}
+                        min={-360}
+                        max={360}
+                        step={1}
+                        onChange={(value) => {
+                          const rotationDegrees = [...rangedAmmunition.rotationDegrees] as [number, number, number];
+                          rotationDegrees[index] = value;
+                          onRangedAmmunitionChange({
+                            ...rangedAmmunition,
+                            rotationDegrees,
+                            rotationXyzw: eulerDegreesToQuaternion(rotationDegrees),
+                          });
+                        }}
+                      />
+                    ))}
+                    <NumberField
+                      label="Skala pocisku"
+                      value={rangedAmmunition.projectileScale}
+                      min={0.001}
+                      max={100}
+                      step={0.01}
+                      onChange={(projectileScale) => onRangedAmmunitionChange({
+                        ...rangedAmmunition,
+                        projectileScale,
+                      })}
+                    />
+                    <NumberField
+                      label="Skala stosu/modelu"
+                      value={rangedAmmunition.inventoryScale}
+                      min={0.001}
+                      max={100}
+                      step={0.01}
+                      onChange={(inventoryScale) => onRangedAmmunitionChange({
+                        ...rangedAmmunition,
+                        inventoryScale,
+                      })}
+                    />
+                  </div>
+                  <div className="item-ranged-resrefs">
+                    {([
+                      ["Projectile MDL", "projectileModelResref"],
+                      ["Projectile texture", "projectileTextureResref"],
+                      ["Shot sound", "shotSoundResref"],
+                      ["Impact sound", "impactSoundResref"],
+                      ["Ammo UTI", "ammunitionBlueprintResref"],
+                      ["Ammo texture", "ammunitionTextureResref"],
+                    ] as const).map(([label, field]) => (
+                      <label key={field}>
+                        <span>{label}</span>
+                        <input
+                          aria-label={label}
+                          value={rangedAmmunition[field]}
+                          onChange={(event) => onRangedAmmunitionChange({
+                            ...rangedAmmunition,
+                            [field]: event.currentTarget.value.trim().toLowerCase(),
+                          })}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <p className="item-ranged-manual-axis">
+                    Manualna korekta źródła: <code>rotation [{rangedAmmunition.rotationDegrees.map((value) => `${value}°`).join(", ")}]</code>. Zadeklarowany przód musi po tej rotacji wskazywać Aurora <code>+Y</code>; worker odrzuca złą orientację.
+                  </p>
+                  {!rangedAmmunitionFilesReadyV1(rangedAmmunition) || rangedIssues.length > 0 ? (
+                    <ul className="item-errors">
+                      {!rangedAmmunitionFilesReadyV1(rangedAmmunition) ? (
+                        <li>Wymagane są dokładne pliki ammunitiontypes.2da, damagetypes.2da oraz źródłowy GLB.</li>
+                      ) : null}
+                      {rangedIssues.map((issue) => <li key={issue}>{issue}</li>)}
+                    </ul>
+                  ) : (
+                    <p className="item-ranged-ready">Kontrakt amunicji jest kompletny do lokalnego buildu.</p>
+                  )}
+                </>
+              ) : null}
+            </section>
+          ) : null}
+          {selected?.modelType === 2 && !customWeaponAuthoring ? (
             <section className="item-reference-frame panel" aria-label="Reference appearance models">
               <header>
                 <div>
@@ -550,6 +847,7 @@ function ItemPrepare({
   seams,
   fitReport,
   attachmentProfile,
+  customWeaponAuthoring,
   busy,
   error,
   onSelectPart,
@@ -593,6 +891,7 @@ function ItemPrepare({
   readonly seams: readonly ItemSeamResult[];
   readonly fitReport?: ItemFitReport;
   readonly attachmentProfile?: ItemAttachmentProfileV1;
+  readonly customWeaponAuthoring: boolean;
   readonly busy: boolean;
   readonly error?: string;
   readonly onSelectPart: (field: string) => void;
@@ -618,7 +917,7 @@ function ItemPrepare({
   readonly onContinue: () => void;
 }) {
   const [nodeNames, setNodeNames] = useState<Record<string, string[]>>({});
-  const [showReference, setShowReference] = useState(true);
+  const [showReference, setShowReference] = useState(!customWeaponAuthoring);
   const selected = parts.find((part) => part.field === selectedField) ?? parts[0];
   const authorsCustomIconLayers = ["STANDARD", "LAYERED"].includes(
     row.capability.iconProfile,
@@ -631,9 +930,32 @@ function ItemPrepare({
       return undefined;
     }
   });
+  const directedComposition = fitReport && attachmentProfile
+    ? resolveOwnerDirectedItemCompositionV2({
+      outputBaseItem: row.baseItem,
+      referenceId: attachmentProfile.identity.referenceId,
+      sourceSha256ByField: Object.fromEntries(fitReport.parts.map((part) => (
+        [part.field, part.sourceSha256]
+      ))) as Record<"ModelPart1" | "ModelPart2" | "ModelPart3", string>,
+    })
+    : undefined;
+  const directedCompositionApplied = Boolean(
+    directedComposition && itemPartsMatchDirectedCompositionV2(parts, directedComposition),
+  );
+  const exactStandaloneProofActive = Boolean(
+    customWeaponAuthoring
+    && directedCompositionApplied
+    && directedComposition
+    && fitReport
+    && attachmentProfile,
+  );
+  const proofPartLabel = (field: string) => (
+    parts.find((part) => part.field === field)?.label ?? field
+  );
   const complete = resolved.every(Boolean)
     && Boolean(namespaceAllocation)
     && parts.every(validPartTransform)
+    && (!customWeaponAuthoring || directedCompositionApplied)
     && (!fitReport || parts.every((part) => partMatchesFitContract(part, fitReport)))
     && Number.isFinite(seamTolerance)
     && seamTolerance >= 0
@@ -694,18 +1016,6 @@ function ItemPrepare({
     part.sourceKind === "MESHY_GLB" && !partMatchesFitContract(part, fitReport)
   ));
   const hasManualFit = manualFitParts.length > 0;
-  const directedComposition = fitReport && attachmentProfile
-    ? resolveOwnerDirectedItemCompositionV2({
-      outputBaseItem: row.baseItem,
-      referenceId: attachmentProfile.identity.referenceId,
-      sourceSha256ByField: Object.fromEntries(fitReport.parts.map((part) => (
-        [part.field, part.sourceSha256]
-      ))) as Record<"ModelPart1" | "ModelPart2" | "ModelPart3", string>,
-    })
-    : undefined;
-  const directedCompositionApplied = Boolean(
-    directedComposition && itemPartsMatchDirectedCompositionV2(parts, directedComposition),
-  );
   const selectedHasManualSize = Boolean(
     selectedFitPart && !partMatchesFitContract(selected, fitReport),
   );
@@ -723,18 +1033,65 @@ function ItemPrepare({
     });
   };
   return (
-    <section className="item-prepare">
+    <section className={`item-prepare${exactStandaloneProofActive ? " item-prepare--standalone-proof" : ""}`}>
       <header className="item-page-heading">
         <div><p className="eyebrow">Item · Prepare</p><h1>Prepare Item</h1><p>BaseItem {row.baseItem} · {row.label} · {row.capability.compositionProfile}. Meshy sources become independent MDLs; retail selectors stay numeric.</p></div>
         <code>{row.capability.meshySourceCount} source GLB → {row.capability.meshySourceCount} MDL</code>
       </header>
       {directedCompositionApplied && directedComposition ? (
         <p className="item-reference-note item-directed-status" role="status">
-          <strong>Owner-directed candidate loaded.</strong>{" "}
-          Exact source hashes and reference parts match; technical fit is validated.
+          <strong>Manually assembled candidate loaded.</strong>{" "}
+          Exact source hashes and authored transforms match; technical fit is validated.
           Visual owner acceptance is still pending.
         </p>
       ) : null}
+      {customWeaponAuthoring
+        && directedCompositionApplied
+        && directedComposition
+        && fitReport
+        && attachmentProfile ? (
+          <section className="item-standalone-proof panel" aria-label="Standalone item proof">
+            <header>
+              <div>
+                <p className="eyebrow">Candidate-bound technical proof</p>
+                <h2>Standalone BaseItem proof</h2>
+                <p>Exact GLB hashes, authored transforms and geometry readback from this visible candidate.</p>
+              </div>
+              <span data-status="passed">VERIFIED</span>
+            </header>
+            <dl className="item-standalone-proof__identity">
+              <div><dt>Identity</dt><dd>BaseItem 113 · WHxSh · ModelType 2</dd></div>
+              <div><dt>Definition</dt><dd>Standalone V3 · explicit column assignments</dd></div>
+              <div><dt>Inheritance</dt><dd>No donor BaseItem</dd></div>
+              <div><dt>Authoring evidence</dt><dd>{attachmentProfile.attachmentEvidence}</dd></div>
+              <div><dt>Frame</dt><dd>depth {"XYZ"[attachmentProfile.depthAxis]} · axial {"XYZ"[attachmentProfile.axialAxis]} · width {"XYZ"[attachmentProfile.widthAxis]}</dd></div>
+              <div><dt>Assembly order</dt><dd>Bottom → Middle → Top</dd></div>
+            </dl>
+            <div className="item-standalone-proof__parts">
+              {fitReport.parts.map((fitPart) => (
+                <article key={fitPart.field}>
+                  <strong>{proofPartLabel(fitPart.field)} · {fitPart.field}</strong>
+                  <code>{fitPart.sourceSha256}</code>
+                  <small>
+                    T {JSON.stringify(fitPart.transform.translation)} · Q {JSON.stringify(fitPart.transform.rotationXyzw)} · S {fitPart.transform.uniformScale}
+                  </small>
+                </article>
+              ))}
+            </div>
+            <div className="item-standalone-proof__connections">
+              {fitReport.adjacentConnectors.map((connector) => (
+                <div key={`${connector.firstField}:${connector.secondField}`}>
+                  <span>{proofPartLabel(connector.firstField)} → {proofPartLabel(connector.secondField)}</span>
+                  <b>{connector.status}</b>
+                  <code>+{"XYZ"[connector.axialAxis]} {connector.axialOverlap.toFixed(4)}</code>
+                </div>
+              ))}
+            </div>
+            <footer>
+              Profile <code>{attachmentProfile.profileSha256}</code> · fit <code>{fitReport.solutionSha256}</code>
+            </footer>
+          </section>
+        ) : null}
       <div className="item-editor">
         <nav className="item-preview-modes" aria-label="Item preview mode">
           {(["COMPOSED", "EXPLODED", "ICON"] as const).map((mode) => (
@@ -742,7 +1099,13 @@ function ItemPrepare({
           ))}
         </nav>
         <section className="item-composition-stage" data-preview={preview.toLowerCase()}>
-          <header><strong>Aurora part assembly</strong><span>shared item origin · no combined MDL</span></header>
+          <header>
+            <div>
+              <strong>{exactStandaloneProofActive ? "Visible standalone weapon" : "Aurora part assembly"}</strong>
+              {exactStandaloneProofActive ? <small>BaseItem 113 · authored broadside assembly</small> : null}
+            </div>
+            <span>shared item origin · no combined MDL</span>
+          </header>
           {preview === "ICON" && authorsCustomIconLayers ? (
             <>
               <ItemCompositionViewport
@@ -796,6 +1159,10 @@ function ItemPrepare({
                 tolerance={seamTolerance}
                 referenceProfile={attachmentProfile}
                 showReference={showReference}
+                cameraPresentation={exactStandaloneProofActive ? "HORIZONTAL_BROADSIDE" : "ITEM_PROPERTIES"}
+                label={exactStandaloneProofActive
+                  ? "Assembled standalone BaseItem 113 Hextech Shotgun"
+                  : "Item composition 3D preview"}
                 onSeams={onSeams}
                 onNodeNames={(field, names) => setNodeNames((current) => (
                   current[field]?.join("\0") === names.join("\0")
@@ -827,13 +1194,14 @@ function ItemPrepare({
                       <code>{fitReport.solutionSha256.slice(0, 16)}...</code>
                     </span>
                     <span data-status={fitReport.orientationFrame.status === "PASSED" ? "TOUCHING" : "GAP"}>
-                      <b>FULL FRAME {fitReport.orientationFrame.status}</b> depth X · axial Y · width Z
+                      <b>FULL FRAME {fitReport.orientationFrame.status}</b>{" "}
+                      depth {"XYZ"[fitReport.orientationFrame.targetDepthAxis]} · axial {"XYZ"[fitReport.orientationFrame.targetAxialAxis]} · width {"XYZ"[fitReport.orientationFrame.targetWidthAxis]}
                       <code>width/depth {fitReport.orientationFrame.widthToDepthRatio.toFixed(3)}</code>
                     </span>
                     {fitReport.adjacentConnectors.map((connector) => (
                       <span key={`${connector.firstField}:${connector.secondField}:connector`} data-status={connector.status === "OVERLAPPING" ? "TOUCHING" : "GAP"}>
                         <b>CONNECTOR {connector.status}</b> {connector.firstField} TOP ↔ {connector.secondField} BOTTOM
-                        <code>+Y overlap {connector.axialOverlap.toFixed(4)}</code>
+                        <code>+{"XYZ"[connector.axialAxis]} overlap {connector.axialOverlap.toFixed(4)}</code>
                       </span>
                     ))}
                   </>
@@ -1372,14 +1740,14 @@ export function ItemReview({
     GROUND: validSha256(candidateSha256)
       && snapshot.report.proofModule.outputSha256 === candidateSha256
       && snapshot.report.proofModule.semanticReadbackStatus === "PASS"
-      && snapshot.report.proofModule.groundItemCount === 1,
+      && snapshot.report.proofModule.groundItemCount
+        === (snapshot.report.rangedAmmunition ? 2 : 1),
     EQUIPPED: validSha256(candidateSha256)
       && validSha256(hakSha256)
-      && customBaseItem?.status === "APPENDED_EXACT"
-      && customBaseItem.donorBaseItem === HEXTECH_SHOTGUN_BASEITEM_V2.runtimeDonorBaseItem
+      && customBaseItem?.status === "APPENDED_STANDALONE_EXACT"
+      && customBaseItem.schemaVersion === 3
       && customBaseItem.outputBaseItem === HEXTECH_SHOTGUN_BASEITEM_V2.outputBaseItem
-      && customBaseItem.runtimeRoute.baseItem === HEXTECH_SHOTGUN_BASEITEM_V2.runtimeDonorBaseItem
-      && customBaseItem.runtimeRoute.runtimeClip === "xbowshot"
+      && customBaseItem.definitionSource === "EXPLICIT_COLUMN_ASSIGNMENTS"
       && snapshot.report.proofModule.equippedItemCount === 1,
     INVENTORY_ICON: snapshot.report.itemIconConformance.status === "PASSED"
       && customBaseItem?.invSlotWidth === HEXTECH_SHOTGUN_BASEITEM_V2.invSlotWidth
@@ -1461,6 +1829,12 @@ export function ItemReview({
           <article><strong>{snapshot.report.itemIconConformance.colorways.length}</strong><span>native layered icon composites passed</span></article>
         ) : null}
         <article><strong>{snapshot.utiReport.partCount}</strong><span>numeric UTI part fields</span></article>
+        {snapshot.report.rangedAmmunition ? (
+          <article>
+            <strong>{snapshot.report.rangedAmmunition.binding.projectileModelResref}</strong>
+            <span>custom ranged projectile · {snapshot.report.rangedAmmunition.binding.runtimeClip}</span>
+          </article>
+        ) : null}
         <article><strong>{snapshot.report.triangleBudget.triangleCount.toLocaleString()}</strong><span>/ 300,000 triangles</span></article>
       </div>
       <section className="panel item-readback-table">
@@ -1475,6 +1849,54 @@ export function ItemReview({
         ) : null}
         <div><b>PASS</b><strong>UTI numeric readback</strong><code>BaseItem {snapshot.utiReport.baseItem} · ModelType {snapshot.utiReport.modelType}</code><span>{snapshot.utiReport.semanticReadbackStatus}</span></div>
       </section>
+      {snapshot.report.rangedAmmunition ? (
+        <section className="panel item-seam-readback" aria-label="Ranged ammunition readback">
+          <header>
+            <h2>Amunicja i pocisk</h2>
+            <span>{snapshot.report.rangedAmmunition.status}</span>
+          </header>
+          <div>
+            <b>PASS</b>
+            <strong>
+              BaseItem {snapshot.report.rangedAmmunition.binding.weaponBaseItem}
+              {" → ammo "}{snapshot.report.rangedAmmunition.binding.ammoBaseItem}
+              {" → type "}{snapshot.report.rangedAmmunition.binding.ammunitionType}
+            </strong>
+            <code>
+              DamageRangedProjectile {snapshot.report.rangedAmmunition.binding.damageRangedProjectile}
+              {" → row "}{snapshot.report.rangedAmmunition.binding.ammunitiontypesRow}
+              {" → "}{snapshot.report.rangedAmmunition.binding.projectileModelResref}
+              {" → "}{snapshot.report.rangedAmmunition.binding.runtimeClip}
+            </code>
+          </div>
+          <div>
+            <b>PASS</b>
+            <strong>DamageTypes.2DA + ammunitiontypes.2da semantic readback</strong>
+            <code>
+              {snapshot.report.rangedAmmunition.damageRoute.expectedLabel}
+              {" row "}{snapshot.report.rangedAmmunition.damageRoute.damageTypeRow}
+              {" · block "}{snapshot.report.rangedAmmunition.ammunitiontypes.firstRow}
+              {".."}{snapshot.report.rangedAmmunition.ammunitiontypes.lastRow}
+            </code>
+          </div>
+          <div>
+            <b>PASS</b>
+            <strong>
+              Dwa pickupy + nieruchomy cel {snapshot.report.proofModule.targetBlueprintResref}
+            </strong>
+            <code>
+              creatureCount={snapshot.report.proofModule.creatureCount}
+              {" · WalkRate="}{snapshot.report.proofModule.targetWalkRate}
+              {" · scriptsEmpty="}{String(snapshot.report.proofModule.targetScriptsEmpty)}
+            </code>
+          </div>
+          <div>
+            <b>PENDING</b>
+            <strong>Runtime consumption, flight visibility and clip</strong>
+            <code>owner proof required · modelVisibility=not_tested</code>
+          </div>
+        </section>
+      ) : null}
       {snapshot.report.itemPropertiesModelConformance.status === "PASSED" ? (
         <section className="panel item-seam-readback">
           <header><h2>Aurora ModelType 2 append contract</h2><span>{snapshot.report.itemPropertiesModelConformance.algorithm}</span></header>
@@ -1576,6 +1998,9 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
   const [catalog, setCatalog] = useState<ItemBaseItemsCatalog>();
   const [selectedBaseItem, setSelectedBaseItem] = useState<number>();
   const [customWeaponAuthoring, setCustomWeaponAuthoring] = useState(false);
+  const [rangedAmmunition, setRangedAmmunition] = useState<ItemRangedAmmunitionDraftV1>(
+    () => initialRangedAmmunitionDraft(),
+  );
   const [parts, setParts] = useState<ItemPartDraft[]>([]);
   const [generationProvenance, setGenerationProvenance] = useState<Record<string, MeshyArtifactProvenance>>({});
   const [generationSession, setGenerationSession] = useState<ItemGenerationSessionV1>();
@@ -1632,6 +2057,19 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
     }
   }, [occupiedNamespace, parts, selected]);
   const resolvedParts = namespaceAllocation?.parts ?? [];
+  const customDirectedComposition = selected && fitReport && attachmentProfile
+    ? resolveOwnerDirectedItemCompositionV2({
+      outputBaseItem: selected.baseItem,
+      referenceId: attachmentProfile.identity.referenceId,
+      sourceSha256ByField: Object.fromEntries(fitReport.parts.map((part) => (
+        [part.field, part.sourceSha256]
+      ))) as Record<"ModelPart1" | "ModelPart2" | "ModelPart3", string>,
+    })
+    : undefined;
+  const customDirectedReady = !customWeaponAuthoring || Boolean(
+    customDirectedComposition
+    && itemPartsMatchDirectedCompositionV2(parts, customDirectedComposition),
+  );
   const maxStep = build
     ? "DOWNLOAD"
     : step === "REVIEW"
@@ -1646,6 +2084,7 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
     if (!row) return;
     const next = initialItemPartDrafts(row);
     setCustomWeaponAuthoring(false);
+    setRangedAmmunition(initialRangedAmmunitionDraft(row));
     setSelectedBaseItem(baseItem);
     setParts(next);
     setGenerationProvenance({});
@@ -1672,7 +2111,15 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
 
   const toggleHextechShotgunAuthoring = () => {
     if (customWeaponAuthoring) {
-      selectRow(HEXTECH_SHOTGUN_BASEITEM_V2.runtimeDonorBaseItem);
+      setCustomWeaponAuthoring(false);
+      setRangedAmmunition(initialRangedAmmunitionDraft());
+      setSelectedBaseItem(undefined);
+      setParts([]);
+      setAttachmentProfile(undefined);
+      setAttachmentProfileJson(undefined);
+      setFitReport(undefined);
+      setBuild(undefined);
+      setError(undefined);
       return;
     }
     if (!catalog) {
@@ -1682,8 +2129,9 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
     try {
       const row = deriveHextechShotgunOutputRowV2(catalog);
       const next = initialItemPartDrafts(row);
-      setSelectedBaseItem(HEXTECH_SHOTGUN_BASEITEM_V2.runtimeDonorBaseItem);
+      setSelectedBaseItem(undefined);
       setCustomWeaponAuthoring(true);
+      setRangedAmmunition(initialRangedAmmunitionDraft(row));
       setParts(next);
       setGenerationProvenance({});
       setGenerationSession(undefined);
@@ -1720,6 +2168,7 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
     setCatalog(undefined);
     setSelectedBaseItem(undefined);
     setCustomWeaponAuthoring(false);
+    setRangedAmmunition(initialRangedAmmunitionDraft());
     setParts([]);
     setGenerationProvenance({});
     setGenerationSession(undefined);
@@ -1757,6 +2206,7 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
         if (next.rows[0]) {
           const drafts = initialItemPartDrafts(next.rows[0]);
           setSelectedBaseItem(next.rows[0].baseItem);
+          setRangedAmmunition(initialRangedAmmunitionDraft(next.rows[0]));
           setParts(drafts);
           setUtiNumeric(initialUtiNumeric(next.rows[0]));
           setProperties(next.rows[0].capability.iconProfile === "IPRP_SPELL"
@@ -1819,7 +2269,7 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
       setError("Every resolved Meshy Item slot requires a GLB before deterministic auto-fit.");
       return;
     }
-    if (selected.modelType === 2 && (
+    if (selected.modelType === 2 && !customWeaponAuthoring && (
       !baseitems
       || selected.partSlots.some((slot) => !referenceModels[slot.field])
     )) {
@@ -1851,27 +2301,34 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
     void (async () => {
       let currentProfileJson = attachmentProfileJson;
       if (selected.modelType === 2 && !currentProfileJson) {
-        const referenceBaseItem = customWeaponAuthoring
-          ? HEXTECH_SHOTGUN_BASEITEM_V2.runtimeDonorBaseItem
-          : selected.baseItem;
-        const baseitemsTwoDa = await baseitems!.arrayBuffer();
-        const models = await Promise.all(selected.partSlots.map(async (slot) => {
-          const reference = referenceModels[slot.field];
-          return {
-            field: slot.field,
-            modelResref: reference.modelResref,
-            bytes: await reference.file.arrayBuffer(),
-          };
-        }));
-        const profileResponse = await worker.request({
-          requestId: id(),
-          type: "BUILD_ITEM_ATTACHMENT_PROFILE",
-          baseitemsTwoDa,
-          baseItem: referenceBaseItem,
-          referenceKind: "EXPLICIT_VARIANTS",
-          referenceId: models.map((model) => model.modelResref).join("/"),
-          models,
-        }, [baseitemsTwoDa, ...models.map((model) => model.bytes)]);
+        const profileResponse = customWeaponAuthoring
+          ? await worker.request({
+              requestId: id(),
+              type: "FINALIZE_ITEM_AUTHORED_ATTACHMENT_PROFILE",
+              attachmentProfileJson: JSON.stringify(
+                buildHextechShotgunAuthoredAttachmentProfileV3(catalog!.sourceSha256),
+              ),
+            })
+          : await (async () => {
+              const baseitemsTwoDa = await baseitems!.arrayBuffer();
+              const models = await Promise.all(selected.partSlots.map(async (slot) => {
+                const reference = referenceModels[slot.field];
+                return {
+                  field: slot.field,
+                  modelResref: reference.modelResref,
+                  bytes: await reference.file.arrayBuffer(),
+                };
+              }));
+              return worker.request({
+                requestId: id(),
+                type: "BUILD_ITEM_ATTACHMENT_PROFILE",
+                baseitemsTwoDa,
+                baseItem: selected.baseItem,
+                referenceKind: "EXPLICIT_VARIANTS",
+                referenceId: models.map((model) => model.modelResref).join("/"),
+                models,
+              }, [baseitemsTwoDa, ...models.map((model) => model.bytes)]);
+            })();
         if (!profileResponse.ok || profileResponse.type !== "ITEM_ATTACHMENT_PROFILE_BUILT") {
           throw new Error("Unexpected Item attachment profile response");
         }
@@ -1880,7 +2337,7 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
         if (
           profile.schemaVersion !== 1
           || profile.algorithm !== "AURORA_ITEM_REFERENCE_PROFILE_V1"
-          || profile.identity.baseItem !== referenceBaseItem
+          || profile.identity.baseItem !== selected.baseItem
           || profile.slots.length !== selected.partSlots.length
         ) {
           throw new Error("Reference attachment profile does not match the selected BaseItem.");
@@ -2084,9 +2541,14 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
       || resolvedParts.length !== parts.length
       || parts.some((part) => part.sourceKind === "MESHY_GLB" && !part.file)
       || (selected.modelType === 2 && (!attachmentProfileJson || fitReport?.schemaVersion !== 4))
+      || !customDirectedReady
       || selected.capability.requiredReferenceTables.some(
         (tableName) => !referenceTables[tableName.toUpperCase()],
       )
+      || (rangedAmmunition.enabled && (
+        !rangedAmmunitionFilesReadyV1(rangedAmmunition)
+        || validateRangedAmmunitionDraftV1(rangedAmmunition, selected).length > 0
+      ))
       || (
         requiresEquippedItemProof(selected)
         && (
@@ -2173,6 +2635,31 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
           bytes: await file.arrayBuffer(),
         };
       }));
+      const requestRangedAmmunition = rangedAmmunition.enabled
+        ? {
+            ammunitiontypesTwoDa: await rangedAmmunition.ammunitiontypesFile!.arrayBuffer(),
+            damageTypesTwoDa: await rangedAmmunition.damageTypesFile!.arrayBuffer(),
+            ammunitionChannel: rangedAmmunition.ammunitionChannel,
+            damageRangedProjectile: rangedAmmunition.damageRangedProjectile,
+            damageTypeRow: rangedAmmunition.damageTypeRow,
+            damageTypeLabel: rangedAmmunition.damageTypeLabel,
+            damagePropertySubtype: rangedAmmunition.damagePropertySubtype,
+            wielderClip: rangedAmmunition.wielderClip,
+            projectileSourceGlb: await rangedAmmunition.projectileFile!.arrayBuffer(),
+            projectileModelResref: rangedAmmunition.projectileModelResref,
+            projectileTextureResref: rangedAmmunition.projectileTextureResref,
+            projectileOptionsJson: JSON.stringify(buildRangedProjectileOptionsV1(rangedAmmunition)),
+            shotSoundResref: rangedAmmunition.shotSoundResref || null,
+            impactSoundResref: rangedAmmunition.impactSoundResref || null,
+            ammunitionBlueprintResref: rangedAmmunition.ammunitionBlueprintResref,
+            ammunitionBlueprintJson: JSON.stringify(buildRangedAmmunitionBlueprintV1(rangedAmmunition)),
+            ammunitionModelResref: rangedAmmunition.ammunitionModelResref,
+            ammunitionTextureResref: rangedAmmunition.ammunitionTextureResref,
+            ammunitionIconResref: rangedAmmunition.ammunitionIconResref,
+            ammunitionVariant: rangedAmmunition.ammunitionVariant,
+            ammunitionOptionsJson: JSON.stringify(buildRangedAmmunitionItemOptionsV1(rangedAmmunition)),
+          }
+        : undefined;
       const blueprintJson = JSON.stringify({
         schemaVersion: 1,
         templateResref: blueprintResref,
@@ -2209,6 +2696,13 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
           : []),
         ...requestReferenceResources.map((resource) => resource.bytes),
         ...requestParts.flatMap((part) => part.sourceGlb ? [part.sourceGlb] : []),
+        ...(requestRangedAmmunition
+          ? [
+              requestRangedAmmunition.ammunitiontypesTwoDa,
+              requestRangedAmmunition.damageTypesTwoDa,
+              requestRangedAmmunition.projectileSourceGlb,
+            ]
+          : []),
       ];
       const generatedRequestParts = requestParts.filter(
         (part) => part.sourceKind === "MESHY_GLB",
@@ -2242,16 +2736,17 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
         baseItem: selected.baseItem,
         customWeaponBaseItem: customWeaponAuthoring
           ? {
-              schemaVersion: 2,
-              donorBaseItem: HEXTECH_SHOTGUN_BASEITEM_V2.runtimeDonorBaseItem,
+              schemaVersion: 3,
               outputBaseItem: HEXTECH_SHOTGUN_BASEITEM_V2.outputBaseItem,
               label: HEXTECH_SHOTGUN_BASEITEM_V2.outputLabel,
               itemClass: HEXTECH_SHOTGUN_BASEITEM_V2.outputItemClass,
-              nameStrref: null,
-              invSlotWidth: HEXTECH_SHOTGUN_BASEITEM_V2.invSlotWidth,
-              invSlotHeight: HEXTECH_SHOTGUN_BASEITEM_V2.invSlotHeight,
+              cells: HEXTECH_SHOTGUN_STANDALONE_CELLS_V3.map(([columnName, value]) => ({
+                columnName,
+                value: { kind: "TEXT" as const, value },
+              })),
             }
           : undefined,
+        rangedAmmunition: requestRangedAmmunition,
         hakResref,
         hakFileName: `${hakResref}.hak`,
         moduleResref,
@@ -2331,6 +2826,12 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
       sourceBaseItem={selectedBaseItem}
       customWeaponAuthoring={customWeaponAuthoring}
       onCustomWeaponAuthoring={toggleHextechShotgunAuthoring}
+      rangedAmmunition={rangedAmmunition}
+      onRangedAmmunitionChange={(next) => {
+        setRangedAmmunition(next);
+        setBuild(undefined);
+        setError(undefined);
+      }}
       referenceTables={referenceTables}
       onReferenceTable={(tableName, file) => {
         if (!file.name.toLowerCase().endsWith(".2da")) {
@@ -2403,6 +2904,7 @@ export function ItemWorkflow({ onTargetChange, client, meshyBridge }: ItemWorkfl
       seams={seams}
       fitReport={fitReport}
       attachmentProfile={attachmentProfile}
+      customWeaponAuthoring={customWeaponAuthoring}
       busy={busy}
       error={error}
       onSelectPart={setSelectedField}

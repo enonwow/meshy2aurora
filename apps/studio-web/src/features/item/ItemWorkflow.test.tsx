@@ -12,11 +12,15 @@ vi.mock("./ItemCompositionViewport", () => ({
     parts,
     referenceProfile,
     showReference,
+    cameraPresentation,
+    label,
     onSeams,
   }: {
     parts: Array<{ field: string; sourceKind: string }>;
     referenceProfile?: { slots: unknown[] };
     showReference?: boolean;
+    cameraPresentation?: string;
+    label?: string;
     onSeams: (results: unknown[]) => void;
   }) => {
     useEffect(() => {
@@ -31,7 +35,13 @@ vi.mock("./ItemCompositionViewport", () => ({
         overlapVolume: 0,
       })));
     }, [onSeams, parts]);
-    return <div data-testid="mock-item-viewport" data-reference-visible={showReference} data-reference-slots={referenceProfile?.slots.length ?? 0} />;
+    return <div
+      data-testid="mock-item-viewport"
+      data-reference-visible={showReference}
+      data-reference-slots={referenceProfile?.slots.length ?? 0}
+      data-camera-presentation={cameraPresentation}
+      aria-label={label}
+    />;
   },
 }));
 
@@ -85,20 +95,12 @@ function catalogJson() {
   });
 }
 
-function hextechDonorCatalogJson() {
+function hextechStandaloneCatalogJson() {
   const catalog = JSON.parse(catalogJson()) as {
     physicalRowCount: number;
     rows: Array<Record<string, unknown>>;
   };
   catalog.physicalRowCount = 113;
-  catalog.rows[0] = {
-    ...catalog.rows[0],
-    baseItem: 6,
-    label: "heavycrossbow",
-    itemClass: "WBwXh",
-    invSlotWidth: 2,
-    invSlotHeight: 4,
-  };
   return JSON.stringify(catalog);
 }
 
@@ -167,6 +169,17 @@ class FakeItemClient implements ItemWorkerClient {
             allowAxialExtensionAtMin: false,
             allowAxialExtensionAtMax: index === 2,
           })),
+          profileSha256: "p".repeat(64),
+        }),
+      };
+    }
+    if (request.type === "FINALIZE_ITEM_AUTHORED_ATTACHMENT_PROFILE") {
+      return {
+        requestId: request.requestId,
+        ok: true,
+        type: "ITEM_ATTACHMENT_PROFILE_BUILT",
+        attachmentProfileJson: JSON.stringify({
+          ...JSON.parse(request.attachmentProfileJson),
           profileSha256: "p".repeat(64),
         }),
       };
@@ -257,9 +270,9 @@ class FakeItemClient implements ItemWorkerClient {
             secondField: request.parts[index + 1].field,
             secondConnector: "BOTTOM",
             axialAxis: 1,
-            axialOverlap: 0.01,
-            requiredMinOverlap: 0.0075,
-            requiredMaxOverlap: 0.0125,
+            axialOverlap: [0.0051, 0.0137][index],
+            requiredMinOverlap: [0.005, 0.013][index],
+            requiredMaxOverlap: [0.006, 0.014][index],
             surfaceStatus: "OVERLAP",
             status: "OVERLAPPING",
           })),
@@ -418,8 +431,8 @@ afterEach(async () => {
 });
 
 describe("ItemWorkflow", () => {
-  it("requires an explicit action before projecting donor 6 as output 113", async () => {
-    const client = new FakeItemClient(hextechDonorCatalogJson());
+  it("requires an explicit action before projecting standalone output 113", async () => {
+    const client = new FakeItemClient(hextechStandaloneCatalogJson());
     const container = await render(
       <ItemWorkflow client={client} onTargetChange={vi.fn()} />,
     );
@@ -428,20 +441,24 @@ describe("ItemWorkflow", () => {
       localFile("baseitems.2da", 1),
     );
 
-    expect(container.textContent).toContain("BaseItem 6");
-    expect(container.textContent).toContain("WBwXh");
     expect(container.textContent).not.toContain("BaseItem 113");
+    expect(container.textContent).not.toContain("heavycrossbow");
+    expect(container.textContent).not.toContain("WBwXh");
 
-    await act(async () => button(container, "Author Hextech Shotgun V2")?.click());
+    await act(async () => button(container, "Create standalone Hextech Shotgun")?.click());
+
+    expect(container.querySelector<HTMLInputElement>(
+      'input[aria-label="APPEARANCE reference table"]',
+    )).not.toBeNull();
 
     expect(container.textContent).toContain("BaseItem 113");
     expect(container.textContent).toContain("WHxSh");
     expect(container.textContent).toContain("64 × 128");
-    expect(button(container, "Use retail BaseItem 6")).not.toBeNull();
+    expect(button(container, "Cancel standalone BaseItem 113")).not.toBeNull();
   });
 
-  it("loads, validates and builds the exact owner-directed Hextech Shotgun composition", async () => {
-    const client = new FakeItemClient(hextechDonorCatalogJson(), [
+  it("loads, validates and builds the exact manually assembled Hextech Shotgun", async () => {
+    const client = new FakeItemClient(hextechStandaloneCatalogJson(), [
       "69c78999590b248bf9c642516ffa595d33774ead3436166963b27dfaa71ad48d",
       "8fafe6a55dd77107a67f29c7519f3b6edc390b310f918a89131b003517720147",
       "6ce1281a4ed8a239bf0d6fc9388fe8a977a2811750d40eab4320e13b642c77bf",
@@ -453,7 +470,13 @@ describe("ItemWorkflow", () => {
       container.querySelector<HTMLInputElement>('input[aria-label="Base items table"]')!,
       localFile("baseitems.2da", 1),
     );
-    await act(async () => button(container, "Author Hextech Shotgun V2")?.click());
+    await act(async () => button(container, "Create standalone Hextech Shotgun")?.click());
+    await chooseFile(
+      container.querySelector<HTMLInputElement>(
+        'input[aria-label="APPEARANCE reference table"]',
+      )!,
+      localFile("appearance.2da", 9),
+    );
 
     const partInputs = Array.from(container.querySelectorAll<HTMLInputElement>(
       'input[accept=".glb,model/gltf-binary"]',
@@ -461,12 +484,7 @@ describe("ItemWorkflow", () => {
     for (const [index, input] of partInputs.entries()) {
       await chooseFile(input, localFile(["bottom.glb", "middle.glb", "top.glb"][index], index + 2));
     }
-    const referenceInputs = Array.from(container.querySelectorAll<HTMLInputElement>(
-      'input[aria-label$="reference MDL"]',
-    ));
-    for (const [index, input] of referenceInputs.entries()) {
-      await chooseFile(input, localFile(`wbwxh_${["b", "m", "t"][index]}_014.mdl`, index + 10));
-    }
+    expect(container.querySelectorAll('input[aria-label$="reference MDL"]')).toHaveLength(0);
 
     await act(async () => {
       button(container, "Continue to Prepare Item")?.click();
@@ -481,27 +499,43 @@ describe("ItemWorkflow", () => {
         parts: [
           {
             field: "ModelPart1",
-            translation: [-0.00431, 0.12917034, 0.15773459],
-            rotationXyzw: [0.5, -0.5, 0.5, 0.5],
+            translation: [-0.00431, -0.15773459, 0.13717034],
+            rotationXyzw: [Math.SQRT1_2, -Math.SQRT1_2, 0, 0],
             uniformScale: 0.15796308,
           },
           {
             field: "ModelPart2",
-            translation: [-0.00431, -0.00852164987, -0.18716540565],
-            rotationXyzw: [-0.5, -0.5, -0.5, 0.5],
+            translation: [-0.00431, 0.18716541, -0.00852165],
+            rotationXyzw: [0, 0, -Math.SQRT1_2, Math.SQRT1_2],
             uniformScale: 0.21066014,
           },
           {
             field: "ModelPart3",
-            translation: [-0.00431, 0.008945521, -0.49844033],
-            rotationXyzw: [-0.5, -0.5, -0.5, 0.5],
+            translation: [-0.00431, 0.49844033, 0.008945521],
+            rotationXyzw: [0, 0, -Math.SQRT1_2, Math.SQRT1_2],
             uniformScale: 0.13161969,
           },
         ],
       },
     });
-    expect(container.textContent).toContain("Owner-directed candidate loaded");
+    expect(container.textContent).toContain("Manually assembled candidate loaded");
     expect(container.textContent).toContain("Visual owner acceptance is still pending");
+    expect(container.querySelector('[aria-label="Standalone item proof"]')).not.toBeNull();
+    expect(container.textContent).toContain("Standalone BaseItem proof");
+    expect(container.textContent).toContain("Visible standalone weapon");
+    expect(container.textContent).toContain("No donor BaseItem");
+    expect(container.textContent).toContain("AUTHOR_MANUAL_ALIGNMENT_V1");
+    expect(container.textContent).toContain(
+      "69c78999590b248bf9c642516ffa595d33774ead3436166963b27dfaa71ad48d",
+    );
+    expect(container.textContent).toContain("Bottom → Middle");
+    expect(container.textContent).toContain("+Y 0.0051");
+    expect(container.querySelector('[data-testid="mock-item-viewport"]')?.getAttribute("data-camera-presentation"))
+      .toBe("HORIZONTAL_BROADSIDE");
+    expect(container.querySelector('[data-testid="mock-item-viewport"]')?.getAttribute("aria-label"))
+      .toBe("Assembled standalone BaseItem 113 Hextech Shotgun");
+    expect(container.querySelector('[data-testid="mock-item-viewport"]')?.getAttribute("data-reference-visible"))
+      .toBe("false");
     expect(container.querySelector('img[alt="Hextech Shotgun owner concept"]')).toBeNull();
     expect(container.textContent).not.toContain("Exact tracked concept");
     expect(container.textContent).toContain("Fit validated");
@@ -522,11 +556,22 @@ describe("ItemWorkflow", () => {
     const middle = buildRequest.parts.find((part) => part.field === "ModelPart2");
     expect(middle).toBeDefined();
     expect(JSON.parse(middle!.transformJson)).toEqual({
-      translation: [-0.00431, -0.00852164987, -0.18716540565].map(Math.fround),
-      rotationXyzw: [-0.5, -0.5, -0.5, 0.5].map(Math.fround),
+      translation: [-0.00431, 0.18716541, -0.00852165].map(Math.fround),
+      rotationXyzw: [0, 0, -Math.SQRT1_2, Math.SQRT1_2].map(Math.fround),
       uniformScale: Math.fround(0.21066014),
       pivot: [0, 0, 0].map(Math.fround),
     });
+    expect(buildRequest.customWeaponBaseItem).toMatchObject({
+      schemaVersion: 3,
+      outputBaseItem: 113,
+      itemClass: "WHxSh",
+    });
+    expect(buildRequest.referenceTables).toHaveLength(1);
+    expect(buildRequest.referenceTables[0]).toMatchObject({
+      tableName: "APPEARANCE",
+      fileName: "appearance.2da",
+    });
+    expect(JSON.stringify(buildRequest.customWeaponBaseItem)).not.toContain("donor");
   });
 
   it("shows one Item case and builds the exact three-part Aurora recipe", async () => {

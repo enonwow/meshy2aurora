@@ -73,6 +73,10 @@ function row(
     equipableSlots: 1,
     invSlotWidth: 2,
     invSlotHeight: 3,
+    weaponWield: null,
+    weaponType: null,
+    rangedWeapon: null,
+    ammunitionType: null,
     capability: {
       schemaVersion: 1,
       compositionProfile: modelType === 2

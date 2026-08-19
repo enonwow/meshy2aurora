@@ -38,20 +38,21 @@ use crate::{
     plt::{ItemPltLayerV1, PltWriterOptionsV1, write_item_plt_v1},
     profile_a::{convert_profile_a, derive_meshy_m0_static_rigid_profile_v1},
     proof_module::{
-        BinaryCreatureOwnedFixtureV1, M0_RUNTIME_ENTRY_DIR_X, M0_RUNTIME_ENTRY_DIR_Y,
-        M0_RUNTIME_ENTRY_X, M0_RUNTIME_ENTRY_Y, M0_RUNTIME_ENTRY_Z, M0RuntimeDirectionV1,
-        M0RuntimePositionV1, binary_creature_multi_fixture_gic, binary_creature_multi_fixture_git,
-        binary_m0_area_for, binary_m0_module_ifo_for, proof_factions,
+        BinaryCreatureModuleIdentityV1, BinaryCreatureOwnedFixtureV1, M0_RUNTIME_ENTRY_DIR_X,
+        M0_RUNTIME_ENTRY_DIR_Y, M0_RUNTIME_ENTRY_X, M0_RUNTIME_ENTRY_Y, M0_RUNTIME_ENTRY_Z,
+        M0RuntimeDirectionV1, M0RuntimePositionV1, binary_creature_multi_fixture_gic,
+        binary_creature_multi_fixture_git, binary_m0_area_for, binary_m0_module_ifo_for,
+        build_binary_creature_multi_fixture_module_v1, proof_factions,
     },
     tga::{
         TGA_SCHEMA_VERSION, TgaImageV1, TgaPixelFormatV1, TgaWriterOptionsV1, read_tga_image_v1,
         write_tga_v1,
     },
     two_da::{
-        TwoDaAppendReportV1, TwoDaCellAssignmentV1, TwoDaCellPatchV1, TwoDaCellValueV1,
-        TwoDaInspectionV1, TwoDaLimitsV1, TwoDaRowPatchReportV1, TwoDaRowPatchRequestV1,
-        append_two_da_row_v1, clone_two_da_row_request_v1, inspect_two_da_v2, patch_two_da_row_v1,
-        read_two_da_row_v2,
+        TwoDaAppendReportV1, TwoDaAppendRequestV1, TwoDaCellAssignmentV1, TwoDaCellPatchV1,
+        TwoDaCellValueV1, TwoDaInspectionV1, TwoDaLimitsV1, TwoDaRowPatchReportV1,
+        TwoDaRowPatchRequestV1, append_two_da_row_v1, clone_two_da_row_request_v1,
+        inspect_two_da_v2, patch_two_da_row_v1, read_two_da_row_v2,
     },
 };
 
@@ -276,9 +277,176 @@ pub struct ItemBaseItemV1 {
     pub weapon_wield: Option<u32>,
     pub weapon_type: Option<u32>,
     pub ranged_weapon: Option<u32>,
+    pub ammunition_type: Option<u32>,
     pub capability: ItemCapabilityV1,
     pub part_slots: Vec<ItemPartSlotV1>,
     pub color_fields: Vec<String>,
+}
+
+/// The three native ammunition inventory channels used by ranged launchers.
+/// Additional rows in ammunitiontypes.2da add visual/damage variants; they do
+/// not create a fourth inventory channel.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ItemAmmunitionChannelV1 {
+    Arrow,
+    Bolt,
+    Bullet,
+}
+
+impl ItemAmmunitionChannelV1 {
+    fn ammo_base_item(self) -> u32 {
+        match self {
+            Self::Arrow => 20,
+            Self::Bolt => 25,
+            Self::Bullet => 27,
+        }
+    }
+
+    fn ammunition_type(self) -> u32 {
+        match self {
+            Self::Arrow => 1,
+            Self::Bolt => 2,
+            Self::Bullet => 3,
+        }
+    }
+
+    fn ammunitiontypes_offset(self) -> u32 {
+        self.ammunition_type() - 1
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ItemWielderClipV1 {
+    Bowshot,
+    Xbowshot,
+}
+
+impl ItemWielderClipV1 {
+    fn runtime_name(self) -> &'static str {
+        match self {
+            Self::Bowshot => "bowshot",
+            Self::Xbowshot => "xbowshot",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemRangedWeaponProfileV1 {
+    pub schema_version: u32,
+    pub ammunition_channel: ItemAmmunitionChannelV1,
+    /// Native projectile damage-visual selector. Values 0..5 belong to the
+    /// retail table; authoring a new block starts at 6.
+    pub damage_ranged_projectile: u8,
+    pub projectile_model_resref: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shot_sound_resref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub impact_sound_resref: Option<String>,
+    pub wielder_clip: ItemWielderClipV1,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemRangedWeaponBindingV1 {
+    pub schema_version: u32,
+    pub weapon_base_item: u32,
+    pub ammo_base_item: u32,
+    pub ammunition_type: u32,
+    pub weapon_wield: u32,
+    pub weapon_type: u32,
+    pub ranged_weapon: u32,
+    pub damage_ranged_projectile: u8,
+    pub ammunitiontypes_row: u32,
+    pub projectile_model_resref: String,
+    pub shot_sound_resref: Option<String>,
+    pub impact_sound_resref: Option<String>,
+    pub runtime_clip: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemAmmunitionVariantEntryV1 {
+    pub label: String,
+    pub model_resref: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shot_sound_resref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub impact_sound_resref: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemAmmunitionVariantBlockRequestV1 {
+    pub schema_version: u32,
+    pub damage_ranged_projectile: u8,
+    /// Native order: Arrow, Bolt, Bullet, Dart, Shuriken, Throwing Axe.
+    pub entries: Vec<ItemAmmunitionVariantEntryV1>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemAmmunitionVariantRowReportV1 {
+    pub row: u32,
+    pub label: String,
+    pub model_resref: String,
+    pub shot_sound_resref: Option<String>,
+    pub impact_sound_resref: Option<String>,
+    pub ammunition_type: u8,
+    pub damage_ranged_projectile: u8,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemAmmunitionVariantBlockReportV1 {
+    pub schema_version: u32,
+    pub status: String,
+    pub damage_ranged_projectile: u8,
+    pub first_row: u32,
+    pub last_row: u32,
+    pub source_sha256: String,
+    pub output_sha256: String,
+    pub rows: Vec<ItemAmmunitionVariantRowReportV1>,
+    pub append_reports: Vec<TwoDaAppendReportV1>,
+    pub semantic_readback_status: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ItemAmmunitionVariantBlockArtifactV1 {
+    pub payload: Vec<u8>,
+    pub report: ItemAmmunitionVariantBlockReportV1,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemDamageRangedProjectileRequestV1 {
+    pub schema_version: u32,
+    pub damage_type_row: u32,
+    pub expected_label: String,
+    pub damage_ranged_projectile: u8,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemDamageRangedProjectileReportV1 {
+    pub schema_version: u32,
+    pub status: String,
+    pub damage_type_row: u32,
+    pub expected_label: String,
+    pub source_damage_ranged_projectile: u8,
+    pub damage_ranged_projectile: u8,
+    pub source_sha256: String,
+    pub output_sha256: String,
+    pub patch_report: TwoDaRowPatchReportV1,
+    pub semantic_readback_status: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ItemDamageRangedProjectileArtifactV1 {
+    pub payload: Vec<u8>,
+    pub report: ItemDamageRangedProjectileReportV1,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -330,6 +498,95 @@ pub fn resolve_item_weapon_runtime_route_v1(
         animated_part_label: animated_part_label.to_owned(),
         reference_family: reference_family.to_owned(),
     }))
+}
+
+/// Resolves a custom ranged weapon from its authored semantic columns. Unlike
+/// the retail route report above, this is not donor lineage: all values are
+/// checked atomically against the selected standalone BaseItem.
+pub fn resolve_item_ranged_weapon_profile_v1(
+    base_item: &ItemBaseItemV1,
+    profile: &ItemRangedWeaponProfileV1,
+) -> Result<ItemRangedWeaponBindingV1, ItemErrorV1> {
+    if profile.schema_version != ITEM_SCHEMA_VERSION_V1 {
+        return Err(error(
+            "ITEM-RANGED-WEAPON-PROFILE-SCHEMA-INVALID",
+            "profile.schemaVersion",
+            "ranged weapon profile schemaVersion must be 1",
+        ));
+    }
+    if profile.damage_ranged_projectile < 6 {
+        return Err(error(
+            "ITEM-RANGED-WEAPON-PROJECTILE-VARIANT-RETAIL",
+            "profile.damageRangedProjectile",
+            "new projectile authoring must use a non-retail DamageRangedProjectile value in 6..255",
+        ));
+    }
+    let projectile_model_resref = validate_resref(
+        &profile.projectile_model_resref,
+        "profile.projectileModelResref",
+    )?;
+    let shot_sound_resref = profile
+        .shot_sound_resref
+        .as_deref()
+        .map(|value| validate_resref(value, "profile.shotSoundResref"))
+        .transpose()?;
+    let impact_sound_resref = profile
+        .impact_sound_resref
+        .as_deref()
+        .map(|value| validate_resref(value, "profile.impactSoundResref"))
+        .transpose()?;
+
+    let expected_ammo_base_item = profile.ammunition_channel.ammo_base_item();
+    let expected_ammunition_type = profile.ammunition_channel.ammunition_type();
+    let expected_clip = match base_item.weapon_wield {
+        Some(5) => ItemWielderClipV1::Bowshot,
+        Some(6) => ItemWielderClipV1::Xbowshot,
+        _ => {
+            return Err(error(
+                "ITEM-RANGED-WEAPON-WIELD-UNSUPPORTED",
+                "baseitems.2da.WeaponWield",
+                "V1 ranged weapons require the audited bow (5) or crossbow (6) wielder route",
+            ));
+        }
+    };
+    if base_item.weapon_type != Some(1)
+        || base_item.ranged_weapon != Some(expected_ammo_base_item)
+        || base_item.ammunition_type != Some(expected_ammunition_type)
+        || profile.wielder_clip != expected_clip
+    {
+        return Err(error(
+            "ITEM-RANGED-WEAPON-CHANNEL-MISMATCH",
+            "profile.ammunitionChannel",
+            format!(
+                "{} requires WeaponType 1, RangedWeapon {}, AmmunitionType {} and clip {}",
+                match profile.ammunition_channel {
+                    ItemAmmunitionChannelV1::Arrow => "Arrow",
+                    ItemAmmunitionChannelV1::Bolt => "Bolt",
+                    ItemAmmunitionChannelV1::Bullet => "Bullet",
+                },
+                expected_ammo_base_item,
+                expected_ammunition_type,
+                expected_clip.runtime_name(),
+            ),
+        ));
+    }
+
+    let damage = u32::from(profile.damage_ranged_projectile);
+    Ok(ItemRangedWeaponBindingV1 {
+        schema_version: ITEM_SCHEMA_VERSION_V1,
+        weapon_base_item: base_item.base_item,
+        ammo_base_item: expected_ammo_base_item,
+        ammunition_type: expected_ammunition_type,
+        weapon_wield: base_item.weapon_wield.unwrap_or_default(),
+        weapon_type: base_item.weapon_type.unwrap_or_default(),
+        ranged_weapon: base_item.ranged_weapon.unwrap_or_default(),
+        damage_ranged_projectile: profile.damage_ranged_projectile,
+        ammunitiontypes_row: damage * 6 + profile.ammunition_channel.ammunitiontypes_offset(),
+        projectile_model_resref,
+        shot_sound_resref,
+        impact_sound_resref,
+        runtime_clip: expected_clip.runtime_name().to_owned(),
+    })
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -406,6 +663,43 @@ pub struct ItemCustomWeaponBaseItemArtifactV2 {
     pub payload: Vec<u8>,
     pub selected: ItemBaseItemV1,
     pub report: ItemCustomWeaponBaseItemReportV2,
+}
+
+/// Exact standalone BaseItem definition. Every behavior-bearing cell is
+/// supplied by the authoring contract; no existing BaseItem row is read as a
+/// template or donor.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemStandaloneWeaponBaseItemRequestV3 {
+    pub schema_version: u32,
+    /// Required physical append index and resulting printed BaseItem label.
+    pub output_base_item: u32,
+    pub label: String,
+    pub item_class: String,
+    pub cells: Vec<TwoDaCellAssignmentV1>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemStandaloneWeaponBaseItemReportV3 {
+    pub schema_version: u32,
+    pub status: String,
+    pub output_base_item: u32,
+    pub label: String,
+    pub item_class: String,
+    pub inv_slot_width: u32,
+    pub inv_slot_height: u32,
+    pub definition_source: String,
+    pub source_sha256: String,
+    pub output_sha256: String,
+    pub append_report: TwoDaAppendReportV1,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ItemStandaloneWeaponBaseItemArtifactV3 {
+    pub payload: Vec<u8>,
+    pub selected: ItemBaseItemV1,
+    pub report: ItemStandaloneWeaponBaseItemReportV3,
 }
 
 /// A deterministic, read-only source participating in Item resource
@@ -733,6 +1027,69 @@ pub struct ItemPartTransformV1 {
     pub rotation_xyzw: [f32; 4],
     pub uniform_scale: f32,
     pub pivot: [f32; 3],
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ItemProjectileAxisV1 {
+    PositiveX,
+    NegativeX,
+    PositiveY,
+    NegativeY,
+    PositiveZ,
+    NegativeZ,
+}
+
+impl ItemProjectileAxisV1 {
+    fn vector(self) -> [f32; 3] {
+        match self {
+            Self::PositiveX => [1.0, 0.0, 0.0],
+            Self::NegativeX => [-1.0, 0.0, 0.0],
+            Self::PositiveY => [0.0, 1.0, 0.0],
+            Self::NegativeY => [0.0, -1.0, 0.0],
+            Self::PositiveZ => [0.0, 0.0, 1.0],
+            Self::NegativeZ => [0.0, 0.0, -1.0],
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemProjectileBuildOptionsV1 {
+    pub schema_version: u32,
+    pub source_forward_axis: ItemProjectileAxisV1,
+    pub transform: ItemPartTransformV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_node: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemProjectileBuildReportV1 {
+    pub schema_version: u32,
+    pub profile: String,
+    pub model_resref: String,
+    pub texture_resref: String,
+    pub source_forward_axis: ItemProjectileAxisV1,
+    pub aurora_forward_axis: ItemProjectileAxisV1,
+    pub transformed_forward: [f32; 3],
+    pub orientation_status: String,
+    pub source_sha256: String,
+    pub triangle_count: usize,
+    pub degenerate_triangle_count_removed: usize,
+    pub stream_count: usize,
+    pub transform: ItemPartTransformV1,
+    pub mdl_sha256: String,
+    pub texture_sha256: String,
+    pub semantic_readback_status: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ItemProjectileArtifactV1 {
+    pub mdl_payload: Vec<u8>,
+    pub texture_payload: Vec<u8>,
+    pub report: ItemProjectileBuildReportV1,
+    pub readback: InspectionReport,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1334,6 +1691,19 @@ pub struct ItemProofModuleIdentityV1 {
     pub area_name: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ItemRangedWeaponProofIdentityV1 {
+    pub schema_version: u32,
+    pub module_resref: String,
+    pub area_resref: String,
+    pub hak_resref: String,
+    pub weapon_blueprint_resref: String,
+    pub ammunition_blueprint_resref: String,
+    pub module_name: String,
+    pub area_name: String,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ItemProofPlacementV1 {
@@ -1470,6 +1840,37 @@ pub struct ItemProofModuleReportV1 {
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ItemRangedWeaponProofModuleReportV1 {
+    pub schema_version: u32,
+    pub fixture_profile: String,
+    pub module_resref: String,
+    pub module_name: String,
+    pub area_resref: String,
+    pub area_name: String,
+    pub hak_resref: String,
+    pub weapon_blueprint_resref: String,
+    pub ammunition_blueprint_resref: String,
+    pub ground_item_count: u32,
+    pub creature_count: u32,
+    pub weapon_position: [f32; 3],
+    pub ammunition_position: [f32; 3],
+    pub target_blueprint_resref: String,
+    pub target_appearance_row: u16,
+    pub target_position: [f32; 3],
+    pub target_walk_rate: i32,
+    pub target_scripts_empty: bool,
+    pub entry_position: [f32; 3],
+    pub entry_direction: [f32; 2],
+    pub resource_count: u32,
+    pub byte_length: u64,
+    pub output_sha256: String,
+    pub semantic_readback_status: String,
+    pub model_visibility: String,
+    pub proof_completeness: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ItemEquippedProofModuleReportV2 {
     pub schema_version: u32,
     pub module_resref: String,
@@ -1527,6 +1928,12 @@ pub struct ItemAndEquippedProofModuleReportV3 {
 pub struct ItemProofModuleArtifactV1 {
     pub payload: Vec<u8>,
     pub report: ItemProofModuleReportV1,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ItemRangedWeaponProofModuleArtifactV1 {
+    pub payload: Vec<u8>,
+    pub report: ItemRangedWeaponProofModuleReportV1,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1841,6 +2248,7 @@ fn parse_row(
     let weapon_wield_index = optional_column(columns, "WeaponWield")?;
     let weapon_type_index = optional_column(columns, "WeaponType")?;
     let ranged_weapon_index = optional_column(columns, "RangedWeapon")?;
+    let ammunition_type_index = optional_column(columns, "AmmunitionType")?;
 
     let label = cell_text(cells, label_index, base_item, "Label")?.to_owned();
     let item_class = cell_text(cells, item_class_index, base_item, "ItemClass")?.to_owned();
@@ -1911,6 +2319,12 @@ fn parse_row(
         weapon_wield: parse_optional_u32(cells, weapon_wield_index, base_item, "WeaponWield")?,
         weapon_type: parse_optional_u32(cells, weapon_type_index, base_item, "WeaponType")?,
         ranged_weapon: parse_optional_u32(cells, ranged_weapon_index, base_item, "RangedWeapon")?,
+        ammunition_type: parse_optional_u32(
+            cells,
+            ammunition_type_index,
+            base_item,
+            "AmmunitionType",
+        )?,
         capability: item_capability_v1(base_item, model_type, slots.len(), equipable_slots),
         part_slots: slots,
         color_fields: if matches!(model_type, 1 | 3) {
@@ -2216,6 +2630,601 @@ pub fn append_item_custom_weapon_baseitem_v2(
         payload: append.payload,
         selected,
         report,
+    })
+}
+
+/// Appends one standalone ModelType 2 weapon BaseItem from explicit column
+/// assignments. Unlike V2, this path never resolves, reads or clones a donor
+/// row. Columns omitted by the caller are written as the native 2DA null cell.
+pub fn append_item_standalone_weapon_baseitem_v3(
+    bytes: &[u8],
+    request: &ItemStandaloneWeaponBaseItemRequestV3,
+) -> Result<ItemStandaloneWeaponBaseItemArtifactV3, ItemErrorV1> {
+    if request.schema_version != 3 {
+        return Err(error(
+            "ITEM-STANDALONE-BASEITEM-SCHEMA-INVALID",
+            "request.schemaVersion",
+            "standalone weapon BaseItem request schemaVersion must be 3",
+        ));
+    }
+    if request.label.is_empty()
+        || request.label.len() > 32
+        || !request
+            .label
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    {
+        return Err(error(
+            "ITEM-STANDALONE-BASEITEM-LABEL-INVALID",
+            "request.label",
+            "standalone weapon BaseItem label must contain 1..32 ASCII letters, digits or underscores",
+        ));
+    }
+    if request.item_class.is_empty()
+        || request.item_class.len() > 10
+        || !request
+            .item_class
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    {
+        return Err(error(
+            "ITEM-STANDALONE-BASEITEM-ITEMCLASS-INVALID",
+            "request.itemClass",
+            "standalone weapon ItemClass must contain 1..10 ASCII letters, digits or underscores",
+        ));
+    }
+
+    let catalog = inspect_item_baseitems_v1(bytes)?;
+    if catalog.physical_row_count != request.output_base_item {
+        return Err(error(
+            "ITEM-STANDALONE-BASEITEM-OUTPUT-INDEX-MISMATCH",
+            "request.outputBaseItem",
+            format!(
+                "requested output BaseItem {} but the exact next physical append index is {}",
+                request.output_base_item, catalog.physical_row_count
+            ),
+        ));
+    }
+    if catalog.rows.iter().any(|row| {
+        row.base_item == request.output_base_item
+            || row.label.eq_ignore_ascii_case(&request.label)
+            || row.item_class.eq_ignore_ascii_case(&request.item_class)
+    }) {
+        return Err(error(
+            "ITEM-STANDALONE-BASEITEM-IDENTITY-COLLISION",
+            "request",
+            "output BaseItem, label and ItemClass must be absent from the complete input baseitems.2da",
+        ));
+    }
+
+    let mut assigned_columns = BTreeSet::new();
+    for (index, assignment) in request.cells.iter().enumerate() {
+        if assignment.column_name.eq_ignore_ascii_case("Label")
+            || assignment.column_name.eq_ignore_ascii_case("ItemClass")
+        {
+            return Err(error(
+                "ITEM-STANDALONE-BASEITEM-IDENTITY-CELL-FORBIDDEN",
+                format!("request.cells[{index}].columnName"),
+                "Label and ItemClass are identity fields and must use the typed request fields",
+            ));
+        }
+        let normalized = assignment.column_name.to_ascii_lowercase();
+        if !assigned_columns.insert(normalized) {
+            return Err(error(
+                "ITEM-STANDALONE-BASEITEM-CELL-DUPLICATE",
+                format!("request.cells[{index}].columnName"),
+                "standalone BaseItem column assignments must be unique",
+            ));
+        }
+    }
+
+    let text = |column_name: &str, value: String| TwoDaCellAssignmentV1 {
+        column_name: column_name.to_owned(),
+        value: TwoDaCellValueV1::Text { value },
+    };
+    let mut cells = request.cells.clone();
+    cells.push(text("Label", request.label.clone()));
+    cells.push(text("ItemClass", request.item_class.clone()));
+    let limits = TwoDaLimitsV1::default();
+    let append = append_two_da_row_v1(
+        bytes,
+        &TwoDaAppendRequestV1 {
+            schema_version: 1,
+            cells,
+        },
+        &limits,
+    )
+    .map_err(|source| {
+        error(
+            "ITEM-STANDALONE-BASEITEM-APPEND-FAILED",
+            source.path,
+            source.message,
+        )
+    })?;
+    let appended_base_item = u32::from(append.report.appended_row_index);
+    if appended_base_item != request.output_base_item {
+        return Err(error(
+            "ITEM-STANDALONE-BASEITEM-OUTPUT-READBACK-MISMATCH",
+            "baseitems.2da.appendedRow",
+            "2DA append report did not preserve the requested standalone BaseItem",
+        ));
+    }
+    let selected = resolve_item_baseitem_v1(&append.payload, appended_base_item)?;
+    if selected.base_item != request.output_base_item
+        || selected.label != request.label
+        || selected.item_class != request.item_class
+        || selected.model_type != 2
+        || selected.capability.composition_profile != ItemCompositionProfileV1::BottomMiddleTop
+        || selected.part_slots.len() != 3
+    {
+        return Err(error(
+            "ITEM-STANDALONE-BASEITEM-SEMANTIC-READBACK-FAILED",
+            "baseitems.2da.appendedRow",
+            "standalone weapon must read back as the exact three-part ModelType 2 identity",
+        ));
+    }
+    let report = ItemStandaloneWeaponBaseItemReportV3 {
+        schema_version: 3,
+        status: "APPENDED_STANDALONE_EXACT".to_owned(),
+        output_base_item: request.output_base_item,
+        label: request.label.clone(),
+        item_class: request.item_class.clone(),
+        inv_slot_width: selected.inv_slot_width,
+        inv_slot_height: selected.inv_slot_height,
+        definition_source: "EXPLICIT_COLUMN_ASSIGNMENTS".to_owned(),
+        source_sha256: item_payload_sha256_v1(bytes),
+        output_sha256: item_payload_sha256_v1(&append.payload),
+        append_report: append.report,
+    };
+    Ok(ItemStandaloneWeaponBaseItemArtifactV3 {
+        payload: append.payload,
+        selected,
+        report,
+    })
+}
+
+/// Appends one complete native ammunition visual block. Current EE tables
+/// identify every row explicitly with `AmmunitionType` and
+/// `DamageRangedProjectile`; retail ordering additionally keeps the block at
+/// `DamageRangedProjectile * 6`. Partial blocks are forbidden even when the
+/// product currently exposes only the Arrow, Bolt and Bullet inventory
+/// channels.
+pub fn append_item_ammunition_variant_block_v1(
+    bytes: &[u8],
+    request: &ItemAmmunitionVariantBlockRequestV1,
+) -> Result<ItemAmmunitionVariantBlockArtifactV1, ItemErrorV1> {
+    if request.schema_version != ITEM_SCHEMA_VERSION_V1 {
+        return Err(error(
+            "ITEM-AMMUNITION-VARIANT-SCHEMA-INVALID",
+            "request.schemaVersion",
+            "ammunition variant request schemaVersion must be 1",
+        ));
+    }
+    if request.damage_ranged_projectile < 6 {
+        return Err(error(
+            "ITEM-AMMUNITION-VARIANT-RETAIL-RESERVED",
+            "request.damageRangedProjectile",
+            "DamageRangedProjectile values 0..5 are the immutable retail blocks",
+        ));
+    }
+    if request.entries.len() != 6 {
+        return Err(error(
+            "ITEM-AMMUNITION-VARIANT-BLOCK-INCOMPLETE",
+            "request.entries",
+            "one damage variant must define exactly six native projectile rows in Arrow/Bolt/Bullet/Dart/Shuriken/ThrowingAxe order",
+        ));
+    }
+
+    let limits = TwoDaLimitsV1::default();
+    let source = inspect_two_da_v2(bytes, &limits).map_err(|source| {
+        error(
+            "ITEM-AMMUNITIONTYPES-INVALID",
+            source.path,
+            format!("ammunitiontypes.2da inspection failed: {}", source.message),
+        )
+    })?;
+    for required in [
+        "label",
+        "Model",
+        "ShotSound",
+        "ImpactSound",
+        "AmmunitionType",
+        "DamageRangedProjectile",
+    ] {
+        required_column(&source.columns, required)?;
+    }
+    let first_row = u32::from(request.damage_ranged_projectile) * 6;
+    if source.physical_row_count > first_row {
+        return Err(error(
+            "ITEM-AMMUNITION-VARIANT-ROW-COLLISION",
+            "request.damageRangedProjectile",
+            format!(
+                "variant block starts at row {first_row}, but ammunitiontypes.2da already has {} rows",
+                source.physical_row_count
+            ),
+        ));
+    }
+    if source.physical_row_count < first_row {
+        return Err(error(
+            "ITEM-AMMUNITION-VARIANT-ROW-GAP",
+            "request.damageRangedProjectile",
+            format!(
+                "variant block starts at row {first_row}, but the next append row is {}; missing earlier blocks cannot be synthesized",
+                source.physical_row_count
+            ),
+        ));
+    }
+
+    let mut labels = BTreeSet::new();
+    let mut normalized_entries = Vec::with_capacity(6);
+    for (index, entry) in request.entries.iter().enumerate() {
+        if entry.label.is_empty()
+            || entry.label.len() > 32
+            || !entry
+                .label
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+            || !labels.insert(entry.label.to_ascii_lowercase())
+        {
+            return Err(error(
+                "ITEM-AMMUNITION-VARIANT-LABEL-INVALID",
+                format!("request.entries[{index}].label"),
+                "each ammunition label must be unique and contain 1..32 ASCII letters, digits or underscores",
+            ));
+        }
+        normalized_entries.push(ItemAmmunitionVariantEntryV1 {
+            label: entry.label.clone(),
+            model_resref: validate_resref(
+                &entry.model_resref,
+                &format!("request.entries[{index}].modelResref"),
+            )?,
+            shot_sound_resref: entry
+                .shot_sound_resref
+                .as_deref()
+                .map(|value| {
+                    validate_resref(value, &format!("request.entries[{index}].shotSoundResref"))
+                })
+                .transpose()?,
+            impact_sound_resref: entry
+                .impact_sound_resref
+                .as_deref()
+                .map(|value| {
+                    validate_resref(
+                        value,
+                        &format!("request.entries[{index}].impactSoundResref"),
+                    )
+                })
+                .transpose()?,
+        });
+    }
+
+    let text = |column_name: &str, value: String| TwoDaCellAssignmentV1 {
+        column_name: column_name.to_owned(),
+        value: TwoDaCellValueV1::Text { value },
+    };
+    let optional = |column_name: &str, value: &Option<String>| TwoDaCellAssignmentV1 {
+        column_name: column_name.to_owned(),
+        value: value
+            .as_ref()
+            .map(|value| TwoDaCellValueV1::Text {
+                value: value.clone(),
+            })
+            .unwrap_or(TwoDaCellValueV1::Null),
+    };
+    let mut payload = bytes.to_vec();
+    let mut append_reports = Vec::with_capacity(6);
+    for (offset, entry) in normalized_entries.iter().enumerate() {
+        let ammunition_type = u8::try_from(offset + 1).map_err(|_| {
+            error(
+                "ITEM-AMMUNITION-VARIANT-TYPE-INVALID",
+                "request.entries",
+                "native ammunition type does not fit BYTE",
+            )
+        })?;
+        let append = append_two_da_row_v1(
+            &payload,
+            &TwoDaAppendRequestV1 {
+                schema_version: 1,
+                cells: vec![
+                    text("label", entry.label.clone()),
+                    text("Model", entry.model_resref.clone()),
+                    optional("ShotSound", &entry.shot_sound_resref),
+                    optional("ImpactSound", &entry.impact_sound_resref),
+                    text("AmmunitionType", ammunition_type.to_string()),
+                    text(
+                        "DamageRangedProjectile",
+                        request.damage_ranged_projectile.to_string(),
+                    ),
+                ],
+            },
+            &limits,
+        )
+        .map_err(|source| {
+            error(
+                "ITEM-AMMUNITION-VARIANT-APPEND-FAILED",
+                source.path,
+                source.message,
+            )
+        })?;
+        append_reports.push(append.report);
+        payload = append.payload;
+    }
+
+    let output = inspect_two_da_v2(&payload, &limits).map_err(|source| {
+        error(
+            "ITEM-AMMUNITION-VARIANT-READBACK-FAILED",
+            source.path,
+            source.message,
+        )
+    })?;
+    if output.physical_row_count != first_row + 6 {
+        return Err(error(
+            "ITEM-AMMUNITION-VARIANT-READBACK-FAILED",
+            "ammunitiontypes.2da.rows",
+            "appended ammunition block does not contain exactly six new rows",
+        ));
+    }
+    let label_index = required_column(&output.columns, "label")?;
+    let model_index = required_column(&output.columns, "Model")?;
+    let shot_index = required_column(&output.columns, "ShotSound")?;
+    let impact_index = required_column(&output.columns, "ImpactSound")?;
+    let ammunition_type_index = required_column(&output.columns, "AmmunitionType")?;
+    let damage_index = required_column(&output.columns, "DamageRangedProjectile")?;
+    let expected_cell = |value: &Option<String>| {
+        value
+            .as_ref()
+            .map(|value| TwoDaCellValueV1::Text {
+                value: value.clone(),
+            })
+            .unwrap_or(TwoDaCellValueV1::Null)
+    };
+    let mut rows = Vec::with_capacity(6);
+    for (offset, entry) in normalized_entries.into_iter().enumerate() {
+        let row = first_row + offset as u32;
+        let ammunition_type = u8::try_from(offset + 1).map_err(|_| {
+            error(
+                "ITEM-AMMUNITION-VARIANT-TYPE-INVALID",
+                "request.entries",
+                "native ammunition type does not fit BYTE",
+            )
+        })?;
+        let readback = read_two_da_row_v2(&payload, row, &limits).map_err(|source| {
+            error(
+                "ITEM-AMMUNITION-VARIANT-READBACK-FAILED",
+                source.path,
+                source.message,
+            )
+        })?;
+        if readback.printed_row_label != row
+            || readback.cells[label_index]
+                != (TwoDaCellValueV1::Text {
+                    value: entry.label.clone(),
+                })
+            || readback.cells[model_index]
+                != (TwoDaCellValueV1::Text {
+                    value: entry.model_resref.clone(),
+                })
+            || readback.cells[shot_index] != expected_cell(&entry.shot_sound_resref)
+            || readback.cells[impact_index] != expected_cell(&entry.impact_sound_resref)
+            || readback.cells[ammunition_type_index]
+                != (TwoDaCellValueV1::Text {
+                    value: ammunition_type.to_string(),
+                })
+            || readback.cells[damage_index]
+                != (TwoDaCellValueV1::Text {
+                    value: request.damage_ranged_projectile.to_string(),
+                })
+        {
+            return Err(error(
+                "ITEM-AMMUNITION-VARIANT-SEMANTIC-DIFF",
+                format!("ammunitiontypes.2da.rows[{row}]"),
+                "appended ammunition row differs from the exact request",
+            ));
+        }
+        rows.push(ItemAmmunitionVariantRowReportV1 {
+            row,
+            label: entry.label,
+            model_resref: entry.model_resref,
+            shot_sound_resref: entry.shot_sound_resref,
+            impact_sound_resref: entry.impact_sound_resref,
+            ammunition_type,
+            damage_ranged_projectile: request.damage_ranged_projectile,
+        });
+    }
+
+    Ok(ItemAmmunitionVariantBlockArtifactV1 {
+        report: ItemAmmunitionVariantBlockReportV1 {
+            schema_version: ITEM_SCHEMA_VERSION_V1,
+            status: "APPENDED_COMPLETE_DAMAGE_VARIANT_BLOCK".to_owned(),
+            damage_ranged_projectile: request.damage_ranged_projectile,
+            first_row,
+            last_row: first_row + 5,
+            source_sha256: item_payload_sha256_v1(bytes),
+            output_sha256: item_payload_sha256_v1(&payload),
+            rows,
+            append_reports,
+            semantic_readback_status: "PASS".to_owned(),
+        },
+        payload,
+    })
+}
+
+/// Binds an existing EE damage type to one custom ranged-projectile visual
+/// block. The source row must be neutral (`0`) or already bound to the exact
+/// requested block; an existing different binding is a collision.
+pub fn patch_item_damage_ranged_projectile_v1(
+    bytes: &[u8],
+    request: &ItemDamageRangedProjectileRequestV1,
+) -> Result<ItemDamageRangedProjectileArtifactV1, ItemErrorV1> {
+    if request.schema_version != ITEM_SCHEMA_VERSION_V1 {
+        return Err(error(
+            "ITEM-DAMAGE-RANGED-PROJECTILE-SCHEMA-INVALID",
+            "request.schemaVersion",
+            "damage projectile request schemaVersion must be 1",
+        ));
+    }
+    if request.damage_ranged_projectile < 6 {
+        return Err(error(
+            "ITEM-DAMAGE-RANGED-PROJECTILE-RETAIL-RESERVED",
+            "request.damageRangedProjectile",
+            "custom damage projectile bindings must use a value in 6..255",
+        ));
+    }
+    if request.expected_label.is_empty()
+        || request.expected_label.len() > 64
+        || !request
+            .expected_label
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    {
+        return Err(error(
+            "ITEM-DAMAGE-TYPE-LABEL-INVALID",
+            "request.expectedLabel",
+            "damage type label must contain 1..64 ASCII letters, digits, underscores or hyphens",
+        ));
+    }
+
+    let limits = TwoDaLimitsV1::default();
+    let source = inspect_two_da_v2(bytes, &limits).map_err(|source| {
+        error(
+            "ITEM-DAMAGETYPES-INVALID",
+            source.path,
+            format!("damagetypes.2da inspection failed: {}", source.message),
+        )
+    })?;
+    let label_index = required_column(&source.columns, "Label")?;
+    let damage_index = required_column(&source.columns, "DamageRangedProjectile")?;
+    let (physical_row_index, row) = (0..source.physical_row_count)
+        .find_map(|physical_row_index| {
+            let row = read_two_da_row_v2(bytes, physical_row_index, &limits).ok()?;
+            (row.printed_row_label == request.damage_type_row).then_some((physical_row_index, row))
+        })
+        .ok_or_else(|| {
+            error(
+                "ITEM-DAMAGE-TYPE-ROW-NOT-FOUND",
+                "request.damageTypeRow",
+                format!(
+                    "DamageTypes.2DA row {} was not found",
+                    request.damage_type_row
+                ),
+            )
+        })?;
+    let source_label = match &row.cells[label_index] {
+        TwoDaCellValueV1::Text { value } => value,
+        TwoDaCellValueV1::Null => "",
+    };
+    if source_label != request.expected_label {
+        return Err(error(
+            "ITEM-DAMAGE-TYPE-LABEL-MISMATCH",
+            "request.expectedLabel",
+            format!(
+                "DamageTypes.2DA row {} has label {:?}, expected {:?}",
+                request.damage_type_row, source_label, request.expected_label
+            ),
+        ));
+    }
+    let source_damage = match &row.cells[damage_index] {
+        TwoDaCellValueV1::Text { value } => value.parse::<u8>().map_err(|_| {
+            error(
+                "ITEM-DAMAGE-RANGED-PROJECTILE-INVALID",
+                format!(
+                    "DamageTypes.2DA.rows[{}].DamageRangedProjectile",
+                    request.damage_type_row
+                ),
+                "DamageRangedProjectile must be an integer in 0..255",
+            )
+        })?,
+        TwoDaCellValueV1::Null => 0,
+    };
+    if source_damage != 0 && source_damage != request.damage_ranged_projectile {
+        return Err(error(
+            "ITEM-DAMAGE-RANGED-PROJECTILE-COLLISION",
+            "request.damageRangedProjectile",
+            format!(
+                "DamageTypes.2DA row {} already selects projectile variant {}",
+                request.damage_type_row, source_damage
+            ),
+        ));
+    }
+
+    let patched = patch_two_da_row_v1(
+        bytes,
+        &TwoDaRowPatchRequestV1 {
+            schema_version: ITEM_SCHEMA_VERSION_V1,
+            physical_row_index,
+            expected_printed_row_label: request.damage_type_row,
+            cells: vec![TwoDaCellPatchV1 {
+                column_name: "DamageRangedProjectile".to_owned(),
+                expected_value: TwoDaCellValueV1::Text {
+                    value: source_damage.to_string(),
+                },
+                value: TwoDaCellValueV1::Text {
+                    value: request.damage_ranged_projectile.to_string(),
+                },
+            }],
+        },
+        &limits,
+    )
+    .map_err(|source| {
+        error(
+            "ITEM-DAMAGE-RANGED-PROJECTILE-PATCH-FAILED",
+            source.path,
+            source.message,
+        )
+    })?;
+    let output = inspect_two_da_v2(&patched.payload, &limits).map_err(|source| {
+        error(
+            "ITEM-DAMAGE-RANGED-PROJECTILE-READBACK-FAILED",
+            source.path,
+            source.message,
+        )
+    })?;
+    let output_label_index = required_column(&output.columns, "Label")?;
+    let output_damage_index = required_column(&output.columns, "DamageRangedProjectile")?;
+    let output_row =
+        read_two_da_row_v2(&patched.payload, physical_row_index, &limits).map_err(|source| {
+            error(
+                "ITEM-DAMAGE-RANGED-PROJECTILE-READBACK-FAILED",
+                source.path,
+                source.message,
+            )
+        })?;
+    if output_row.printed_row_label != request.damage_type_row
+        || output_row.cells[output_label_index]
+            != (TwoDaCellValueV1::Text {
+                value: request.expected_label.clone(),
+            })
+        || output_row.cells[output_damage_index]
+            != (TwoDaCellValueV1::Text {
+                value: request.damage_ranged_projectile.to_string(),
+            })
+    {
+        return Err(error(
+            "ITEM-DAMAGE-RANGED-PROJECTILE-SEMANTIC-DIFF",
+            format!("DamageTypes.2DA.rows[{}]", request.damage_type_row),
+            "patched damage type row differs from the exact request",
+        ));
+    }
+
+    let output_sha256 = item_payload_sha256_v1(&patched.payload);
+    Ok(ItemDamageRangedProjectileArtifactV1 {
+        payload: patched.payload,
+        report: ItemDamageRangedProjectileReportV1 {
+            schema_version: ITEM_SCHEMA_VERSION_V1,
+            status: if source_damage == request.damage_ranged_projectile {
+                "ALREADY_BOUND_DAMAGE_RANGED_PROJECTILE".to_owned()
+            } else {
+                "PATCHED_DAMAGE_RANGED_PROJECTILE".to_owned()
+            },
+            damage_type_row: request.damage_type_row,
+            expected_label: request.expected_label.clone(),
+            source_damage_ranged_projectile: source_damage,
+            damage_ranged_projectile: request.damage_ranged_projectile,
+            source_sha256: item_payload_sha256_v1(bytes),
+            output_sha256,
+            patch_report: patched.report,
+            semantic_readback_status: "PASS".to_owned(),
+        },
     })
 }
 
@@ -4635,6 +5644,596 @@ pub fn build_item_proof_module_v1(
     })
 }
 
+/// Builds the owner-facing ranged fixture with both exact UTI payloads placed
+/// on the ground. It prepares acquisition of the weapon and known stack but
+/// deliberately does not claim that firing, consumption or projectile
+/// visibility has been proven in NWN runtime.
+pub fn build_item_ranged_weapon_proof_module_v1(
+    weapon_uti_payload: &[u8],
+    ammunition_uti_payload: &[u8],
+    identity: &ItemRangedWeaponProofIdentityV1,
+    weapon_placement: ItemProofPlacementV1,
+    ammunition_placement: ItemProofPlacementV1,
+) -> Result<ItemRangedWeaponProofModuleArtifactV1, ItemErrorV1> {
+    if identity.schema_version != ITEM_SCHEMA_VERSION_V1
+        || weapon_placement.schema_version != ITEM_SCHEMA_VERSION_V1
+        || ammunition_placement.schema_version != ITEM_SCHEMA_VERSION_V1
+    {
+        return Err(error(
+            "ITEM-RANGED-PROOF-SCHEMA-INVALID",
+            "identity.schemaVersion",
+            "ranged proof identity and both placements must use schemaVersion 1",
+        ));
+    }
+    let module_resref = validate_resref(&identity.module_resref, "identity.moduleResref")?;
+    let area_resref = validate_resref(&identity.area_resref, "identity.areaResref")?;
+    let hak_resref = validate_resref(&identity.hak_resref, "identity.hakResref")?;
+    let weapon_blueprint_resref = validate_resref(
+        &identity.weapon_blueprint_resref,
+        "identity.weaponBlueprintResref",
+    )?;
+    let ammunition_blueprint_resref = validate_resref(
+        &identity.ammunition_blueprint_resref,
+        "identity.ammunitionBlueprintResref",
+    )?;
+    if weapon_blueprint_resref == ammunition_blueprint_resref {
+        return Err(error(
+            "ITEM-RANGED-PROOF-UTI-IDENTITY-COLLISION",
+            "identity.ammunitionBlueprintResref",
+            "weapon and ammunition proof UTI resrefs must differ",
+        ));
+    }
+    if ![
+        weapon_placement.x,
+        weapon_placement.y,
+        weapon_placement.z,
+        weapon_placement.orientation_x,
+        weapon_placement.orientation_y,
+        ammunition_placement.x,
+        ammunition_placement.y,
+        ammunition_placement.z,
+        ammunition_placement.orientation_x,
+        ammunition_placement.orientation_y,
+    ]
+    .into_iter()
+    .all(f32::is_finite)
+    {
+        return Err(error(
+            "ITEM-RANGED-PROOF-PLACEMENT-NONFINITE",
+            "placement",
+            "ranged proof placements must contain only finite values",
+        ));
+    }
+    let ammunition_uti =
+        read_gff_v32(ammunition_uti_payload, &GffLimitsV1::default()).map_err(|source| {
+            error(
+                "ITEM-RANGED-PROOF-AMMUNITION-UTI-READ-FAILED",
+                source.path,
+                source.message,
+            )
+        })?;
+    let ammunition_template = ammunition_uti
+        .root
+        .fields
+        .iter()
+        .find(|field| field.label == "TemplateResRef")
+        .and_then(|field| match &field.value {
+            GffValueV1::ResRef(value) => Some(value.as_str()),
+            _ => None,
+        });
+    if ammunition_uti.file_type != GffFileTypeV1::Uti
+        || ammunition_template != Some(ammunition_blueprint_resref.as_str())
+    {
+        return Err(error(
+            "ITEM-RANGED-PROOF-AMMUNITION-UTI-IDENTITY-MISMATCH",
+            "ammunitionUti.TemplateResRef",
+            "ammunition proof input must be the exact requested UTI",
+        ));
+    }
+
+    const TARGET_BLUEPRINT_RESREF: &str = "m2arngtarget";
+    const TARGET_APPEARANCE_ROW: u16 = 102;
+    const TARGET_POSITION: M0RuntimePositionV1 = M0RuntimePositionV1 {
+        x: 10.0,
+        y: 18.0,
+        z: 0.0,
+    };
+    const TARGET_SCRIPT_FIELDS: [&str; 13] = [
+        "ScriptHeartbeat",
+        "ScriptOnNotice",
+        "ScriptSpellAt",
+        "ScriptAttacked",
+        "ScriptDamaged",
+        "ScriptDisturbed",
+        "ScriptEndRound",
+        "ScriptDialogue",
+        "ScriptSpawn",
+        "ScriptRested",
+        "ScriptDeath",
+        "ScriptUserDefine",
+        "ScriptOnBlocked",
+    ];
+    let target_fixture = BinaryCreatureOwnedFixtureV1 {
+        id: "m2a_ranged_target".to_owned(),
+        template_resref: TARGET_BLUEPRINT_RESREF.to_owned(),
+        display_name: "Nieruchomy cel treningowy".to_owned(),
+        appearance_row: TARGET_APPEARANCE_ROW,
+        position: TARGET_POSITION,
+        orientation: M0RuntimeDirectionV1 { x: 0.0, y: -1.0 },
+    };
+    let target_module = build_binary_creature_multi_fixture_module_v1(
+        &BinaryCreatureModuleIdentityV1 {
+            module_resref: module_resref.clone(),
+            area_resref: area_resref.clone(),
+            hak_resref: hak_resref.clone(),
+        },
+        std::slice::from_ref(&target_fixture),
+    )
+    .map_err(|source| {
+        item_proof_map_error_v1("ITEM-RANGED-PROOF-TARGET-BUILD-FAILED", "target", source)
+    })?;
+    let target_archive = ErfArchive::parse(&target_module.payload).map_err(|source| {
+        error(
+            "ITEM-RANGED-PROOF-TARGET-MODULE-READ-FAILED",
+            "target.module",
+            source.to_string(),
+        )
+    })?;
+    let target_git = read_gff_v32(
+        target_archive.find(&area_resref, 2023).map_err(|source| {
+            error(
+                "ITEM-RANGED-PROOF-TARGET-GIT-READ-FAILED",
+                "target.module.git",
+                source.to_string(),
+            )
+        })?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|source| {
+        error(
+            "ITEM-RANGED-PROOF-TARGET-GIT-READ-FAILED",
+            source.path,
+            source.message,
+        )
+    })?;
+    let target_creatures = target_git
+        .root
+        .fields
+        .iter()
+        .find(|field| field.label == "Creature List")
+        .and_then(|field| match &field.value {
+            GffValueV1::List(values) => Some(values.clone()),
+            _ => None,
+        })
+        .filter(|values| values.len() == 1)
+        .ok_or_else(|| {
+            error(
+                "ITEM-RANGED-PROOF-TARGET-GIT-INVALID",
+                "target.module.git.Creature List",
+                "target fixture must contain exactly one generated creature instance",
+            )
+        })?;
+    let target_gic = read_gff_v32(
+        target_archive.find(&area_resref, 2046).map_err(|source| {
+            error(
+                "ITEM-RANGED-PROOF-TARGET-GIC-READ-FAILED",
+                "target.module.gic",
+                source.to_string(),
+            )
+        })?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|source| {
+        error(
+            "ITEM-RANGED-PROOF-TARGET-GIC-READ-FAILED",
+            source.path,
+            source.message,
+        )
+    })?;
+    let target_creature_comments = target_gic
+        .root
+        .fields
+        .iter()
+        .find(|field| field.label == "Creature List")
+        .and_then(|field| match &field.value {
+            GffValueV1::List(values) => Some(values.clone()),
+            _ => None,
+        })
+        .filter(|values| values.len() == 1)
+        .ok_or_else(|| {
+            error(
+                "ITEM-RANGED-PROOF-TARGET-GIC-INVALID",
+                "target.module.gic.Creature List",
+                "target fixture GIC must contain exactly one creature comment",
+            )
+        })?;
+    let target_utc_payload = target_archive
+        .find(TARGET_BLUEPRINT_RESREF, 2027)
+        .map_err(|source| {
+            error(
+                "ITEM-RANGED-PROOF-TARGET-UTC-READ-FAILED",
+                "target.module.utc",
+                source.to_string(),
+            )
+        })?
+        .to_vec();
+
+    let base = build_item_proof_module_v1(
+        weapon_uti_payload,
+        &ItemProofModuleIdentityV1 {
+            schema_version: ITEM_SCHEMA_VERSION_V1,
+            module_resref: module_resref.clone(),
+            area_resref: area_resref.clone(),
+            hak_resref: hak_resref.clone(),
+            blueprint_resref: weapon_blueprint_resref.clone(),
+            module_name: identity.module_name.clone(),
+            area_name: identity.area_name.clone(),
+        },
+        weapon_placement,
+    )?;
+    let base_archive = ErfArchive::parse(&base.payload).map_err(|source| {
+        error(
+            "ITEM-RANGED-PROOF-MODULE-READBACK-FAILED",
+            "module",
+            source.to_string(),
+        )
+    })?;
+    let mut git = read_gff_v32(
+        base_archive.find(&area_resref, 2023).map_err(|source| {
+            error(
+                "ITEM-RANGED-PROOF-GIT-READ-FAILED",
+                "module.git",
+                source.to_string(),
+            )
+        })?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|source| {
+        error(
+            "ITEM-RANGED-PROOF-GIT-READ-FAILED",
+            source.path,
+            source.message,
+        )
+    })?;
+    let mut item_list = git
+        .root
+        .fields
+        .iter()
+        .find(|field| field.label == "List")
+        .and_then(|field| match &field.value {
+            GffValueV1::List(values) => Some(values.clone()),
+            _ => None,
+        })
+        .ok_or_else(|| {
+            error(
+                "ITEM-RANGED-PROOF-GIT-LIST-MISSING",
+                "git.List",
+                "base proof module is missing its item instance list",
+            )
+        })?;
+    if item_list.len() != 1 {
+        return Err(error(
+            "ITEM-RANGED-PROOF-GIT-LIST-INVALID",
+            "git.List",
+            "base proof module must contain exactly one weapon instance",
+        ));
+    }
+    let mut ammunition_fields = ammunition_uti.root.fields.clone();
+    ammunition_fields.extend([
+        field("XPosition", GffValueV1::Float(ammunition_placement.x)),
+        field("YPosition", GffValueV1::Float(ammunition_placement.y)),
+        field("ZPosition", GffValueV1::Float(ammunition_placement.z)),
+        field(
+            "XOrientation",
+            GffValueV1::Float(ammunition_placement.orientation_x),
+        ),
+        field(
+            "YOrientation",
+            GffValueV1::Float(ammunition_placement.orientation_y),
+        ),
+    ]);
+    item_list.push(GffStructV1 {
+        struct_id: 1,
+        fields: ammunition_fields,
+    });
+    replace_gff_list_v1(&mut git, "List", item_list)?;
+    replace_gff_list_v1(&mut git, "Creature List", target_creatures)?;
+    let ranged_git = write_item_proof_gff_v1(&git, "git")?;
+
+    let mut gic = read_gff_v32(
+        base_archive.find(&area_resref, 2046).map_err(|source| {
+            error(
+                "ITEM-RANGED-PROOF-GIC-READ-FAILED",
+                "module.gic",
+                source.to_string(),
+            )
+        })?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|source| {
+        error(
+            "ITEM-RANGED-PROOF-GIC-READ-FAILED",
+            source.path,
+            source.message,
+        )
+    })?;
+    replace_gff_list_v1(&mut gic, "Creature List", target_creature_comments)?;
+    let ranged_gic = write_item_proof_gff_v1(&gic, "gic")?;
+
+    let mut resources = Vec::with_capacity(base_archive.resources().len() + 2);
+    for resource in base_archive.resources() {
+        let payload = if resource.resref.eq_ignore_ascii_case(&area_resref)
+            && resource.resource_type == 2023
+        {
+            ranged_git.clone()
+        } else if resource.resref.eq_ignore_ascii_case(&area_resref)
+            && resource.resource_type == 2046
+        {
+            ranged_gic.clone()
+        } else {
+            base_archive
+                .find(&resource.resref, resource.resource_type)
+                .map_err(|source| {
+                    error(
+                        "ITEM-RANGED-PROOF-RESOURCE-READ-FAILED",
+                        "module.resources",
+                        source.to_string(),
+                    )
+                })?
+                .to_vec()
+        };
+        resources.push(item_proof_resource_v1(
+            &resource.resref,
+            resource.resource_type,
+            payload,
+        ));
+    }
+    resources.push(item_proof_resource_v1(
+        &ammunition_blueprint_resref,
+        2025,
+        ammunition_uti_payload.to_vec(),
+    ));
+    resources.push(item_proof_resource_v1(
+        TARGET_BLUEPRINT_RESREF,
+        2027,
+        target_utc_payload.clone(),
+    ));
+    let archive = write_erf_archive_v1(
+        ErfFileType::Module,
+        &resources,
+        &HakWriterOptionsV1::default(),
+    )
+    .map_err(|source| {
+        error(
+            "ITEM-RANGED-PROOF-MODULE-WRITE-FAILED",
+            "module",
+            source.to_string(),
+        )
+    })?;
+    let readback = ErfArchive::parse(&archive.payload).map_err(|source| {
+        error(
+            "ITEM-RANGED-PROOF-MODULE-READBACK-FAILED",
+            "module",
+            source.to_string(),
+        )
+    })?;
+    if readback.file_type() != ErfFileType::Module
+        || readback.resources().len() != resources.len()
+        || readback.find(&weapon_blueprint_resref, 2025).ok() != Some(weapon_uti_payload)
+        || readback.find(&ammunition_blueprint_resref, 2025).ok() != Some(ammunition_uti_payload)
+        || readback.find(TARGET_BLUEPRINT_RESREF, 2027).ok() != Some(target_utc_payload.as_slice())
+    {
+        return Err(error(
+            "ITEM-RANGED-PROOF-MODULE-SEMANTIC-DIFF",
+            "module.resources",
+            "ranged MOD does not contain both exact UTI payloads and expected resources",
+        ));
+    }
+    let git_readback = read_gff_v32(
+        readback.find(&area_resref, 2023).map_err(|source| {
+            error(
+                "ITEM-RANGED-PROOF-MODULE-SEMANTIC-DIFF",
+                "module.git",
+                source.to_string(),
+            )
+        })?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|source| {
+        error(
+            "ITEM-RANGED-PROOF-GIT-READBACK-FAILED",
+            source.path,
+            source.message,
+        )
+    })?;
+    let items = git_readback
+        .root
+        .fields
+        .iter()
+        .find(|field| field.label == "List")
+        .and_then(|field| match &field.value {
+            GffValueV1::List(values) => Some(values),
+            _ => None,
+        });
+    let template_resrefs = items
+        .into_iter()
+        .flatten()
+        .filter_map(|item| {
+            item.fields
+                .iter()
+                .find(|field| field.label == "TemplateResRef")
+                .and_then(|field| match &field.value {
+                    GffValueV1::ResRef(value) => Some(value.clone()),
+                    _ => None,
+                })
+        })
+        .collect::<BTreeSet<_>>();
+    if items.is_none_or(|items| items.len() != 2)
+        || template_resrefs
+            != BTreeSet::from([
+                weapon_blueprint_resref.clone(),
+                ammunition_blueprint_resref.clone(),
+            ])
+    {
+        return Err(error(
+            "ITEM-RANGED-PROOF-GIT-SEMANTIC-DIFF",
+            "git.List",
+            "ranged proof Area must place exactly the requested weapon and ammunition stack",
+        ));
+    }
+
+    let creatures = git_readback
+        .root
+        .fields
+        .iter()
+        .find(|field| field.label == "Creature List")
+        .and_then(|field| match &field.value {
+            GffValueV1::List(values) => Some(values),
+            _ => None,
+        });
+    let target = creatures.and_then(|values| values.first());
+    let target_field = |label: &str| {
+        target.and_then(|creature| {
+            creature
+                .fields
+                .iter()
+                .find(|field| field.label == label)
+                .map(|field| &field.value)
+        })
+    };
+    let target_scripts_empty = TARGET_SCRIPT_FIELDS
+        .iter()
+        .all(|label| target_field(label) == Some(&GffValueV1::ResRef(String::new())));
+    if creatures.is_none_or(|values| values.len() != 1)
+        || target_field("TemplateResRef")
+            != Some(&GffValueV1::ResRef(TARGET_BLUEPRINT_RESREF.to_owned()))
+        || target_field("Appearance_Type") != Some(&GffValueV1::Word(TARGET_APPEARANCE_ROW))
+        || target_field("XPosition") != Some(&GffValueV1::Float(TARGET_POSITION.x))
+        || target_field("YPosition") != Some(&GffValueV1::Float(TARGET_POSITION.y))
+        || target_field("ZPosition") != Some(&GffValueV1::Float(TARGET_POSITION.z))
+        || target_field("WalkRate") != Some(&GffValueV1::Int(0))
+        || target_field("PerceptionRange") != Some(&GffValueV1::Byte(0))
+        || !target_scripts_empty
+    {
+        return Err(error(
+            "ITEM-RANGED-PROOF-TARGET-SEMANTIC-DIFF",
+            "git.Creature List",
+            "ranged demo must contain one exact immobile, perception-free target with empty AI scripts",
+        ));
+    }
+    let target_utc_readback = read_gff_v32(
+        readback
+            .find(TARGET_BLUEPRINT_RESREF, 2027)
+            .map_err(|source| {
+                error(
+                    "ITEM-RANGED-PROOF-TARGET-UTC-READBACK-FAILED",
+                    "module.utc",
+                    source.to_string(),
+                )
+            })?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|source| {
+        error(
+            "ITEM-RANGED-PROOF-TARGET-UTC-READBACK-FAILED",
+            source.path,
+            source.message,
+        )
+    })?;
+    let utc_field = |label: &str| {
+        target_utc_readback
+            .root
+            .fields
+            .iter()
+            .find(|field| field.label == label)
+            .map(|field| &field.value)
+    };
+    if target_utc_readback.file_type != GffFileTypeV1::Utc
+        || utc_field("TemplateResRef")
+            != Some(&GffValueV1::ResRef(TARGET_BLUEPRINT_RESREF.to_owned()))
+        || utc_field("WalkRate") != Some(&GffValueV1::Int(0))
+        || utc_field("PerceptionRange") != Some(&GffValueV1::Byte(0))
+        || !TARGET_SCRIPT_FIELDS
+            .iter()
+            .all(|label| utc_field(label) == Some(&GffValueV1::ResRef(String::new())))
+    {
+        return Err(error(
+            "ITEM-RANGED-PROOF-TARGET-UTC-SEMANTIC-DIFF",
+            "module.utc",
+            "target UTC must preserve the exact immobile, perception-free and script-free runtime envelope",
+        ));
+    }
+    let gic_readback = read_gff_v32(
+        readback.find(&area_resref, 2046).map_err(|source| {
+            error(
+                "ITEM-RANGED-PROOF-GIC-READBACK-FAILED",
+                "module.gic",
+                source.to_string(),
+            )
+        })?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|source| {
+        error(
+            "ITEM-RANGED-PROOF-GIC-READBACK-FAILED",
+            source.path,
+            source.message,
+        )
+    })?;
+    let gic_creatures = gic_readback
+        .root
+        .fields
+        .iter()
+        .find(|field| field.label == "Creature List")
+        .and_then(|field| match &field.value {
+            GffValueV1::List(values) => Some(values),
+            _ => None,
+        });
+    if gic_creatures.is_none_or(|values| values.len() != 1) {
+        return Err(error(
+            "ITEM-RANGED-PROOF-GIC-SEMANTIC-DIFF",
+            "module.gic.Creature List",
+            "ranged demo GIC must describe exactly one target creature",
+        ));
+    }
+
+    Ok(ItemRangedWeaponProofModuleArtifactV1 {
+        report: ItemRangedWeaponProofModuleReportV1 {
+            schema_version: ITEM_SCHEMA_VERSION_V1,
+            fixture_profile: "RANGED_WEAPON_AMMUNITION_AND_IMMOBILE_TARGET_V1".to_owned(),
+            module_resref,
+            module_name: identity.module_name.trim().to_owned(),
+            area_resref,
+            area_name: identity.area_name.trim().to_owned(),
+            hak_resref,
+            weapon_blueprint_resref,
+            ammunition_blueprint_resref,
+            ground_item_count: 2,
+            creature_count: 1,
+            weapon_position: [weapon_placement.x, weapon_placement.y, weapon_placement.z],
+            ammunition_position: [
+                ammunition_placement.x,
+                ammunition_placement.y,
+                ammunition_placement.z,
+            ],
+            target_blueprint_resref: TARGET_BLUEPRINT_RESREF.to_owned(),
+            target_appearance_row: TARGET_APPEARANCE_ROW,
+            target_position: [TARGET_POSITION.x, TARGET_POSITION.y, TARGET_POSITION.z],
+            target_walk_rate: 0,
+            target_scripts_empty,
+            entry_position: [M0_RUNTIME_ENTRY_X, M0_RUNTIME_ENTRY_Y, M0_RUNTIME_ENTRY_Z],
+            entry_direction: [M0_RUNTIME_ENTRY_DIR_X, M0_RUNTIME_ENTRY_DIR_Y],
+            resource_count: resources.len() as u32,
+            byte_length: archive.payload.len() as u64,
+            output_sha256: item_payload_sha256_v1(&archive.payload),
+            semantic_readback_status: "PASS".to_owned(),
+            model_visibility: "not_tested".to_owned(),
+            proof_completeness: "missing".to_owned(),
+        },
+        payload: archive.payload,
+    })
+}
+
 fn set_equipped_item_reference_v2(
     fields: &mut [GffFieldV1],
     equipment_slot: u32,
@@ -6126,6 +7725,109 @@ pub fn build_meshy_item_part_with_options_v3(
     )
 }
 
+/// Builds a static flying projectile and rejects an authored transform whose
+/// declared nose direction does not become Aurora +Y. This makes orientation
+/// an explicit authoring fact instead of a bounds-based guess.
+pub fn build_meshy_ranged_projectile_v1(
+    source_glb: &[u8],
+    model_resref: &str,
+    texture_resref: &str,
+    options: &ItemProjectileBuildOptionsV1,
+) -> Result<ItemProjectileArtifactV1, ItemErrorV1> {
+    if options.schema_version != ITEM_SCHEMA_VERSION_V1 {
+        return Err(error(
+            "ITEM-PROJECTILE-SCHEMA-INVALID",
+            "options.schemaVersion",
+            "projectile build options schemaVersion must be 1",
+        ));
+    }
+    validate_item_part_transform_v1(options.transform)?;
+    let matrix = item_part_rigid_matrix_v1(options.transform)?;
+    let source = options.source_forward_axis.vector();
+    let mut transformed = [
+        matrix[0] * source[0] + matrix[4] * source[1] + matrix[8] * source[2],
+        matrix[1] * source[0] + matrix[5] * source[1] + matrix[9] * source[2],
+        matrix[2] * source[0] + matrix[6] * source[1] + matrix[10] * source[2],
+    ];
+    let length = transformed
+        .into_iter()
+        .map(|value| value * value)
+        .sum::<f32>()
+        .sqrt();
+    if !length.is_finite() || length <= 1.0e-6 {
+        return Err(error(
+            "ITEM-PROJECTILE-FORWARD-AXIS-INVALID",
+            "options.sourceForwardAxis",
+            "projectile forward direction cannot be normalized",
+        ));
+    }
+    for value in &mut transformed {
+        *value /= length;
+    }
+    if transformed[0].abs() > 1.0e-4
+        || (transformed[1] - 1.0).abs() > 1.0e-4
+        || transformed[2].abs() > 1.0e-4
+    {
+        return Err(error(
+            "ITEM-PROJECTILE-FORWARD-AXIS-MISMATCH",
+            "options.transform.rotationXyzw",
+            format!(
+                "declared source forward axis resolves to [{:.6}, {:.6}, {:.6}], expected Aurora +Y",
+                transformed[0], transformed[1], transformed[2]
+            ),
+        ));
+    }
+
+    let part = build_meshy_item_part_with_internal_options_v1(
+        source_glb,
+        model_resref,
+        texture_resref,
+        &ItemPartBuildInternalOptionsV1 {
+            schema_version: ITEM_SCHEMA_VERSION_V1,
+            transform: options.transform,
+            source_node: options.source_node.clone(),
+            texture_encoding: ItemPartTextureEncodingV1::DirectColor,
+            icon_size: None,
+            icon_projection_bounds: None,
+            weapon_color: None,
+            target_space_scale_xyz: item_unit_scale_xyz_v1(),
+            geometry_derived_icon: false,
+            aurora_composer_v2: false,
+        },
+    )?;
+    if part.icon_payload.is_some() || part.report.texture_format != "TGA_V1" {
+        return Err(error(
+            "ITEM-PROJECTILE-OUTPUT-PROFILE-MISMATCH",
+            "projectile",
+            "ranged projectile must emit one binary MDL and one direct-color TGA without an inventory icon",
+        ));
+    }
+
+    Ok(ItemProjectileArtifactV1 {
+        mdl_payload: part.mdl_payload,
+        texture_payload: part.texture_payload,
+        report: ItemProjectileBuildReportV1 {
+            schema_version: ITEM_SCHEMA_VERSION_V1,
+            profile: "RANGED_PROJECTILE_STATIC_V1".to_owned(),
+            model_resref: part.report.model_resref,
+            texture_resref: part.report.texture_resref,
+            source_forward_axis: options.source_forward_axis,
+            aurora_forward_axis: ItemProjectileAxisV1::PositiveY,
+            transformed_forward: transformed,
+            orientation_status: "PASS".to_owned(),
+            source_sha256: part.report.source_sha256,
+            triangle_count: part.report.triangle_count,
+            degenerate_triangle_count_removed: part.report.degenerate_triangle_count_removed,
+            stream_count: part.report.stream_count,
+            transform: part.report.transform,
+            mdl_sha256: part.report.mdl_sha256,
+            texture_sha256: part.report.texture_sha256,
+            semantic_readback_status: part.report.semantic_readback_status,
+        },
+        readback: part.readback,
+    })
+}
+
 #[derive(Clone, Debug)]
 struct ItemPartBuildInternalOptionsV1 {
     schema_version: u32,
@@ -7572,6 +9274,33 @@ pub fn item_attachment_profile_sha256_v1(
         )
     })?;
     Ok(item_payload_sha256_v1(&bytes))
+}
+
+/// Finalizes an author-supplied attachment frame without consulting a retail
+/// model family. The source hashes, slot bounds and HAND origin remain part of
+/// the immutable profile hash. Concept images are never runtime inputs.
+pub fn finalize_item_authored_attachment_profile_v1(
+    mut profile: ItemAttachmentProfileV1,
+) -> Result<ItemAttachmentProfileV1, ItemErrorV1> {
+    if !profile.profile_sha256.is_empty() {
+        return Err(error(
+            "ITEM-AUTHORED-PROFILE-PREHASHED",
+            "profile.profileSha256",
+            "authored attachment profile must be submitted with an empty profileSha256",
+        ));
+    }
+    if profile.identity.reference_kind != "AUTHOR_DIRECTED_SOURCE_FRAME"
+        || profile.attachment_evidence != "AUTHOR_MANUAL_ALIGNMENT_V1"
+    {
+        return Err(error(
+            "ITEM-AUTHORED-PROFILE-EVIDENCE-INVALID",
+            "profile.identity.referenceKind",
+            "authored attachment profile must use the exact source-frame and manual-alignment evidence contract",
+        ));
+    }
+    profile.profile_sha256 = item_attachment_profile_sha256_v1(&profile)?;
+    validate_item_attachment_profile_v1(&profile)?;
+    Ok(profile)
 }
 
 fn validate_item_attachment_profile_v1(

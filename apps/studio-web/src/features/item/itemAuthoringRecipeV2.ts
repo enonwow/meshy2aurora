@@ -26,14 +26,7 @@ export type ItemSemanticCheckIdV2 =
 export interface ItemAuthoringIdentityV2 {
   readonly schemaVersion: 2;
   readonly archetypeId: "HEXTECH_SHOTGUN";
-  /** Existing Aurora behavior donor. It is never the product identity. */
-  readonly runtimeDonor: {
-    readonly baseItem: 6;
-    readonly label: "heavycrossbow";
-    readonly itemClass: "WBwXh";
-    readonly runtimeClip: "xbowshot";
-  };
-  /** Custom product identity emitted by the BaseItem authoring lane. */
+  /** Standalone product identity emitted from explicit 2DA cells. */
   readonly output: {
     readonly baseItem: 113;
     readonly label: "hextech_shotgun";
@@ -133,8 +126,8 @@ export interface ItemDirectedCompositionContractV2 {
   /** Technical candidate only. This is deliberately separate from accepted recipes. */
   readonly ownerStatus: "NOT_REVIEWED";
   readonly correction: {
-    readonly field: "ModelPart2";
-    readonly reason: "OWNER_REJECTED_END_FOR_END_ORIENTATION";
+    readonly fields: readonly ["ModelPart1", "ModelPart2", "ModelPart3"];
+    readonly reason: "AUTHOR_MANUAL_SOURCE_FRAME_ALIGNMENT";
     readonly allowedTransformFields: readonly ["translation", "rotation"];
   };
 }
@@ -170,7 +163,6 @@ const SCOPES: readonly ItemAuthoringScopeV2[] = [
 const SHA256 = /^[0-9a-f]{64}$/;
 
 export const HEXTECH_SHOTGUN_BASEITEM_V2 = {
-  runtimeDonorBaseItem: 6,
   outputBaseItem: 113,
   outputLabel: "hextech_shotgun",
   outputItemClass: "WHxSh",
@@ -178,10 +170,25 @@ export const HEXTECH_SHOTGUN_BASEITEM_V2 = {
   invSlotHeight: 4,
 } as const;
 
+export const HEXTECH_SHOTGUN_STANDALONE_CELLS_V3 = [
+  ["ModelType", "2"],
+  ["GenderSpecific", "0"],
+  ["DefaultModel", "it_bag"],
+  ["DefaultIcon", "iwhxsh"],
+  ["EquipableSlots", "0x00030"],
+  ["InvSlotWidth", "2"],
+  ["InvSlotHeight", "4"],
+  ["MinRange", "10"],
+  ["MaxRange", "100"],
+  ["WeaponWield", "6"],
+  ["WeaponType", "1"],
+  ["RangedWeapon", "27"],
+  ["AmmunitionType", "3"],
+] as const;
+
 /**
- * Exact web candidate assembled from the owner's immutable Bottom/Top contract
- * and the single permitted Middle direction correction. It may be applied and
- * technically validated, but it is not an owner-accepted authoring recipe.
+ * Exact author-positioned web candidate. These numbers are the result of the
+ * manual source comparison; no image or retail item is consumed at runtime.
  */
 export const HEXTECH_SHOTGUN_OWNER_DIRECTED_COMPOSITION_V2:
 ItemDirectedCompositionContractV2 = {
@@ -189,7 +196,7 @@ ItemDirectedCompositionContractV2 = {
   id: "HEXTECH_SHOTGUN_OWNER_DIRECTED_COMPOSITION_V2",
   archetypeId: "HEXTECH_SHOTGUN",
   outputBaseItem: 113,
-  referenceId: "wbwxh_b_014/wbwxh_m_014/wbwxh_t_014",
+  referenceId: "hextech-shotgun-manual-assembly-v3",
   validationTolerance: 0.005,
   sourceSha256ByField: {
     ModelPart1: "69c78999590b248bf9c642516ffa595d33774ead3436166963b27dfaa71ad48d",
@@ -200,9 +207,9 @@ ItemDirectedCompositionContractV2 = {
     {
       field: "ModelPart1",
       sourceSha256: "69c78999590b248bf9c642516ffa595d33774ead3436166963b27dfaa71ad48d",
-      translation: [-0.00431, 0.12917034, 0.15773459],
-      rotationXyzw: [0.5, -0.5, 0.5, 0.5],
-      authoredRotationDegrees: [90, 0, 90],
+      translation: [-0.00431, -0.15773459, 0.13717034],
+      rotationXyzw: [Math.SQRT1_2, -Math.SQRT1_2, 0, 0],
+      authoredRotationDegrees: [180, 0, 90],
       uniformScale: 0.15796308,
       pivot: [0, 0, 0],
       targetSpaceScaleXyz: [1, 1, 1],
@@ -210,9 +217,9 @@ ItemDirectedCompositionContractV2 = {
     {
       field: "ModelPart2",
       sourceSha256: "8fafe6a55dd77107a67f29c7519f3b6edc390b310f918a89131b003517720147",
-      translation: [-0.00431, -0.00852164987, -0.18716540565],
-      rotationXyzw: [-0.5, -0.5, -0.5, 0.5],
-      authoredRotationDegrees: [-90, 0, -90],
+      translation: [-0.00431, 0.18716541, -0.00852165],
+      rotationXyzw: [0, 0, -Math.SQRT1_2, Math.SQRT1_2],
+      authoredRotationDegrees: [0, 0, -90],
       uniformScale: 0.21066014,
       pivot: [0, 0, 0],
       targetSpaceScaleXyz: [1, 1, 1],
@@ -220,9 +227,9 @@ ItemDirectedCompositionContractV2 = {
     {
       field: "ModelPart3",
       sourceSha256: "6ce1281a4ed8a239bf0d6fc9388fe8a977a2811750d40eab4320e13b642c77bf",
-      translation: [-0.00431, 0.008945521, -0.49844033],
-      rotationXyzw: [-0.5, -0.5, -0.5, 0.5],
-      authoredRotationDegrees: [-90, 0, -90],
+      translation: [-0.00431, 0.49844033, 0.008945521],
+      rotationXyzw: [0, 0, -Math.SQRT1_2, Math.SQRT1_2],
+      authoredRotationDegrees: [0, 0, -90],
       uniformScale: 0.13161969,
       pivot: [0, 0, 0],
       targetSpaceScaleXyz: [1, 1, 1],
@@ -230,11 +237,67 @@ ItemDirectedCompositionContractV2 = {
   ],
   ownerStatus: "NOT_REVIEWED",
   correction: {
-    field: "ModelPart2",
-    reason: "OWNER_REJECTED_END_FOR_END_ORIENTATION",
+    fields: ["ModelPart1", "ModelPart2", "ModelPart3"],
+    reason: "AUTHOR_MANUAL_SOURCE_FRAME_ALIGNMENT",
     allowedTransformFields: ["translation", "rotation"],
   },
 };
+
+export function buildHextechShotgunAuthoredAttachmentProfileV3(
+  baseitemsSha256: string,
+): ItemAttachmentProfileV1 {
+  const bounds = [
+    [[-0.026681999, -0.3077346, 0.00862060356], [0.018061997, -0.007734582, 0.13717034]],
+    [[-0.043864924, -0.012834594, -0.00852165], [0.035244923, 0.38716543, 0.11570865]],
+    [[-0.050884686, 0.37344033, 0.008945521], [0.042264685, 0.6234403, 0.09897576]],
+  ] as const;
+  const hashes = HEXTECH_SHOTGUN_OWNER_DIRECTED_COMPOSITION_V2.sourceSha256ByField;
+  return {
+    schemaVersion: 1,
+    algorithm: "AURORA_ITEM_REFERENCE_PROFILE_V1",
+    status: "PASSED",
+    identity: {
+      schemaVersion: 1,
+      resourceContextSha256: "01a78a8d378147d2551190b0ce64f7c9df9aab2324cb2284262bd194d33ffa71",
+      baseitemsSha256,
+      baseItem: 113,
+      itemClass: "WHxSh",
+      modelType: 2,
+      referenceKind: "AUTHOR_DIRECTED_SOURCE_FRAME",
+      referenceId: HEXTECH_SHOTGUN_OWNER_DIRECTED_COMPOSITION_V2.referenceId,
+    },
+    attachmentRoute: "HAND",
+    equipableSlots: 0x00030,
+    commonOrigin: [0, 0, 0],
+    axialAxis: 1,
+    widthAxis: 2,
+    depthAxis: 0,
+    attachmentZoneMin: [-0.050884686, -0.3077346, -0.00852165],
+    attachmentZoneMax: [0.042264685, 0.6234403, 0.13717034],
+    attachmentEvidence: "AUTHOR_MANUAL_ALIGNMENT_V1",
+    slots: (["ModelPart1", "ModelPart2", "ModelPart3"] as const).map((field, index) => ({
+      field,
+      label: ["Bottom", "Middle", "Top"][index],
+      token: ["b", "m", "t"][index],
+      modelResref: ["whxsh_b_001", "whxsh_m_001", "whxsh_t_001"][index],
+      modelSha256: hashes[field],
+      controllerNodeName: `m2a_authored_slot_${index + 1}`,
+      controllerTranslation: index === 1
+        ? [-0.00431, 0, 0.0535935]
+        : [
+            (bounds[index][0][0] + bounds[index][1][0]) * 0.5,
+            (bounds[index][0][1] + bounds[index][1][1]) * 0.5,
+            (bounds[index][0][2] + bounds[index][1][2]) * 0.5,
+          ],
+      controllerRotationXyzw: [0, 0, 0, 1],
+      boundsMin: bounds[index][0],
+      boundsMax: bounds[index][1],
+      allowAxialExtensionAtMin: false,
+      allowAxialExtensionAtMax: false,
+    })),
+    profileSha256: "",
+  };
+}
 
 function directedCompositionIdentityMatchesV2(
   contract: ItemDirectedCompositionContractV2,
@@ -319,15 +382,13 @@ export function itemPartSupportsReferenceScalingV2(
   field: string,
   attachmentProfile: ItemAttachmentProfileV1 | undefined,
 ) {
-  if (baseItem === HEXTECH_SHOTGUN_BASEITEM_V2.outputBaseItem) return true;
   const slot = attachmentProfile?.slots.find((candidate) => candidate.field === field);
   return !slot || slot.allowAxialExtensionAtMin || slot.allowAxialExtensionAtMax;
 }
 
 /**
- * Projects the editor row only after proving that the exact next physical 2DA
- * index is 113 and the audited retail donor is present. The source table is
- * not mutated here; the worker repeats these checks while appending the row.
+ * Projects a standalone editor row after proving that 113 is the exact next
+ * physical index. No existing row is read or cloned.
  */
 export function deriveHextechShotgunOutputRowV2(
   catalog: ItemBaseItemsCatalog,
@@ -341,24 +402,42 @@ export function deriveHextechShotgunOutputRowV2(
   if (catalog.rows.some(({ baseItem }) => baseItem === identity.outputBaseItem)) {
     throw new Error(`BaseItem ${identity.outputBaseItem} already exists in the selected table.`);
   }
-  const donor = catalog.rows.find(({ baseItem }) => baseItem === identity.runtimeDonorBaseItem);
-  if (
-    !donor
-    || donor.label !== "heavycrossbow"
-    || donor.itemClass !== "WBwXh"
-    || donor.modelType !== 2
-    || donor.capability.compositionProfile !== "BOTTOM_MIDDLE_TOP"
-    || donor.partSlots.length !== 3
-  ) {
-    throw new Error("BaseItem 6 is not the exact audited WBwXh heavy-crossbow donor.");
-  }
   return {
-    ...donor,
+    schemaVersion: 1,
     baseItem: identity.outputBaseItem,
     label: identity.outputLabel,
     itemClass: identity.outputItemClass,
+    modelType: 2,
+    minRange: 10,
+    maxRange: 100,
+    genderSpecific: false,
+    defaultModel: "it_bag",
+    defaultIcon: "iwhxsh",
+    equipableSlots: 0x00030,
     invSlotWidth: identity.invSlotWidth,
     invSlotHeight: identity.invSlotHeight,
+    weaponWield: 6,
+    weaponType: 1,
+    rangedWeapon: 27,
+    ammunitionType: 3,
+    capability: {
+      schemaVersion: 1,
+      compositionProfile: "BOTTOM_MIDDLE_TOP",
+      textureProfile: "DIRECT_COLOR",
+      iconProfile: "STANDARD",
+      meshySourceCount: 3,
+      // An equipable ModelType 2 item is resolved against the player
+      // appearance table. Keep the editor contract in lockstep with the
+      // authoritative Rust capability resolver so the source step requests
+      // this exact retail input before Build.
+      requiredReferenceTables: ["Appearance"],
+    },
+    partSlots: [
+      { index: 1, field: "ModelPart1", label: "Bottom", token: "b", sourceKind: "MESHY_GLB", referenceTable: null, requiresExplicitResourceResrefs: false },
+      { index: 2, field: "ModelPart2", label: "Middle", token: "m", sourceKind: "MESHY_GLB", referenceTable: null, requiresExplicitResourceResrefs: false },
+      { index: 3, field: "ModelPart3", label: "Top", token: "t", sourceKind: "MESHY_GLB", referenceTable: null, requiresExplicitResourceResrefs: false },
+    ],
+    colorFields: [],
   };
 }
 
@@ -401,13 +480,11 @@ export function validateItemAuthoringRecipeV2(
     issues.push("recipe and identity must use schema version 2");
   }
   if (
-    identity.runtimeDonor.baseItem !== 6
-    || identity.runtimeDonor.itemClass !== "WBwXh"
-    || identity.output.baseItem !== 113
+    identity.output.baseItem !== 113
     || identity.output.itemClass !== "WHxSh"
     || identity.output.label !== "hextech_shotgun"
   ) {
-    issues.push("runtime donor BaseItem 6 and output BaseItem 113 must remain distinct");
+    issues.push("standalone output BaseItem 113 identity is invalid");
   }
   if (!SHA256.test(identity.reference.baseitemsSha256)) {
     issues.push("baseitemsSha256 is invalid");

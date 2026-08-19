@@ -3,32 +3,40 @@ use m2a_core::{
     gff::{GffFileTypeV1, GffLimitsV1, GffValueV1, read_gff_v32},
     item::{
         ARMOR_PART_FIELDS_V1, CAPART_REQUIRED_REFERENCE_TABLES_V1, ITEM_COLOR_FIELDS_V1,
-        ITEM_RETAIL_NWN_BASE_KEY_SHA256_V1, ItemAttachmentProfileV1, ItemAttachmentRouteV1,
-        ItemBlueprintV1, ItemCapartContextV1, ItemColorValuesV1, ItemComposerMdlInputV2,
-        ItemCompositionProfileV1, ItemCustomWeaponBaseItemRequestV2, ItemEquippedProofIdentityV2,
+        ITEM_RETAIL_NWN_BASE_KEY_SHA256_V1, ItemAmmunitionChannelV1,
+        ItemAmmunitionVariantBlockRequestV1, ItemAmmunitionVariantEntryV1, ItemAttachmentProfileV1,
+        ItemAttachmentRouteV1, ItemBlueprintV1, ItemCapartContextV1, ItemColorValuesV1,
+        ItemComposerMdlInputV2, ItemCompositionProfileV1, ItemCustomWeaponBaseItemRequestV2,
+        ItemDamageRangedProjectileRequestV1, ItemEquippedProofIdentityV2,
         ItemEquippedProofProfileV2, ItemFitSourceV1, ItemIconLayerInputV3, ItemIconProfileV1,
         ItemManualFitPartV2, ItemPartBuildOptionsV2, ItemPartTextureEncodingV1,
-        ItemPartTransformV1, ItemPartValueV1, ItemProofModuleIdentityV1, ItemProofPlacementV1,
-        ItemPropertyV1, ItemReferenceMdlInputV1, ItemReferenceProfileIdentityV1,
+        ItemPartTransformV1, ItemPartValueV1, ItemProjectileAxisV1, ItemProjectileBuildOptionsV1,
+        ItemProofModuleIdentityV1, ItemProofPlacementV1, ItemPropertyV1, ItemRangedWeaponProfileV1,
+        ItemRangedWeaponProofIdentityV1, ItemReferenceMdlInputV1, ItemReferenceProfileIdentityV1,
         ItemReferenceSlotFrameV1, ItemResourceInventoryEntryV2, ItemResourceProvenanceV1,
-        ItemTextureProfileV1, append_item_custom_weapon_baseitem_v2,
-        build_item_and_equipped_proof_module_v3, build_item_attachment_profile_v1,
-        build_item_equipped_proof_module_v2, build_item_proof_module_v1, build_meshy_item_part_v1,
-        build_meshy_item_part_with_options_v2, build_meshy_item_part_with_options_v3,
+        ItemStandaloneWeaponBaseItemRequestV3, ItemTextureProfileV1, ItemWielderClipV1,
+        append_item_ammunition_variant_block_v1, append_item_custom_weapon_baseitem_v2,
+        append_item_standalone_weapon_baseitem_v3, build_item_and_equipped_proof_module_v3,
+        build_item_attachment_profile_v1, build_item_equipped_proof_module_v2,
+        build_item_proof_module_v1, build_item_ranged_weapon_proof_module_v1,
+        build_meshy_item_part_v1, build_meshy_item_part_with_options_v2,
+        build_meshy_item_part_with_options_v3, build_meshy_ranged_projectile_v1,
         decode_item_weapon_part_appearance_v1, encode_item_weapon_part_appearance_v1,
-        extend_item_baseitem_model_range_v1, fit_meshy_item_parts_aurora_v3,
-        fit_meshy_item_parts_to_attachment_profile_v1, fit_meshy_item_parts_v1,
-        fit_meshy_item_parts_with_target_lengths_aurora_v3,
+        extend_item_baseitem_model_range_v1, finalize_item_authored_attachment_profile_v1,
+        fit_meshy_item_parts_aurora_v3, fit_meshy_item_parts_to_attachment_profile_v1,
+        fit_meshy_item_parts_v1, fit_meshy_item_parts_with_target_lengths_aurora_v3,
         fit_meshy_item_parts_with_target_lengths_aurora_v4,
         fit_meshy_item_parts_with_target_lengths_aurora_v5,
         fit_meshy_item_parts_with_target_lengths_v2, inspect_item_baseitems_v1,
         inspect_item_reference_resource_v1, inspect_item_reference_two_da_v1,
-        item_attachment_profile_sha256_v1, measure_meshy_item_seam_v1, resolve_item_baseitem_v1,
+        item_attachment_profile_sha256_v1, measure_meshy_item_seam_v1,
+        patch_item_damage_ranged_projectile_v1, resolve_item_baseitem_v1,
         resolve_item_capability_v1, resolve_item_capart_part_v1, resolve_item_capart_part_v2,
         resolve_item_cast_spell_icon_v1, resolve_item_cloak_v2, resolve_item_cloak_v3,
         resolve_item_equipped_appearance_v1, resolve_item_modeltype2_equipment_slot_v1,
-        resolve_item_part_resource_v1, resolve_item_weapon_runtime_route_v1,
-        validate_item_fit_report_v1, validate_item_fit_report_v2, validate_item_fit_report_v3,
+        resolve_item_part_resource_v1, resolve_item_ranged_weapon_profile_v1,
+        resolve_item_weapon_runtime_route_v1, validate_item_fit_report_v1,
+        validate_item_fit_report_v2, validate_item_fit_report_v3,
         validate_item_modeltype2_aurora_append_conformance_v2,
         validate_item_modeltype2_aurora_append_conformance_v4,
         validate_item_modeltype2_icon_layers_v3, validate_item_triangle_budget_v1,
@@ -36,6 +44,10 @@ use m2a_core::{
     },
     owned_fixture::synthetic_owned_m6_glb_v1,
     tga::{TGA_SCHEMA_VERSION, TgaImageV1, TgaPixelFormatV1, TgaWriterOptionsV1, write_tga_v1},
+    two_da::{
+        TwoDaCellAssignmentV1, TwoDaCellValueV1, TwoDaLimitsV1, inspect_two_da_v2,
+        read_two_da_row_v2,
+    },
 };
 use sha2::{Digest, Sha256};
 
@@ -55,10 +67,10 @@ Label Name ItemClass ModelType GenderSpecific DefaultModel DefaultIcon Equipable
 
 const RANGED_BASEITEMS: &[u8] = br#"2DA V2.0
 
-Label Name ItemClass ModelType GenderSpecific DefaultModel DefaultIcon EquipableSlots InvSlotWidth InvSlotHeight MinRange MaxRange WeaponWield WeaponType RangedWeapon
-6 heavycrossbow 173 WBwXh 2 0 it_bag iwbwxh 0x00030 2 4 10 100 6 1 25
-8 longbow 175 WBLN 2 0 it_bag iwbln 0x00030 2 4 10 100 5 1 20
-9 static_sword 166 WSwLs 2 0 it_bag iwswls 0x1C030 1 4 10 100 **** **** ****
+Label Name ItemClass ModelType GenderSpecific DefaultModel DefaultIcon EquipableSlots InvSlotWidth InvSlotHeight MinRange MaxRange WeaponWield WeaponType RangedWeapon AmmunitionType
+6 heavycrossbow 173 WBwXh 2 0 it_bag iwbwxh 0x00030 2 4 10 100 6 1 25 2
+8 longbow 175 WBLN 2 0 it_bag iwbln 0x00030 2 4 10 100 5 1 20 1
+9 static_sword 166 WSwLs 2 0 it_bag iwswls 0x1C030 1 4 10 100 **** **** **** ****
 "#;
 
 fn baseitems_ready_for_exact_113_append() -> Vec<u8> {
@@ -87,6 +99,286 @@ fn hextech_baseitem_request(output_base_item: u32) -> ItemCustomWeaponBaseItemRe
         inv_slot_width: Some(2),
         inv_slot_height: Some(4),
     }
+}
+
+fn baseitems_ready_for_exact_113_standalone_append() -> Vec<u8> {
+    let mut table = b"2DA V2.0\n\nLabel Name ItemClass ModelType GenderSpecific DefaultModel DefaultIcon EquipableSlots InvSlotWidth InvSlotHeight MinRange MaxRange WeaponWield WeaponType RangedWeapon AmmunitionType\n".to_vec();
+    for index in 0..113u32 {
+        table.extend_from_slice(
+            format!(
+                "{index} filler_{index} **** Ring 0 0 it_bag iring 8 1 1 **** **** **** **** **** ****\n"
+            )
+            .as_bytes(),
+        );
+    }
+    table
+}
+
+fn text_cell(column_name: &str, value: &str) -> TwoDaCellAssignmentV1 {
+    TwoDaCellAssignmentV1 {
+        column_name: column_name.to_owned(),
+        value: TwoDaCellValueV1::Text {
+            value: value.to_owned(),
+        },
+    }
+}
+
+fn hextech_standalone_baseitem_request() -> ItemStandaloneWeaponBaseItemRequestV3 {
+    ItemStandaloneWeaponBaseItemRequestV3 {
+        schema_version: 3,
+        output_base_item: 113,
+        label: "hextech_shotgun".to_owned(),
+        item_class: "WHxSh".to_owned(),
+        cells: vec![
+            text_cell("ModelType", "2"),
+            text_cell("GenderSpecific", "0"),
+            text_cell("DefaultModel", "it_bag"),
+            text_cell("DefaultIcon", "iwhxsh"),
+            text_cell("EquipableSlots", "0x00030"),
+            text_cell("InvSlotWidth", "2"),
+            text_cell("InvSlotHeight", "4"),
+            text_cell("MinRange", "10"),
+            text_cell("MaxRange", "100"),
+            text_cell("WeaponWield", "6"),
+            text_cell("WeaponType", "1"),
+            text_cell("RangedWeapon", "27"),
+            text_cell("AmmunitionType", "3"),
+        ],
+    }
+}
+
+fn ammunitiontypes_ready_for_custom_damage_block() -> Vec<u8> {
+    let mut table =
+        b"2DA V2.0\n\nlabel Model ShotSound ImpactSound AmmunitionType DamageRangedProjectile\n"
+            .to_vec();
+    let kinds = [
+        ("arrow", "wamar_001", "cb_ht_arrow1"),
+        ("bolt", "wambo_001", "cb_ht_arrow1"),
+        ("bullet", "wambu_001", "cb_ht_bullet1"),
+        ("dart", "wthdt_001", "cb_ht_dart1"),
+        ("shuriken", "wthsh_001", "cb_ht_dart1"),
+        ("throwingaxe", "wthax_001", "cb_ht_throwaxe1"),
+    ];
+    for damage in 0..6u32 {
+        for (offset, (label, model, impact)) in kinds.iter().enumerate() {
+            let row = damage * 6 + offset as u32;
+            table.extend_from_slice(
+                format!(
+                    "{row} {label}_{damage} {model} **** {impact} {} {damage}\n",
+                    offset + 1,
+                )
+                .as_bytes(),
+            );
+        }
+    }
+    table
+}
+
+fn hextech_ammunition_variant_request() -> ItemAmmunitionVariantBlockRequestV1 {
+    let entries = [
+        ("hextech_arrow", "wamar_001", "cb_ht_arrow1"),
+        ("hextech_bolt", "wambo_001", "cb_ht_arrow1"),
+        ("hextech_bullet", "m2ahxshell", "m2a_hxhit"),
+        ("hextech_dart", "wthdt_001", "cb_ht_dart1"),
+        ("hextech_shuriken", "wthsh_001", "cb_ht_dart1"),
+        ("hextech_throwaxe", "wthax_001", "cb_ht_throwaxe1"),
+    ]
+    .into_iter()
+    .map(
+        |(label, model_resref, impact_sound_resref)| ItemAmmunitionVariantEntryV1 {
+            label: label.to_owned(),
+            model_resref: model_resref.to_owned(),
+            shot_sound_resref: Some("m2a_hxshot".to_owned()),
+            impact_sound_resref: Some(impact_sound_resref.to_owned()),
+        },
+    )
+    .collect();
+    ItemAmmunitionVariantBlockRequestV1 {
+        schema_version: 1,
+        damage_ranged_projectile: 6,
+        entries,
+    }
+}
+
+#[test]
+fn ranged_weapon_profile_binds_bullet_baseitem_ammunition_type_and_xbowshot_atomically() {
+    let source = baseitems_ready_for_exact_113_standalone_append();
+    let selected =
+        append_item_standalone_weapon_baseitem_v3(&source, &hextech_standalone_baseitem_request())
+            .unwrap()
+            .selected;
+    assert_eq!(selected.ranged_weapon, Some(27));
+    assert_eq!(selected.ammunition_type, Some(3));
+
+    let profile = ItemRangedWeaponProfileV1 {
+        schema_version: 1,
+        ammunition_channel: ItemAmmunitionChannelV1::Bullet,
+        damage_ranged_projectile: 6,
+        projectile_model_resref: "m2ahxshell".to_owned(),
+        shot_sound_resref: Some("m2a_hxshot".to_owned()),
+        impact_sound_resref: Some("m2a_hxhit".to_owned()),
+        wielder_clip: ItemWielderClipV1::Xbowshot,
+    };
+    let binding = resolve_item_ranged_weapon_profile_v1(&selected, &profile).unwrap();
+    assert_eq!(binding.weapon_base_item, 113);
+    assert_eq!(binding.ammo_base_item, 27);
+    assert_eq!(binding.ammunition_type, 3);
+    assert_eq!(binding.ammunitiontypes_row, 38);
+    assert_eq!(binding.runtime_clip, "xbowshot");
+
+    let mut mismatch = selected.clone();
+    mismatch.ammunition_type = Some(2);
+    let error = resolve_item_ranged_weapon_profile_v1(&mismatch, &profile).unwrap_err();
+    assert_eq!(error.code, "ITEM-RANGED-WEAPON-CHANNEL-MISMATCH");
+}
+
+#[test]
+fn ammunitiontypes_appends_one_complete_six_row_damage_variant_with_semantic_readback() {
+    let source = ammunitiontypes_ready_for_custom_damage_block();
+    let artifact =
+        append_item_ammunition_variant_block_v1(&source, &hextech_ammunition_variant_request())
+            .unwrap();
+    assert_eq!(artifact.report.damage_ranged_projectile, 6);
+    assert_eq!(artifact.report.first_row, 36);
+    assert_eq!(artifact.report.last_row, 41);
+    assert_eq!(artifact.report.rows.len(), 6);
+    assert_eq!(artifact.report.rows[2].row, 38);
+    assert_eq!(artifact.report.rows[2].model_resref, "m2ahxshell");
+    assert_eq!(artifact.report.rows[2].ammunition_type, 3);
+    assert_eq!(artifact.report.rows[2].damage_ranged_projectile, 6);
+
+    let limits = TwoDaLimitsV1::default();
+    let inspection = inspect_two_da_v2(&artifact.payload, &limits).unwrap();
+    assert_eq!(inspection.physical_row_count, 42);
+    let bullet = read_two_da_row_v2(&artifact.payload, 38, &limits).unwrap();
+    let model_index = inspection
+        .columns
+        .iter()
+        .position(|column| column == "Model")
+        .unwrap();
+    let ammunition_type_index = inspection
+        .columns
+        .iter()
+        .position(|column| column == "AmmunitionType")
+        .unwrap();
+    let damage_index = inspection
+        .columns
+        .iter()
+        .position(|column| column == "DamageRangedProjectile")
+        .unwrap();
+    assert_eq!(
+        bullet.cells[model_index],
+        TwoDaCellValueV1::Text {
+            value: "m2ahxshell".to_owned(),
+        }
+    );
+    assert_eq!(
+        bullet.cells[ammunition_type_index],
+        TwoDaCellValueV1::Text {
+            value: "3".to_owned(),
+        }
+    );
+    assert_eq!(
+        bullet.cells[damage_index],
+        TwoDaCellValueV1::Text {
+            value: "6".to_owned(),
+        }
+    );
+
+    let error = append_item_ammunition_variant_block_v1(
+        &artifact.payload,
+        &hextech_ammunition_variant_request(),
+    )
+    .unwrap_err();
+    assert_eq!(error.code, "ITEM-AMMUNITION-VARIANT-ROW-COLLISION");
+}
+
+#[test]
+fn damage_type_row_selects_the_custom_ranged_projectile_variant_with_readback() {
+    let source = br#"2DA V2.0
+
+Label CharsheetStrref DamageTypeGroup DamageRangedProjectile
+0 Bludgeoning 58345 0 0
+4 Acid 58303 2 1
+6 Divine 58305 4 0
+"#;
+    let request = ItemDamageRangedProjectileRequestV1 {
+        schema_version: 1,
+        damage_type_row: 6,
+        expected_label: "Divine".to_owned(),
+        damage_ranged_projectile: 6,
+    };
+    let artifact = patch_item_damage_ranged_projectile_v1(source, &request).unwrap();
+    assert_eq!(artifact.report.status, "PATCHED_DAMAGE_RANGED_PROJECTILE");
+    assert_eq!(artifact.report.damage_type_row, 6);
+    assert_eq!(artifact.report.expected_label, "Divine");
+    assert_eq!(artifact.report.source_damage_ranged_projectile, 0);
+    assert_eq!(artifact.report.damage_ranged_projectile, 6);
+    assert_eq!(artifact.report.semantic_readback_status, "PASS");
+
+    let limits = TwoDaLimitsV1::default();
+    let inspection = inspect_two_da_v2(&artifact.payload, &limits).unwrap();
+    let row = read_two_da_row_v2(&artifact.payload, 2, &limits).unwrap();
+    let damage_index = inspection
+        .columns
+        .iter()
+        .position(|column| column == "DamageRangedProjectile")
+        .unwrap();
+    assert_eq!(
+        row.cells[damage_index],
+        TwoDaCellValueV1::Text {
+            value: "6".to_owned(),
+        }
+    );
+
+    let collision = ItemDamageRangedProjectileRequestV1 {
+        damage_type_row: 4,
+        expected_label: "Acid".to_owned(),
+        ..request
+    };
+    let error = patch_item_damage_ranged_projectile_v1(source, &collision).unwrap_err();
+    assert_eq!(error.code, "ITEM-DAMAGE-RANGED-PROJECTILE-COLLISION");
+}
+
+#[test]
+fn projectile_builder_requires_the_authored_source_axis_to_face_aurora_positive_y() {
+    let source = static_textured_item_glb();
+    let quarter_turn = std::f32::consts::FRAC_1_SQRT_2;
+    let options = ItemProjectileBuildOptionsV1 {
+        schema_version: 1,
+        source_forward_axis: ItemProjectileAxisV1::PositiveX,
+        transform: ItemPartTransformV1 {
+            rotation_xyzw: [0.0, 0.0, quarter_turn, quarter_turn],
+            uniform_scale: 0.20,
+            ..ItemPartTransformV1::default()
+        },
+        source_node: None,
+    };
+    let artifact =
+        build_meshy_ranged_projectile_v1(&source, "m2ahxshell", "m2ahxshtex", &options).unwrap();
+    assert_eq!(artifact.report.profile, "RANGED_PROJECTILE_STATIC_V1");
+    assert_eq!(
+        artifact.report.source_forward_axis,
+        ItemProjectileAxisV1::PositiveX
+    );
+    assert_eq!(
+        artifact.report.aurora_forward_axis,
+        ItemProjectileAxisV1::PositiveY
+    );
+    assert_eq!(artifact.report.orientation_status, "PASS");
+    assert_eq!(artifact.report.semantic_readback_status, "PASS");
+
+    let error = build_meshy_ranged_projectile_v1(
+        &source,
+        "m2ahxshell",
+        "m2ahxshtex",
+        &ItemProjectileBuildOptionsV1 {
+            transform: ItemPartTransformV1::default(),
+            ..options
+        },
+    )
+    .unwrap_err();
+    assert_eq!(error.code, "ITEM-PROJECTILE-FORWARD-AXIS-MISMATCH");
 }
 
 #[test]
@@ -135,6 +427,7 @@ fn exact_baseitem_113_clones_donor_6_runtime_but_owns_whxsh_namespace() {
     assert_eq!(artifact.selected.weapon_wield, Some(6));
     assert_eq!(artifact.selected.weapon_type, Some(1));
     assert_eq!(artifact.selected.ranged_weapon, Some(25));
+    assert_eq!(artifact.selected.ammunition_type, None);
     assert_eq!(
         (
             artifact.selected.inv_slot_width,
@@ -154,6 +447,36 @@ fn exact_baseitem_113_clones_donor_6_runtime_but_owns_whxsh_namespace() {
     assert_eq!(donor.label, "heavycrossbow");
     assert_eq!(donor.inv_slot_width, 2);
     assert_eq!(donor.inv_slot_height, 4);
+}
+
+#[test]
+fn exact_baseitem_113_is_authored_without_reading_or_cloning_any_donor_row() {
+    let source = baseitems_ready_for_exact_113_standalone_append();
+    let artifact =
+        append_item_standalone_weapon_baseitem_v3(&source, &hextech_standalone_baseitem_request())
+            .unwrap();
+
+    assert_eq!(artifact.report.schema_version, 3);
+    assert_eq!(artifact.report.status, "APPENDED_STANDALONE_EXACT");
+    assert_eq!(artifact.report.output_base_item, 113);
+    assert_eq!(artifact.report.inv_slot_width, 2);
+    assert_eq!(artifact.report.inv_slot_height, 4);
+    assert_eq!(
+        artifact.report.definition_source,
+        "EXPLICIT_COLUMN_ASSIGNMENTS"
+    );
+    assert_eq!(artifact.selected.base_item, 113);
+    assert_eq!(artifact.selected.label, "hextech_shotgun");
+    assert_eq!(artifact.selected.item_class, "WHxSh");
+    assert_eq!(artifact.selected.model_type, 2);
+    assert_eq!(artifact.selected.default_icon.as_deref(), Some("iwhxsh"));
+    assert_eq!(artifact.selected.weapon_wield, Some(6));
+    assert_eq!(artifact.selected.weapon_type, Some(1));
+    assert_eq!(artifact.selected.ranged_weapon, Some(27));
+    assert_eq!(artifact.selected.ammunition_type, Some(3));
+    assert_eq!(artifact.selected.part_slots.len(), 3);
+    assert!(!String::from_utf8_lossy(&source).contains("heavycrossbow"));
+    assert!(!String::from_utf8_lossy(&source).contains("WBwXh"));
 }
 
 #[test]
@@ -2205,13 +2528,12 @@ fn env_gated_real_hextech_glbs_fit_to_exact_retail_mdl_frames() {
     let longitudinal =
         fit_meshy_item_parts_with_target_lengths_v2(&fit_sources, 0.005, &[0.30, 0.40, 0.25])
             .unwrap();
-    let icon_presentation =
-        fit_meshy_item_parts_with_target_lengths_aurora_v5(
-            &fit_sources,
-            0.005,
-            &[0.22, 0.08, 0.90],
-        )
-        .unwrap();
+    let icon_presentation = fit_meshy_item_parts_with_target_lengths_aurora_v5(
+        &fit_sources,
+        0.005,
+        &[0.22, 0.08, 0.90],
+    )
+    .unwrap();
     assert_eq!(icon_presentation.status, "MANUAL_REQUIRED");
     assert_eq!(icon_presentation.orientation_frame.status, "PASSED");
     assert_eq!(icon_presentation.orientation_frame.target_axial_axis, 1);
@@ -2225,7 +2547,10 @@ fn env_gated_real_hextech_glbs_fit_to_exact_retail_mdl_frames() {
             .iter()
             .all(|connector| connector.axial_overlap > 0.0)
     );
-    assert_eq!(icon_presentation.adjacent_connectors[1].surface_status, "GAP");
+    assert_eq!(
+        icon_presentation.adjacent_connectors[1].surface_status,
+        "GAP"
+    );
     assert_eq!(icon_presentation.adjacent_connectors[1].status, "FAILED");
     let overlap = 0.005_f32;
     let anchor = profile.slots[1].controller_translation;
@@ -2326,6 +2651,146 @@ fn env_gated_real_hextech_glbs_fit_to_exact_retail_mdl_frames() {
             .iter()
             .all(|connector| connector.status == "OVERLAPPING")
     );
+
+    let authored_bounds = [
+        (
+            [-0.026681999, -0.3077346, 0.00862060356],
+            [0.018061997, -0.007734582, 0.13717034],
+        ),
+        (
+            [-0.043864924, -0.012834594, -0.00852165],
+            [0.035244923, 0.38716543, 0.11570865],
+        ),
+        (
+            [-0.050884686, 0.37344033, 0.008945521],
+            [0.042264685, 0.6234403, 0.09897576],
+        ),
+    ];
+    let mut authored_profile = ItemAttachmentProfileV1 {
+        schema_version: 1,
+        algorithm: "AURORA_ITEM_REFERENCE_PROFILE_V1".to_owned(),
+        status: "PASSED".to_owned(),
+        identity: ItemReferenceProfileIdentityV1 {
+            schema_version: 1,
+            resource_context_sha256:
+                "01a78a8d378147d2551190b0ce64f7c9df9aab2324cb2284262bd194d33ffa71".to_owned(),
+            baseitems_sha256: format!("{:x}", Sha256::digest(RANGED_BASEITEMS)),
+            base_item: 113,
+            item_class: "WHxSh".to_owned(),
+            model_type: 2,
+            reference_kind: "AUTHOR_DIRECTED_SOURCE_FRAME".to_owned(),
+            reference_id: "hextech-shotgun-manual-assembly-v3".to_owned(),
+        },
+        attachment_route: ItemAttachmentRouteV1::Hand,
+        equipable_slots: 0x00030,
+        common_origin: [0.0, 0.0, 0.0],
+        axial_axis: 1,
+        width_axis: 2,
+        depth_axis: 0,
+        attachment_zone_min: [-0.050884686, -0.3077346, -0.00852165],
+        attachment_zone_max: [0.042264685, 0.6234403, 0.13717034],
+        attachment_evidence: "AUTHOR_MANUAL_ALIGNMENT_V1".to_owned(),
+        slots: (0..3)
+            .map(|index| ItemReferenceSlotFrameV1 {
+                field: fields[index].to_owned(),
+                label: ["Bottom", "Middle", "Top"][index].to_owned(),
+                token: ["b", "m", "t"][index].to_owned(),
+                model_resref: ["whxsh_b_001", "whxsh_m_001", "whxsh_t_001"][index].to_owned(),
+                model_sha256: expected_source_hashes[index].to_owned(),
+                controller_node_name: format!("m2a_concept_slot_{}", index + 1),
+                controller_translation: if index == 1 {
+                    [-0.00431, 0.0, 0.0535935]
+                } else {
+                    [
+                        (authored_bounds[index].0[0] + authored_bounds[index].1[0]) * 0.5,
+                        (authored_bounds[index].0[1] + authored_bounds[index].1[1]) * 0.5,
+                        (authored_bounds[index].0[2] + authored_bounds[index].1[2]) * 0.5,
+                    ]
+                },
+                controller_rotation_xyzw: [0.0, 0.0, 0.0, 1.0],
+                bounds_min: authored_bounds[index].0,
+                bounds_max: authored_bounds[index].1,
+                allow_axial_extension_at_min: false,
+                allow_axial_extension_at_max: false,
+            })
+            .collect(),
+        profile_sha256: String::new(),
+    };
+    authored_profile = finalize_item_authored_attachment_profile_v1(authored_profile).unwrap();
+    let authored_baseline =
+        fit_meshy_item_parts_to_attachment_profile_v1(&fit_sources, 0.005, &authored_profile)
+            .unwrap();
+    let concept_directed = [
+        ItemManualFitPartV2 {
+            field: fields[0].to_owned(),
+            transform: ItemPartTransformV1 {
+                translation: [-0.00431, -0.15773459, 0.13717034],
+                rotation_xyzw: [
+                    std::f32::consts::FRAC_1_SQRT_2,
+                    -std::f32::consts::FRAC_1_SQRT_2,
+                    0.0,
+                    0.0,
+                ],
+                uniform_scale: 0.15796308,
+                pivot: [0.0; 3],
+            },
+            target_space_scale_xyz: [1.0; 3],
+        },
+        ItemManualFitPartV2 {
+            field: fields[1].to_owned(),
+            transform: ItemPartTransformV1 {
+                translation: [-0.00431, 0.18716541, -0.00852165],
+                rotation_xyzw: [
+                    0.0,
+                    0.0,
+                    -std::f32::consts::FRAC_1_SQRT_2,
+                    std::f32::consts::FRAC_1_SQRT_2,
+                ],
+                uniform_scale: 0.21066014,
+                pivot: [0.0; 3],
+            },
+            target_space_scale_xyz: [1.0; 3],
+        },
+        ItemManualFitPartV2 {
+            field: fields[2].to_owned(),
+            transform: ItemPartTransformV1 {
+                translation: [-0.00431, 0.49844033, 0.008945521],
+                rotation_xyzw: [
+                    0.0,
+                    0.0,
+                    -std::f32::consts::FRAC_1_SQRT_2,
+                    std::f32::consts::FRAC_1_SQRT_2,
+                ],
+                uniform_scale: 0.13161969,
+                pivot: [0.0; 3],
+            },
+            target_space_scale_xyz: [1.0; 3],
+        },
+    ];
+    let concept_report = validate_meshy_item_parts_manual_fit_v2(
+        &fit_sources,
+        0.005,
+        &authored_profile,
+        &authored_baseline,
+        &concept_directed,
+    )
+    .unwrap();
+    assert_eq!(concept_report.status, "PASSED");
+    assert_eq!(concept_report.orientation_frame.target_axial_axis, 1);
+    assert_eq!(concept_report.orientation_frame.target_width_axis, 2);
+    assert_eq!(concept_report.orientation_frame.target_depth_axis, 0);
+    assert!(
+        concept_report
+            .adjacent_connectors
+            .iter()
+            .all(|connector| { connector.axial_axis == 1 && connector.status == "OVERLAPPING" })
+    );
+    let centers = concept_report
+        .parts
+        .iter()
+        .map(|part| (part.output_bounds_min[1] + part.output_bounds_max[1]) * 0.5)
+        .collect::<Vec<_>>();
+    assert!(centers[0] < centers[1] && centers[1] < centers[2]);
     let materialized = (0..3)
         .map(|index| {
             build_meshy_item_part_with_options_v3(
@@ -2543,6 +3008,153 @@ fn item_proof_module_embeds_the_exact_uti_and_places_one_candidate_in_front_of_e
         .unwrap();
     assert!(creatures.is_empty());
     assert!(!module.payload.is_empty());
+}
+
+#[test]
+fn ranged_weapon_proof_module_places_the_exact_weapon_and_ammunition_stack() {
+    let row = resolve_item_baseitem_v1(BASEITEMS, 0).unwrap();
+    let build_uti = |resref: &str, name: &str, stack_size: u16| {
+        write_item_uti_v1(
+            &row,
+            &ItemBlueprintV1 {
+                schema_version: 1,
+                template_resref: resref.to_owned(),
+                tag: resref.to_ascii_uppercase(),
+                localized_name: name.to_owned(),
+                description: name.to_owned(),
+                identified_description: name.to_owned(),
+                comment: "ranged proof fixture".to_owned(),
+                parts: vec![ItemPartValueV1 {
+                    field: "ModelPart1".to_owned(),
+                    value: 1,
+                }],
+                properties: Vec::new(),
+                colors: ItemColorValuesV1::default(),
+                cost: 0,
+                add_cost: 0,
+                charges: 0,
+                stack_size,
+                palette_id: 0,
+                identified: true,
+                stolen: false,
+                cursed: false,
+                plot: false,
+            },
+        )
+        .unwrap()
+        .payload
+    };
+    let weapon = build_uti("m2arngweapon", "Ranged weapon", 1);
+    let ammunition = build_uti("m2arngammo", "Ranged ammunition", 99);
+    let module = build_item_ranged_weapon_proof_module_v1(
+        &weapon,
+        &ammunition,
+        &ItemRangedWeaponProofIdentityV1 {
+            schema_version: 1,
+            module_resref: "m2arngmod".to_owned(),
+            area_resref: "m2arngarea".to_owned(),
+            hak_resref: "m2arnghak".to_owned(),
+            weapon_blueprint_resref: "m2arngweapon".to_owned(),
+            ammunition_blueprint_resref: "m2arngammo".to_owned(),
+            module_name: "Ranged weapon proof".to_owned(),
+            area_name: "Ranged weapon proof".to_owned(),
+        },
+        ItemProofPlacementV1::default(),
+        ItemProofPlacementV1 {
+            x: 11.0,
+            ..ItemProofPlacementV1::default()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        module.report.fixture_profile,
+        "RANGED_WEAPON_AMMUNITION_AND_IMMOBILE_TARGET_V1"
+    );
+    assert_eq!(module.report.weapon_blueprint_resref, "m2arngweapon");
+    assert_eq!(module.report.ammunition_blueprint_resref, "m2arngammo");
+    assert_eq!(module.report.ground_item_count, 2);
+    assert_eq!(module.report.creature_count, 1);
+    assert_eq!(module.report.target_blueprint_resref, "m2arngtarget");
+    assert_eq!(module.report.target_position, [10.0, 18.0, 0.0]);
+    assert_eq!(module.report.target_walk_rate, 0);
+    assert!(module.report.target_scripts_empty);
+    assert_eq!(module.report.weapon_position, [10.0, 14.5, 0.0]);
+    assert_eq!(module.report.ammunition_position, [11.0, 14.5, 0.0]);
+    assert_eq!(module.report.semantic_readback_status, "PASS");
+    let archive = ErfArchive::parse(&module.payload).unwrap();
+    assert_eq!(archive.find("m2arngweapon", 2025).unwrap(), weapon);
+    assert_eq!(archive.find("m2arngammo", 2025).unwrap(), ammunition);
+    let git = read_gff_v32(
+        archive.find("m2arngarea", 2023).unwrap(),
+        &GffLimitsV1::default(),
+    )
+    .unwrap();
+    let items = git
+        .root
+        .fields
+        .iter()
+        .find(|field| field.label == "List")
+        .and_then(|field| match &field.value {
+            GffValueV1::List(values) => Some(values),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(items.len(), 2);
+    let creatures = git
+        .root
+        .fields
+        .iter()
+        .find(|field| field.label == "Creature List")
+        .and_then(|field| match &field.value {
+            GffValueV1::List(values) => Some(values),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(creatures.len(), 1);
+    let target = &creatures[0];
+    assert!(target.fields.iter().any(|field| {
+        field.label == "TemplateResRef"
+            && field.value == GffValueV1::ResRef("m2arngtarget".to_owned())
+    }));
+    assert!(
+        target
+            .fields
+            .iter()
+            .any(|field| { field.label == "WalkRate" && field.value == GffValueV1::Int(0) })
+    );
+    for label in [
+        "ScriptHeartbeat",
+        "ScriptOnNotice",
+        "ScriptSpellAt",
+        "ScriptAttacked",
+        "ScriptDamaged",
+        "ScriptDisturbed",
+        "ScriptEndRound",
+        "ScriptDialogue",
+        "ScriptSpawn",
+        "ScriptRested",
+        "ScriptDeath",
+        "ScriptUserDefine",
+        "ScriptOnBlocked",
+    ] {
+        assert!(target.fields.iter().any(|field| {
+            field.label == label && field.value == GffValueV1::ResRef(String::new())
+        }));
+    }
+    let target_utc = read_gff_v32(
+        archive.find("m2arngtarget", 2027).unwrap(),
+        &GffLimitsV1::default(),
+    )
+    .unwrap();
+    assert_eq!(target_utc.file_type, GffFileTypeV1::Utc);
+    assert!(
+        target_utc
+            .root
+            .fields
+            .iter()
+            .any(|field| { field.label == "WalkRate" && field.value == GffValueV1::Int(0) })
+    );
 }
 
 #[test]

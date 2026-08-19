@@ -1,13 +1,17 @@
 /// <reference lib="webworker" />
 
 import init, {
-  appendItemCustomWeaponBaseitemV2,
-  appendItemCustomWeaponBaseitemV2ReportJson,
+  appendItemStandaloneWeaponBaseitemV3,
+  appendItemStandaloneWeaponBaseitemV3ReportJson,
+  appendItemAmmunitionVariantBlockV1,
+  appendItemAmmunitionVariantBlockV1ReportJson,
   buildItemEquippedProofModuleV2,
   buildM7CorpusBatchV1,
   buildItemProofModuleV1,
+  buildItemRangedWeaponProofModuleV1,
   buildMeshyItemPartWithOptionsV2,
   buildMeshyItemPartWithOptionsV3,
+  buildMeshyRangedProjectileV1,
   buildMeshyH1ModelPackageV2,
   buildMeshyH1ModelPackageV3,
   buildMeshyProceduralHumanoidProductWithOptionsV3,
@@ -20,6 +24,7 @@ import init, {
   buildItemAttachmentProfileV1Json,
   fitMeshyItemPartsV3Json,
   fitMeshyItemPartsV4Json,
+  finalizeItemAuthoredAttachmentProfileV1Json,
   ingestGlbJson,
   ingestMeshyP100kExperimentJson,
   ingestMeshyP300kExperimentJson,
@@ -33,12 +38,15 @@ import init, {
   inspectM7CorpusIntakeV1Json,
   inspectMeshyStaticPlaceableAuthoringV1,
   measureMeshyItemSeamV1Json,
+  patchItemDamageRangedProjectileV1,
+  patchItemDamageRangedProjectileV1ReportJson,
   resolveItemCastSpellIconV1Json,
   resolveItemCapartPartV1Json,
   resolveItemCapartPartV2Json,
   resolveItemCloakV4Json,
   resolveItemEquippedAppearanceV1Json,
   resolveItemPartResourceV1Json,
+  resolveItemRangedWeaponProfileV1Json,
   validateM7CorpusManifestV1Json,
   validateItemFitReportV3Json,
   validateItemFitReportV4Json,
@@ -214,6 +222,17 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
           referenceId: request.referenceId,
           models,
         }),
+      ),
+    };
+  }
+
+  if (request.type === "FINALIZE_ITEM_AUTHORED_ATTACHMENT_PROFILE") {
+    return {
+      requestId: request.requestId,
+      ok: true,
+      type: "ITEM_ATTACHMENT_PROFILE_BUILT",
+      attachmentProfileJson: finalizeItemAuthoredAttachmentProfileV1Json(
+        request.attachmentProfileJson,
       ),
     };
   }
@@ -429,6 +448,10 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         equipableSlots: number;
         invSlotWidth: number;
         invSlotHeight: number;
+        weaponWield: number | null;
+        weaponType: number | null;
+        rangedWeapon: number | null;
+        ammunitionType: number | null;
         capability: {
           iconProfile: "STANDARD" | "LAYERED" | "IPRP_SPELL" | "CAPART_COMPOSITE" | "CLOAK_MODEL";
           requiredReferenceTables: string[];
@@ -471,22 +494,20 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         };
       };
     };
-    type CustomWeaponBaseItemReportV2 = {
-      schemaVersion: 2;
-      status: "APPENDED_EXACT";
-      donorBaseItem: number;
+    type StandaloneWeaponBaseItemReportV3 = {
+      schemaVersion: 3;
+      status: "APPENDED_STANDALONE_EXACT";
       outputBaseItem: number;
       label: string;
       itemClass: string;
+      invSlotWidth: number;
+      invSlotHeight: number;
+      definitionSource: "EXPLICIT_COLUMN_ASSIGNMENTS";
       sourceSha256: string;
       outputSha256: string;
-      runtimeRoute: {
-        baseItem: number;
-        runtimeClip: "xbowshot" | "bowshot";
-      };
     };
     let effectiveBaseitemsTwoDa: ArrayBuffer = request.baseitemsTwoDa;
-    let customWeaponBaseItem: CustomWeaponBaseItemReportV2 | null = null;
+    let customWeaponBaseItem: StandaloneWeaponBaseItemReportV3 | null = null;
     if (request.customWeaponBaseItem) {
       if (request.baseItem !== request.customWeaponBaseItem.outputBaseItem) {
         throw new Error(
@@ -494,26 +515,24 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         );
       }
       const requestJson = JSON.stringify(request.customWeaponBaseItem);
-      customWeaponBaseItem = JSON.parse(appendItemCustomWeaponBaseitemV2ReportJson(
+      customWeaponBaseItem = JSON.parse(appendItemStandaloneWeaponBaseitemV3ReportJson(
         new Uint8Array(request.baseitemsTwoDa),
         requestJson,
-      )) as CustomWeaponBaseItemReportV2;
-      effectiveBaseitemsTwoDa = exactBuffer(appendItemCustomWeaponBaseitemV2(
+      )) as StandaloneWeaponBaseItemReportV3;
+      effectiveBaseitemsTwoDa = exactBuffer(appendItemStandaloneWeaponBaseitemV3(
         new Uint8Array(request.baseitemsTwoDa),
         requestJson,
       ));
       if (
-        customWeaponBaseItem.schemaVersion !== 2
-        || customWeaponBaseItem.status !== "APPENDED_EXACT"
-        || customWeaponBaseItem.donorBaseItem !== request.customWeaponBaseItem.donorBaseItem
+        customWeaponBaseItem.schemaVersion !== 3
+        || customWeaponBaseItem.status !== "APPENDED_STANDALONE_EXACT"
         || customWeaponBaseItem.outputBaseItem !== request.baseItem
         || customWeaponBaseItem.label !== request.customWeaponBaseItem.label
         || customWeaponBaseItem.itemClass !== request.customWeaponBaseItem.itemClass
-        || customWeaponBaseItem.runtimeRoute.baseItem
-          !== request.customWeaponBaseItem.donorBaseItem
+        || customWeaponBaseItem.definitionSource !== "EXPLICIT_COLUMN_ASSIGNMENTS"
       ) {
         throw new Error(
-          "ITEM-CUSTOM-BASEITEM-REPORT-MISMATCH: appended BaseItem report is not bound to the requested donor/output identity",
+          "ITEM-STANDALONE-BASEITEM-REPORT-MISMATCH: appended BaseItem report is not bound to the requested explicit output identity",
         );
       }
     }
@@ -1716,6 +1735,302 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         })),
       };
     }
+    type RangedAmmunitionOutput = {
+      binding: {
+        schemaVersion: 1;
+        weaponBaseItem: number;
+        ammoBaseItem: number;
+        ammunitionType: number;
+        weaponWield: number;
+        weaponType: number;
+        rangedWeapon: number;
+        damageRangedProjectile: number;
+        ammunitiontypesRow: number;
+        projectileModelResref: string;
+        shotSoundResref: string | null;
+        impactSoundResref: string | null;
+        runtimeClip: string;
+      };
+      ammunitiontypes: ArrayBuffer;
+      ammunitiontypesReport: Record<string, unknown>;
+      damageTypes: ArrayBuffer;
+      damageTypesReport: Record<string, unknown>;
+      projectile: {
+        mdl: ArrayBuffer;
+        texture: ArrayBuffer;
+        report: PartOutput["report"] & {
+          profile: "RANGED_PROJECTILE_STATIC_V1";
+          orientationStatus: "PASS";
+          semanticReadbackStatus: "PASS";
+        };
+        readback: unknown;
+      };
+      ammunitionItem: {
+        modelResref: string;
+        textureResref: string;
+        iconResref: string;
+        blueprintResref: string;
+        mdl: ArrayBuffer;
+        texture: ArrayBuffer;
+        icon: ArrayBuffer;
+        uti: ArrayBuffer;
+        report: PartOutput["report"];
+        readback: unknown;
+        utiReport: Record<string, unknown>;
+        sourceSha256: string;
+      };
+    };
+    let rangedAmmunitionOutput: RangedAmmunitionOutput | null = null;
+    if (request.rangedAmmunition) {
+      const ranged = request.rangedAmmunition;
+      if (
+        ranged.damageTypeRow !== 6
+        || ranged.damageTypeLabel !== "Divine"
+        || ranged.damagePropertySubtype !== 8
+      ) {
+        throw new Error(
+          "ITEM-RANGED-DAMAGE-ROUTE-UNSUPPORTED: V1 requires the audited Divine property subtype 8 and DamageTypes.2DA row 6",
+        );
+      }
+      const profileJson = JSON.stringify({
+        schemaVersion: 1,
+        ammunitionChannel: ranged.ammunitionChannel,
+        damageRangedProjectile: ranged.damageRangedProjectile,
+        projectileModelResref: ranged.projectileModelResref,
+        shotSoundResref: ranged.shotSoundResref,
+        impactSoundResref: ranged.impactSoundResref,
+        wielderClip: ranged.wielderClip,
+      });
+      const binding = JSON.parse(resolveItemRangedWeaponProfileV1Json(
+        new Uint8Array(effectiveBaseitemsTwoDa),
+        request.baseItem,
+        profileJson,
+      )) as RangedAmmunitionOutput["binding"];
+      const channel = {
+        ARROW: {
+          ammoBaseItem: 20,
+          ammunitionType: 1,
+          offset: 0,
+          modelPrefix: "wamar_",
+          iconPrefix: "iwamar_",
+        },
+        BOLT: {
+          ammoBaseItem: 25,
+          ammunitionType: 2,
+          offset: 1,
+          modelPrefix: "wambo_",
+          iconPrefix: "iwambo_",
+        },
+        BULLET: {
+          ammoBaseItem: 27,
+          ammunitionType: 3,
+          offset: 2,
+          modelPrefix: "wambu_",
+          iconPrefix: "iwambu_",
+        },
+      }[ranged.ammunitionChannel];
+      if (
+        binding.weaponBaseItem !== request.baseItem
+        || binding.ammoBaseItem !== channel.ammoBaseItem
+        || binding.ammunitionType !== channel.ammunitionType
+        || binding.rangedWeapon !== channel.ammoBaseItem
+        || binding.ammunitiontypesRow
+          !== ranged.damageRangedProjectile * 6 + channel.offset
+        || binding.projectileModelResref !== ranged.projectileModelResref
+        || binding.runtimeClip !== ranged.wielderClip.toLowerCase()
+      ) {
+        throw new Error(
+          "ITEM-RANGED-BINDING-READBACK-MISMATCH: resolved weapon, ammunition channel, projectile row or clip changed",
+        );
+      }
+
+      const nativeRows = [
+        { suffix: "arrow", modelResref: "wamar_001", impactSoundResref: "cb_ht_arrow1" },
+        { suffix: "bolt", modelResref: "wambo_001", impactSoundResref: "cb_ht_arrow1" },
+        { suffix: "bullet", modelResref: "wambu_001", impactSoundResref: "cb_ht_bullet1" },
+        { suffix: "dart", modelResref: "wthdt_001", impactSoundResref: "cb_ht_dart1" },
+        { suffix: "shuriken", modelResref: "wthsh_001", impactSoundResref: "cb_ht_dart1" },
+        { suffix: "throwaxe", modelResref: "wthax_001", impactSoundResref: "cb_ht_throwaxe1" },
+      ];
+      const ammunitionBlockJson = JSON.stringify({
+        schemaVersion: 1,
+        damageRangedProjectile: ranged.damageRangedProjectile,
+        entries: nativeRows.map((entry, offset) => ({
+          label: `m2a_d${ranged.damageRangedProjectile}_${entry.suffix}`,
+          modelResref: offset === channel.offset
+            ? ranged.projectileModelResref
+            : entry.modelResref,
+          shotSoundResref: offset === channel.offset
+            ? ranged.shotSoundResref
+            : null,
+          impactSoundResref: offset === channel.offset
+            ? ranged.impactSoundResref
+            : entry.impactSoundResref,
+        })),
+      });
+      const ammunitiontypesReport = JSON.parse(
+        appendItemAmmunitionVariantBlockV1ReportJson(
+          new Uint8Array(ranged.ammunitiontypesTwoDa),
+          ammunitionBlockJson,
+        ),
+      ) as Record<string, unknown>;
+      const ammunitiontypes = exactBuffer(appendItemAmmunitionVariantBlockV1(
+        new Uint8Array(ranged.ammunitiontypesTwoDa),
+        ammunitionBlockJson,
+      ));
+      const damageRouteJson = JSON.stringify({
+        schemaVersion: 1,
+        damageTypeRow: ranged.damageTypeRow,
+        expectedLabel: ranged.damageTypeLabel,
+        damageRangedProjectile: ranged.damageRangedProjectile,
+      });
+      const damageTypesReport = JSON.parse(
+        patchItemDamageRangedProjectileV1ReportJson(
+          new Uint8Array(ranged.damageTypesTwoDa),
+          damageRouteJson,
+        ),
+      ) as Record<string, unknown>;
+      const damageTypes = exactBuffer(patchItemDamageRangedProjectileV1(
+        new Uint8Array(ranged.damageTypesTwoDa),
+        damageRouteJson,
+      ));
+
+      const projectileResult = buildMeshyRangedProjectileV1(
+        new Uint8Array(ranged.projectileSourceGlb),
+        ranged.projectileModelResref,
+        ranged.projectileTextureResref,
+        ranged.projectileOptionsJson,
+      );
+      let projectile: RangedAmmunitionOutput["projectile"];
+      try {
+        const report = JSON.parse(projectileResult.reportJson) as RangedAmmunitionOutput["projectile"]["report"];
+        const icon = exactBuffer(projectileResult.takeIconBytes());
+        if (
+          icon.byteLength !== 0
+          || report.profile !== "RANGED_PROJECTILE_STATIC_V1"
+          || report.orientationStatus !== "PASS"
+          || report.semanticReadbackStatus !== "PASS"
+        ) {
+          throw new Error(
+            "ITEM-RANGED-PROJECTILE-READBACK-MISMATCH: projectile did not pass the static +Y orientation/readback profile",
+          );
+        }
+        projectile = {
+          mdl: exactBuffer(projectileResult.takeMdlBytes()),
+          texture: exactBuffer(projectileResult.takeTextureBytes()),
+          report,
+          readback: JSON.parse(projectileResult.readbackJson),
+        };
+      } finally {
+        projectileResult.free();
+      }
+
+      if (!Number.isInteger(ranged.ammunitionVariant) || ranged.ammunitionVariant < 0 || ranged.ammunitionVariant > 255) {
+        throw new Error("ITEM-AMMUNITION-VARIANT-INVALID: inventory variant must fit BYTE");
+      }
+      const variantSuffix = ranged.ammunitionVariant.toString().padStart(3, "0");
+      const expectedAmmoModelResref = `${channel.modelPrefix}${variantSuffix}`;
+      const expectedAmmoIconResref = `${channel.iconPrefix}${variantSuffix}`;
+      const resolvedAmmoResource = JSON.parse(resolveItemPartResourceV1Json(
+        new Uint8Array(effectiveBaseitemsTwoDa),
+        channel.ammoBaseItem,
+        "ModelPart1",
+        ranged.ammunitionVariant,
+        ranged.ammunitionModelResref,
+        ranged.ammunitionIconResref,
+      )) as { modelResref: string; iconResref: string };
+      if (
+        ranged.ammunitionModelResref !== expectedAmmoModelResref
+        || ranged.ammunitionIconResref !== expectedAmmoIconResref
+        || resolvedAmmoResource.modelResref !== expectedAmmoModelResref
+        || resolvedAmmoResource.iconResref !== expectedAmmoIconResref
+      ) {
+        throw new Error(
+          `ITEM-AMMUNITION-RESOURCE-NAME-MISMATCH: channel requires ${expectedAmmoModelResref} / ${expectedAmmoIconResref}`,
+        );
+      }
+      const ammoBlueprint = JSON.parse(ranged.ammunitionBlueprintJson) as {
+        templateResref?: string;
+        stackSize?: number;
+        parts?: Array<{ field?: string; value?: number }>;
+        properties?: Array<{ propertyName?: number; subtype?: number }>;
+      };
+      if (
+        ammoBlueprint.templateResref !== ranged.ammunitionBlueprintResref
+        || ammoBlueprint.stackSize !== 99
+        || ammoBlueprint.parts?.length !== 1
+        || ammoBlueprint.parts[0].field !== "ModelPart1"
+        || ammoBlueprint.parts[0].value !== ranged.ammunitionVariant
+        || ammoBlueprint.properties?.filter((property) => (
+          property.propertyName === 16
+          && property.subtype === ranged.damagePropertySubtype
+        )).length !== 1
+      ) {
+        throw new Error(
+          "ITEM-AMMUNITION-BLUEPRINT-MISMATCH: ammo UTI must bind the exact model variant, stack 99 and audited damage property",
+        );
+      }
+      const ammunitionItemResult = buildMeshyItemPartWithOptionsV2(
+        new Uint8Array(ranged.projectileSourceGlb),
+        ranged.ammunitionModelResref,
+        ranged.ammunitionTextureResref,
+        ranged.ammunitionOptionsJson,
+      );
+      let ammunitionItem: RangedAmmunitionOutput["ammunitionItem"];
+      try {
+        const report = JSON.parse(ammunitionItemResult.reportJson) as PartOutput["report"];
+        const mdl = exactBuffer(ammunitionItemResult.takeMdlBytes());
+        const texture = exactBuffer(ammunitionItemResult.takeTextureBytes());
+        const icon = exactBuffer(ammunitionItemResult.takeIconBytes());
+        if (
+          icon.byteLength === 0
+          || !report.iconOpaquePixelCount
+          || report.textureFormat !== "TGA_V1"
+        ) {
+          throw new Error(
+            "ITEM-AMMUNITION-INVENTORY-ASSET-MISMATCH: ammo item must emit binary MDL, direct-color TGA and a non-empty inventory icon",
+          );
+        }
+        const ammoUtiResult = writeItemUtiV1(
+          new Uint8Array(effectiveBaseitemsTwoDa),
+          channel.ammoBaseItem,
+          ranged.ammunitionBlueprintJson,
+        );
+        let ammoUti: ArrayBuffer;
+        let ammoUtiReport: Record<string, unknown>;
+        try {
+          ammoUti = exactBuffer(ammoUtiResult.takeUtiBytes());
+          ammoUtiReport = JSON.parse(ammoUtiResult.reportJson) as Record<string, unknown>;
+        } finally {
+          ammoUtiResult.free();
+        }
+        ammunitionItem = {
+          modelResref: ranged.ammunitionModelResref,
+          textureResref: ranged.ammunitionTextureResref,
+          iconResref: ranged.ammunitionIconResref,
+          blueprintResref: ranged.ammunitionBlueprintResref,
+          mdl,
+          texture,
+          icon,
+          uti: ammoUti,
+          report,
+          readback: JSON.parse(ammunitionItemResult.readbackJson),
+          utiReport: ammoUtiReport,
+          sourceSha256: await sha256(ranged.projectileSourceGlb),
+        };
+      } finally {
+        ammunitionItemResult.free();
+      }
+      rangedAmmunitionOutput = {
+        binding,
+        ammunitiontypes,
+        ammunitiontypesReport,
+        damageTypes,
+        damageTypesReport,
+        projectile,
+        ammunitionItem,
+      };
+    }
     const selectedOutputs = meshyParts.map((part) => {
       const output = outputs.find((candidate) => (
         candidate.field === part.field && candidate.variant === part.variant
@@ -1850,7 +2165,31 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
           }),
           placementJson,
         )
-      : buildItemProofModuleV1(
+      : rangedAmmunitionOutput
+        ? buildItemRangedWeaponProofModuleV1(
+            new Uint8Array(uti),
+            new Uint8Array(rangedAmmunitionOutput.ammunitionItem.uti),
+            JSON.stringify({
+              schemaVersion: 1,
+              moduleResref: request.moduleResref,
+              areaResref: request.areaResref,
+              hakResref: request.hakResref,
+              weaponBlueprintResref: request.blueprintResref,
+              ammunitionBlueprintResref: rangedAmmunitionOutput.ammunitionItem.blueprintResref,
+              moduleName: request.moduleName,
+              areaName: request.areaName,
+            }),
+            placementJson,
+            JSON.stringify({
+              schemaVersion: 1,
+              x: 11.25,
+              y: 14.5,
+              z: 0,
+              orientationX: 0,
+              orientationY: -1,
+            }),
+          )
+        : buildItemProofModuleV1(
           new Uint8Array(uti),
           JSON.stringify({
             schemaVersion: 1,
@@ -1967,6 +2306,12 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
     const budget = JSON.parse(validateItemTriangleBudgetV1Json(JSON.stringify([
       ...selectedOutputs.map((output) => output.report.triangleCount),
       ...referenceTriangleCounts,
+      ...(rangedAmmunitionOutput
+        ? [
+            rangedAmmunitionOutput.projectile.report.triangleCount,
+            rangedAmmunitionOutput.ammunitionItem.report.triangleCount,
+          ]
+        : []),
     ]))) as {
       triangleCount: number;
       triangleBudget: number;
@@ -1991,6 +2336,52 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         : []),
     ]);
     resources.push({ resref: request.blueprintResref, resourceType: 2025, payload: uti });
+    if (rangedAmmunitionOutput) {
+      resources.push(
+        {
+          resref: rangedAmmunitionOutput.binding.projectileModelResref,
+          resourceType: 2002,
+          payload: rangedAmmunitionOutput.projectile.mdl,
+        },
+        {
+          resref: request.rangedAmmunition!.projectileTextureResref,
+          resourceType: 3,
+          payload: rangedAmmunitionOutput.projectile.texture,
+        },
+        {
+          resref: rangedAmmunitionOutput.ammunitionItem.modelResref,
+          resourceType: 2002,
+          payload: rangedAmmunitionOutput.ammunitionItem.mdl,
+        },
+        {
+          resref: rangedAmmunitionOutput.ammunitionItem.textureResref,
+          resourceType: 3,
+          payload: rangedAmmunitionOutput.ammunitionItem.texture,
+        },
+        {
+          resref: rangedAmmunitionOutput.ammunitionItem.iconResref,
+          resourceType: 3,
+          payload: rangedAmmunitionOutput.ammunitionItem.icon,
+        },
+        {
+          resref: rangedAmmunitionOutput.ammunitionItem.blueprintResref,
+          resourceType: 2025,
+          payload: rangedAmmunitionOutput.ammunitionItem.uti,
+        },
+        {
+          resref: "ammunitiontypes",
+          resourceType: 2017,
+          payload: rangedAmmunitionOutput.ammunitiontypes,
+          allowOccupiedOverride: true,
+        },
+        {
+          resref: "damagetypes",
+          resourceType: 2017,
+          payload: rangedAmmunitionOutput.damageTypes,
+          allowOccupiedOverride: true,
+        },
+      );
+    }
     if (customWeaponBaseItem || baseitemsModelRange?.status === "PATCHED") {
       resources.push({
         resref: "baseitems",
@@ -2218,6 +2609,36 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         results: seamResults,
       },
       uti: JSON.parse(utiReportJson),
+      rangedAmmunition: rangedAmmunitionOutput
+        ? {
+            status: "OFFLINE_RANGED_AMMUNITION_PASSED",
+            binding: rangedAmmunitionOutput.binding,
+            damageRoute: rangedAmmunitionOutput.damageTypesReport,
+            ammunitiontypes: rangedAmmunitionOutput.ammunitiontypesReport,
+            projectile: {
+              report: rangedAmmunitionOutput.projectile.report,
+              readback: rangedAmmunitionOutput.projectile.readback,
+            },
+            ammunitionItem: {
+              baseItem: rangedAmmunitionOutput.binding.ammoBaseItem,
+              ammunitionType: rangedAmmunitionOutput.binding.ammunitionType,
+              modelResref: rangedAmmunitionOutput.ammunitionItem.modelResref,
+              textureResref: rangedAmmunitionOutput.ammunitionItem.textureResref,
+              iconResref: rangedAmmunitionOutput.ammunitionItem.iconResref,
+              blueprintResref: rangedAmmunitionOutput.ammunitionItem.blueprintResref,
+              sourceSha256: rangedAmmunitionOutput.ammunitionItem.sourceSha256,
+              partReport: rangedAmmunitionOutput.ammunitionItem.report,
+              readback: rangedAmmunitionOutput.ammunitionItem.readback,
+              uti: rangedAmmunitionOutput.ammunitionItem.utiReport,
+            },
+            runtimeValidation: {
+              status: "OWNER_PROOF_REQUIRED",
+              clip: rangedAmmunitionOutput.binding.runtimeClip,
+              modelVisibility: "not_tested",
+              proofCompleteness: "missing",
+            },
+          }
+        : null,
       partReports: outputs.map((output) => output.report),
       referenceTables: referenceTableReports,
       referenceResourceManifest: request.referenceResourceManifest
@@ -2264,6 +2685,71 @@ async function handle(request: StudioWorkerRequest): Promise<StudioWorkerRespons
         "application/octet-stream",
         uti,
       ),
+      ...(rangedAmmunitionOutput ? [
+        artifact(
+          "item-ranged-projectile-mdl",
+          "MODEL" as const,
+          `${rangedAmmunitionOutput.binding.projectileModelResref}.mdl`,
+          "application/octet-stream",
+          rangedAmmunitionOutput.projectile.mdl,
+        ),
+        artifact(
+          "item-ranged-projectile-texture",
+          "TEXTURE" as const,
+          `${request.rangedAmmunition!.projectileTextureResref}.tga`,
+          "image/x-tga",
+          rangedAmmunitionOutput.projectile.texture,
+        ),
+        artifact(
+          "item-ammunition-model",
+          "MODEL" as const,
+          `${rangedAmmunitionOutput.ammunitionItem.modelResref}.mdl`,
+          "application/octet-stream",
+          rangedAmmunitionOutput.ammunitionItem.mdl,
+        ),
+        artifact(
+          "item-ammunition-texture",
+          "TEXTURE" as const,
+          `${rangedAmmunitionOutput.ammunitionItem.textureResref}.tga`,
+          "image/x-tga",
+          rangedAmmunitionOutput.ammunitionItem.texture,
+        ),
+        artifact(
+          "item-ammunition-icon",
+          "TEXTURE" as const,
+          `${rangedAmmunitionOutput.ammunitionItem.iconResref}.tga`,
+          "image/x-tga",
+          rangedAmmunitionOutput.ammunitionItem.icon,
+        ),
+        artifact(
+          "item-ammunition-blueprint-uti",
+          "ITEM_BLUEPRINT" as const,
+          `${rangedAmmunitionOutput.ammunitionItem.blueprintResref}.uti`,
+          "application/octet-stream",
+          rangedAmmunitionOutput.ammunitionItem.uti,
+        ),
+        artifact(
+          "item-ammunitiontypes-2da",
+          "TWO_DA" as const,
+          "ammunitiontypes.2da",
+          "text/plain",
+          rangedAmmunitionOutput.ammunitiontypes,
+        ),
+        artifact(
+          "item-damagetypes-2da",
+          "TWO_DA" as const,
+          "damagetypes.2da",
+          "text/plain",
+          rangedAmmunitionOutput.damageTypes,
+        ),
+        artifact(
+          "item-ranged-projectile-source",
+          "SOURCE_MODEL" as const,
+          `${rangedAmmunitionOutput.binding.projectileModelResref}.source.glb`,
+          "model/gltf-binary",
+          request.rangedAmmunition!.projectileSourceGlb.slice(0),
+        ),
+      ] : []),
       ...outputs.flatMap((output, index) => [
         artifact(
           `item-part-${index}-mdl`,

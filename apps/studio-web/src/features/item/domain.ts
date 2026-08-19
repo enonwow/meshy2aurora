@@ -79,6 +79,10 @@ export function projectItemBaseitemsCatalog(json: string): ItemBaseItemsCatalog 
       equipableSlots: number(row.equipableSlots, `catalog.rows[${rowIndex}].equipableSlots`),
       invSlotWidth: number(row.invSlotWidth, `catalog.rows[${rowIndex}].invSlotWidth`),
       invSlotHeight: number(row.invSlotHeight, `catalog.rows[${rowIndex}].invSlotHeight`),
+      weaponWield: nullableNumber(row.weaponWield, `catalog.rows[${rowIndex}].weaponWield`),
+      weaponType: nullableNumber(row.weaponType, `catalog.rows[${rowIndex}].weaponType`),
+      rangedWeapon: nullableNumber(row.rangedWeapon, `catalog.rows[${rowIndex}].rangedWeapon`),
+      ammunitionType: nullableNumber(row.ammunitionType, `catalog.rows[${rowIndex}].ammunitionType`),
       capability: {
         schemaVersion: 1,
         compositionProfile: stringEnum(

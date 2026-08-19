@@ -1,0 +1,43 @@
+{
+  "schema": "meshy2aurora.meshy-run-provenance/v1",
+  "assetId": "tlc-hextech-shell-s1-p1500-v1",
+  "provider": "meshy",
+  "sourceMode": "image-to-3d",
+  "profileId": "S1-static-prop/v1",
+  "bridgeProtocolVersion": 1,
+  "runId": "6269b107-95b8-4b4d-9417-9561fdb2d417",
+  "taskIds": {
+    "PREVIEW": "01a01002-675a-773d-a593-ff011d6d04ad"
+  },
+  "generation": {
+    "aiModel": "meshy-6",
+    "modelType": "standard",
+    "topology": "triangle",
+    "targetPolycount": 1500,
+    "shouldRemesh": true,
+    "shouldTexture": true,
+    "enablePbr": true,
+    "hdTexture": false,
+    "removeLighting": true,
+    "imageEnhancement": false,
+    "moderation": true
+  },
+  "sourceImage": {
+    "path": "documentation/concepts/firearm-hextech-shotgun-v1/hextech-shell-concept-v1.png",
+    "byteLength": 2035109,
+    "sha256": "4af93ef0b2b07d85bb0fc5950e5da06c310afaf4f7bb3673cc2037301867d3e1"
+  },
+  "credits": {
+    "maximumApproved": 30,
+    "consumed": 30,
+    "balanceBefore": 1228,
+    "balanceAfter": 1198
+  },
+  "createdAt": "2026-08-17T13:56:30.640Z",
+  "finishedAt": "2026-08-17T14:00:34.436Z",
+  "artifact": {
+    "path": "source.glb",
+    "byteLength": 9432832,
+    "sha256": "f4f8c41d445036b1364a16f779b17b21baa4f49caff356d77f6d8b8e1d9727ec"
+  }
+}
