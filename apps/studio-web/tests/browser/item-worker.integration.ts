@@ -174,8 +174,8 @@ function twoDa(text: string) {
   return new TextEncoder().encode(text).buffer;
 }
 
-function exact113RowBaseitemsFixture() {
-  const rows = Array.from({ length: 113 }, (_, index) => index === 6
+function baseitemsFixtureWithRowCount(rowCount: number) {
+  const rows = Array.from({ length: rowCount }, (_, index) => index === 6
     ? "6 heavycrossbow 173 WBwXh 2 0 it_bag iwbwxh 0x00030 2 4 10 100 6 1 25"
     : `${index} filler_${index} **** Ring 0 0 it_bag iring 8 1 1 **** **** **** **** ****`);
   return twoDa([
@@ -270,16 +270,16 @@ afterEach(() => {
 });
 
 describe("Item Worker/WASM integration", () => {
-  it("carries exact donor 6 to output 113 across the public WASM boundary", async () => {
+  it("keeps legacy donor cloning available for unrelated output 114 across the public WASM boundary", async () => {
     wasmReady ??= initWasm();
     await wasmReady;
-    const source = exact113RowBaseitemsFixture();
+    const source = baseitemsFixtureWithRowCount(114);
     const requestJson = JSON.stringify({
       schemaVersion: 2,
       donorBaseItem: 6,
-      outputBaseItem: 113,
-      label: "hextech_shotgun",
-      itemClass: "WHxSh",
+      outputBaseItem: 114,
+      label: "legacy_arc_cannon",
+      itemClass: "WArc",
       nameStrref: null,
       invSlotWidth: 2,
       invSlotHeight: 4,
@@ -295,12 +295,12 @@ describe("Item Worker/WASM integration", () => {
     expect(report).toMatchObject({
       status: "APPENDED_EXACT",
       donorBaseItem: 6,
-      outputBaseItem: 113,
+      outputBaseItem: 114,
       runtimeRoute: { baseItem: 6, runtimeClip: "xbowshot" },
     });
-    expect(catalog.rows.find((row: { baseItem: number }) => row.baseItem === 113)).toMatchObject({
-      label: "hextech_shotgun",
-      itemClass: "WHxSh",
+    expect(catalog.rows.find((row: { baseItem: number }) => row.baseItem === 114)).toMatchObject({
+      label: "legacy_arc_cannon",
+      itemClass: "WArc",
       weaponWield: 6,
       weaponType: 1,
       rangedWeapon: 25,
@@ -308,6 +308,33 @@ describe("Item Worker/WASM integration", () => {
     expect(catalog.rows.find((row: { baseItem: number }) => row.baseItem === 6)).toMatchObject({
       label: "heavycrossbow",
       itemClass: "WBwXh",
+    });
+  });
+
+  it("rejects the reserved standalone 113 identity through the legacy donor-clone WASM boundary", async () => {
+    wasmReady ??= initWasm();
+    await wasmReady;
+    const source = baseitemsFixtureWithRowCount(113);
+    const requestJson = JSON.stringify({
+      schemaVersion: 2,
+      donorBaseItem: 6,
+      outputBaseItem: 113,
+      label: "hextech_shotgun",
+      itemClass: "WHxSh",
+      nameStrref: null,
+      invSlotWidth: 2,
+      invSlotHeight: 4,
+    });
+
+    let reservedError: unknown;
+    try {
+      appendItemCustomWeaponBaseitemV2(new Uint8Array(source), requestJson);
+    } catch (error) {
+      reservedError = error;
+    }
+
+    expect(JSON.parse(String(reservedError))).toMatchObject({
+      code: "ITEM-CUSTOM-BASEITEM-STANDALONE-RESERVED",
     });
   });
 
