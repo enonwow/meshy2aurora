@@ -291,15 +291,15 @@ Toolset może potwierdzić zasoby, itemy i konfigurację, lecz nie zastępuje te
 
 ### 5.5. Wynik weryfikacji implementacji
 
-Na stanie z 2026-08-18:
+Na stanie po remediacji audytu z 2026-08-19:
 
-- `cargo test -p m2a-core --test item`: **57/57 passed**;
+- `cargo test -p m2a-core --test item`: **58/58 passed**;
 - testy jednostkowe Studio: **274 passed, 1 skipped**;
 - `npm run typecheck`: **passed**;
 - `npm run build`, łącznie z release build WASM: **passed**;
-- ukierunkowany test prawdziwego workera przeglądarkowego i WASM dla transakcji Bullet: **passed**;
+- ukierunkowany zestaw prawdziwego workera przeglądarkowego i WASM, obejmujący transakcję Bullet, zachowanie niezależnej ścieżki legacy oraz negatywną bramkę zarezerwowanej tożsamości 113: **5/5 passed**;
 - `cargo fmt --all -- --check`, `git diff --check`, guard kanonicznego worktree i `assert-meshy-asset-layout.ps1`: **passed**;
-- clippy dla bibliotek przechodzi po wyłączeniu dokładnie trzech wcześniejszych uwag niezwiązanych z tą funkcją; pełny `-D warnings` nadal wskazuje te trzy zastane uwagi;
+- `cargo clippy -p m2a-core -p m2a-wasm --all-targets`: **passed**; wyjście nadal zawiera wcześniejsze ostrzeżenia bibliotek, fixture'ów i przykładów, dlatego nie jest deklarowany czysty przebieg z `-D warnings`;
 - `cargo test -p m2a-wasm`: **32 passed, 2 failed**, ponieważ lokalny, ignorowany payload `sample-3d/h2-clockwork-sentinel-1500/source.glb` nie jest dostępny; oba błędy należą do wcześniejszej trasy proceduralnego creature i nie dotyczą itemów, amunicji ani pocisku;
 - pełne zbieranie browser integration ma również zastane blokery nieobecnych lokalnych fixture'ów `local-reference-assets/appearance.2da` i `sample-3d/h2-clockwork-sentinel-1500/source.glb`; ukierunkowany test nowej transakcji przechodzi.
 

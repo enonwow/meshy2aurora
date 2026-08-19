@@ -460,10 +460,7 @@ fn donor_clone_api_rejects_the_reserved_standalone_hextech_identity() {
     let error =
         append_item_custom_weapon_baseitem_v2(&source, &hextech_baseitem_request(113)).unwrap_err();
 
-    assert_eq!(
-        error.code,
-        "ITEM-CUSTOM-BASEITEM-STANDALONE-RESERVED"
-    );
+    assert_eq!(error.code, "ITEM-CUSTOM-BASEITEM-STANDALONE-RESERVED");
     assert_eq!(error.path, "request");
 }
 
