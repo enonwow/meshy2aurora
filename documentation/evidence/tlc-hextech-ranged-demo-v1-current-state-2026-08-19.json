@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "candidateId": "tlc-hextech-ranged-demo-v1-20260818",
+  "recordedAt": "2026-08-19",
+  "authoritativeCurrentState": "ready_for_owner_proof",
+  "immutableCandidatePacket": {
+    "path": "proof-output/tlc-hextech-ranged-demo-v1-20260818/candidate.json",
+    "byteLength": 1865,
+    "sha256": "35d4f0db4919b1d0c1426f862081a7e54304bb5f1dca82c762327b347d28692d",
+    "captureTimeState": "frozen_not_installed"
+  },
+  "offlineBuildReport": {
+    "path": "proof-output/tlc-hextech-ranged-demo-v1-20260818/generated/item-build-report.json",
+    "byteLength": 1066506,
+    "sha256": "21f82669fc69198cbd4a05578045ce91816d24f3b85d8143ceda445a5100cf80",
+    "status": "OFFLINE_ITEM_PACKAGE_PASSED"
+  },
+  "installationRecord": {
+    "path": "proof-output/tlc-hextech-ranged-demo-v1-20260818/installation-2026-08-18.json",
+    "byteLength": 1168,
+    "sha256": "a40089208483b1981bc10e7dfdee2dc9dbcc856b641ea3fd14ffa5b69c2eb965",
+    "status": "installed_byte_verified"
+  },
+  "module": {
+    "fileName": "m2aimod35.mod",
+    "displayName": "Meshy2Aurora Item 113 candidate",
+    "areaName": "Meshy2Aurora Item Assembly Proof",
+    "byteLength": 18659,
+    "sha256": "3b0305aaf1997a72b1efdaa58fdf86af486e438cc9709e24355c2d9425560ef2"
+  },
+  "hak": {
+    "fileName": "m2aihak35.hak",
+    "byteLength": 185253306,
+    "sha256": "dd4f269cfea4867490ca19c49b23f48c7632c4d0686f39db0ddc3d176c426d55"
+  },
+  "toolset": {
+    "modelVisibility": "not_tested",
+    "proofCompleteness": "missing",
+    "visualAcceptance": "not_tested"
+  },
+  "nwn": {
+    "modelVisibility": "not_tested",
+    "proofCompleteness": "missing",
+    "visualAcceptance": "not_tested"
+  },
+  "readyForOwnerProof": true,
+  "interpretation": "The immutable candidate packet preserves its capture-time pre-installation state. This append-only record binds the later byte-verified installation without rewriting or repacking the frozen candidate. It does not claim Toolset or NWN runtime success."
+}
