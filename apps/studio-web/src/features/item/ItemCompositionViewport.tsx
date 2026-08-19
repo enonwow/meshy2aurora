@@ -11,6 +11,7 @@ import {
 import { inspectItemPreviewSourceNode } from "./itemSourceNode";
 import {
   authoredItemMatrix,
+  itemHorizontalBroadsideCameraFrame,
   itemPreviewGroundingMatrix,
   itemPropertiesCameraFrame,
 } from "./itemTransform";
@@ -22,6 +23,8 @@ export interface ItemCompositionViewportProps {
   readonly tolerance: number;
   readonly referenceProfile?: ItemAttachmentProfileV1;
   readonly showReference?: boolean;
+  readonly cameraPresentation?: "ITEM_PROPERTIES" | "HORIZONTAL_BROADSIDE";
+  readonly label?: string;
   readonly onSeams: (seams: ItemSeamResult[]) => void;
   readonly onNodeNames: (field: string, names: string[]) => void;
 }
@@ -86,6 +89,8 @@ export function ItemCompositionViewport({
   tolerance,
   referenceProfile,
   showReference = false,
+  cameraPresentation = "ITEM_PROPERTIES",
+  label = "Item composition 3D preview",
   onSeams,
   onNodeNames,
 }: ItemCompositionViewportProps) {
@@ -95,6 +100,7 @@ export function ItemCompositionViewport({
   const toleranceRef = useRef(tolerance);
   const referenceProfileRef = useRef(referenceProfile);
   const showReferenceRef = useRef(showReference);
+  const cameraPresentationRef = useRef(cameraPresentation);
   const onSeamsRef = useRef(onSeams);
   const onNodeNamesRef = useRef(onNodeNames);
   const [error, setError] = useState<string>();
@@ -103,6 +109,7 @@ export function ItemCompositionViewport({
   toleranceRef.current = tolerance;
   referenceProfileRef.current = referenceProfile;
   showReferenceRef.current = showReference;
+  cameraPresentationRef.current = cameraPresentation;
   onSeamsRef.current = onSeams;
   onNodeNamesRef.current = onNodeNames;
   const sourceSignature = parts
@@ -170,6 +177,7 @@ export function ItemCompositionViewport({
         mode: modeRef.current,
         tolerance: toleranceRef.current,
         showReference: showReferenceRef.current,
+        cameraPresentation: cameraPresentationRef.current,
         referenceProfileSha256: referenceProfileRef.current?.profileSha256 ?? null,
         parts: liveParts.map((part) => ({
           field: part.field,
@@ -246,14 +254,20 @@ export function ItemCompositionViewport({
         visibleBounds.union(new THREE.Box3().setFromObject(referenceFrames));
       }
       if (!visibleBounds.isEmpty()) {
-        const frame = itemPropertiesCameraFrame(
+        const frame = cameraPresentationRef.current === "HORIZONTAL_BROADSIDE"
+          ? itemHorizontalBroadsideCameraFrame(
+            { min: visibleBounds.min, max: visibleBounds.max },
+            Math.max(1, host.clientWidth) / Math.max(1, host.clientHeight),
+          )
+          : itemPropertiesCameraFrame(
           { min: visibleBounds.min, max: visibleBounds.max },
           Math.max(1, host.clientWidth) / Math.max(1, host.clientHeight),
-        );
+          );
         viewHalfHeight = frame.halfHeight;
         controls.target.set(...frame.target);
         camera.up.set(...frame.up);
         camera.position.set(...frame.position);
+        camera.zoom = cameraPresentationRef.current === "HORIZONTAL_BROADSIDE" ? 1.6 : 1;
         camera.near = frame.near;
         camera.far = frame.far;
         key.position.set(
@@ -340,7 +354,13 @@ export function ItemCompositionViewport({
   }, [sourceSignature]);
 
   return (
-    <div className="item-viewport" ref={hostRef}>
+    <div
+      className="item-viewport"
+      ref={hostRef}
+      role="img"
+      aria-label={label}
+      data-camera-presentation={cameraPresentation.toLowerCase()}
+    >
       {error ? <p className="item-viewport-error" role="alert">{error}</p> : null}
     </div>
   );

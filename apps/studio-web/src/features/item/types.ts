@@ -51,6 +51,10 @@ export interface ItemBaseItemRow {
   readonly equipableSlots: number;
   readonly invSlotWidth: number;
   readonly invSlotHeight: number;
+  readonly weaponWield: number | null;
+  readonly weaponType: number | null;
+  readonly rangedWeapon: number | null;
+  readonly ammunitionType: number | null;
   readonly capability: ItemCapability;
   readonly partSlots: readonly ItemPartSlot[];
   readonly colorFields: readonly string[];
@@ -228,7 +232,9 @@ export interface ItemAttachmentProfileV1 {
   readonly depthAxis: 0 | 1 | 2;
   readonly attachmentZoneMin: readonly [number, number, number];
   readonly attachmentZoneMax: readonly [number, number, number];
-  readonly attachmentEvidence: "ORIGIN_CONTAINING_REFERENCE_PARTS_V1";
+  readonly attachmentEvidence:
+    | "ORIGIN_CONTAINING_REFERENCE_PARTS_V1"
+    | "AUTHOR_MANUAL_ALIGNMENT_V1";
   readonly slots: readonly ItemReferenceSlotFrameV1[];
   readonly profileSha256: string;
 }
@@ -330,36 +336,68 @@ export interface ItemBuildSnapshot {
     readonly proofCompleteness: "missing";
     readonly readyForOwnerProof: false;
     readonly proofBlocker: string;
+    readonly rangedAmmunition?: {
+      readonly status: "OFFLINE_RANGED_AMMUNITION_PASSED";
+      readonly binding: {
+        readonly weaponBaseItem: number;
+        readonly ammoBaseItem: number;
+        readonly ammunitionType: number;
+        readonly damageRangedProjectile: number;
+        readonly ammunitiontypesRow: number;
+        readonly projectileModelResref: string;
+        readonly runtimeClip: string;
+      };
+      readonly damageRoute: {
+        readonly status: string;
+        readonly damageTypeRow: number;
+        readonly expectedLabel: string;
+        readonly semanticReadbackStatus: string;
+      };
+      readonly ammunitiontypes: {
+        readonly status: string;
+        readonly firstRow: number;
+        readonly lastRow: number;
+        readonly semanticReadbackStatus: string;
+      };
+      readonly ammunitionItem: {
+        readonly baseItem: number;
+        readonly modelResref: string;
+        readonly blueprintResref: string;
+      };
+      readonly runtimeValidation: {
+        readonly status: "OWNER_PROOF_REQUIRED";
+        readonly clip: string;
+        readonly modelVisibility: "not_tested";
+        readonly proofCompleteness: "missing";
+      };
+    } | null;
     readonly hakSha256: string;
     readonly moduleSha256: string;
     readonly customWeaponBaseItem?: {
-      readonly schemaVersion: 2;
-      readonly status: "APPENDED_EXACT";
-      readonly donorBaseItem: number;
+      readonly schemaVersion: 3;
+      readonly status: "APPENDED_STANDALONE_EXACT";
       readonly outputBaseItem: number;
       readonly label: string;
       readonly itemClass: string;
       readonly invSlotWidth: number;
       readonly invSlotHeight: number;
+      readonly definitionSource: "EXPLICIT_COLUMN_ASSIGNMENTS";
       readonly sourceSha256: string;
       readonly outputSha256: string;
-      readonly runtimeRoute: {
-        readonly schemaVersion: 1;
-        readonly baseItem: number;
-        readonly weaponWield: number;
-        readonly weaponType: number;
-        readonly rangedWeapon: number;
-        readonly runtimeClip: string;
-        readonly animatedPartField: string;
-        readonly animatedPartLabel: string;
-        readonly referenceFamily: string;
-      };
     } | null;
     readonly proofModule: {
       readonly schemaVersion: number;
       readonly fixtureProfile: string;
       readonly groundItemCount: number;
+      readonly creatureCount?: number;
       readonly equippedItemCount?: number;
+      readonly weaponBlueprintResref?: string;
+      readonly ammunitionBlueprintResref?: string;
+      readonly targetBlueprintResref?: string;
+      readonly targetAppearanceRow?: number;
+      readonly targetPosition?: readonly [number, number, number];
+      readonly targetWalkRate?: number;
+      readonly targetScriptsEmpty?: boolean;
       readonly outputSha256: string;
       readonly semanticReadbackStatus: string;
       readonly modelVisibility: "not_tested";

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import {
   authoredItemMatrix,
+  itemHorizontalBroadsideCameraFrame,
   itemPreviewGroundingMatrix,
   itemPropertiesCameraFrame,
 } from "./itemTransform";
@@ -81,5 +82,21 @@ describe("Item authored transform parity", () => {
 
     expect(itemPropertiesCameraFrame(widePart, 0.5).halfHeight).toBeCloseTo(4.72, 6);
     expect(itemPropertiesCameraFrame(widePart, 2).halfHeight).toBeCloseTo(1.18, 6);
+  });
+
+  it("frames authored firearm axial length left-to-right for broadside proof", () => {
+    const frame = itemHorizontalBroadsideCameraFrame({
+      min: new THREE.Vector3(-0.05, -0.2, -0.3),
+      max: new THREE.Vector3(0.05, 0.2, 1.3),
+    }, 2);
+
+    expect(frame.target).toEqual([0, 0, 0.5]);
+    expect(frame.position[0]).toBeGreaterThan(frame.target[0]);
+    expect(frame.position[1]).toBe(frame.target[1]);
+    expect(frame.position[2]).toBe(frame.target[2]);
+    expect(frame.up).toEqual([0, -1, 0]);
+    expect(frame.halfHeight).toBeCloseTo(0.472, 6);
+    expect(frame.near).toBeGreaterThan(0);
+    expect(frame.far).toBeGreaterThan(frame.near);
   });
 });

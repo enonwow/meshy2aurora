@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyAcceptedItemAuthoringRecipeV2,
   applyOwnerDirectedItemCompositionV2,
+  buildHextechShotgunAuthoredAttachmentProfileV3,
   buildItemManualFitSnapshotV2,
   deriveHextechShotgunOutputRowV2,
   diffItemAuthoringScopesV2,
@@ -21,12 +22,6 @@ const sha = (character: string) => character.repeat(64);
 const identity: ItemAuthoringIdentityV2 = {
   schemaVersion: 2,
   archetypeId: "HEXTECH_SHOTGUN",
-  runtimeDonor: {
-    baseItem: 6,
-    label: "heavycrossbow",
-    itemClass: "WBwXh",
-    runtimeClip: "xbowshot",
-  },
   output: {
     baseItem: 113,
     label: "hextech_shotgun",
@@ -48,7 +43,7 @@ const identity: ItemAuthoringIdentityV2 = {
     },
   },
   reference: {
-    id: "wbwxh_b_014/wbwxh_m_014/wbwxh_t_014",
+    id: "hextech-shotgun-manual-assembly-v3",
     baseitemsSha256: sha("a"),
     attachmentProfileSha256: sha("b"),
   },
@@ -138,7 +133,7 @@ ItemAuthoringRecipeV2 {
 }
 
 describe("ItemAuthoringRecipeV2", () => {
-  it("allows every custom BaseItem 113 part to enter exact manual-fit scaling", () => {
+  it("locks every custom BaseItem 113 part to the exact manual transform", () => {
     const profile = {
       slots: [{
         field: "ModelPart1",
@@ -147,32 +142,27 @@ describe("ItemAuthoringRecipeV2", () => {
       }],
     } as unknown as import("./types").ItemAttachmentProfileV1;
 
-    expect(itemPartSupportsReferenceScalingV2(113, "ModelPart1", profile)).toBe(true);
+    expect(itemPartSupportsReferenceScalingV2(113, "ModelPart1", profile)).toBe(false);
     expect(itemPartSupportsReferenceScalingV2(6, "ModelPart1", profile)).toBe(false);
   });
 
-  it("projects output 113 only from an exact 113-row table and audited donor 6", () => {
-    const donor = {
-      baseItem: 6,
-      label: "heavycrossbow",
-      itemClass: "WBwXh",
-      modelType: 2,
-      capability: { compositionProfile: "BOTTOM_MIDDLE_TOP" },
-      partSlots: [{}, {}, {}],
-      invSlotWidth: 2,
-      invSlotHeight: 4,
-    } as unknown as import("./types").ItemBaseItemRow;
+  it("projects standalone output 113 without consulting any existing row", () => {
     const catalog = {
       physicalRowCount: 113,
-      rows: [donor],
+      rows: [],
     } as unknown as import("./types").ItemBaseItemsCatalog;
 
     expect(deriveHextechShotgunOutputRowV2(catalog)).toMatchObject({
       baseItem: 113,
       label: "hextech_shotgun",
       itemClass: "WHxSh",
+      modelType: 2,
       invSlotWidth: 2,
       invSlotHeight: 4,
+      capability: {
+        compositionProfile: "BOTTOM_MIDDLE_TOP",
+        requiredReferenceTables: ["Appearance"],
+      },
     });
     expect(() => deriveHextechShotgunOutputRowV2({
       ...catalog,
@@ -180,13 +170,28 @@ describe("ItemAuthoringRecipeV2", () => {
     })).toThrow(/exact next BaseItem 113/i);
   });
 
-  it("keeps the runtime donor and custom output BaseItem as separate identities", () => {
+  it("validates the standalone identity without a donor BaseItem", () => {
     const result = validateItemAuthoringRecipeV2(recipe());
 
     expect(result.ok).toBe(true);
-    expect(identity.runtimeDonor.baseItem).toBe(6);
     expect(identity.output.baseItem).toBe(113);
-    expect(identity.runtimeDonor.itemClass).not.toBe(identity.output.itemClass);
+    expect(identity.output.itemClass).toBe("WHxSh");
+  });
+
+  it("builds an authored Y-axis profile with no retail or image dependency", () => {
+    const profile = buildHextechShotgunAuthoredAttachmentProfileV3(sha("a"));
+
+    expect(profile.identity).toMatchObject({
+      baseItem: 113,
+      itemClass: "WHxSh",
+      referenceKind: "AUTHOR_DIRECTED_SOURCE_FRAME",
+      referenceId: "hextech-shotgun-manual-assembly-v3",
+    });
+    expect(profile.attachmentEvidence).toBe("AUTHOR_MANUAL_ALIGNMENT_V1");
+    expect([profile.axialAxis, profile.widthAxis, profile.depthAxis]).toEqual([1, 2, 0]);
+    expect(profile.slots.map(({ field }) => field)).toEqual([
+      "ModelPart1", "ModelPart2", "ModelPart3",
+    ]);
   });
 
   it("has no implicit accepted recipe for the canonical source hashes", () => {
@@ -213,13 +218,13 @@ describe("ItemAuthoringRecipeV2", () => {
       ownerStatus: "NOT_REVIEWED",
       validationTolerance: 0.005,
       correction: {
-        field: "ModelPart2",
+        fields: ["ModelPart1", "ModelPart2", "ModelPart3"],
         allowedTransformFields: ["translation", "rotation"],
       },
     });
   });
 
-  it("applies the exact Bottom and protected Top while limiting the correction to Middle", () => {
+  it("applies the exact manual Bottom, Middle and Top transforms along +Y", () => {
     const observed = {
       outputBaseItem: 113,
       referenceId: identity.reference.id,
@@ -234,19 +239,19 @@ describe("ItemAuthoringRecipeV2", () => {
     );
 
     expect(directed.map(({ translation }) => translation)).toEqual([
-      [-0.00431, 0.12917034, 0.15773459],
-      [-0.00431, -0.00852164987, -0.18716540565],
-      [-0.00431, 0.008945521, -0.49844033],
+      [-0.00431, -0.15773459, 0.13717034],
+      [-0.00431, 0.18716541, -0.00852165],
+      [-0.00431, 0.49844033, 0.008945521],
     ]);
     expect(directed.map(({ rotationDegrees }) => rotationDegrees)).toEqual([
-      [90, 0, 90],
-      [-90, 0, -90],
-      [-90, 0, -90],
+      [180, 0, 90],
+      [0, 0, -90],
+      [0, 0, -90],
     ]);
     expect(directed.map(({ rotationXyzw }) => rotationXyzw)).toEqual([
-      [0.5, -0.5, 0.5, 0.5],
-      [-0.5, -0.5, -0.5, 0.5],
-      [-0.5, -0.5, -0.5, 0.5],
+      [Math.SQRT1_2, -Math.SQRT1_2, 0, 0],
+      [0, 0, -Math.SQRT1_2, Math.SQRT1_2],
+      [0, 0, -Math.SQRT1_2, Math.SQRT1_2],
     ]);
     expect(directed.map(({ uniformScale }) => uniformScale)).toEqual([
       0.15796308,

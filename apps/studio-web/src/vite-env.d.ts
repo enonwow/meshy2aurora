@@ -19,6 +19,38 @@ declare module "@m2a-wasm" {
     bytes: Uint8Array,
     requestJson: string,
   ): string;
+  export function appendItemStandaloneWeaponBaseitemV3(
+    bytes: Uint8Array,
+    requestJson: string,
+  ): Uint8Array;
+  export function appendItemStandaloneWeaponBaseitemV3ReportJson(
+    bytes: Uint8Array,
+    requestJson: string,
+  ): string;
+  export function appendItemAmmunitionVariantBlockV1(
+    bytes: Uint8Array,
+    requestJson: string,
+  ): Uint8Array;
+  export function appendItemAmmunitionVariantBlockV1ReportJson(
+    bytes: Uint8Array,
+    requestJson: string,
+  ): string;
+  export function patchItemDamageRangedProjectileV1(
+    bytes: Uint8Array,
+    requestJson: string,
+  ): Uint8Array;
+  export function patchItemDamageRangedProjectileV1ReportJson(
+    bytes: Uint8Array,
+    requestJson: string,
+  ): string;
+  export function resolveItemRangedWeaponProfileV1Json(
+    baseitemsTwoDa: Uint8Array,
+    baseItem: number,
+    profileJson: string,
+  ): string;
+  export function finalizeItemAuthoredAttachmentProfileV1Json(
+    profileJson: string,
+  ): string;
   export function extendItemBaseitemModelRangeV1(
     bytes: Uint8Array,
     baseItem: number,
@@ -97,6 +129,30 @@ declare module "@m2a-wasm" {
     takeMdlBytes(): Uint8Array;
     takeTextureBytes(): Uint8Array;
     takeIconBytes(): Uint8Array;
+    free(): void;
+  };
+  export function buildMeshyRangedProjectileV1(
+    sourceGlb: Uint8Array,
+    modelResref: string,
+    textureResref: string,
+    optionsJson: string,
+  ): {
+    readonly readbackJson: string;
+    readonly reportJson: string;
+    takeMdlBytes(): Uint8Array;
+    takeTextureBytes(): Uint8Array;
+    takeIconBytes(): Uint8Array;
+    free(): void;
+  };
+  export function buildItemRangedWeaponProofModuleV1(
+    weaponUti: Uint8Array,
+    ammunitionUti: Uint8Array,
+    identityJson: string,
+    weaponPlacementJson: string,
+    ammunitionPlacementJson: string,
+  ): {
+    readonly reportJson: string;
+    takeModuleBytes(): Uint8Array;
     free(): void;
   };
   export function measureMeshyItemSeamV1Json(

@@ -25,6 +25,10 @@ function longsword(): ItemBaseItemRow {
     equipableSlots: 0x10,
     invSlotWidth: 1,
     invSlotHeight: 3,
+    weaponWield: null,
+    weaponType: null,
+    rangedWeapon: null,
+    ammunitionType: null,
     capability: {
       schemaVersion: 1,
       compositionProfile: "BOTTOM_MIDDLE_TOP",

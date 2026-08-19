@@ -187,6 +187,50 @@ function exact113RowBaseitemsFixture() {
   ].join("\n"));
 }
 
+function rangedAmmunitionBaseitemsFixture() {
+  return twoDa([
+    "2DA V2.0",
+    "",
+    "Label Name ItemClass ModelType GenderSpecific DefaultModel DefaultIcon EquipableSlots InvSlotWidth InvSlotHeight MinRange MaxRange WeaponWield WeaponType RangedWeapon AmmunitionType",
+    "1 testgun **** M2aGun 0 0 it_bag im2agun 0x00030 2 2 10 100 6 1 27 3",
+    "20 arrow **** WAmAr 0 0 it_bag iwamar 0 1 1 **** **** **** **** **** ****",
+    "25 bolt **** WAmBo 0 0 it_bag iwambo 0 1 1 **** **** **** **** **** ****",
+    "27 bullet **** WAmBu 0 0 it_bag iwambu 0 1 1 **** **** **** **** **** ****",
+    "",
+  ].join("\n"));
+}
+
+function rangedAmmunitiontypesFixture() {
+  const kinds = [
+    ["arrow", "wamar_001", "cb_ht_arrow1"],
+    ["bolt", "wambo_001", "cb_ht_arrow1"],
+    ["bullet", "wambu_001", "cb_ht_bullet1"],
+    ["dart", "wthdt_001", "cb_ht_dart1"],
+    ["shuriken", "wthsh_001", "cb_ht_dart1"],
+    ["throwingaxe", "wthax_001", "cb_ht_throwaxe1"],
+  ] as const;
+  return twoDa([
+    "2DA V2.0",
+    "",
+    "label Model ShotSound ImpactSound AmmunitionType DamageRangedProjectile",
+    ...Array.from({ length: 6 }, (_, damage) => kinds.map((kind, offset) => (
+      `${damage * 6 + offset} ${kind[0]}_${damage} ${kind[1]} **** ${kind[2]} ${offset + 1} ${damage}`
+    ))).flat(),
+    "",
+  ].join("\n"));
+}
+
+function rangedDamageTypesFixture() {
+  return twoDa([
+    "2DA V2.0",
+    "",
+    "Label CharsheetStrref DamageTypeGroup DamageRangedProjectile",
+    "0 Bludgeoning 58345 0 0",
+    "6 Divine 58305 4 0",
+    "",
+  ].join("\n"));
+}
+
 function capartFixture() {
   return twoDa([
     "2DA V2.0",
@@ -266,6 +310,224 @@ describe("Item Worker/WASM integration", () => {
       itemClass: "WBwXh",
     });
   });
+
+  it("packages a custom Bullet stack, explicit EE damage route and +Y projectile in one worker transaction", async () => {
+    const client = new StudioWorkerClient();
+    clients.push(client);
+    const baseitemsTwoDa = rangedAmmunitionBaseitemsFixture();
+    const weaponSourceGlb = asStaticItemPart(await fetchBytes(sourceUrl));
+    const projectileSourceGlb = weaponSourceGlb.slice(0);
+    const ammunitiontypesTwoDa = rangedAmmunitiontypesFixture();
+    const damageTypesTwoDa = rangedDamageTypesFixture();
+    const colors = {
+      leather1Color: null,
+      leather2Color: null,
+      cloth1Color: null,
+      cloth2Color: null,
+      metal1Color: null,
+      metal2Color: null,
+    };
+    const transform = {
+      translation: [0, 0, 0],
+      rotationXyzw: [0, 0, 0, 1],
+      uniformScale: 0.2,
+      pivot: [0, 0, 0],
+    };
+    const ammoProperty = {
+      propertyName: 16,
+      subtype: 8,
+      costTable: 4,
+      costValue: 1,
+      param1: 255,
+      param1Value: 0,
+      chanceAppear: 100,
+    };
+    const response = await client.request({
+      requestId: "item-ranged-ammunition-build",
+      type: "BUILD_ITEM_PACKAGE",
+      baseitemsTwoDa,
+      baseItem: 1,
+      rangedAmmunition: {
+        ammunitiontypesTwoDa,
+        damageTypesTwoDa,
+        ammunitionChannel: "BULLET",
+        damageRangedProjectile: 6,
+        damageTypeRow: 6,
+        damageTypeLabel: "Divine",
+        damagePropertySubtype: 8,
+        wielderClip: "XBOWSHOT",
+        projectileSourceGlb,
+        projectileModelResref: "m2ahxshell",
+        projectileTextureResref: "m2ahxshtex",
+        projectileOptionsJson: JSON.stringify({
+          schemaVersion: 1,
+          sourceForwardAxis: "POSITIVE_Y",
+          transform,
+          sourceNode: null,
+        }),
+        shotSoundResref: "cb_sh_prjtlelec",
+        impactSoundResref: "scm_elec",
+        ammunitionBlueprintResref: "m2ahxammo",
+        ammunitionBlueprintJson: JSON.stringify({
+          schemaVersion: 1,
+          templateResref: "m2ahxammo",
+          tag: "M2AHXAMMO",
+          localizedName: "Hextech Shells",
+          description: "Worker integration ammunition.",
+          identifiedDescription: "Worker integration ammunition.",
+          comment: "Ranged ammunition integration test.",
+          parts: [{ field: "ModelPart1", value: 99 }],
+          properties: [ammoProperty],
+          colors,
+          cost: 50,
+          addCost: 0,
+          charges: 0,
+          stackSize: 99,
+          paletteId: 4,
+          identified: true,
+          stolen: false,
+          cursed: false,
+          plot: false,
+        }),
+        ammunitionModelResref: "wambu_099",
+        ammunitionTextureResref: "m2ahxamtex",
+        ammunitionIconResref: "iwambu_099",
+        ammunitionVariant: 99,
+        ammunitionOptionsJson: JSON.stringify({
+          schemaVersion: 1,
+          transform,
+          sourceNode: null,
+          textureEncoding: "DIRECT_COLOR",
+          iconSize: [32, 32],
+          iconProjectionBounds: null,
+          weaponColor: null,
+          targetSpaceScaleXyz: [1, 1, 1],
+        }),
+      },
+      hakResref: "m2arnghak",
+      hakFileName: "m2arnghak.hak",
+      moduleResref: "m2arngmod",
+      moduleFileName: "m2arngmod.mod",
+      moduleName: "Meshy2Aurora ranged ammunition candidate",
+      areaResref: "m2arngarea",
+      areaName: "Meshy2Aurora Ranged Ammunition Proof",
+      blueprintResref: "m2arngweapon",
+      blueprintJson: JSON.stringify({
+        schemaVersion: 1,
+        templateResref: "m2arngweapon",
+        tag: "M2ARNGWEAPON",
+        localizedName: "Test gun",
+        description: "Worker integration ranged weapon.",
+        identifiedDescription: "Worker integration ranged weapon.",
+        comment: "Ranged ammunition integration test.",
+        parts: [{ field: "ModelPart1", value: 1 }],
+        properties: [],
+        colors,
+        cost: 100,
+        addCost: 0,
+        charges: 0,
+        stackSize: 1,
+        paletteId: 2,
+        identified: true,
+        stolen: false,
+        cursed: false,
+        plot: false,
+      }),
+      generationSessionJson: null,
+      generationArtifactsJson: null,
+      fitReportJson: null,
+      attachmentProfileJson: null,
+      occupiedResourceKeys: [],
+      seamValidation: { tolerance: 0.01 },
+      referenceTables: [],
+      referenceResources: [],
+      referenceResourceManifest: null,
+      capartContext: null,
+      equippedProofContext: null,
+      parts: [{
+        field: "ModelPart1",
+        variant: 1,
+        sourceKind: "MESHY_GLB",
+        modelResref: "m2agun_001",
+        iconResref: "im2agun_001",
+        textureResref: "m2aguntx",
+        sourceGlb: weaponSourceGlb,
+        transformJson: JSON.stringify({
+          ...transform,
+          uniformScale: 1,
+        }),
+        targetSpaceScaleXyz: [1, 1, 1],
+        sourceNode: null,
+        textureEncoding: "DIRECT_COLOR",
+      }],
+    }, [
+      baseitemsTwoDa,
+      ammunitiontypesTwoDa,
+      damageTypesTwoDa,
+      projectileSourceGlb,
+      weaponSourceGlb,
+    ]);
+    expect(response).toMatchObject({ ok: true, type: "ITEM_PACKAGE_BUILT" });
+    if (!response.ok || response.type !== "ITEM_PACKAGE_BUILT") {
+      throw new Error("ranged ammunition worker transaction failed");
+    }
+    expect(JSON.parse(response.reportJson)).toMatchObject({
+      status: "OFFLINE_ITEM_PACKAGE_PASSED",
+      rangedAmmunition: {
+        status: "OFFLINE_RANGED_AMMUNITION_PASSED",
+        binding: {
+          weaponBaseItem: 1,
+          ammoBaseItem: 27,
+          ammunitionType: 3,
+          damageRangedProjectile: 6,
+          ammunitiontypesRow: 38,
+          projectileModelResref: "m2ahxshell",
+          runtimeClip: "xbowshot",
+        },
+        damageRoute: {
+          status: "PATCHED_DAMAGE_RANGED_PROJECTILE",
+          damageTypeRow: 6,
+          expectedLabel: "Divine",
+          semanticReadbackStatus: "PASS",
+        },
+        ammunitiontypes: {
+          firstRow: 36,
+          lastRow: 41,
+          semanticReadbackStatus: "PASS",
+        },
+        ammunitionItem: {
+          baseItem: 27,
+          modelResref: "wambu_099",
+          blueprintResref: "m2ahxammo",
+        },
+        runtimeValidation: {
+          status: "OWNER_PROOF_REQUIRED",
+          modelVisibility: "not_tested",
+          proofCompleteness: "missing",
+        },
+      },
+      proofModule: {
+        fixtureProfile: "RANGED_WEAPON_AMMUNITION_AND_IMMOBILE_TARGET_V1",
+        weaponBlueprintResref: "m2arngweapon",
+        ammunitionBlueprintResref: "m2ahxammo",
+        groundItemCount: 2,
+        creatureCount: 1,
+        targetBlueprintResref: "m2arngtarget",
+        targetAppearanceRow: 102,
+        targetPosition: [10, 18, 0],
+        targetWalkRate: 0,
+        targetScriptsEmpty: true,
+        semanticReadbackStatus: "PASS",
+      },
+      triangleBudget: { triangleBudget: 300000, warning: false },
+    });
+    expect(response.artifacts.filter(({ kind }) => kind === "TWO_DA").map(({ fileName }) => fileName)).toEqual([
+      "ammunitiontypes.2da",
+      "damagetypes.2da",
+    ]);
+    expect(response.artifacts.filter(({ kind }) => kind === "ITEM_BLUEPRINT")).toHaveLength(2);
+    expect(response.artifacts.filter(({ kind }) => kind === "MODEL")).toHaveLength(3);
+  }, 60_000);
 
   it("builds ModelType 2 as three independent +Y MDLs in an item-only proof MOD", async () => {
     const baseitemsTwoDa = await fetchBytes(baseitemsUrl);

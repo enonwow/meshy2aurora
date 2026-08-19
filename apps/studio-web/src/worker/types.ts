@@ -33,6 +33,11 @@ export type StudioWorkerRequest =
     }
   | {
       requestId: string;
+      type: "FINALIZE_ITEM_AUTHORED_ATTACHMENT_PROFILE";
+      attachmentProfileJson: string;
+    }
+  | {
+      requestId: string;
       type: "FIT_ITEM_PARTS";
       tolerance: number;
       targetAxialLengths?: number[];
@@ -127,14 +132,37 @@ export type StudioWorkerRequest =
       baseitemsTwoDa: ArrayBuffer;
       baseItem: number;
       customWeaponBaseItem?: {
-        schemaVersion: 2;
-        donorBaseItem: number;
+        schemaVersion: 3;
         outputBaseItem: number;
         label: string;
         itemClass: string;
-        nameStrref: number | null;
-        invSlotWidth: number;
-        invSlotHeight: number;
+        cells: Array<{
+          columnName: string;
+          value: { kind: "NULL" } | { kind: "TEXT"; value: string };
+        }>;
+      };
+      rangedAmmunition?: {
+        ammunitiontypesTwoDa: ArrayBuffer;
+        damageTypesTwoDa: ArrayBuffer;
+        ammunitionChannel: "ARROW" | "BOLT" | "BULLET";
+        damageRangedProjectile: number;
+        damageTypeRow: 6;
+        damageTypeLabel: "Divine";
+        damagePropertySubtype: 8;
+        wielderClip: "BOWSHOT" | "XBOWSHOT";
+        projectileSourceGlb: ArrayBuffer;
+        projectileModelResref: string;
+        projectileTextureResref: string;
+        projectileOptionsJson: string;
+        shotSoundResref: string | null;
+        impactSoundResref: string | null;
+        ammunitionBlueprintResref: string;
+        ammunitionBlueprintJson: string;
+        ammunitionModelResref: string;
+        ammunitionTextureResref: string;
+        ammunitionIconResref: string;
+        ammunitionVariant: number;
+        ammunitionOptionsJson: string;
       };
       hakResref: string;
       hakFileName: string;
@@ -226,7 +254,7 @@ export type StudioWorkerRequest =
 
 export interface WorkerArtifact {
   artifactId: string;
-  kind: "HAK" | "MODEL" | "MODULE" | "WOK" | "SET" | "TEXTURE" | "ITEM_BLUEPRINT" | "JSON_REPORT" | "SOURCE_MODEL" | "SOURCE_MANIFEST";
+  kind: "HAK" | "MODEL" | "MODULE" | "WOK" | "SET" | "TEXTURE" | "TWO_DA" | "ITEM_BLUEPRINT" | "JSON_REPORT" | "SOURCE_MODEL" | "SOURCE_MANIFEST";
   fileName: string;
   mediaType: string;
   byteLength: number;
