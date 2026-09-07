@@ -73,17 +73,10 @@ overwrite, a następnie potwierdzono byte identity:
 - `C:\Users\enonw\Documents\Neverwinter Nights\modules\m2a_ms1_mod.mod`;
 - `C:\Users\enonw\Documents\Neverwinter Nights\hak\m2a_ms1_hak.hak`.
 
-## Owner proof
+## Owner result
 
-1. Otwórz dokładnie `m2a_ms1_mod.mod`.
-2. Potwierdź nazwę modułu `Meshy2Aurora Material Separation V1`.
-3. Otwórz Area `Material Separation Two Material Proof`.
-4. Obiekt `m2a_ms1_two_material_panels` stoi przed graczem. Oczekiwane są dwa
-   rozdzielone panele: czerwony z tekstury source i niebieski z override.
-5. Zapisz osobno dla Toolset i NWN:
-   `modelVisibility=visible|not_visible|not_tested` oraz
-   `proofCompleteness=verified|failed|missing`.
-
-Agent nie uruchamiał, nie adoptował i nie kontrolował Toolsetu ani NWN.
-Aktualny stan obu torów to `modelVisibility=not_tested` i
-`proofCompleteness=missing`; wyłącznie właściciel zamyka werdykt wizualny.
+Właściciel potwierdził brak Placeable zarówno w Toolsecie, jak i NWN. Dla obu
+torów zapisano `modelVisibility=not_visible` i `proofCompleteness=failed`.
+MS1 jest zamrożony i nie wolno go ponownie używać jako aktywnego handoffu.
+Minimalny następca znajduje się w
+[`material-separation-placeable-v2-ready-for-owner-proof-2026-08-02.md`](material-separation-placeable-v2-ready-for-owner-proof-2026-08-02.md).

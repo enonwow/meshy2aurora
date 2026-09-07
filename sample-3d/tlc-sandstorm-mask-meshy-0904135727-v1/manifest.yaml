@@ -1,0 +1,286 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: tlc-sandstorm-mask-meshy-0904135727-v1
+provider: meshy
+local_only: true
+qualification: owner-selected-highpoly-source
+files:
+  - role: owner-supplied-meshy-source
+    path: source.glb
+    size_bytes: 79715612
+    sha256: 5afe4df89669baffb2880d9d8bc54e747bbb47f5440c3596fb8f83e6070724ad
+  - role: pipeline-one-stream-budget-variant
+    path: source-p20k.glb
+    size_bytes: 8272196
+    sha256: da58e6f9b37cc644255345cd08ac246d6c98d9e7c8a0180254a3015b2a2325c2
+  - role: pipeline-product-budget-variant
+    path: source-p300k.glb
+    size_bytes: 19389688
+    sha256: f9c694eea90d8b0dedca7434c732e9cd4d49ac8be517c0d0f1e48c3ea5b49577
+  - role: r3-toolset-interaction-cost-reduction-variant
+    path: source-p100k-r3.glb
+    size_bytes: 11694844
+    sha256: b0e791d1606d81dccebd4f425bf60c18f2e8e0f51d22ff64fe8e75629bc437a1
+provenance_note: owner supplied Meshy_AI_Bronze_Shadow_Mask_0904135727_texture.glb from the local Downloads directory on 2026-09-04 as the replacement sandstorm-mask candidate
+source_inspection:
+  status: offline-qa-pass-with-product-budget-block
+  triangle_count: 1944024
+  vertex_count: 1024096
+  mesh_object_count: 1
+  material_count: 1
+  embedded_image_count: 4
+  skin_count: 0
+  animation_count: 0
+  spatial_welded_surface_component_count: 1
+  spatial_welded_boundary_edge_count: 0
+  spatial_welded_non_manifold_edge_count: 0
+  product_conversion_eligible: false
+  blocking_reason: source exceeds AURORA_MODEL_TRIANGLE_BUDGET_V1
+visual_qa:
+  status: pass-for-product-variant
+  evidence_root: artifacts/diagnostics/tlc-sandstorm-mask-owner-glb-0904135727-offline-qa/renders
+  bronze_shell_ends_before_ear: true
+  opaque_dark_eye_recesses: true
+  coherent_front_left_back_right_silhouette: true
+  floating_geometry_observed: false
+planned_product_variant:
+  path: source-p20k.glb
+  target_triangles: 20000
+  rationale: one triangle-list stream below the independent 21845-triangle binary MDL boundary
+  transform: meshoptimizer static surface simplification with POSITION NORMAL and TEXCOORD_0 attribute preservation
+  independent_axis_scaling: forbidden
+  preserves_embedded_materials_and_images: true
+product_variant_result:
+  status: offline-visual-quality-failed
+  path: source-p20k.glb
+  source_sha256: 5afe4df89669baffb2880d9d8bc54e747bbb47f5440c3596fb8f83e6070724ad
+  output_sha256: da58e6f9b37cc644255345cd08ac246d6c98d9e7c8a0180254a3015b2a2325c2
+  source_triangle_count: 1944024
+  output_triangle_count: 20000
+  one_binary_triangle_stream_eligible: true
+  material_slot_count: 1
+  uv_layer_count: 1
+  independent_axis_scaling_applied: false
+  report: artifacts/diagnostics/tlc-sandstorm-mask-owner-glb-0904135727-offline-qa/decimation-report.json
+  failure_reason: one-stream reduction visibly damages filter perforations and eye-recess borders
+selected_product_variant:
+  status: materialized-item-candidate-ready-for-owner-proof
+  path: source-p300k.glb
+  source_sha256: 5afe4df89669baffb2880d9d8bc54e747bbb47f5440c3596fb8f83e6070724ad
+  output_sha256: f9c694eea90d8b0dedca7434c732e9cd4d49ac8be517c0d0f1e48c3ea5b49577
+  source_triangle_count: 1944024
+  output_triangle_count: 300000
+  material_slot_count: 1
+  uv_layer_count: 1
+  independent_axis_scaling_applied: false
+  binary_stream_policy: deterministic partitioning required at 21845 triangles per stream
+  report: artifacts/diagnostics/tlc-sandstorm-mask-owner-glb-0904135727-offline-qa/decimation-p300k-report.json
+  offline_visual_qa:
+    status: pass
+    evidence_root: artifacts/diagnostics/tlc-sandstorm-mask-owner-glb-0904135727-offline-qa/product-p300k-renders
+    bronze_shell_ends_before_ear: true
+    opaque_dark_eye_recesses: true
+    coherent_front_left_back_right_silhouette: true
+    floating_geometry_observed: false
+r3_product_variant:
+  status: prepared-after-owner-r2-quality-failure
+  path: source-p100k-r3.glb
+  source_sha256: 5afe4df89669baffb2880d9d8bc54e747bbb47f5440c3596fb8f83e6070724ad
+  output_sha256: b0e791d1606d81dccebd4f425bf60c18f2e8e0f51d22ff64fe8e75629bc437a1
+  source_triangle_count: 1944024
+  output_triangle_count: 100000
+  material_slot_count: 1
+  uv_layer_count: 1
+  independent_axis_scaling_applied: false
+  binary_stream_policy: deterministic partitioning required at 21845 triangles per stream
+  report: artifacts/diagnostics/tlc-sandstorm-mask-owner-glb-0904135727-offline-qa/decimation-p100k-r3-report.json
+  rationale: reduce Toolset selection and viewport cost while retaining five times the failed 20000-triangle detail level
+item_candidate:
+  status: superseded_fixture_module_by_owner_palette_only_requirement
+  output_root: proof-output/tlc-sandstorm-mask-helmet-221-v1-20260904
+  module_filename: m2assmmod221.mod
+  module_display_name: Meshy2Aurora Sandstorm Mask Helmet 221
+  area_name: Sandstorm Mask Helmet Test 221
+  ordered_hak: m2assmh221.hak
+  model_resref: helm_221
+  icon_resref: ihelm_221
+  uti_resref: m2assmask221
+  baseitem: 17
+  model_type: 1
+  item_class: helm
+  gender_specific: false
+  equipment_slot: 1
+  model_classification: 4
+  triangle_count: 300000
+  output_segment_count: 15
+  maximum_segment_index_entries: 65523
+  transform:
+    translation: [0.0, 0.0033032000064849854, -0.06474350392818451]
+    rotation_quaternion: [0.0, 0.0, 0.0, 1.0]
+    uniform_scale: 0.14936666190624237
+    independent_axis_scaling_applied: false
+  fitted_bounds:
+    min: [-0.09702057391405106, -0.10513239353895187, -0.06474350392818451]
+    max: [0.09702057391405106, 0.11173879355192184, 0.21952541172504425]
+    cowl_boundary_pass: true
+  hashes:
+    mdl_sha256: 578c5fb940469ff31cf4aae9a50c02e497e7e92dca7c4d33328fb0c7e7f535be
+    diffuse_tga_sha256: 06c2f89a53869e06c19b273c7e93edde12b3babaf74099a01bb434e5509b138d
+    icon_tga_sha256: a63e1bdd58641e55387d0f76905e97b3fa9e93d526df492a156fc3060694fba4
+    uti_sha256: 962c1ed61e7e624c8128ec65c6284a1a7e54e04bc7c7f9b21fc1f9148d47bca7
+    hak_sha256: d6f34a55f1d845aa86fe35cdec4df3cd7c0e9494daf26bb8b028307abfbd84ed
+    mod_sha256: 4dcf3dd2150a959e58f9a8094008bb604eab5cd095d2753d57c0705128f3be0c
+  model_visibility: not_tested
+  proof_completeness: failed
+  toolset_result:
+    status: lane_failure_access_violation
+    observed_on: 2026-09-04
+    model_visibility: not_tested
+    proof_completeness: failed
+    evidence: documentation/evidence/tlc-sandstorm-mask-helmet-221-toolset-access-violation-2026-09-04.png
+    evidence_sha256: c3689b6dece132dea7838d8944dda9c1522cb78ae72dfafe24974c1a3d7d2da3
+    note: owner rejected the placed-creature fixture and requested only a helmet blueprint in the Item custom palette
+  native_installation:
+    status: completed_byte_identical
+    installed_on: 2026-09-04
+    module_destination: C:/Users/enonw/Documents/Neverwinter Nights/modules/m2assmmod221.mod
+    module_sha256: 4dcf3dd2150a959e58f9a8094008bb604eab5cd095d2753d57c0705128f3be0c
+    hak_destination: C:/Users/enonw/Documents/Neverwinter Nights/hak/m2assmh221.hak
+    hak_sha256: d6f34a55f1d845aa86fe35cdec4df3cd7c0e9494daf26bb8b028307abfbd84ed
+    destination_collision: false
+    toolset_or_nwn_control_performed: false
+  handoff: documentation/evidence/tlc-sandstorm-mask-helmet-221-v1-ready-for-owner-proof-2026-09-04.md
+palette_only_module:
+  status: superseded_by_selector_range_correction
+  output_root: proof-output/tlc-sandstorm-mask-helmet-palette-only-221-v1-20260904
+  module_filename: m2assmpal221.mod
+  module_resref: m2assmpal221
+  module_display_name: Meshy2Aurora Sandstorm Mask Palette 221
+  area_resref: m2assmarea221
+  area_name: Sandstorm Mask Item Palette 221
+  ordered_hak: m2assmh221.hak
+  reused_model_resref: helm_221
+  reused_model_sha256: 578c5fb940469ff31cf4aae9a50c02e497e7e92dca7c4d33328fb0c7e7f535be
+  uti_resref: m2assmaskpal221
+  palette_resref: itempalcus
+  palette_resource_type: 2030
+  palette_path: Custom/Armor/Helmets
+  palette_id: 9
+  creature_resource_count: 0
+  placed_creature_count: 0
+  hashes:
+    uti_sha256: e36b803fa9b98a78cf29ef229b64b44116ebbe690653c058e8f10b3d98a46207
+    palette_sha256: 19d363b2b0e3ebda0b533457890aaa915d41f14357d60a9d557de9a53fdbac51
+    mod_sha256: 8413f88aebd61507e8206096ffcdd6d3e571a0f66d766346f95f63111d45245a
+  native_installation:
+    status: completed_byte_identical
+    module_destination: C:/Users/enonw/Documents/Neverwinter Nights/modules/m2assmpal221.mod
+    module_sha256: 8413f88aebd61507e8206096ffcdd6d3e571a0f66d766346f95f63111d45245a
+    hak_destination: C:/Users/enonw/Documents/Neverwinter Nights/hak/m2assmh221.hak
+    hak_sha256: d6f34a55f1d845aa86fe35cdec4df3cd7c0e9494daf26bb8b028307abfbd84ed
+    hak_reused_byte_identical: true
+    destination_collision: false
+    toolset_or_nwn_control_performed: false
+  model_visibility: not_tested
+  proof_completeness: failed
+  owner_toolset_result:
+    observed_on: 2026-09-04
+    selector_availability: absent
+    observed_existing_models_end_at: helm_035
+    model_visibility: not_tested
+    proof_completeness: failed
+    evidence: documentation/evidence/tlc-sandstorm-mask-helmet-221-toolset-selector-absent-2026-09-04.png
+    evidence_sha256: ec45d1453237717f66d34ab213b08668fee2f414e3fa25ff6c81a6a1c147e9d0
+    diagnosed_cause: module attached the model HAK but omitted the exact effective lc_2da HAK whose baseitems.2da row 17 exposes variants through 255
+  handoff: documentation/evidence/tlc-sandstorm-mask-helmet-palette-only-221-v1-ready-2026-09-04.md
+palette_only_module_r2:
+  status: ready_for_owner_palette_check
+  output_root: proof-output/tlc-sandstorm-mask-helmet-palette-only-221-r2-20260904
+  module_filename: m2assmpal221r2.mod
+  module_resref: m2assmpal221r2
+  module_display_name: Meshy2Aurora Sandstorm Mask Palette 221 R2
+  area_resref: m2assmarea221
+  area_name: Sandstorm Mask Item Palette 221 R2
+  ordered_haks:
+    - m2assmh221.hak
+    - lc_2da.hak
+  reused_model_resref: helm_221
+  reused_model_sha256: 578c5fb940469ff31cf4aae9a50c02e497e7e92dca7c4d33328fb0c7e7f535be
+  uti_resref: m2assmaskpal221
+  baseitems:
+    container: lc_2da.hak
+    sha256: b2ba08aa55c185642c8973859b9d0dbf486bc8411a630a0a10a9f77e84d701c6
+    helmet_row: 17
+    min_range: 0
+    max_range: 255
+    variant_221_range_gate: pass
+  creature_resource_count: 0
+  placed_creature_count: 0
+  hashes:
+    module_sha256: 389405717b3735acbdae9b29b8b51819526bc35f17795937df177dd7e563d6bd
+    model_hak_sha256: d6f34a55f1d845aa86fe35cdec4df3cd7c0e9494daf26bb8b028307abfbd84ed
+    table_hak_sha256: c4869ae516a8598f0db5e31b473abba9b15b3b3f04880eb02f4a3a37191a9e8f
+  native_installation:
+    status: completed_byte_identical
+    module_destination: C:/Users/enonw/Documents/Neverwinter Nights/modules/m2assmpal221r2.mod
+    module_sha256: 389405717b3735acbdae9b29b8b51819526bc35f17795937df177dd7e563d6bd
+    model_hak_destination: C:/Users/enonw/Documents/Neverwinter Nights/hak/m2assmh221.hak
+    model_hak_sha256: d6f34a55f1d845aa86fe35cdec4df3cd7c0e9494daf26bb8b028307abfbd84ed
+    table_hak_destination: C:/Users/enonw/Documents/Neverwinter Nights/hak/lc_2da.hak
+    table_hak_sha256: c4869ae516a8598f0db5e31b473abba9b15b3b3f04880eb02f4a3a37191a9e8f
+    dependencies_reused_byte_identical: true
+    destination_collision: false
+    toolset_or_nwn_control_performed: false
+  model_visibility: not_tested
+  proof_completeness: missing
+  handoff: documentation/evidence/tlc-sandstorm-mask-helmet-palette-only-221-r2-ready-2026-09-04.md
+palette_only_module_r3:
+  status: ready_for_owner_proof
+  output_root: proof-output/tlc-sandstorm-mask-helmet-palette-only-221-r3-20260904
+  module_filename: m2assmpal221r3.mod
+  module_resref: m2assmpal221r3
+  module_display_name: Meshy2Aurora Sandstorm Mask Palette 221 R3
+  area_resref: m2assmarea221
+  area_name: Sandstorm Mask Item Palette 221 R3
+  ordered_haks:
+    - m2assmh221r3.hak
+    - lc_2da.hak
+  model_resref: helm_221
+  icon_resref: ihelm_221
+  uti_resref: m2assmaskpal221
+  resource_contract:
+    model_texture: helm_221.plt
+    model_texture_resource_type: 6
+    inventory_icon: ihelm_221.plt
+    inventory_icon_resource_type: 6
+    metal1_layer: 2
+    cloth1_layer: 4
+  triangle_count: 100000
+  output_segment_count: 5
+  transform:
+    translation: [0.0, 0.0033032000064849854, -0.13546539843082428]
+    rotation_quaternion: [0.0, 0.0, 0.0, 1.0]
+    uniform_scale: 0.18652023375034332
+    independent_axis_scaling_applied: false
+  fitted_bounds:
+    min: [-0.1211988553404808, -0.13216108083724976, -0.13546539843082428]
+    max: [0.1211988553404808, 0.13876748085021973, 0.21952541172504425]
+    donor_width_occupancy: 0.96
+  hashes:
+    source_glb_sha256: b0e791d1606d81dccebd4f425bf60c18f2e8e0f51d22ff64fe8e75629bc437a1
+    mdl_sha256: 368bb50fa6cde0f3058a1011e1782f520eae810df120cff6f925b4f23fe42325
+    model_plt_sha256: d9505ef2be7290941017487fad46630c65d4fcf13e73925381813995006d232e
+    icon_plt_sha256: 0f51f502bc58a0ec18d263ccdba8aa528eb0051ad6d3cd3991bfd24e9ff3d7da
+    uti_sha256: 652710f4cc961a68a56339ab265077e811262530f0f0a47eeaa594396513cfdd
+    hak_sha256: f369cb181dac72595391b42f483a0a54eaa5d9d073d1c131754a0e11d8a434f9
+    module_sha256: 9f8af9adf9067a86692a5f36f00a476e6a9e8438768b9fa76053ac34f28afe0a
+  native_installation:
+    status: completed_byte_identical
+    module_destination: C:/Users/enonw/Documents/Neverwinter Nights/modules/m2assmpal221r3.mod
+    module_sha256: 9f8af9adf9067a86692a5f36f00a476e6a9e8438768b9fa76053ac34f28afe0a
+    hak_destination: C:/Users/enonw/Documents/Neverwinter Nights/hak/m2assmh221r3.hak
+    hak_sha256: f369cb181dac72595391b42f483a0a54eaa5d9d073d1c131754a0e11d8a434f9
+    destination_collision: false
+    toolset_or_nwn_control_performed: false
+  model_visibility: not_tested
+  proof_completeness: missing
+  handoff: documentation/evidence/tlc-sandstorm-mask-helmet-palette-only-221-r3-ready-2026-09-04.md

@@ -1,10 +1,10 @@
 # Meshy2Aurora agent rules
 
-## Canonical workspace — HARD STOP
+## Canonical repository family — HARD STOP
 
-The only canonical repository and writable project workspace is:
-
-`C:\Projects\meshy2aurora`
+The canonical repository is `C:\Projects\meshy2aurora`. Its main worktree and
+every linked worktree registered by that repository are writable project
+workspaces. Parallel branches are expected to use separate linked worktrees.
 
 The following path is forbidden for every project operation:
 
@@ -14,15 +14,15 @@ Never create, edit, stage, copy, migrate, test, build, cache, or store temporary
 project work there. It is not a fallback workspace, scratch directory, staging
 area, clone, mirror, or migration source. The owner never authorized that path.
 
-Before any implementation or documentation write, run:
+Before any implementation or documentation write, run the guard from the
+canonical repository:
 
-`powershell -NoProfile -ExecutionPolicy Bypass -File assert-canonical-workspace.ps1`
+`powershell -NoProfile -ExecutionPolicy Bypass -File C:\Projects\meshy2aurora\assert-canonical-workspace.ps1`
 
-The check must resolve the repository root.
-If it is not exactly `C:\Projects\meshy2aurora`, stop. Do not work around the
-problem by writing elsewhere and do not repeatedly request permissions for
-out-of-workspace writes. Reopen or resume the task with the canonical repository
-as its workspace root.
+The check must resolve the Git common directory to
+`C:\Projects\meshy2aurora\.git`. A standalone clone, an unregistered directory,
+or the forbidden path is not an authorized worktree. Stop instead of creating a
+fallback workspace.
 
 All durable project documentation belongs in
 `C:\Projects\meshy2aurora\documentation`. Read

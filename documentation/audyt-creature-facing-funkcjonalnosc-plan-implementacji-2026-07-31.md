@@ -3,6 +3,22 @@
 Data: 2026-07-31
 Status: `P0 IMPLEMENTED OFFLINE / OWNER VISUAL PROOF REQUIRED / NO NEW PAID RUN`
 
+## Aneks korygujący — 2026-08-17
+
+Właścicielska obserwacja kolejnego Creature poruszającego się tyłem oraz nowy
+audyt exact source/retail wykazały wspólny błąd pipeline'u: twierdzenie tego
+dokumentu, że natywny przód direct-Creature Aurora wynosi `-Y`, było błędne.
+Kanoniczny Void jest poprawnie skierowany w źródłowe `+Z`, natomiast exact
+retail `c_Direwolf` i `c_horror` wskazują przód hierarchii Aurora w `+Y`.
+
+Creature Basis V3 mapuje teraz każdy jawnie wybrany przód źródła na Aurora
+`+Y` macierzą o determinant `+1`. Historyczne V2 i zamrożone artefakty nie są
+przepisywane. Wszystkie niższe wzmianki o docelowym `-Y`, Basis V2 jako
+aktualnej polityce produktu oraz handshake `2026_07_31_V1` należy czytać jako
+opis stanu historycznego, zastąpionego przez raport:
+
+`documentation/evidence/creature-held-item-app-proof-and-facing-v3-audit-2026-08-17.md`.
+
 ## Aneks wdrożeniowy — 2026-07-31
 
 Zakres P0 z tego audytu został zaimplementowany w pełnym torze produktu:

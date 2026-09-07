@@ -1,0 +1,122 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: borzoi-c-wolf-n1-p60k-v1
+provider: meshy
+local_only: true
+qualification: ready-for-owner-proof
+files:
+  - role: owner-provided-concept-sheet
+    path: concept-original.png
+    size_bytes: 1172383
+    sha256: 29a30910505cb5a604ab6db550b2d9d6b44044eac4bd7c709f220f5d3517eab5
+  - role: imagegen-clean-multi-image-concept-side
+    path: concept-side.png
+    size_bytes: 1343115
+    sha256: b43450eb82425575805bd247edce7eb8738ca8869e1fa8ed770545d21451c407
+  - role: imagegen-clean-multi-image-concept-front
+    path: concept-front.png
+    size_bytes: 1238491
+    sha256: ce7dd235280d44f413a2dfbcdf32056810d7daa4954669ae21f7504a2520a749
+  - role: imagegen-clean-multi-image-concept-rear
+    path: concept-rear.png
+    size_bytes: 1419530
+    sha256: 1784e994bd6b85ba5430247b06554f32f3cbe7822f44b786510b49a375ebf401
+  - role: canonical-meshy-generated-source
+    path: source.glb
+    size_bytes: 6847588
+    sha256: 44b5d3c63387ae7587b4de8dc9e4a6866948cd034cd1a1e3a0c0ce69af3e6678
+  - role: meshy-task-and-credit-provenance
+    path: meshy-run-provenance.json
+    size_bytes: 2434
+    sha256: 7ce259e758edf8bece200a2db2d85ecc530947fa87a639da73390db6c97a9978
+provenance_note: owner authorized Meshy generation, c_wolf-compatible creature preparation and an NWN demo on 2026-08-20; clean multi-view inputs were derived from the owner-provided concept sheet with the built-in image generation workflow
+generation_plan:
+  date: 2026-08-20
+  source_mode: multi-image-to-3d
+  input_count: 3
+  input_order: [concept-side.png, concept-front.png, concept-rear.png]
+  profile: N1-quadruped/v1
+  ai_model: meshy-6
+  should_remesh: true
+  topology: triangle
+  target_polycount: 60000
+  should_texture: true
+  texture_resolution: 2k
+  enable_pbr: false
+  image_enhancement: false
+  remove_lighting: true
+  target_format: glb
+  moderation: true
+  owner_credit_cap: 30
+  target_supermodel: c_wolf
+generation_result:
+  status: succeeded
+  exact_local_bridge_run_id: 09df91ef-16e6-453f-afb5-515602a939b9
+  exact_model_task_id: 01a01fbf-fdb8-77b8-b381-c6480727cd3d
+  maximum_credits: 30
+  balance_before: 1148
+  balance_after: 1118
+  spent_credits: 30
+  generated_second_model: false
+  canonical_source_triangle_count: 60780
+  canonical_source_size_bytes: 6847588
+  canonical_source_sha256: 44b5d3c63387ae7587b4de8dc9e4a6866948cd034cd1a1e3a0c0ce69af3e6678
+  manual_mesh_or_texture_edits: false
+demo_result:
+  status: ready_for_owner_proof
+  proof_lineage: proof-output/borzoi-c-wolf-demo-v1-20260820
+  model_resref: m2aborzcre1
+  texture_resref: m2aborztex1
+  supermodel_resref: c_wolf
+  source_forward: GLTF_POSITIVE_Z
+  aurora_forward: AURORA_POSITIVE_Y
+  basis_status: CREATURE_BASIS_V3_RESOLVED
+  basis_determinant: 1.0
+  rig_node_count: 30
+  active_bone_count: 21
+  local_animation_count: 0
+  inherited_supermodel_animation_count: 42
+  preserved_triangle_count: 60780
+  binary_mdl_stream_count: 3
+  model_sha256: fda66a93b58a13c839cd0a177bf3dc2fcf9ba663655b887e56aeda42d30202bc
+  hak_file_name: m2aborzhak1.hak
+  hak_sha256: 0833e31c0dcee182d7725c130aa9dff357a02dc6380c63dad634e102b9c26b86
+  module_file_name: m2aborzmod1.mod
+  module_sha256: abe99cc1fdd9caa79869317e53e68e5475e174f1147ecdf644a2fe75024128e3
+  native_installation: byte-identical-verified
+  model_visibility: not_tested
+  proof_completeness: missing
+  visual_proof_owner: project-owner
+quality_remediation_v2:
+  date: 2026-08-20
+  status: owner_quality_failed
+  predecessor_owner_result: documentation/evidence/borzoi-c-wolf-demo-v1-owner-nwn-result-2026-08-20.json
+  proof_lineage: proof-output/borzoi-c-wolf-demo-v2-20260820
+  source_mesh_changed: false
+  source_texture_changed: false
+  new_meshy_task_created: false
+  preserved_triangle_count: 60780
+  rig_profile_id: owned-borzoi-c-wolf-source-fitted-rig-v2
+  rootdummy_world: [0.0, -0.38856345, 0.7881385]
+  front_paw_contact_centroids_x: [0.10065819, -0.10013413]
+  back_paw_contact_centroids_x: [0.12633894, -0.12671168]
+  contact_centroid_z_range: [0.035083484, 0.042655107]
+  weight_algorithm: CHAIN_DISTANCE_WITH_TORSO_FUR_GUARD_V2
+  model_resref: m2aborzcre2
+  texture_resref: m2aborztex2
+  supermodel_resref: c_wolf
+  active_bone_count: 22
+  local_animation_count: 0
+  inherited_supermodel_animation_count: 42
+  model_sha256: 36c30f6c2ced53031a1938a66b8055d30ab0a969250b2c7c795db8acbf09282d
+  hak_file_name: m2aborzhak2.hak
+  hak_sha256: 2611ffc9ca68cca91aabd96dd76ef0e484bb40f4f13b43d10fd4249e3c21cc37
+  module_file_name: m2aborzmod2.mod
+  module_sha256: 19764078dd962da1541810d1837b8805f4f7cd14242296c7b7e0c8a61b1dd55d
+  native_installation: byte-identical-verified
+  model_visibility: visible
+  proof_completeness: verified
+  quality_verdict: failed
+  owner_result: documentation/evidence/borzoi-c-wolf-demo-v2-owner-nwn-result-2026-08-20.json
+  confirmed_rig_defect: front-upper-leg-bones-have-zero-primary-vertex-regions
+  source_quality_boundary: new-or-manually-improved-source-required
+  visual_proof_owner: project-owner

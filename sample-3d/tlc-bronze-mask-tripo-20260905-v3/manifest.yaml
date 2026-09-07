@@ -1,0 +1,154 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: tlc-bronze-mask-tripo-20260905-v3
+provider: tripo
+local_only: true
+qualification: owner-approved-five-material-helmet-successor-source
+files:
+  - role: owner-supplied-five-material-tripo-source
+    path: source.glb
+    size_bytes: 3437588
+    sha256: 1cd62de066d35f096f555aa3db40bb7ac16ed790570100b9c6c27aae48b02efd
+  - role: pipeline-single-palette-atlas-static-exact-degenerate-cleanup-variant
+    path: source-palette-atlas-v2.glb
+    size_bytes: 4937820
+    sha256: 0b5cf58cda834916152a1c743e6efd8af051962aa974bd440c4e9131182c8195
+provenance_note: owner supplied the updated bronze mask 3d model.glb from the local Downloads directory on 2026-09-05 and approved a successor to the visually successful helmet 228 lineage
+source_inspection:
+  status: offline-structure-inspected
+  generator: Tripo
+  triangle_count: 42466
+  mesh_object_count: 5
+  material_count: 5
+  embedded_image_count: 5
+  texture_dimensions:
+    - [2048, 2048]
+    - [256, 256]
+    - [1024, 1024]
+    - [512, 512]
+    - [128, 128]
+  double_sided_material_count: 5
+  skin_count: 0
+  animation_count: 0
+  shared_product_triangle_budget_pass: true
+  binary_stream_partitioning_required: true
+owner_material_mapping:
+  status: selected
+  mapping_spec: palette-map-v1.json
+  assignments:
+    - source_material_id: 0
+      source_material: Material_tripo_part_0.001
+      triangle_count: 23635
+      screenshot_color: red
+      visible_part: cloth-cowl
+      nwn_plt_layer: Cloth 1
+      nwn_plt_layer_index: 4
+    - source_material_id: 1
+      source_material: Material_tripo_part_new_0_0.001
+      triangle_count: 606
+      screenshot_color: yellow
+      visible_part: mask-trim
+      nwn_plt_layer: Leather 2
+      nwn_plt_layer_index: 7
+    - source_material_id: 2
+      source_material: Material_tripo_part_11.001
+      triangle_count: 16075
+      screenshot_color: cyan
+      visible_part: main-mask-shell
+      nwn_plt_layer: Metal 1
+      nwn_plt_layer_index: 2
+    - source_material_id: 3
+      source_material: Material_tripo_part_new_0.001
+      triangle_count: 1720
+      screenshot_color: blue
+      visible_part: forehead-wrap
+      nwn_plt_layer: Leather 1
+      nwn_plt_layer_index: 6
+    - source_material_id: 4
+      source_material: Material_tripo_part_new_0_1.001
+      triangle_count: 430
+      screenshot_color: unannotated-separate-eye-part
+      visible_part: eye-inserts
+      nwn_plt_layer: Cloth 2
+      nwn_plt_layer_index: 5
+  explicit_assignments_bypass_automatic_inference: true
+palette_atlas_variant:
+  status: ready-for-item-compilation
+  path: source-palette-atlas-v2.glb
+  source_sha256: 1cd62de066d35f096f555aa3db40bb7ac16ed790570100b9c6c27aae48b02efd
+  mapping_sha256: 92fbc02382989ff404ecdaa607b6077d01db7314fbf7ab9554e0fc2bed475aac
+  output_sha256: 0b5cf58cda834916152a1c743e6efd8af051962aa974bd440c4e9131182c8195
+  source_mesh_object_count: 5
+  output_mesh_object_count: 1
+  source_material_count: 5
+  output_material_count: 1
+  source_triangle_count: 42466
+  removed_degenerate_triangle_count: 1
+  output_triangle_count: 42465
+  atlas_dimensions: [2048, 2048]
+  icon_beauty_sha256: f2ec4afa606b32b6ac492927d7078acd7dcb4214cbbe2561e3fe52a74b709b80
+  icon_material_id_sha256: 9d6d79f1838181284f5a4250b58fa8f5b56eec1bad26033939c7e903afab92f0
+  icon_background_policy: transparent-material-id-alpha
+  visual_material_id_qa: pass-after-material-order-correction
+  dark_cloth_background_heuristic_forbidden: true
+lineage:
+  predecessor_candidate: tlc-bronze-mask-helmet-228-v2
+  predecessor_owner_result: visually-successful
+  successor_authorization: owner-approved-2026-09-05
+  intended_delta: updated-source-material-partition-and-owner-selected-layer-remap
+five_material_item_candidate:
+  status: owner_approved
+  output_root: proof-output/tlc-bronze-mask-helmet-five-material-229-v2-20260905
+  module_filename: m2bronpal229.mod
+  module_sha256: 644fbb2038ca804606331b66f60ff1f267f8f7b3e9a6715afe9dc08b34dadc75
+  module_resref: m2bronpal229
+  module_display_name: Meshy2Aurora Bronze Mask Palette 229 V2
+  area_resref: m2assmarea221
+  area_name: Bronze Mask Item Palette 229 V2
+  ordered_haks:
+    - m2bronh229v2
+    - lc_2da
+  hak_sha256: cb316a183f5cdefe48d12f3a2f40b1e07c5ba5f2138f8d45edcc5bee47ca6350
+  model_resref: helm_229
+  model_sha256: fffe6c70e23102a150034656657d46cd865db3a50ef9de5f2aec74aa99109dea
+  model_plt_sha256: 15f40561d4dbcba222d27cfba3784b459e5ae74334822b72f8754fe1888467c9
+  icon_resref: ihelm_229
+  icon_plt_sha256: 3aa2bd9a9ca907d68c8be7adb9dffaf453c677b2e67d0ee501a0670e6fb85268
+  uti_resref: m2bronmask229
+  uti_sha256: aa78c4bbbfe9ec4f0f9a6a6082a98192b3d74a7b757edf2137876a3bfc07e6ec
+  recipe_sha256: 64818bbf0f39048ed4755c7463f27d04e42a61c5e2dad394f90e3c3560e923f9
+  appearance_variant: 229
+  source_triangle_count: 42465
+  explicit_double_sided_backface_triangle_count: 42465
+  compiled_triangle_count: 84930
+  output_segment_count: 4
+  material_mapping:
+    cloth_cowl: Cloth 1
+    eye_inserts: Cloth 2
+    forehead_wrap: Leather 1
+    mask_trim: Leather 2
+    main_mask_shell: Metal 1
+  icon_layer_pixel_counts:
+    cloth1: 846
+    cloth2: 33
+    leather1: 207
+    leather2: 97
+    metal1: 571
+  deterministic_rebuild: all-ten-files-byte-identical
+  offline_tests: 23-passed-0-failed
+  model_visibility: visible
+  proof_completeness: verified
+  owner_result:
+    reported_at: 2026-09-05
+    statement: super approved 229
+    verdict: approved
+    exact_model_hak_sha256: cb316a183f5cdefe48d12f3a2f40b1e07c5ba5f2138f8d45edcc5bee47ca6350
+    immutable_source_mod_sha256: 644fbb2038ca804606331b66f60ff1f267f8f7b3e9a6715afe9dc08b34dadc75
+    owner_saved_native_mod_sha256_at_recording: 614aaf39f360b8b703292f85712310500ed9a95339b3a3a9fce8d425170fd05a
+    native_mod_change_note: Toolset-saved native module differs from the immutable initially installed MOD; the exact model-bearing HAK remains byte-identical
+native_installation:
+  status: installed-and-byte-identical
+  module_path: C:\Users\enonw\Documents\Neverwinter Nights\modules\m2bronpal229.mod
+  module_sha256: 644fbb2038ca804606331b66f60ff1f267f8f7b3e9a6715afe9dc08b34dadc75
+  hak_path: C:\Users\enonw\Documents\Neverwinter Nights\hak\m2bronh229v2.hak
+  hak_sha256: cb316a183f5cdefe48d12f3a2f40b1e07c5ba5f2138f8d45edcc5bee47ca6350
+  collision_policy: targets-were-absent-and-were-not-overwritten

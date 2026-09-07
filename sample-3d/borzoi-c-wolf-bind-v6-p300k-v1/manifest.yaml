@@ -1,0 +1,73 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: borzoi-c-wolf-bind-v6-p300k-v1
+provider: meshy
+local_only: true
+qualification: ready-for-owner-proof
+files:
+  - role: canonical-meshy-generated-source
+    path: source.glb
+    size_bytes: 12471876
+    sha256: 3efd673f4ec953de568b2a30f6f14131a62828398f3133bb89855193b5fffd93
+  - role: meshy-task-and-credit-provenance
+    path: meshy-run-provenance.json
+    size_bytes: 2632
+    sha256: 3543d1aea083db707c44a6554d9270f9295f066737e803ac259eefb64c6b6b6d
+provenance_note: owner explicitly classified the four-view bind-v6 source as a new candidate and authorized one Meshy generation, the selectable c_wolf pipeline, and an NWN demo on 2026-08-26
+generation_plan:
+  date: 2026-08-26
+  source_mode: multi-image-to-3d
+  input_count: 4
+  input_manifest: artifacts/concept-art/c-wolf-compatible-borzoi-bind-v6/generation-manifest.json
+  profile: N1-quadruped/v1
+  ai_model: meshy-6
+  should_remesh: true
+  topology: triangle
+  target_polycount: 300000
+  should_texture: true
+  texture_resolution: 2k
+  enable_pbr: false
+  image_enhancement: false
+  remove_lighting: true
+  rig_humanoid: false
+  owner_credit_cap: 30
+  target_supermodel: c_wolf
+  candidate_separation: new-four-view-source-not-v9-artifact-iteration
+generation_result:
+  status: succeeded
+  exact_local_bridge_run_id: e3a37490-4386-490a-80ea-29a96d347d1d
+  exact_model_task_id: 01a03d8b-7b13-7e6b-9db7-09a81667dd93
+  maximum_credits: 30
+  balance_before: 1088
+  balance_after: 1058
+  spent_credits: 30
+  generated_second_model: false
+  canonical_source_triangle_count: 299783
+  canonical_source_size_bytes: 12471876
+  canonical_source_sha256: 3efd673f4ec953de568b2a30f6f14131a62828398f3133bb89855193b5fffd93
+  manual_mesh_or_texture_edits: false
+demo_result:
+  status: ready_for_owner_proof
+  proof_lineage: proof-output/borzoi-c-wolf-demo-v10-20260826-new-source
+  model_resref: m2aborzcre10
+  texture_resref: m2aborztex10
+  supermodel_resref: c_wolf
+  rig_algorithm: HIERARCHY_CHAIN_SEGMENT_DISTANCE_TOPOLOGY512_VISIBLE_SCALE_V39
+  rig_node_count: 30
+  active_bone_count: 23
+  fitted_ground_contact_chain_count: 4
+  local_animation_count: 0
+  inherited_supermodel_animation_count: 42
+  joint_clip_required_count: 907
+  joint_clip_pass_count: 907
+  seam_violation_count: 0
+  paw_contact_violation_count: 0
+  paw_side_violation_count: 0
+  model_sha256: 764298489ca8f6e60e4eb8f29bd8249cdd11d2d31226fd5b2eac2a68e164c4fd
+  hak_file_name: m2aborzhak10.hak
+  hak_sha256: 8a168fdc4cdb4b3439f08940d53c3e774cf23c13979c58064aafc379abfd3186
+  module_file_name: m2aborzmod10.mod
+  module_sha256: 0a97d8fd3429fc359b7d56bd36b3b7a3927f557af3e8f073c06233f24e234456
+  native_installation: byte-identical-verified
+  model_visibility: not_tested
+  proof_completeness: missing
+  visual_proof_owner: project-owner

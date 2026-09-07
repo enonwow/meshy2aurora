@@ -1,0 +1,179 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: tlc-hextech-shotgun-parts-v1
+provider: meshy
+local_only: true
+qualification: generated-unqualified
+files:
+  - role: source-modelpart-bottom
+    path: bottom.glb
+    size_bytes: 8087336
+    sha256: 69c78999590b248bf9c642516ffa595d33774ead3436166963b27dfaa71ad48d
+  - role: source-modelpart-middle
+    path: middle.glb
+    size_bytes: 11116172
+    sha256: 8fafe6a55dd77107a67f29c7519f3b6edc390b310f918a89131b003517720147
+  - role: source-modelpart-top
+    path: top.glb
+    size_bytes: 10625220
+    sha256: 6ce1281a4ed8a239bf0d6fc9388fe8a977a2811750d40eab4320e13b642c77bf
+provenance_note: owner-authorized Meshy multi-image-to-3D generation of three modular parts for one hextech firearm item
+concept_references:
+  - slot: bottom
+    paths:
+      - documentation/concepts/firearm-hextech-shotgun-v1/parts-v2/hextech-shotgun-bottom-modelpart1-v2.png
+      - documentation/concepts/firearm-hextech-shotgun-v1/parts-v2/hextech-shotgun-bottom-modelpart1-three-quarter-v2.png
+    sha256: [60c778d40fe82477df84996b31899efeb06e79e6f2e99c92c19747c2f53ba83b, 35eeae045acbd8400bdbbddf579536a30ae25a2712a54bb6c8856cdc95da150c]
+  - slot: middle
+    paths:
+      - documentation/concepts/firearm-hextech-shotgun-v1/parts-v2/hextech-shotgun-middle-modelpart2-v2.png
+      - documentation/concepts/firearm-hextech-shotgun-v1/parts-v2/hextech-shotgun-middle-modelpart2-three-quarter-v2.png
+    sha256: [5078533f9bf1e00793182baeed6e826a3f1166dacda8ee5df557a07eafdb2fa0, 63bfa820199ecf96417efb5acae8cc2e484fa56c009c306e2be742187d8b28a3]
+  - slot: top
+    paths:
+      - documentation/concepts/firearm-hextech-shotgun-v1/parts-v2/hextech-shotgun-top-modelpart3-v2.png
+      - documentation/concepts/firearm-hextech-shotgun-v1/parts-v2/hextech-shotgun-top-modelpart3-three-quarter-v2.png
+    sha256: [7b955f6670c657c6e210055b64c142fc905eb68c856e835b37fea7971d1a6118, afea7624efdef7c36843ededde5842aeb2ec0f7991db23b4f3bbdfeb2a1cbf76]
+generation_plan:
+  date: 2026-08-04
+  source_mode: multi-image-to-3d
+  profile_id: S1-static-prop/v1
+  ai_model: meshy-6
+  model_type: standard
+  topology: triangle
+  texture: pbr
+  image_enhancement: false
+  owner_credit_cap_total: 90
+  retry_policy: none
+  parts:
+    - { slot: bottom, target_polycount: 8000, output: bottom.glb }
+    - { slot: middle, target_polycount: 12000, output: middle.glb }
+    - { slot: top, target_polycount: 8000, output: top.glb }
+generation_results:
+  balance_before: 318
+  balance_after: 228
+  credits_spent: 90
+  parts:
+    - slot: bottom
+      status: materialized
+      run_id: 6c534e92-1ee6-450c-a0ad-793372523479
+      task_id: 019fceca-e111-715c-984d-5babe7a0a8b1
+      consumed_credits: 30
+      created_at: 2026-08-04T22:00:35.293Z
+      finished_at: 2026-08-04T22:02:54.793Z
+      output: bottom.glb
+    - slot: middle
+      status: materialized
+      run_id: aeaac564-2e45-477f-837d-8f48321964ac
+      task_id: 019fcecd-218e-7bec-8839-5388525e4435
+      consumed_credits: 30
+      created_at: 2026-08-04T22:03:02.085Z
+      finished_at: 2026-08-04T22:05:29.494Z
+      output: middle.glb
+    - slot: top
+      status: materialized
+      run_id: 07feaf15-a3e7-41fa-afb1-6f0303f5848b
+      task_id: 019fcecf-8690-7c84-80be-89b2f43052fe
+      consumed_credits: 30
+      created_at: 2026-08-04T22:05:38.077Z
+      finished_at: 2026-08-04T22:08:08.481Z
+      output: top.glb
+generation_validation:
+  container: glb-2.0
+  total_vertices: 27406
+  total_triangles: 28620
+  shared_triangle_budget: 300000
+  per_stream_triangle_boundary: 21845
+  parts:
+    - { slot: bottom, meshes: 1, primitives: 1, vertices: 6094, triangles: 8195, materials: 1, pbr_textures: 4 }
+    - { slot: middle, meshes: 1, primitives: 1, vertices: 13403, triangles: 12170, materials: 1, pbr_textures: 4 }
+    - { slot: top, meshes: 1, primitives: 1, vertices: 7909, triangles: 8255, materials: 1, pbr_textures: 4 }
+materialization:
+  date: 2026-08-05
+  candidate_id: tlc-hextech-shotgun-item-v1-20260805
+  product_archetype: HEXTECH_SHOTGUN
+  status: ready_for_owner_proof
+  fit:
+    algorithm: ITEM_REFERENCE_ROLE_CHAIN_FIT_V2
+    status: PASSED
+    solution_sha256: 8a3009eaedbb6b9a203c4cbd6044507cc854432f154c6d0a873568df08a12d86
+    target_axes: [2, 1, 0]
+    target_axial_direction: -1
+    assembly_length_proportions: [0.316, 0.428, 0.256]
+  item:
+    base_item: 6
+    item_class: WBwXh
+    model_type: 2
+    selected_model: 5
+    selected_color: 3
+    blueprint_resref: m2ahxu1
+    identified: true
+  artifacts:
+    mod:
+      file: m2ahxs1.mod
+      size_bytes: 10521
+      sha256: bbcba8a4cb1a93c8fee357f226d7c74f01850351d9a2c717a856be0002f3a5d1
+    hak:
+      file: m2ahxh1.hak
+      size_bytes: 159701057
+      sha256: 8ce71494791318877ae46fa581bc83b1b93cbb1a9af741c9ff4175adfe0f4581
+  native_installation:
+    module: C:\Users\enonw\Documents\Neverwinter Nights\modules\m2ahxs1.mod
+    hak: C:\Users\enonw\Documents\Neverwinter Nights\hak\m2ahxh1.hak
+    byte_identical: true
+  owner_proof:
+    model_visibility: not_tested
+    proof_completeness: missing
+    visual_acceptance: not_tested
+    agent_live_control: false
+corrective_materialization_v2:
+  date: 2026-08-05
+  candidate_id: tlc-hextech-shotgun-item-v2-20260805
+  predecessor_candidate_id: tlc-hextech-shotgun-item-v1-20260805
+  admission_evidence: documentation/evidence/tlc-hextech-shotgun-item-v1-owner-visual-failure-2026-08-05.md
+  product_archetype: HEXTECH_SHOTGUN
+  status: ready_for_owner_proof
+  source_payloads_regenerated: false
+  fit:
+    algorithm: ITEM_REFERENCE_ROLE_CHAIN_FIT_V3_SEMANTIC_ORIENTATION
+    status: PASSED
+    solution_sha256: 91c978d6f729e43d6189a99ba789053edc9e4815ddb8a60e57c52c3ece31b5fe
+    target_axes: [2, 1, 0]
+    role_orientations:
+      - { field: ModelPart1, role: bottom, target_axial_direction: 1, target_width_direction: -1 }
+      - { field: ModelPart2, role: middle, target_axial_direction: -1, target_width_direction: 1 }
+      - { field: ModelPart3, role: top, target_axial_direction: -1, target_width_direction: 1 }
+    assembly_length_proportions: [0.316, 0.428, 0.256]
+  item:
+    base_item: 113
+    label: hextech_shotgun
+    item_class: WHxSh
+    model_type: 2
+    selected_model: 5
+    selected_color: 3
+    blueprint_resref: m2ahxu2
+    identified: true
+    runtime_donor:
+      base_item: 6
+      item_class: WBwXh
+      inherited_route: xbowshot
+    localized_type_name: inherited-donor-strref-pending-separate-custom-tlk
+  artifacts:
+    mod:
+      file: m2ahxs2.mod
+      size_bytes: 10521
+      sha256: 0c1d24b4bf2173bc0b7619db374fed9db5c628ca45ca6fa68d8d15caed9342b9
+    hak:
+      file: m2ahxh2.hak
+      size_bytes: 159834807
+      sha256: 28c6b338cf0be7d7cddcbf493ca0864c1e8be32559f9e8b056e293a4e7efa4b6
+      resource_count: 38
+      contains_baseitems_override: true
+  native_installation:
+    module: C:\Users\enonw\Documents\Neverwinter Nights\modules\m2ahxs2.mod
+    hak: C:\Users\enonw\Documents\Neverwinter Nights\hak\m2ahxh2.hak
+    byte_identical: true
+  owner_proof:
+    model_visibility: not_tested
+    proof_completeness: missing
+    visual_acceptance: not_tested
+    agent_live_control: false

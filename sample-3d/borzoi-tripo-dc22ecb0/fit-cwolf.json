@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "coordinateSpace": "GLTF_POSITIVE_Z_TO_AURORA_BIND",
+  "supermodelResref": "c_wolf",
+  "referenceSha256": "a17b3613c356399d996707d26c4c6d87aa659fe5935c620c7e72de4443c7d726",
+  "originalSourceSha256": "dc22ecb0561fc10773e1a156b0d126225a15cdfb67cd7c0999a965a4f1d59689",
+  "algorithm": "AFFINE_SOURCE_FIT_V1",
+  "fitMatrixAurora": [
+    1.9293946027755737,
+    0,
+    0,
+    0,
+    0,
+    1.6343107223510742,
+    0,
+    0,
+    0,
+    0,
+    1.8839970827102661,
+    0,
+    0,
+    -0.17250250577926635,
+    0.00023792204260825872,
+    1
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-08-20T17:30:00Z",
+  "candidate": {
+    "testModuleFileName": "m2aborzmod2.mod",
+    "moduleDisplayName": "Meshy2Aurora Borzoi c_wolf Demo V2",
+    "areaDisplayName": "Meshy2Aurora Borzoi Test Area V2",
+    "moduleSha256": "19764078dd962da1541810d1837b8805f4f7cd14242296c7b7e0c8a61b1dd55d",
+    "hakFileName": "m2aborzhak2.hak",
+    "hakSha256": "2611ffc9ca68cca91aabd96dd76ef0e484bb40f4f13b43d10fd4249e3c21cc37",
+    "modelResref": "m2aborzcre2",
+    "modelSha256": "36c30f6c2ced53031a1938a66b8055d30ab0a969250b2c7c795db8acbf09282d",
+    "nativeModuleHashEqual": true,
+    "nativeHakHashEqual": true
+  },
+  "ownerResult": {
+    "modelVisibility": "visible",
+    "proofCompleteness": "verified",
+    "qualityVerdict": "failed",
+    "reportedDefects": [
+      "front legs are rigid",
+      "overall model visual quality is very low"
+    ]
+  },
+  "offlineDiagnosis": {
+    "rigDefect": {
+      "status": "confirmed",
+      "leftFrontUpperLegPrimaryVertexCount": 0,
+      "rightFrontUpperLegPrimaryVertexCount": 0,
+      "cause": "V2 nearest-two-chain weighting does not give either front upper-leg bone a primary deformation region",
+      "pipelineRemediable": true
+    },
+    "sourceVisualQuality": {
+      "status": "source_limited",
+      "sourceTriangleCount": 60780,
+      "textureDimensions": [2048, 2048],
+      "textureBitsPerPixel": 24,
+      "sourceMeshOrTextureWasEnhancedByV2": false,
+      "cause": "V2 preserved the generated Meshy surface and texture exactly; rig correction cannot reconstruct missing anatomy, silhouette or authored detail",
+      "requiresNewOrManuallyImprovedSourceForMaterialUpgrade": true
+    }
+  },
+  "iterationGate": {
+    "newRigIterationAdmitted": true,
+    "newSourceGenerationAuthorized": false,
+    "minimumRigDelta": "replace nearest-two front-leg weighting with continuous shoulder-to-paw chain parameterization and validate active primary regions for every deforming front-leg bone",
+    "sourceUpgradeBoundary": "requires separate owner authorization for a new Meshy generation or an owner-supplied improved mesh"
+  }
+}

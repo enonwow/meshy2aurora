@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-04",
+  "source": "owner_report_and_owner_screenshot",
+  "ownerStatement": "dalej cos mi nie pasuje wyglada ze albo to nie jest ten sam model albo nwn cos pieroli z interpretacja naszego modelu ale tutaj nie liczac meshy nci sie nie zgadza",
+  "candidate": {
+    "moduleFileName": "m2a_tlcdm4_mod.mod",
+    "moduleDisplayName": "The Last City - Detailed Materials Ship Demo",
+    "areaName": "The Last City Detailed Materials Shipyard",
+    "areaResref": "m2a_tlcdm4_ar",
+    "hakFileName": "m2a_tlcdm4_hak.hak",
+    "modelResref": "m2a_tlcdm4_mdl",
+    "objectTag": "m2a_tlcdm4_ship",
+    "moduleSha256": "96bc3fedc52c06b4cafd5122ca13889f3807971f07aee35d1a533cde9690d95f",
+    "hakSha256": "bd01dd793bf931372ac80080642c039db11cf0b201a7cd9f3a31d1abe5975674",
+    "mdlSha256": "bf35c0fc593d52256da9f5c94699a2a12bdf2d0a0ddd58e35db30523866fb169",
+    "sourceSha256": "61baad674f9509e9e7f1718aa415dc12411b099ffedaea6484f68ceb3bf10278"
+  },
+  "screenshot": {
+    "path": "C:\\Users\\enonw\\AppData\\Local\\Temp\\codex-clipboard-8bb54ab0-1169-4134-a6a8-13943f19b475.png",
+    "sha256": "872d616979de8ce512dd4e7f04ad13e5f8f7edef3d7d3d461eccbe9812b3eb61",
+    "byteLength": 1315658,
+    "width": 1401,
+    "height": 825,
+    "identityReadback": "The screenshot visibly identifies exact Area resref m2a_tlcdm4_ar and shows the detailed-material ship placeable."
+  },
+  "toolset": {
+    "modelVisibility": "visible",
+    "proofCompleteness": "verified",
+    "visualAcceptance": "rejected",
+    "observedProblem": "The exact Toolset candidate is recognizable as the same ship silhouette, but the timber is a largely uniform brown result and does not match the light, differentiated Material Separation editor viewport."
+  },
+  "nwn": {
+    "modelVisibility": "not_tested",
+    "proofCompleteness": "missing"
+  },
+  "offlineFacts": {
+    "sameSourceGeometry": {
+      "sourceTriangleCount": 152574,
+      "outputTriangleCount": 152574,
+      "geometryCleanup": false,
+      "binaryReadbackTriangleCount": 152574,
+      "binaryReadbackMeshCount": 15,
+      "binaryReadbackBoundsMin": [-7.5867596, -3.144108, 0.0],
+      "binaryReadbackBoundsMax": [7.5867596, 3.144108, 8.75452],
+      "conclusion": "The candidate uses the exact canonical source hash and preserves all source triangles. The evidence rejects the hypothesis that a different source model was packaged."
+    },
+    "webPreviewBehavior": {
+      "source": "apps/studio-web/src/features/material-separation/MaterialSeparationDemo.tsx and MaterialSeparationEditor.tsx",
+      "facts": [
+        "The demo loads source GLB, Material Separation JSON and texture-authoring metadata.",
+        "It does not load the referenced PNG texture payload bytes into the editor.",
+        "MaterialSeparationEditor resets textureFiles to an empty map for the loaded authoring document.",
+        "The viewport renders SourceViewport with faceMaterialOverlay colors taken from authored material previewColor.",
+        "The demo initializes world-scale UV selections as empty and does not load the frozen material-uv-projection document."
+      ],
+      "conclusion": "The web editor image is a Material ID diagnostic overlay, not a renderer-parity preview of the exported MDL, TGA resources and projected UVs."
+    },
+    "auroraCandidateBehavior": {
+      "textureResrefs": [
+        "m2a_tlcdm4_tex",
+        "m2a_tlcdm4_te_m1",
+        "m2a_tlcdm4_te_m2",
+        "m2a_tlcdm4_te_m3",
+        "m2a_tlcdm4_te_m4",
+        "m2a_tlcdm4_te_m5",
+        "m2a_tlcdm4_te_m6"
+      ],
+      "projectedWoodTriangleCount": 141183,
+      "conclusion": "Aurora renders the actual packaged TGA payloads and projected UVs rather than the editor's previewColor overlay."
+    }
+  },
+  "diagnosis": {
+    "status": "root_cause_identified_for_preview_mismatch",
+    "proven": "The application presented a diagnostic Material ID overlay as if it represented final authored textures. This preview/export parity defect explains the major visual mismatch.",
+    "notProven": "The evidence does not establish an Aurora or NWN geometry-interpretation defect. A renderer-specific difference may still exist, but it must be tested only after the application renders the same texture payloads and UV projection as the export.",
+    "rejectedHypotheses": [
+      "A different Meshy source model was packaged.",
+      "Aggressive geometry cleanup removed or substituted the ship geometry."
+    ]
+  },
+  "requiredNextSteps": [
+    "Load and render exact texture payload bytes in the Material Separation viewport.",
+    "Load the exact material-uv-projection document and apply the same projected UVs used by the binary writer.",
+    "Add a converted binary-MDL readback viewport using the packaged texture resources.",
+    "Add a parity gate that prevents a previewColor diagnostic overlay from being presented as final texture appearance.",
+    "Only after parity is established compare the exact readback view with owner Toolset evidence and decide whether the material payload itself needs another candidate."
+  ]
+}

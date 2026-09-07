@@ -1,0 +1,197 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: tlc-guard-longsword-parts-v1
+provider: meshy
+local_only: true
+qualification: generated-unqualified
+files:
+  - role: source-modelpart-bottom
+    path: bottom.glb
+    size_bytes: 10483020
+    sha256: 01e554b8a59e934597540f9b1e4a697a2536356c0c60ebb0e5f8ad2067b79766
+  - role: source-modelpart-middle
+    path: middle.glb
+    size_bytes: 11966708
+    sha256: 6dae50bf1844d549c3e46c8a570258100ec14d04420bd333736854913af2b071
+  - role: source-modelpart-top
+    path: top.glb
+    size_bytes: 4696076
+    sha256: be226f1f891dfee517c221121289689cb21fed99bc41ec3b6e09e7611df15143
+provenance_note: owner-authorized Meshy image-to-3D generation of three modular parts for one existing-baseitem NWN longsword
+concept_references:
+  - slot: bottom
+    path: documentation/concepts/item-longsword-demo-v11-last-city-guard-parts/bottom-concept.png
+    sha256: 1ae06ad2819d118f66973d6825973e956126544c73a42258910883cb4e1569b8
+  - slot: middle
+    path: documentation/concepts/item-longsword-demo-v11-last-city-guard-parts/middle-concept.png
+    sha256: 85cc222af76b83a2d7e3716406c8403a893fe7ec650a7a84fa77852d744d679f
+  - slot: top
+    path: documentation/concepts/item-longsword-demo-v11-last-city-guard-parts/top-concept.png
+    sha256: 3af210423d1b519bb6fd721cd7c4154794152706a183ecd8debaed7113d44f8b
+generation_plan:
+  date: 2026-08-02
+  source_mode: image-to-3d
+  profile_id: S1-static-prop/v1
+  ai_model: meshy-6
+  model_type: standard
+  topology: triangle
+  texture: pbr
+  owner_credit_cap_total: 90
+  retry_policy: none
+  parts:
+    - { slot: bottom, target_polycount: 5000, output: bottom.glb }
+    - { slot: middle, target_polycount: 8000, output: middle.glb }
+    - { slot: top, target_polycount: 3000, output: top.glb }
+generation_results:
+  balance_before: 408
+  balance_after: 318
+  credits_spent: 90
+  parts:
+    - slot: bottom
+      status: materialized
+      task_id: 019fc24e-2b01-78b6-8edc-5b3c63758adf
+      consumed_credits: 30
+      created_at_unix_ms: 1785671333716
+      finished_at_unix_ms: 1785671485264
+      output: bottom.glb
+    - slot: middle
+      status: materialized
+      task_id: 019fc250-9a9f-77f7-bd8d-db021fcc4877
+      consumed_credits: 30
+      created_at_unix_ms: 1785671493974
+      started_at_unix_ms: 1785671493991
+      finished_at_unix_ms: 1785671627675
+      output: middle.glb
+    - slot: top
+      status: materialized
+      run_id: d7fbd684-bf26-4d22-9eef-69c21a1739a6
+      task_id: 019fc254-ed2e-79da-b404-ac85c9103a74
+      consumed_credits: 30
+      created_at_unix_ms: 1785671775506
+      started_at_unix_ms: 1785671775714
+      finished_at_unix_ms: 1785671897635
+      output: top.glb
+generation_validation:
+  container: glb-2.0
+  total_vertices: 13597
+  total_triangles: 16356
+  shared_triangle_budget: 300000
+  per_stream_triangle_boundary: 21845
+  assembly_status: offline-auto-fit-and-seam-qualified
+  fit:
+    status: PASSED
+    algorithm: ORDERED_SLOT_AXIAL_ENVELOPE_SEAM_GATE_V1
+    tolerance: 0.01
+    solution_sha256: e88556ddcd24d665f3f9d36ae1d6e75a0bcc973d9d7d7fe9e494a43c08f49bde
+  parts:
+    - slot: bottom
+      model_part: ModelPart1
+      intended_component: pommel-grip-upper-collar
+      meshes: 1
+      primitives: 1
+      vertices: 3751
+      triangles: 5155
+      materials: 1
+      pbr_textures: 4
+      bounds_xyz: [0.4225050062, 1.8986382484, 0.4150440693]
+    - slot: middle
+      model_part: ModelPart2
+      intended_component: guard-emblem-seam-collars
+      meshes: 1
+      primitives: 1
+      vertices: 7553
+      triangles: 8218
+      materials: 1
+      pbr_textures: 4
+      bounds_xyz: [1.8989610076, 0.4793840498, 0.4329280704]
+    - slot: top
+      model_part: ModelPart3
+      intended_component: full-longsword-blade-lower-mounting-root
+      meshes: 1
+      primitives: 1
+      vertices: 2293
+      triangles: 2983
+      materials: 1
+      pbr_textures: 4
+      bounds_xyz: [0.0635808073, 0.8999999464, 0.0461281948]
+materialization:
+  date: 2026-08-02
+  candidate_id: tlc-guard-longsword-v1-20260802
+  status: ready_for_owner_proof
+  exact_face_plane_policy: finite-noncollinear
+  source_triangles: 16356
+  emitted_triangles: 16356
+  removed_degenerate_triangles: 0
+  test_module_file: m2atgls1.mod
+  test_module_sha256: 08bbebc18905d4b1ed6e6d9f3b9bb50f02afa08e12e86709551274013ae53dc0
+  hak_file: m2atglh1.hak
+  hak_sha256: 9dba2282a123177df29acabc6c543ececf135d63aed38871e01d8e7dab9fae22
+  blueprint_resref: m2atglu1
+  blueprint_sha256: b018aca195a5bf7cb4f8d1993bf1957f089ae590c332b3d9aae112971c4d5087
+  native_installation: byte-identical-created-new
+  model_visibility: not_tested
+  proof_completeness: missing
+materialization_amendments:
+  - date: 2026-08-03
+    amendment: owner-rejected-ground-item-fixture
+    candidate_id: tlc-guard-longsword-v1-20260802
+    owner_result: documentation/evidence/tlc-guard-longsword-v1-owner-result-2026-08-03.json
+    model_visibility: not_visible
+    proof_completeness: failed
+    diagnosed_cause: the MOD placed the UTI on the ground and did not exercise the equipped ModelType 2 part renderer
+  - date: 2026-08-03
+    amendment: equipped-modeltype2-proof-fixture
+    candidate_id: tlc-guard-longsword-equipped-v2-20260803
+    supersedes_candidate: tlc-guard-longsword-v1-20260802
+    status: ready_for_owner_proof
+    test_module_file: m2atgls2.mod
+    test_module_sha256: 249a63d794f0d719f804e3fe05419e49ee5ac079e048eeb512e4c3c094c20cb4
+    hak_file: m2atglh1.hak
+    hak_sha256: 9dba2282a123177df29acabc6c543ececf135d63aed38871e01d8e7dab9fae22
+    blueprint_resref: m2atglu1
+    blueprint_sha256: b018aca195a5bf7cb4f8d1993bf1957f089ae590c332b3d9aae112971c4d5087
+    fixture_profile: EQUIPPED_MODELTYPE2_PARTS_V2
+    proof_creature_resref: m2atgln2
+    equipment_slot: 16
+    appearance_row: 6
+    appearance_racial_type: 11
+    appearance_gender: 0
+    appearance_phenotype: 0
+    appearance_model_prefix: pmh0
+    native_installation: byte-identical-module-created-hak-reused
+    model_visibility: not_tested
+    proof_completeness: missing
+    immutable_asset_delta: none; HAK, UTI, MDLs, textures, icons and fit are byte-identical to v1
+    deferred_visual_issue: hilt/blade proportions remain unchanged pending owner proof of the equipped rendering route
+  - date: 2026-08-03
+    amendment: complete-model-color-item-v3
+    owner_failure: documentation/evidence/tlc-guard-longsword-v2-owner-result-2026-08-03.json
+    candidate_id: tlc-guard-longsword-item-model-color-v3-20260803
+    status: ready_for_owner_proof
+    test_module_file: m2atgls3.mod
+    test_module_sha256: 7ca0760645d88660eaec96c524adf0d3c7dbe823aa68c4280c2e43487efe7748
+    hak_file: m2atglh3.hak
+    hak_sha256: 00f40b6585c0942e95b03feb0ec6f588427ca2420e19f46e1ac23b02c0325c2d
+    blueprint_resref: m2atglu3
+    blueprint_sha256: 5456b41c32e410231d7a5810981e3e02d9fc4f09262e144c3648e987f26af9a0
+    selected_part_values: [23, 63, 23]
+    selected_models: [2, 6, 2]
+    selected_colors: [3, 3, 3]
+    concrete_colorway_resources: 12
+    hak_resource_count: 37
+    target_axial_lengths: [0.22, 0.08, 0.90]
+    fit_solution_sha256: ab335afb5b1b6c73611ffd7243201455e07b29e6fe256d0344bfc9aec829e15a
+    fixture_profile: ITEM_AND_EQUIPPED_MODELTYPE2_PARTS_V3
+    actual_item_resref: m2atglu3
+    equipped_render_witness_resref: m2atgln3
+    native_installation: byte-identical-created-new
+    model_visibility: not_tested
+    proof_completeness: missing
+  - date: 2026-08-03
+    amendment: canonical-source-path-normalization-after-v3-freeze
+    capture_time_source_root: C:\Projects\meshy2aurora\.worktrees\items\sample-3d\tlc-guard-longsword-parts-v1
+    canonical_source_root: C:\Projects\meshy2aurora\sample-3d\tlc-guard-longsword-parts-v1
+    byte_identity: confirmed-same-sha256-for-bottom-middle-top
+    bottom_sha256: 01e554b8a59e934597540f9b1e4a697a2536356c0c60ebb0e5f8ad2067b79766
+    middle_sha256: 6dae50bf1844d549c3e46c8a570258100ec14d04420bd333736854913af2b071
+    top_sha256: be226f1f891dfee517c221121289689cb21fed99bc41ec3b6e09e7611df15143
+    immutable_v3_packet_mutation: none

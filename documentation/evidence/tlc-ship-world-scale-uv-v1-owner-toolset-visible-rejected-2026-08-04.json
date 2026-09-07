@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-04",
+  "source": "owner_report_and_owner_screenshots",
+  "ownerStatements": [
+    "lepiej ale dalej nie jest to statek który bym chciał",
+    "a to dalej nie mamy podzialu na materiały?!",
+    "postaraj sie podzielic na jeszcze bardiej szczegolowe materialy"
+  ],
+  "candidate": {
+    "moduleFileName": "m2a_tlcsm3_mod.mod",
+    "moduleDisplayName": "The Last City - World Scale UV Ship Demo",
+    "areaName": "The Last City World Scale UV Shipyard",
+    "areaResref": "m2a_tlcsm3_ar",
+    "hakFileName": "m2a_tlcsm3_hak.hak",
+    "modelResref": "m2a_tlcsm3_mdl",
+    "objectTag": "m2a_tlcsm3_ship",
+    "moduleSha256": "ce3872e6d6bf24496ebdc44ec225a11356f200d3f89a8d1caa740cf88405ba7e",
+    "hakSha256": "9a04b028e605cd2cfb79f38bd0e08a565cc1fc3da362b5c18186df1292e6f340",
+    "mdlSha256": "a4679a97c7c5b6eb010b003c433428bf5bcff0be9e68add14d7c089e982eb0a7",
+    "pwkSha256": "fd4dbaea322a8feb30ba023c89b0fc0a81770303b337a67eb0e957e90210a9bd",
+    "separationSha256": "6eeb7877b24feb3f4a315a9ae68809dc5620ca4272bfb7702d3d159f67df4b3a",
+    "materialUvProjectionSha256": "adcb1ecb5cc52edca36523149f8df2d1f858631e17af32a49da02b4fd255db2b"
+  },
+  "screenshots": [
+    {
+      "path": "C:\\Users\\enonw\\AppData\\Local\\Temp\\codex-clipboard-1449b260-f2d7-4ec1-88a8-b3b31dc101b1.png",
+      "sha256": "b8ac24c8d322fefa42d111f7f5430d237af17ef52bdc8955b9dd53f716707aba",
+      "byteLength": 510186
+    },
+    {
+      "path": "C:\\Users\\enonw\\AppData\\Local\\Temp\\codex-clipboard-7bf02e4a-df18-438a-81b0-c6115924d62d.png",
+      "sha256": "8660cf0c4be01113a546f2ad24dbbef2ef9385eb766ee1f73744dfde30fba7ab",
+      "byteLength": 673405
+    }
+  ],
+  "toolset": {
+    "modelVisibility": "visible",
+    "proofCompleteness": "verified",
+    "visualAcceptance": "rejected",
+    "diagnosis": "The exact sm3 ship renders in the exact Toolset module and Area. World-scale wood UV is visible, but 141183 of 152574 triangles remain in one authored wood material, producing an insufficiently differentiated brown mass."
+  },
+  "nwn": {
+    "modelVisibility": "not_tested",
+    "proofCompleteness": "missing"
+  },
+  "materialOnlyIterationException": {
+    "authorized": true,
+    "ownerStatement": "postaraj sie podzielic na jeszcze bardiej szczegolowe materialy",
+    "geometryChangeAuthorized": false,
+    "scope": "One detailed Material Separation iteration of the same exact source geometry. No cleanup, remesh, triangle deletion, scale, placement or collision change.",
+    "minimalIntendedDelta": [
+      "split the former authored wood material into semantic surface groups",
+      "assign independent world-scale UV rules to the new wood groups",
+      "reuse existing source-bound texture payloads where possible",
+      "allocate a fresh immutable MOD, HAK and model identity for owner proof"
+    ]
+  }
+}

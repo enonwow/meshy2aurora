@@ -1,0 +1,177 @@
+{
+  "schema": "meshy2aurora.git-hygiene-untracking/v1",
+  "date": "2026-09-07",
+  "base_commit": "7289f2b0c8d385b2058912fb4fa6c0eb7e1990ba",
+  "hygiene_commit": "0e49c64",
+  "operation": "git rm --cached",
+  "local_files_preserved": true,
+  "sha256_verified_before_and_after": true,
+  "history_rewritten": false,
+  "files": [
+    {
+      "Path": "artifacts/concept-art/void-crystal-knight-meshy-input-2026-07-29/void-crystal-knight-concept-sheet.png",
+      "Bytes": 2838633,
+      "SHA256": "d4fb2fc059377ede24f3ac864c5e9333e0161c0ab969a534a1a3bc1af3d59762"
+    },
+    {
+      "Path": "artifacts/concept-art/void-crystal-knight-meshy-input-2026-07-29/void-crystal-knight-front-clean.png",
+      "Bytes": 456045,
+      "SHA256": "63f6e0b47746d8e7dc121fc3e6fcf931f3cfb17b688d63605c40e3b7ec868d19"
+    },
+    {
+      "Path": "artifacts/concept-art/void-crystal-knight-meshy-input-2026-07-29/void-crystal-knight-front.png",
+      "Bytes": 463221,
+      "SHA256": "e6b7c8dc05212bf1a26caaf3a940508b6ffff00a19454112cec89a10a6c1b4f8"
+    },
+    {
+      "Path": "artifacts/demo-runs/void-crystal-knight-h1-v1-demo1/studio-crun-preview.png",
+      "Bytes": 90728,
+      "SHA256": "1985c811be7ea1b1c6f51e7dd7548b2c33a2140c350431148ba498a446cb3597"
+    },
+    {
+      "Path": "artifacts/demo-runs/void-crystal-knight-h1-v1-demo1/studio-demo.png",
+      "Bytes": 96145,
+      "SHA256": "239c567d7268a64d76aea9b311782ff719c99b4688be49b969bc0c1a941f3a13"
+    },
+    {
+      "Path": "artifacts/demo-runs/void-crystal-knight-h1-v1-demo1/studio-source-inspect-top.png",
+      "Bytes": 97319,
+      "SHA256": "c0e81474d3ab3439ba3cc18d32d0aae20789a84a86d8d3359a482434ff5569fb"
+    },
+    {
+      "Path": "artifacts/demo-runs/void-crystal-knight-h1-v1-demo1/studio-source-inspect.png",
+      "Bytes": 56332,
+      "SHA256": "bde9371f24df026deba18999ed4c2d8c737a7cb93691f2f5bc7d7a274c3f7d80"
+    },
+    {
+      "Path": "artifacts/meshy-p100k-run-20260728/stdout.json",
+      "Bytes": 2551,
+      "SHA256": "b5d986764eccce95ce921296c34e50de72c46bd5f2d2cf8d2a6a3d1d545ae377"
+    },
+    {
+      "Path": "artifacts/meshy-runs/void-crystal-knight-h1-v1/preview.png",
+      "Bytes": 112946,
+      "SHA256": "4f35d36e650461375a88e752dd129b5157f37b940c83f274a0183bfbc8814afc"
+    },
+    {
+      "Path": "artifacts/meshy-tlc-workstations-20260726/tlc_disman01.glb",
+      "Bytes": 16515084,
+      "SHA256": "86388b96b6c5c010153de279a8e0708a4f93488228d9e5633e6ffee1f98a3561"
+    },
+    {
+      "Path": "artifacts/meshy-tlc-workstations-20260726/tlc_disman01.source.glb",
+      "Bytes": 15686116,
+      "SHA256": "5abe58414f8d3eb61e4e43aff8d2cb2f958f147d9426add52142efba77460c18"
+    },
+    {
+      "Path": "artifacts/meshy-tlc-workstations-20260726/tlc_purify01.glb",
+      "Bytes": 15780148,
+      "SHA256": "540eaa7cf3bce1583ff4d34013162ee399ee5ef30fd845eace8d50c83ca2316e"
+    },
+    {
+      "Path": "artifacts/meshy-tlc-workstations-20260726/tlc_purify01.source.glb",
+      "Bytes": 15049064,
+      "SHA256": "1976f22739ac316de421cd509d658cc95d3233cc79a23da496f96f0edf3489c4"
+    },
+    {
+      "Path": "artifacts/meshy-tlc-workstations-20260726/tlc_upgrad01.glb",
+      "Bytes": 14887344,
+      "SHA256": "cf2f6a7b43c6ccaf09ebb2d560a62bed0245ec4734b8c8df5d9b9e4dd0776ebd"
+    },
+    {
+      "Path": "artifacts/meshy-tlc-workstations-20260726/tlc_upgrad01.source.glb",
+      "Bytes": 14195140,
+      "SHA256": "285a0434da813c28274663a4b06516913cb41497034396500b0a4fe825b13d17"
+    },
+    {
+      "Path": "artifacts/tile-static-v1/m2a_tile_static_v1.hak",
+      "Bytes": 5671,
+      "SHA256": "50606968f5e981b1d816d45c3471f3bc1a0871e621262ade4969f48e40768ee8"
+    },
+    {
+      "Path": "artifacts/tile-static-v1/m2a_tile_static_v1.mod",
+      "Bytes": 7965,
+      "SHA256": "aa5f4d5a3e99406332eef53e4e6bfa29ced954a7ecdb73c66d80bec0ed3841a7"
+    },
+    {
+      "Path": "artifacts/tile-static-v1/m2atilemap1.tga",
+      "Bytes": 92,
+      "SHA256": "40478db4eb8457360ee311be592675ad0571e9e9f27c01518231d7d405ee7f44"
+    },
+    {
+      "Path": "artifacts/tile-static-v1/m2atilemdl1.mdl",
+      "Bytes": 3548,
+      "SHA256": "41d0d9dfc6caa6fc9a36ca8cecb1db724e1aef753fa8794fb6d960f5bf392aa2"
+    },
+    {
+      "Path": "artifacts/tile-static-v1/m2atilemdl1.wok",
+      "Bytes": 782,
+      "SHA256": "4408db3a1a586bc15f1d042be32b26a2303936613dd1597bd25660120d7a5f93"
+    },
+    {
+      "Path": "artifacts/tile-static-v1/m2atilesetv1.set",
+      "Bytes": 837,
+      "SHA256": "83fe3a9a27efaef126f72fe03e88c666ab7370b981cd13e73667e2b74b07ec64"
+    },
+    {
+      "Path": "artifacts/tile-static-v1/m2atiletex1.tga",
+      "Bytes": 92,
+      "SHA256": "40478db4eb8457360ee311be592675ad0571e9e9f27c01518231d7d405ee7f44"
+    },
+    {
+      "Path": "artifacts/tile-static-v1/tile-materialization-report.json",
+      "Bytes": 3937,
+      "SHA256": "f453863425caf541c4c29f74aa4af4af301109a36dce20e5b5797706da4cfffe"
+    },
+    {
+      "Path": "artifacts/tlc-stoneback-texture-audit-v3/hampel-v3-changed-mask.png",
+      "Bytes": 19632,
+      "SHA256": "722a0b084251299616eec9f0f59731814a60c7144fbfe305fc1e4acf155f7a81"
+    },
+    {
+      "Path": "artifacts/tlc-stoneback-texture-audit-v3/hampel-v3-crops-before-after.png",
+      "Bytes": 102102,
+      "SHA256": "7d9105bbe08b24a56e7c71512a15119c87ee868da6bbc39fa6485a5b266e9cf7"
+    },
+    {
+      "Path": "artifacts/tlc-stoneback-texture-audit-v3/hampel-v3-simulation.png",
+      "Bytes": 5374418,
+      "SHA256": "ade9259a4a4f241f5f3241694903bfc34dbc20c3e3362114f90c508cffcf84a3"
+    },
+    {
+      "Path": "artifacts/tlc-stoneback-texture-audit-v3/texture-v3.png",
+      "Bytes": 5381352,
+      "SHA256": "a70641f8ff2f2ee01d101c50803a1360913c799d1bd2dc96fe5028f38bda6611"
+    },
+    {
+      "Path": "artifacts/tlc-stoneback-texture-audit-v3/texture-v4.png",
+      "Bytes": 5383572,
+      "SHA256": "be99b37b4192ffdbd18ac8e392537aa97f8c4335d5bf42c2ff49017beabe6cb9"
+    },
+    {
+      "Path": "sample-3d/tlc-fogbound-claw-guard-h1-p300k-v1/concept.png",
+      "Bytes": 905059,
+      "SHA256": "96b784db771791391d5c57da5317762b5072448ac19382f1176e49dbf96a64f2"
+    },
+    {
+      "Path": "sample-3d/tlc-ship-under-construction-s1-p150k-v1/concept-bow.jpg",
+      "Bytes": 77718,
+      "SHA256": "a03ed01fa916f51f7abc927c5d918a919a72c9bf097f246bfab0a247f92640ae"
+    },
+    {
+      "Path": "sample-3d/tlc-ship-under-construction-s1-p150k-v1/concept-side-three-quarter.jpg",
+      "Bytes": 106540,
+      "SHA256": "5ac81677a92eea70c83e870227761f89941295d8b9c78912ad43e334aba7ec48"
+    },
+    {
+      "Path": "sample-3d/tlc-ship-under-construction-s1-p150k-v1/concept-stern.jpg",
+      "Bytes": 80375,
+      "SHA256": "f907e64bf290291a3f808625ddf0b657229bc4899ca16446d6e35541de8e3fa4"
+    },
+    {
+      "Path": "sample-3d/tlc-ship-under-construction-s1-p150k-v1/concept-top.jpg",
+      "Bytes": 92240,
+      "SHA256": "0530e60430361ecccf935fb2cbbc8000ee56dbdab8bfba907f48c0515c20c441"
+    }
+  ]
+}

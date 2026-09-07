@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "atlasSize": 2048,
+  "iconPaddingPixels": 5,
+  "materials": [
+    {
+      "sourceMaterialId": 0,
+      "sourceMaterialName": "Material_tripo_part_0.001",
+      "semantic": "cloth-cowl",
+      "nwnPltLayer": "Cloth 1",
+      "nwnPltLayerIndex": 4,
+      "pixelRectTopLeft": [0, 0, 1024, 1024],
+      "iconIdRgb": [255, 0, 0]
+    },
+    {
+      "sourceMaterialId": 1,
+      "sourceMaterialName": "Material_tripo_part_new_0_0.001",
+      "semantic": "mask-trim",
+      "nwnPltLayer": "Leather 2",
+      "nwnPltLayerIndex": 7,
+      "pixelRectTopLeft": [1024, 0, 1024, 1024],
+      "iconIdRgb": [255, 255, 0]
+    },
+    {
+      "sourceMaterialId": 2,
+      "sourceMaterialName": "Material_tripo_part_11.001",
+      "semantic": "main-mask-shell",
+      "nwnPltLayer": "Metal 1",
+      "nwnPltLayerIndex": 2,
+      "pixelRectTopLeft": [0, 1024, 512, 512],
+      "iconIdRgb": [0, 255, 255]
+    },
+    {
+      "sourceMaterialId": 3,
+      "sourceMaterialName": "Material_tripo_part_new_0.001",
+      "semantic": "forehead-wrap",
+      "nwnPltLayer": "Leather 1",
+      "nwnPltLayerIndex": 6,
+      "pixelRectTopLeft": [512, 1024, 512, 512],
+      "iconIdRgb": [0, 0, 255]
+    },
+    {
+      "sourceMaterialId": 4,
+      "sourceMaterialName": "Material_tripo_part_new_0_1.001",
+      "semantic": "eye-inserts",
+      "nwnPltLayer": "Cloth 2",
+      "nwnPltLayerIndex": 5,
+      "pixelRectTopLeft": [1024, 1024, 512, 512],
+      "iconIdRgb": [255, 0, 255]
+    }
+  ]
+}

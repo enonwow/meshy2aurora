@@ -1,0 +1,46 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: borzoi-tripo-dc22ecb0
+provider: tripo3dai
+local_only: true
+qualification: imported-not-qualified
+files:
+  - role: owner-provided-original-source
+    path: source.glb
+    size_bytes: 6687432
+    sha256: dc22ecb0561fc10773e1a156b0d126225a15cdfb67cd7c0999a965a4f1d59689
+  - role: authored-reference-bind-source
+    path: source-cwolf-bind.glb
+    size_bytes: 6687904
+    sha256: a2d74adb6dd36c8577c59a331ba98d0b2f41c4c544d1782a6968997b96a876ed
+  - role: authored-game-lod-source
+    path: source-cwolf-game-lod.glb
+    size_bytes: 6144096
+    sha256: 54edd66b3b7172e368fb507b639b6bb9f7400e6921cf7bd8eedafc4b9edff6cf
+  - role: authored-limb-registration-source
+    path: source-cwolf-limb-fit.glb
+    size_bytes: 6688592
+    sha256: 6af0c4d7c31673dd6747fd713fe5e2211c1094ddb9054374a4702c0fc0f70791
+  - role: authored-limb-registration-source
+    path: source-cwolf-limb-fit-v2.glb
+    size_bytes: 6688608
+    sha256: b8f5bbaab97f4aef12d25e63410d37fcb1f9a2b77867d1666bd992bf19549800
+  - role: authored-local-joint-envelope-source
+    path: source-cwolf-hock-envelope.glb
+    size_bytes: 6689132
+    sha256: 4bcd3793fa5984ddfa4c524ee8e4a87e06b411ab27c4d9dea7d94aed697cadef
+  - role: authored-local-paw-fit-source
+    path: source-cwolf-paw-local.glb
+    size_bytes: 6688600
+    sha256: dedd50a9dac743e032776d6e7d9fbaea7dec2dcc1a673c77e0db64428303cd6d
+  - role: authored-local-paw-final-source
+    path: source-cwolf-paw-local-final.glb
+    size_bytes: 6689132
+    sha256: cc8e663457706c4f105d4af9dd82996d43ad1edb8e0d91b6609e1405c908bfd4
+provenance_note: Owner generated this model from the accepted dog concept; imported byte-identically from Downloads/wolf+3d+model.glb on 2026-09-06. This is distinct from older Meshy sources and frozen V9. Owner explicitly requested Creature pipeline with c_wolf in task 01a06e72-ad4e-7533-814c-12d41f2c1097.
+
+derived_game_lod:
+  path: source-cwolf-game-lod.glb
+  sha256: 54edd66b3b7172e368fb507b639b6bb9f7400e6921cf7bd8eedafc4b9edff6cf
+  size_bytes: 6144096
+  source_sha256: a2d74adb6dd36c8577c59a331ba98d0b2f41c4c544d1782a6968997b96a876ed
+  status: not-qualified

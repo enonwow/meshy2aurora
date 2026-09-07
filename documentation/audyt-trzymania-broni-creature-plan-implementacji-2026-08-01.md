@@ -1,5 +1,15 @@
 # Audyt trzymania broni przez Creature: plan implementacji i kryteria ukończenia
 
+> **Korekta zakresu właściciela i zamknięcie implementacji 2026-08-17.**
+> Aktywny zakres tego zadania obejmuje wyłącznie umieszczenie itemu w ręce
+> Creature przez zasób UTI oraz `Equip_ItemList`; animacja, zacisk palców i
+> choreografia ataku są osobnymi tematami. Implementacja offline jest
+> zakończona: Studio udostępnia `None | Right hand | Left hand`, generuje
+> modułowy standardowy longsword, zapisuje identyczne wyposażenie w GIT i UTC
+> (`struct_id=16` prawa, `32` lewa) oraz weryfikuje wynik z bajtów MOD.
+> Historyczne sekcje dokumentu, które włączają animację do Definition of Done,
+> nie są kryteriami zakończenia tego zawężonego zadania.
+
 > **Korekta właścicielska 2026-08-02 — wcześniejszy kontrakt został
 > zastąpiony.** Demo V1 pokazało model, ale nie pokazało wyposażonej broni.
 > Przyczynami były trzy błędne założenia audytu: `MODELTYPE=S` wyłącza
@@ -30,7 +40,7 @@
   bez wariantu facing-matrix; delta dotyczy kontraktu wyposażenia.
 
 Data: 2026-08-01
-Status: V1 ODRZUCONY PRZEZ OWNER PROOF; V2 GOTOWY DO OWNER PROOF
+Status: V1 ODRZUCONY; V2 GRIP PROOF FAILED; V3 POPRAWIONY OFFLINE, MATERIALIZACJA ZATRZYMANA PRZEZ GATE
 Zakres: direct Creature `MODELTYPE=S`, humanoidalny profil Meshy H1, broń
 trzymana w prawej lub lewej dłoni, animacje i demonstrator MOD/HAK.
 
@@ -513,3 +523,69 @@ szczegóły i hashe są w
 - brak panelu Studio `Off | Right | Left` i `Auto | Manual`;
 - źródłowy rig nie ma finger bones, więc pipeline nie deklaruje pełnego gripu
   palców.
+
+## 14. Zamknięcie zawężonego zadania: item w ręce — 2026-08-17
+
+### Korekta po wyniku V8
+
+Pierwsza implementacja z własnym standardowym longsword UTI przechodziła own
+GFF readback, ale właścicielski kadr dokładnego V8 wykazał puste dłonie w NWN.
+To rozstrzyga, że parser-visible modułowy UTI nie jest wystarczającym proofem
+runtime resolution. Wynik i SHA-256 kadru są zapisane w
+`documentation/evidence/creature-held-item-v8-owner-nwn-failure-2026-08-17.md`.
+
+Aktywna ścieżka została poprawiona:
+
+- `CreatureHeldWeaponOptionsV1` nadal rozróżnia `NONE`, `RIGHT_HAND` i
+  `LEFT_HAND`;
+- `NONE` zachowuje fixture bez wyposażenia;
+- wybrana ręka wymaga dokładnego stockowego `nw_wswss001` z bazowych zasobów
+  NWN, zamiast tworzyć modułowy UTI;
+- instancja Creature w GIT i blueprint UTC otrzymują ten sam niepusty
+  `Equip_ItemList` i `EquippedRes`;
+- native slot jest odczytywany z MOD: `16` dla prawej, `32` dla lewej;
+- raport używa osobnego `heldStockWeaponReadback` ze scope `NWN_BASE_GAME` i
+  type `2025`; historyczny `heldWeaponReadback` dla własnego UTI musi być
+  nieobecny;
+- Worker wymaga tego samego stockowego resrefu, scope, typu, ręki i fixture;
+- dowolny parser-only resref, np. `m2a_prditem`, jest odrzucany kodem
+  `M6-HELD-WEAPON-ITEM-RESREF-UNSUPPORTED`;
+- wybór ręki i wersjonowany recipe pozostają częścią deterministycznej
+  identity artefaktu;
+- nie zmieniono authoringu animacji.
+
+### Kryteria zakończenia i wynik offline
+
+| Kryterium | Wynik |
+|---|---|
+| UI `None / right / left` bez edycji kodu | PASS |
+| brak equipment dla `NONE` | PASS |
+| stockowy `nw_wswss001` dla wybranej ręki | PASS |
+| brak modułowego UTI w nowym demo | PASS |
+| GIT i UTC wskazują ten sam item | PASS |
+| slot prawa `16`, lewa `32` | PASS |
+| own readback z wygenerowanych bajtów MOD | PASS |
+| Worker wymaga `NWN_BASE_GAME`, type `2025` | PASS |
+| zgodność Core/WASM/Worker/Studio | PASS |
+| brak zmian animacji dla samego itemu | PASS |
+
+Walidacja po korekcie:
+
+- Core lib: `116 passed`, `3 ignored` lokalne korpusy;
+- Core real product/demo integration: `1 passed`;
+- WASM lib: `45 passed`;
+- Studio: `295 passed`;
+- real browser Worker/WASM held-item integration: `1 passed`;
+- TypeScript typecheck: PASS;
+- production WASM/Vite build: PASS;
+- `cargo fmt --all -- --check`: PASS.
+
+Nowy dokładny demonstrator V9 został utworzony na owner-proved Void Crystal
+Knight, nie na podmiocie facing-matrix. Używa prawego slotu, stockowego
+`nw_wswss001` i przygotowanego rollu `+90°`. MOD/HAK zainstalowano i
+zweryfikowano byte-identical; handoff:
+`documentation/evidence/creature-held-item-v9-ready-for-owner-proof-2026-08-17.md`.
+
+Granica agentowa to nadal `ready_for_owner_proof`: widoczność miecza i końcowe
+położenie w dłoni musi potwierdzić właściciel w NWN. Animacje pozostają odrębnym
+tematem i nie są kryterium tego zawężonego zadania.

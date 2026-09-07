@@ -51,6 +51,13 @@ GLB nie ma w danym checkoutcie. Manifest zapisuje co najmniej:
 GLB, GLTF, FBX i archiwa w `sample-3d` sa ignorowane przez Git. Nie wolno
 uzywac `git add -f` do ich publikacji.
 
+Amendment 2026-09-07: lokalne payloady obejmuja rowniez bufory BIN oraz
+obrazy wejsciowe PNG/JPG/JPEG/WebP. Manifesty, provenance JSON i przepisy
+materialow pozostaja sledzone. Piec wczesniej sledzonych obrazow usunieto
+wylacznie z indeksu Git, bez przenoszenia plikow i bez zmiany bajtow;
+ich SHA-256 potwierdzono z manifestami. Szczegoly:
+[`audyt-higieny-git-2026-09-07.md`](audyt-higieny-git-2026-09-07.md).
+
 ## Przeplyw
 
 1. Nowy model Meshy otrzymuje stabilny `asset-id`.

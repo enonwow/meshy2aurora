@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-02",
+  "status": "owner_toolset_and_nwn_visual_proof_passed",
+  "source": "owner_screenshot_in_active_codex_task",
+  "candidate": {
+    "moduleFileName": "m2a_ms3_mod.mod",
+    "moduleSha256": "68c9f49cdc0f738250a8d7bf04f3758e79652e2988abd6d72e6ce1e43a15282b",
+    "hakFileName": "m2a_ms3_hak.hak",
+    "hakSha256": "531f6bde6f96cb150bc3d0403fec4b64e70edba0c5c897fcfa8bd8033b1c6669",
+    "toolsetModuleName": "Meshy2Aurora Material Separation V3",
+    "areaName": "Material Separation Closed Panels Proof V3",
+    "areaResref": "m2a_ms3_area",
+    "objectTag": "m2a_ms3_two_material_panels",
+    "appearanceRow": 16500,
+    "textureResrefs": ["m2a_ms3_tex", "m2a_ms3_tex_m1"]
+  },
+  "toolset": {
+    "modelVisibility": "visible",
+    "proofCompleteness": "verified",
+    "screenshot": {
+      "sourcePath": "C:\\Users\\enonw\\AppData\\Local\\Temp\\codex-clipboard-a69455be-86dd-4959-815b-6c48af8f9fa0.png",
+      "byteLength": 515562,
+      "width": 1467,
+      "height": 777,
+      "sha256": "1ba1c87987e275a7543c27ed026dee12083fca68e2e9121a421d7287ddb1eb40"
+    },
+    "observations": {
+      "moduleFrameShowsExactFile": true,
+      "areaTreeShowsExactArea": true,
+      "captureJudgeable": true,
+      "redSourcePanelVisible": true,
+      "blueOverridePanelVisible": true,
+      "bothClosedComponentsVisible": true,
+      "greenWireBoundsVisible": true,
+      "candidateBinding": "The exact MS3 module and Area are visible. Offline readback proves exactly one Placeable with two render sections, and the screenshot shows the two expected material-colored closed components."
+    }
+  },
+  "nwn": {
+    "modelVisibility": "visible",
+    "proofCompleteness": "verified",
+    "screenshot": {
+      "sourcePath": "C:\\Users\\enonw\\AppData\\Local\\Temp\\codex-clipboard-dfaa11f0-da7a-426b-902a-85f4d1745cbf.png",
+      "byteLength": 4006885,
+      "width": 1913,
+      "height": 1020,
+      "sha256": "c7c6e7069b7df8e8b789a29c636dd6a70e5bca4029ec4da5c2d774c2bf989ed8"
+    },
+    "observations": {
+      "playerVisible": true,
+      "captureJudgeable": true,
+      "redSourcePanelVisible": true,
+      "blueOverridePanelVisible": true,
+      "bothClosedComponentsVisibleAtOnce": true,
+      "candidateBinding": "Owner-supplied NWN runtime capture immediately following the exact MS3 Toolset proof. The scene shows the unique expected pair of red SOURCE and blue OVERRIDE closed components in front of the player."
+    }
+  },
+  "materialSeparationVerdict": {
+    "toolsetPassed": true,
+    "nwnPassed": true,
+    "sourceTextureMaterialVisible": true,
+    "overrideTextureMaterialVisible": true,
+    "twoMaterialSectionsVisibleAtOnce": true
+  },
+  "iterationGate": {
+    "ms3Frozen": true,
+    "newCandidateAdmitted": false,
+    "reason": "The same frozen MS3 lineage is visible in both Toolset and NWN. No successor iteration is admitted."
+  }
+}

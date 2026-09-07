@@ -1,7 +1,12 @@
 # Material Separation V1 — walidacja offline
 
 Data: 2026-08-01
-Status: `MS0-MS8_IMPLEMENTED / MS1_OWNER_PROOF_FAILED / MS2_GATE_PENDING_LANE_CLASSIFICATION`
+Status: `MS0-MS8_IMPLEMENTED / MS3_OWNER_TOOLSET_AND_NWN_PROOF_PASSED / COMPLETE`
+
+Aktualny exact handoff: `m2a_ms3_mod.mod`, Toolset module
+`Meshy2Aurora Material Separation V3`, Area
+`Material Separation Closed Panels Proof V3`. Szczegóły:
+[`material-separation-placeable-v3-ready-for-owner-proof-2026-08-02.md`](material-separation-placeable-v3-ready-for-owner-proof-2026-08-02.md).
 
 ## Zakres
 
@@ -113,7 +118,22 @@ baseline'u SHA-256
 `b772eafec5e6b380ad41e163e2a52585f2ddcec1c5bd7acea230b7e1a618df90`
 i dopisują wiersz `16500`.
 
-MS1 pozostaje zamrożony. Nie utworzono MS2. Raport właściciela nie podaje,
-czy pusty wynik dotyczy Toolsetu, czy NWN, dlatego osie nie zostały
-samowolnie przypisane. Exact zapis:
+Właściciel doprecyzował, że Placeable był niewidoczny zarówno w Toolsecie, jak
+i w NWN. MS1 pozostaje zamrożony, a wynik obu torów zapisano jako
+`modelVisibility=not_visible`, `proofCompleteness=failed`. Dopuszczono i
+zmaterializowano jeden minimalny MS2. Exact zapis wyniku MS1:
 [`material-separation-ms1-owner-empty-module-result-2026-08-02.json`](material-separation-ms1-owner-empty-module-result-2026-08-02.json).
+
+## Amendment 2026-08-02 — minimalny MS2
+
+MS2 zmienia wyłącznie błędną bazę `placeables.2da` na pełny produkcyjny
+baseline SHA-256
+`b772eafec5e6b380ad41e163e2a52585f2ddcec1c5bd7acea230b7e1a618df90`
+i używa nowych resrefów. Source GLB, dwa trójkąty, dwa Material IDs, receptura,
+tekstury, skala i placement są zachowane. Offline readback potwierdził jeden
+Placeable w GIT, `Appearance 16500`, dwa texture resrefs, identyczną liczbę
+trójkątów oraz pełny HAK. Pełny `cargo test -p m2a-core` zakończył się bez
+błędów.
+
+Handoff MS2:
+[`material-separation-placeable-v2-ready-for-owner-proof-2026-08-02.md`](material-separation-placeable-v2-ready-for-owner-proof-2026-08-02.md).

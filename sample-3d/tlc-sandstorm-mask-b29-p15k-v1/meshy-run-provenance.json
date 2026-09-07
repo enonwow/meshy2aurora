@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "ownerAuthorization": "Direct owner instruction on 2026-09-04 to generate one exact B29 sandstorm-mask Multi-Image model and process it through the existing helmet/item pipeline; B30/B31 and concept regeneration excluded",
+  "profileId": "S1-static-prop/v1",
+  "sourceMode": "MULTI_IMAGE",
+  "localBridgeRunId": "71f6237e-61b6-40b0-8cdd-acc01c595d1f",
+  "meshyTaskIds": {
+    "PREVIEW": "01a06c8b-f6e6-763f-8923-63c4e2b465ec"
+  },
+  "status": "READY",
+  "createdAt": "2026-09-04T13:17:33.832Z",
+  "creditReview": {
+    "maximumCredits": 30,
+    "balanceBefore": 1123,
+    "balanceAfter": 1093,
+    "spentCredits": 30
+  },
+  "inputs": [
+    {
+      "path": "source_transparent_front.png",
+      "sizeBytes": 1569462,
+      "sha256": "b2d0dd0c7d52490fa8fe996194cb1c69ddf20851d154a9d059f11bc5a575ba31"
+    },
+    {
+      "path": "source_transparent_left.png",
+      "sizeBytes": 1755954,
+      "sha256": "95d5a5da2dd890d6886660476f51f05de122b2209322f6187b8ce6190a11ac41"
+    },
+    {
+      "path": "source_transparent_back.png",
+      "sizeBytes": 1567596,
+      "sha256": "ac779a34a09cd69598eb17f57aef3d42afe580b7b7a7a929223d4b0368a938a4"
+    },
+    {
+      "path": "source_transparent_right.png",
+      "sizeBytes": 1650913,
+      "sha256": "4fca99edf3b66a9c38e90e71526a9fdbb152d9153c06d46b6a812e29f1246dd9"
+    }
+  ],
+  "request": {
+    "modelType": "standard",
+    "aiModel": "meshy-6",
+    "shouldRemesh": true,
+    "topology": "triangle",
+    "targetPolycount": 15000,
+    "poseMode": "",
+    "moderation": true,
+    "targetFormats": [
+      "glb"
+    ],
+    "alphaThumbnail": false,
+    "autoSize": false,
+    "originAt": "bottom",
+    "enablePbr": false,
+    "shouldTexture": true,
+    "hdTexture": false,
+    "texturePrompt": "",
+    "textureImageUrl": "",
+    "removeLighting": true,
+    "imageEnhancement": false,
+    "multiViewThumbnails": false,
+    "rigHumanoid": false,
+    "rigHeightMeters": 1.7
+  },
+  "artifact": {
+    "path": "source.glb",
+    "sizeBytes": 3840856,
+    "sha256": "9d6dac60b2cd495019f36326454c247b4e736286fc931b7bc4317ac78e996a46",
+    "measuredTriangleCount": 15118,
+    "manualMeshOrTextureEdits": false
+  },
+  "redaction": {
+    "apiKeyPersisted": false,
+    "sessionTokenPersisted": false,
+    "signedUrlsPersisted": false
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-02",
+  "status": "owner_toolset_not_visible_ms3_admitted",
+  "source": "owner_report_and_screenshot_in_active_codex_task",
+  "ownerReport": [
+    "aurora pusta",
+    "to znaczy ze nie działa"
+  ],
+  "candidate": {
+    "moduleFileName": "m2a_ms2_mod.mod",
+    "moduleSha256": "62870a6427810a555808ae8955c4a10aa3961b54f0ea90066a21a688f6524f37",
+    "hakFileName": "m2a_ms2_hak.hak",
+    "hakSha256": "ecd4ff727af740a44439371f9e5a200ecb4fde758a4cf80f6fa8be58118ac7a5",
+    "toolsetModuleName": "Meshy2Aurora Material Separation V2",
+    "areaName": "Material Separation Two Material Proof V2",
+    "areaResref": "m2a_ms2_area",
+    "objectName": "Material Separation Red Blue Panels V2",
+    "objectTag": "m2a_ms2_two_material_panels",
+    "appearanceRow": 16500
+  },
+  "screenshot": {
+    "sourcePath": "C:\\Users\\enonw\\AppData\\Local\\Temp\\codex-clipboard-014de701-58fd-445b-905d-b9e7cca7cf3e.png",
+    "byteLength": 179080,
+    "width": 1437,
+    "height": 738,
+    "sha256": "a20618d2b13a3dd5881c7d585da4d4b49abb3b52a4622260ce113796c159f82d",
+    "observations": {
+      "moduleFrameShowsExactFile": true,
+      "areaTreeShowsExactArea": true,
+      "viewportShowsNoRenderedCandidateGeometry": true,
+      "viewportShowsGreenWireBounds": true,
+      "placeablesTreeIsCollapsed": true,
+      "exactObjectNameSelectedAndReadable": false,
+      "candidateBinding": "The exact module filename and exact Area are visible; offline readback proves the module contains exactly one Placeable, and the viewport shows its green wire bounds. The owner explicitly declared that this exact candidate does not work."
+    }
+  },
+  "axes": {
+    "toolset": {
+      "modelVisibility": "not_visible",
+      "proofCompleteness": "failed"
+    },
+    "nwn": {
+      "modelVisibility": "not_tested",
+      "proofCompleteness": "missing"
+    },
+    "reason": "The owner explicitly decided that the exact MS2 candidate does not work in Aurora Toolset. Exact module and Area identity, the module's single-Placeable offline readback, and the visible green wire bounds bind the decision to the only candidate object."
+  },
+  "offlineComparison": {
+    "knownVisibleCandidate": "m2a_s1_plc_mod.mod",
+    "knownVisibleToolsetModelVisibility": "visible",
+    "sameResolverShape": true,
+    "sameAppearanceRow": 16500,
+    "sameGitStructId": 9,
+    "sameGitFieldCount": 54,
+    "samePlacement": [10.0, 14.5, 0.0],
+    "ms2PlaceableCount": 1,
+    "ms2Model": {
+      "classification": 4,
+      "geometryType": 2,
+      "renderMeshCount": 2,
+      "trianglesPerMesh": [1, 1],
+      "textures": ["m2a_ms2_tex", "m2a_ms2_tex_m1"],
+      "boundsMin": [-6.25, -1.25, 0.0],
+      "boundsMax": [6.25, 1.25, 2.5]
+    }
+  },
+  "diagnosis": {
+    "code": "MS2-TWO-SINGLE-FACE-FIXTURE-LIVE-JUDGEABILITY-RISK",
+    "summary": "The container, GIT, 2DA and resource chain match a historically visible Placeable. MS2 differs by using two one-sided mesh sections containing only one triangle each. Back-face culling and view orientation can make this minimal fixture non-judgeable even though its wire bounds are present.",
+    "notYetProvenRootCause": true
+  },
+  "iterationGate": {
+    "ms2Frozen": true,
+    "newCandidateAdmitted": true,
+    "minimalIntendedDelta": "Replace the two one-sided single-triangle components with two closed, judgeable box panels while preserving two disconnected components, material assignments, texture modes, authoring scale, placement, production placeables.2da baseline and every non-identity packaging semantic.",
+    "resumeCondition": "Satisfied by the owner's explicit exact-candidate Toolset failure decision. One minimal m2a_ms3 candidate is admitted.",
+    "ms3Materialized": true,
+    "ms3Handoff": "material-separation-placeable-v3-ready-for-owner-proof-2026-08-02.md"
+  },
+  "nextCandidate": {
+    "moduleFileName": "m2a_ms3_mod.mod",
+    "moduleSha256": "68c9f49cdc0f738250a8d7bf04f3758e79652e2988abd6d72e6ce1e43a15282b",
+    "hakFileName": "m2a_ms3_hak.hak",
+    "hakSha256": "531f6bde6f96cb150bc3d0403fec4b64e70edba0c5c897fcfa8bd8033b1c6669",
+    "toolsetModuleName": "Meshy2Aurora Material Separation V3",
+    "areaName": "Material Separation Closed Panels Proof V3",
+    "appearanceRow": 16500,
+    "status": "ready_for_owner_proof"
+  }
+}

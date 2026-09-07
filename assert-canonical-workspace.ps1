@@ -22,12 +22,30 @@ if ($scriptRoot -ine $expected) {
 $safeDirectory = $expected.Replace('\', '/')
 $gitRoot = (& git -c "safe.directory=$safeDirectory" -C $currentLocation rev-parse --show-toplevel).Trim()
 if ($LASTEXITCODE -ne 0) {
-    throw "HARD STOP: current location is not inside the canonical Git worktree: $currentLocation"
+    throw "HARD STOP: current location is not a Git worktree: $currentLocation"
 }
 $normalizedGitRoot = [System.IO.Path]::GetFullPath($gitRoot).TrimEnd('\')
 
-if ($normalizedGitRoot -ine $expected) {
-    throw "HARD STOP: Git root '$normalizedGitRoot' is not canonical '$expected'"
+$gitCommonDir = (& git -c "safe.directory=$safeDirectory" -C $currentLocation rev-parse --path-format=absolute --git-common-dir).Trim()
+if ($LASTEXITCODE -ne 0) {
+    throw "HARD STOP: cannot resolve Git common directory for '$currentLocation'"
+}
+$normalizedGitCommonDir = [System.IO.Path]::GetFullPath($gitCommonDir).TrimEnd('\')
+$expectedGitCommonDir = [System.IO.Path]::GetFullPath((Join-Path $expected '.git')).TrimEnd('\')
+
+if ($normalizedGitCommonDir -ine $expectedGitCommonDir) {
+    throw "HARD STOP: Git worktree '$normalizedGitRoot' is not registered by canonical repository '$expected'"
 }
 
-Write-Output "canonical-workspace-ok: $expected"
+$registeredWorktrees = @(
+    & git -c "safe.directory=$safeDirectory" -C $expected worktree list --porcelain |
+        Where-Object { $_ -like 'worktree *' } |
+        ForEach-Object {
+            [System.IO.Path]::GetFullPath($_.Substring('worktree '.Length)).TrimEnd('\')
+        }
+)
+if ($LASTEXITCODE -ne 0 -or $registeredWorktrees -inotcontains $normalizedGitRoot) {
+    throw "HARD STOP: Git worktree '$normalizedGitRoot' is not present in canonical worktree registry"
+}
+
+Write-Output "canonical-worktree-ok: $normalizedGitRoot"

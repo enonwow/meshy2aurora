@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-03",
+  "source": "owner_report",
+  "ownerStatement": "sprawdziłem działa i nie jestem zadowolony z wyniku - istanieje w aurorze",
+  "candidate": {
+    "moduleFileName": "m2a_tlcsm2_mod.mod",
+    "moduleDisplayName": "The Last City - Component UV Ship Demo",
+    "areaName": "The Last City Component UV Shipyard",
+    "hakFileName": "m2a_tlcsm2_hak.hak",
+    "moduleSha256": "30f0bfc99ea9a32e9fc83c241e7c843ca1bc85ccf01bb5134e44c170bd519bc5",
+    "hakSha256": "b7577438c53039e78518f6b7d574cbb06a38216415641bf370a3945ba0a17493",
+    "mdlSha256": "c5f2621aedc912b3479ae1eade5fc2ced84cef6debce5a26302255fa59afebb3",
+    "pwkSha256": "fd58bcb9b49d42008cd0c57e46de761c169c944346e08fde75b9b9c77843f4f5"
+  },
+  "toolset": {
+    "modelVisibility": "visible",
+    "proofCompleteness": "verified",
+    "visualAcceptance": "rejected",
+    "diagnosis": "The exact candidate exists and renders in Aurora Toolset; Material Separation and packaging work, but the owner rejects the visual result."
+  },
+  "nwn": {
+    "modelVisibility": "not_tested",
+    "proofCompleteness": "missing"
+  },
+  "iterationGate": {
+    "newIterationAdmitted": false,
+    "reason": "A visible Toolset result requires testing the same immutable candidate in NWN before any model, texture, resref, HAK or MOD iteration."
+  }
+}

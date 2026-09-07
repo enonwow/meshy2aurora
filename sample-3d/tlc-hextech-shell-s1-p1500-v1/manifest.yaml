@@ -1,0 +1,64 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: tlc-hextech-shell-s1-p1500-v1
+provider: meshy
+local_only: true
+qualification: generated-unqualified
+files:
+  - role: source-model
+    path: source.glb
+    size_bytes: 9432832
+    sha256: f4f8c41d445036b1364a16f779b17b21baa4f49caff356d77f6d8b8e1d9727ec
+  - role: api-provenance
+    path: meshy-run-provenance.json
+    size_bytes: 1250
+    sha256: 25e8a2b3c90ce07dfb6a8ee841675b76c672693872198dbef8afb612b7ef4b1a
+provenance_note: owner-authorized Meshy 6 image-to-3D generation of the selected lower-detail Hextech Shell concept
+concept_reference:
+  path: documentation/concepts/firearm-hextech-shotgun-v1/hextech-shell-concept-v1.png
+  size_bytes: 2035109
+  sha256: 4af93ef0b2b07d85bb0fc5950e5da06c310afaf4f7bb3673cc2037301867d3e1
+generation_plan:
+  date: 2026-08-17
+  source_mode: image-to-3d
+  profile_id: S1-static-prop/v1
+  ai_model: meshy-6
+  model_type: standard
+  topology: triangle
+  target_polycount: 1500
+  should_remesh: true
+  should_texture: true
+  enable_pbr: true
+  hd_texture: false
+  remove_lighting: true
+  image_enhancement: false
+  owner_credit_cap: 30
+generation_result:
+  status: materialized
+  run_id: 6269b107-95b8-4b4d-9417-9561fdb2d417
+  model_task_id: 01a01002-675a-773d-a593-ff011d6d04ad
+  credits_spent: 30
+  balance_before: 1228
+  balance_after: 1198
+  created_at: 2026-08-17T13:56:30.640Z
+  finished_at: 2026-08-17T14:00:34.436Z
+generation_validation:
+  container: glb-2.0
+  mesh_count: 1
+  primitive_count: 1
+  indexed_triangle_primitive_count: 1
+  raw_vertex_count: 1713
+  raw_triangle_count: 1536
+  material_count: 1
+  texture_count: 4
+  embedded_image_count: 4
+  external_image_count: 0
+  pbr_channels:
+    base_color: true
+    metallic_roughness: true
+    normal: true
+    emissive: true
+  mesh_bound_skin_count: 0
+  unused_declared_skin_count: 1
+  unused_declared_animation_count: 1
+  aurora_safe_triangle_count: pending-product-ingest
+  note: target_polycount is a generation target; the exact downloaded payload contains 1536 indexed triangles

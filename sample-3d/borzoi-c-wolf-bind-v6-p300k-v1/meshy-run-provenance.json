@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "ownerAuthorization": "Direct owner instruction on 2026-08-26: the bind-v6 four-view source is a new model; generate exactly one Meshy model, process it through the selectable c_wolf supermodel pipeline, and create an NWN demo.",
+  "profileId": "N1-quadruped/v1",
+  "sourceMode": "MULTI_IMAGE",
+  "localBridgeRunId": "e3a37490-4386-490a-80ea-29a96d347d1d",
+  "meshyTaskIds": {
+    "PREVIEW": "01a03d8b-7b13-7e6b-9db7-09a81667dd93"
+  },
+  "status": "READY",
+  "createdAt": "2026-08-26T10:11:41.350Z",
+  "creditReview": {
+    "maximumCredits": 30,
+    "balanceBefore": 1088,
+    "balanceAfter": 1058,
+    "spentCredits": 30
+  },
+  "inputs": [
+    {
+      "path": "borzoi-cwolf-bind-side.png",
+      "sizeBytes": 1254772,
+      "sha256": "46460ca1ee7cf1f789333b60ecc65118447b202f7dd57458826f4552fbeecca0"
+    },
+    {
+      "path": "borzoi-cwolf-bind-front-v2-no-tail.png",
+      "sizeBytes": 1464044,
+      "sha256": "d77d8ca7528339699d6fb72ca33821ef365bcf9cf54bd2f083618c0930ace524"
+    },
+    {
+      "path": "borzoi-cwolf-bind-rear-three-quarter.png",
+      "sizeBytes": 1554430,
+      "sha256": "95f50d7cd96545f15d2cf04c40c7109cd8bec740b97a1790a83203b50bce3139"
+    },
+    {
+      "path": "borzoi-cwolf-bind-top-v2.png",
+      "sizeBytes": 1298406,
+      "sha256": "92516d0c1990cb6bc5e583f848fdf339c08da1e8788dbd998ce25c22c103e185"
+    }
+  ],
+  "request": {
+    "modelType": "standard",
+    "aiModel": "meshy-6",
+    "shouldRemesh": true,
+    "topology": "triangle",
+    "targetPolycount": 300000,
+    "poseMode": "",
+    "moderation": true,
+    "targetFormats": [
+      "glb"
+    ],
+    "alphaThumbnail": false,
+    "autoSize": false,
+    "originAt": "bottom",
+    "enablePbr": false,
+    "shouldTexture": true,
+    "hdTexture": false,
+    "texturePrompt": "Long-haired cream and white borzoi-compatible canine. Preserve the exact four-view body proportions, narrow canine stance, long slim muzzle, tucked waist, full tail centered on the spine, coherent solid fur volume, symmetrical anatomy, four distinct legs, no extra limbs, no detached hair cards, no accessories.",
+    "textureImageUrl": "",
+    "removeLighting": true,
+    "imageEnhancement": false,
+    "multiViewThumbnails": false,
+    "rigHumanoid": false,
+    "rigHeightMeters": 1.7
+  },
+  "artifact": {
+    "path": "source.glb",
+    "sizeBytes": 12471876,
+    "sha256": "3efd673f4ec953de568b2a30f6f14131a62828398f3133bb89855193b5fffd93",
+    "measuredTriangleCount": 299783,
+    "manualMeshOrTextureEdits": false
+  },
+  "redaction": {
+    "apiKeyPersisted": false,
+    "sessionTokenPersisted": false,
+    "signedUrlsPersisted": false
+  }
+}

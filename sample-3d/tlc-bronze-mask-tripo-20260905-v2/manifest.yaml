@@ -1,0 +1,268 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: tlc-bronze-mask-tripo-20260905-v2
+provider: tripo
+local_only: true
+qualification: owner-selected-five-material-helmet-source-with-topology-warnings
+files:
+  - role: owner-supplied-five-material-tripo-source
+    path: source.glb
+    size_bytes: 6775060
+    sha256: c2f4370e24fe866bc9303f7b4264a389f7a2d940bb7baffa2c43b00b414444bd
+  - role: pipeline-single-palette-atlas-static-variant
+    path: source-palette-atlas-v1.glb
+    size_bytes: 4871964
+    sha256: a7414053edbc3b9e71903e0fefa940ddd64816faaa03ecbcf81e9b742d3e19cc
+  - role: pipeline-single-palette-atlas-static-exact-degenerate-cleanup-variant
+    path: source-palette-atlas-v2.glb
+    size_bytes: 4871864
+    sha256: f9a6349da28a4c270d3670ac6d507af33ad58a9e0269d63479a4922acd431062
+provenance_note: owner supplied bronze mask 3d model.glb from the local Downloads directory on 2026-09-05 and explicitly selected its five material regions for a new helmet source lineage
+source_inspection:
+  status: offline-qa-pass-with-topology-warnings
+  generator: Tripo
+  triangle_count: 42466
+  mesh_object_count: 5
+  material_count: 5
+  embedded_image_count: 5
+  texture_dimensions:
+    - [4096, 4096]
+    - [256, 256]
+    - [2048, 2048]
+    - [256, 256]
+    - [256, 256]
+  skin_count: 0
+  animation_count: 0
+  spatial_welded_surface_component_count: 6
+  spatial_welded_boundary_edge_count: 931
+  spatial_welded_non_manifold_edge_count: 1054
+  shared_product_triangle_budget_pass: true
+  binary_stream_partitioning_required: true
+owner_material_mapping:
+  status: selected
+  mapping_spec: palette-map-v1.json
+  assignments:
+    - source_material_id: 0
+      source_material: Material_tripo_part_0
+      visible_part: cloth-cowl
+      nwn_plt_layer: Cloth 1
+      nwn_plt_layer_index: 4
+    - source_material_id: 1
+      source_material: Material_tripo_part_new_0_0
+      visible_part: viewer-right-mask-strip
+      nwn_plt_layer: Leather 2
+      nwn_plt_layer_index: 7
+    - source_material_id: 2
+      source_material: Material_tripo_part_11
+      visible_part: main-mask-shell
+      nwn_plt_layer: Metal 1
+      nwn_plt_layer_index: 2
+    - source_material_id: 3
+      source_material: Material_tripo_part_new_0_1
+      visible_part: eye-inserts
+      nwn_plt_layer: Cloth 2
+      nwn_plt_layer_index: 5
+    - source_material_id: 4
+      source_material: Material_tripo_part_new_0
+      visible_part: viewer-left-mask-strip
+      nwn_plt_layer: Leather 1
+      nwn_plt_layer_index: 6
+  explicit_assignments_bypass_automatic_inference: true
+palette_atlas_variant:
+  status: rejected-by-exact-degenerate-triangle-gate
+  path: source-palette-atlas-v1.glb
+  source_sha256: c2f4370e24fe866bc9303f7b4264a389f7a2d940bb7baffa2c43b00b414444bd
+  mapping_sha256: 4d72413702b57f4294890fc31c067d6cf32362a463a3eea1fb99f8ac99fdc66f
+  output_sha256: a7414053edbc3b9e71903e0fefa940ddd64816faaa03ecbcf81e9b742d3e19cc
+  source_mesh_object_count: 5
+  output_mesh_object_count: 1
+  source_material_count: 5
+  output_material_count: 1
+  triangle_count: 42466
+  removed_degenerate_triangle_count: 0
+  atlas_dimensions: [2048, 2048]
+  icon_beauty_sha256: 1d29bd5766040e83891dec8cef21ef9b99063071c1568492628af2f69591393e
+  icon_material_id_sha256: 38cc2f254d6fcac1edd7a00737b71c5cb8989aee1096231a4230ba05e2310033
+  exact_degenerate_triangle_count: 1
+palette_atlas_exact_cleanup_variant:
+  status: ready-for-item-compilation
+  path: source-palette-atlas-v2.glb
+  source_sha256: c2f4370e24fe866bc9303f7b4264a389f7a2d940bb7baffa2c43b00b414444bd
+  mapping_sha256: 4d72413702b57f4294890fc31c067d6cf32362a463a3eea1fb99f8ac99fdc66f
+  output_sha256: f9a6349da28a4c270d3670ac6d507af33ad58a9e0269d63479a4922acd431062
+  source_mesh_object_count: 5
+  output_mesh_object_count: 1
+  source_material_count: 5
+  output_material_count: 1
+  source_triangle_count: 42466
+  removed_degenerate_triangle_count: 1
+  output_triangle_count: 42465
+  atlas_dimensions: [2048, 2048]
+  icon_beauty_sha256: ee96ac0955380301db87f33a785629be405433eedce2fd0d37e86a9c3e46f551
+  icon_material_id_sha256: b26a75d0a2c553e93070b0e6bc8c97551bffa4a320bce0d57dc26f81e908bc1c
+  icon_background_policy: transparent-material-id-alpha
+  dark_cloth_background_heuristic_forbidden: true
+five_material_item_candidate:
+  status: owner_cloth2_eye_luma_failed
+  output_root: proof-output/tlc-bronze-mask-helmet-five-material-226-v1-20260905
+  module_filename: m2bronpal226.mod
+  module_resref: m2bronpal226
+  module_display_name: Meshy2Aurora Bronze Mask Palette 226 V1
+  area_resref: m2assmarea221
+  area_name: Bronze Mask Item Palette 226 V1
+  ordered_haks:
+    - m2bronh226v1
+    - lc_2da
+  model_resref: helm_226
+  icon_resref: ihelm_226
+  uti_resref: m2bronmask226
+  appearance_variant: 226
+  relationship_to_helm_225_v1: distinct-owner-selected-five-material-source-lineage
+  triangle_count: 42465
+  output_segment_count: 2
+  material_mapping:
+    cloth_cowl: Cloth 1
+    eye_inserts: Cloth 2
+    main_mask_shell: Metal 1
+    viewer_left_mask_strip: Leather 1
+    viewer_right_mask_strip: Leather 2
+  resource_contract:
+    model_texture: helm_226.plt
+    model_texture_resource_type: 6
+    inventory_icon: ihelm_226.plt
+    inventory_icon_resource_type: 6
+    every_render_mesh_texture0: helm_226
+    icon_background_policy: material-id-alpha-only
+  transform:
+    translation: [0.0, 0.0033032000064849854, -0.12337689101696014]
+    rotation_quaternion: [0.0, 0.0, 0.0, 1.0]
+    uniform_scale: 0.3429127633571625
+    placement_policy: accepted-donor-top-fit
+    independent_axis_scaling_applied: false
+  fitted_bounds:
+    min: [-0.1211988553404808, -0.13096104562282562, -0.12337689101696014]
+    max: [0.1211988553404808, 0.1375674456357956, 0.21952541172504425]
+    donor_width_occupancy: 0.96
+  model_plt_layer_pixel_counts:
+    unused_transparent: 1310720
+    metal1: 262144
+    cloth1: 1048576
+    cloth2: 262144
+    leather1: 262144
+    leather2: 1048576
+  icon_plt_layer_pixel_counts:
+    unused_transparent: 2342
+    metal1: 776
+    cloth1: 847
+    cloth2: 46
+    leather1: 45
+    leather2: 40
+  hashes:
+    owner_source_glb_sha256: c2f4370e24fe866bc9303f7b4264a389f7a2d940bb7baffa2c43b00b414444bd
+    palette_atlas_source_glb_sha256: f9a6349da28a4c270d3670ac6d507af33ad58a9e0269d63479a4922acd431062
+    mapping_sha256: 4d72413702b57f4294890fc31c067d6cf32362a463a3eea1fb99f8ac99fdc66f
+    recipe_sha256: d4c13f6ab82afa681b9065349782f5d15e81bbf24f1f1fdbbb0be3732c5be5bf
+    mdl_sha256: 77341494b852debd4768be2d7998678b9538204c16050b055971698f0e1b61c0
+    model_plt_sha256: f17a9fee7d29e98aebb99d8564556e4c1bf7bbbeff2c35094203985e42798fe1
+    icon_plt_sha256: c4b51b381c9c7b928ae33273fb0342a83018990bc4e22a00a71d5b0d983ad2c3
+    uti_sha256: 48d9fc4dc6d36e99d9ddbad0952f423d741064038cce5b9fac71dc931d5d1aff
+    hak_sha256: 2b0cdc44e21118d34a9fb8710b8c5b5e18d5102f852e4b8c2f0fb01b21506168
+    module_sha256: d77f659c650ba78a28c065a2ea7f73005c3d00fe8d077480b5375a07faeadc33
+  native_installation:
+    status: completed_byte_identical
+    module_destination: C:/Users/enonw/Documents/Neverwinter Nights/modules/m2bronpal226.mod
+    module_sha256: d77f659c650ba78a28c065a2ea7f73005c3d00fe8d077480b5375a07faeadc33
+    hak_destination: C:/Users/enonw/Documents/Neverwinter Nights/hak/m2bronh226v1.hak
+    hak_sha256: 2b0cdc44e21118d34a9fb8710b8c5b5e18d5102f852e4b8c2f0fb01b21506168
+    destination_collision: false
+    toolset_or_nwn_control_performed: false
+  offline_visual_qa:
+    front_render: artifacts/diagnostics/tlc-bronze-mask-tripo-20260905-v2-offline-qa/atlas-render-v2/front.png
+    front_render_sha256: 3eae8ba15588385d8feb5fa52c2d7c61e42b0df74a0d16a3e9522d4cdcf3f5fe
+    front_left_3q_render: artifacts/diagnostics/tlc-bronze-mask-tripo-20260905-v2-offline-qa/atlas-render-v2/front-left-3q.png
+    front_left_3q_render_sha256: e907f81588f4b24595d9fd5e35536cbb5c24414faf642ea8b87bcf6781f461f3
+    icon_layer_preview: artifacts/diagnostics/tlc-bronze-mask-tripo-20260905-v2-offline-qa/ihelm_226-layer-preview.png
+    icon_layer_preview_sha256: 949220f81af062598d14bf07de54a7c1b6c5ba5c8df15d1a001237fd49ef216c
+  model_visibility: visible
+  proof_completeness: verified
+  palette_control: failed_cloth2_eye_layer_functionally_black
+  inventory_icon: not_tested
+  creature_resources_forbidden: true
+  creature_resource_count: 0
+  placed_creature_count: 0
+  owner_failure_evidence: documentation/evidence/tlc-bronze-mask-helmet-226-v1-owner-cloth2-eye-luma-failure-2026-09-05.md
+  handoff: documentation/evidence/tlc-bronze-mask-helmet-226-v1-ready-for-owner-proof-2026-09-05.md
+cloth2_eye_luma_corrective_candidate:
+  status: ready_for_owner_proof
+  owner_override: generate_corrected_version_after_iteration_gate_was_explained
+  output_root: proof-output/tlc-bronze-mask-helmet-five-material-227-v1-20260905
+  module_filename: m2bronpal227.mod
+  module_resref: m2bronpal227
+  module_display_name: Meshy2Aurora Bronze Mask Palette 227 V1
+  area_resref: m2assmarea221
+  area_name: Bronze Mask Item Palette 227 V1
+  ordered_haks:
+    - m2bronh227v1
+    - lc_2da
+  model_resref: helm_227
+  icon_resref: ihelm_227
+  uti_resref: m2bronmask227
+  appearance_variant: 227
+  relationship_to_helm_226_v1: exact-cloth2-eye-luma-only-correction
+  triangle_count: 42465
+  output_segment_count: 2
+  eye_luma_lift:
+    target_layer: Cloth 2
+    target_layer_index: 5
+    formula: min(174, original * 3 + 32)
+    model_pixels_changed: 262144
+    icon_pixels_changed: 46
+    layer_index_bytes_changed: 0
+    other_layer_pixels_changed: 0
+    geometry_changed: false
+    uv_changed: false
+    shared_geometry_uv_digest_sha256: 1a8de6e3c5ab7e6ea4a5c57b3394fa8a5c50f8e2190e3e474496692845d7344b
+    eye_triangle_samples: 430
+    eye_samples_on_layer_5: 430
+    old_median: 18
+    new_median: 86
+    old_mean: 18.05
+    new_mean: 85.71
+  material_mapping:
+    cloth_cowl: Cloth 1
+    eye_inserts: Cloth 2
+    main_mask_shell: Metal 1
+    viewer_left_mask_strip: Leather 1
+    viewer_right_mask_strip: Leather 2
+  hashes:
+    owner_source_glb_sha256: c2f4370e24fe866bc9303f7b4264a389f7a2d940bb7baffa2c43b00b414444bd
+    palette_atlas_source_glb_sha256: f9a6349da28a4c270d3670ac6d507af33ad58a9e0269d63479a4922acd431062
+    mapping_sha256: 4d72413702b57f4294890fc31c067d6cf32362a463a3eea1fb99f8ac99fdc66f
+    recipe_sha256: 228e01747e544ed87ca2c53d258eb5db84b1065aed3038f51b93f43a80ee0bf1
+    mdl_sha256: 3bb3471d90294b7a36ffba3eee5328d3c6ff81e4bd82ec680d8decec6e6118fc
+    model_plt_sha256: f8b1978321b8b597347ac3d116356ca18e57b58ed9009a262aa55d5d68556cd4
+    icon_plt_sha256: 1716bb4c1bee76d44cbea1b874f74482a1da1ee83bd1627d2330817ae86286bb
+    uti_sha256: a912f3ae87dcc9a9cf7127a1b9d78b47c21d491a52bd123a90a1b685826f6766
+    hak_sha256: 6c2f3473e7fea174da8599da2a67ad6312d96ec2293371cfdd26b0708bfabf96
+    module_sha256: 324fdf9cd273af7d508fc6ddd6e9f197368758b2d2b3858ae72917bf9e833c3f
+  native_installation:
+    status: completed_byte_identical
+    module_destination: C:/Users/enonw/Documents/Neverwinter Nights/modules/m2bronpal227.mod
+    module_sha256: 324fdf9cd273af7d508fc6ddd6e9f197368758b2d2b3858ae72917bf9e833c3f
+    hak_destination: C:/Users/enonw/Documents/Neverwinter Nights/hak/m2bronh227v1.hak
+    hak_sha256: 6c2f3473e7fea174da8599da2a67ad6312d96ec2293371cfdd26b0708bfabf96
+    destination_collision: false
+    toolset_or_nwn_control_performed: false
+  offline_visual_qa:
+    icon_layer_preview: artifacts/diagnostics/tlc-bronze-mask-tripo-20260905-v2-offline-qa/ihelm_227-layer-preview.png
+    icon_layer_preview_sha256: fccf6dad79bbafa28d09995b02c9de724f3bfce46707f591b7e3877eacf1819e
+    icon_layer_preview_8x: artifacts/diagnostics/tlc-bronze-mask-tripo-20260905-v2-offline-qa/ihelm_227-layer-preview-8x.png
+    icon_layer_preview_8x_sha256: 9a77a030a2540cecd07cc7fd9079fe96cf6fc967d222932b368984122b094065
+  model_visibility: not_tested
+  proof_completeness: missing
+  palette_control: not_tested
+  inventory_icon: not_tested
+  creature_resources_forbidden: true
+  creature_resource_count: 0
+  placed_creature_count: 0
+  owner_failure_evidence: documentation/evidence/tlc-bronze-mask-helmet-226-v1-owner-cloth2-eye-luma-failure-2026-09-05.md
+  handoff: documentation/evidence/tlc-bronze-mask-helmet-227-v1-ready-for-owner-proof-2026-09-05.md

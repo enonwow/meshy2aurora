@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "candidateId": "tlc-hextech-ranged-demo-v14-20260827",
+  "status": "ready_for_owner_proof",
+  "testModule": {
+    "fileName": "m2aimod35d.mod",
+    "displayName": "Meshy2Aurora Hextech Ranged Demo V14",
+    "areaName": "Hextech Ranged Demo V14",
+    "areaResref": "m2aia35d",
+    "sourcePath": "C:\\Projects\\meshy2aurora\\.worktrees\\items-agent-remediation-final\\proof-output\\tlc-hextech-ranged-demo-v14-20260827\\generated\\m2aimod35d.mod",
+    "installedPath": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\modules\\m2aimod35d.mod",
+    "byteLength": 18794,
+    "sha256": "ce81eb3a2baf8e84bc851ec820f75e0ab0200eb634576c8ff21f6e7a59e1e52e"
+  },
+  "hak": {
+    "fileName": "m2aihak35d.hak",
+    "resref": "m2aihak35d",
+    "sourcePath": "C:\\Projects\\meshy2aurora\\.worktrees\\items-agent-remediation-final\\proof-output\\tlc-hextech-ranged-demo-v14-20260827\\generated\\m2aihak35d.hak",
+    "installedPath": "C:\\Users\\enonw\\Documents\\Neverwinter Nights\\hak\\m2aihak35d.hak",
+    "byteLength": 185287148,
+    "sha256": "473a9b5238a290c041192037ec23c3c032a9f18591a512c8eff8cfb8c0098082"
+  },
+  "installation": {
+    "destinationsAbsentBeforeCopy": true,
+    "sourceAndDestinationHashesIdentical": true,
+    "previousCandidatesUntouched": true
+  },
+  "ownerDirection": {
+    "reportedAt": "2026-08-27",
+    "staleArtifactCorrection": "m2aimod35c.mod T STARY MOD",
+    "authorization": "NO TO PO CO KLAMIESZ? PRYZGOTUJ NWOE DEMO"
+  },
+  "fixtures": {
+    "weaponBlueprintResref": "m2aitm35d",
+    "weaponPosition": [10.8, 11.6, 0],
+    "ammunitionBlueprintResref": "m2ahxammo",
+    "ammunitionPosition": [9.2, 11.6, 0],
+    "targetBlueprintResref": "m2arngtarget",
+    "targetPosition": [10, 13.3, 0],
+    "targetFactionId": 1,
+    "targetPlot": true,
+    "targetCurrentHitPoints": 1000,
+    "targetMaxHitPoints": 1000,
+    "groundItemCount": 2
+  },
+  "runtimeCharacterAnimation": {
+    "modelResref": "pfh0",
+    "modelSha256": "42c5f0fadb3068c22c47851e40ed518b2dc627c0e90046b29b6b79b90253eb8d",
+    "supermodelResref": "a_fa",
+    "animationRoot": "rootdummy",
+    "expectedClipNames": ["pause1", "xbowrdy", "xbowshot"],
+    "offlineStatus": "OFFLINE_RUNTIME_CHARACTER_ANIMATION_PASSED",
+    "runtimeVisualAcceptance": "not_tested"
+  },
+  "offlineValidation": {
+    "packageStatus": "OFFLINE_ITEM_PACKAGE_PASSED",
+    "moduleSemanticReadback": "PASS",
+    "itemBuildReportSha256": "0c4552e84f9094419f2addafbed79214d7777bd2f269567bd60f2a3d84d7c316",
+    "studioUnitTests": {
+      "passed": 358,
+      "skipped": 1,
+      "failed": 0
+    },
+    "typecheck": "PASSED",
+    "canonicalWorkspaceGuard": "PASSED",
+    "meshyAssetLayoutGuard": "PASSED"
+  },
+  "ownerProof": {
+    "modelVisibility": "not_tested",
+    "proofCompleteness": "missing",
+    "visualAcceptance": "not_tested",
+    "agentRanToolsetOrNwn": false
+  }
+}

@@ -185,3 +185,50 @@ not_planned_as_studio:
 ```
 
 Do takich zmian sluzy Blender lub inne narzedzie artystyczne, a `meshy2aurora` ponownie importuje wynik przez kontrolowany pipeline GLB.
+
+## Zapisane zadania do weryfikacji
+
+### STUDIO-VIEWPORT-GROUND-001 — Placeable Authoring: model pod siatka
+
+```yaml
+id: "STUDIO-VIEWPORT-GROUND-001"
+status: "DO_WERYFIKACJI"
+priority: "P1"
+scope: "PlaceableAuthoringViewport"
+current_behavior:
+  grid_plane: "stale Y=0"
+  editing_plane: "stale Y=0"
+  risk: "model z centralnym albo recznie obnizonym pivotem moze znalezc sie pod siatka; przesuniecie samej siatki rozjedzie raycast, collision drawing i footprint PWK"
+not_a_current_blocker: true
+```
+
+Zadania:
+
+1. Zweryfikowac import placeabla, ktorego `bounds.min.y < 0`, oraz wszystkie
+   transformacje authoringu mogace obnizyc geometrie pod `Y=0`.
+2. Potwierdzic jedna wspolna semantyke dla widocznej siatki, raycastu,
+   manipulatorow, collision drawing i source/authored ground plane PWK.
+3. Ocenic trzy dopuszczalne polityki: automatyczne uziemienie przy imporcie,
+   jawne ostrzezenie/blokada `BELOW_GROUND` albo kontrolowane zezwolenie na
+   czesc modelu pod ziemia jako swiadoma decyzje autora.
+4. Nie przesuwac samej siatki niezaleznie od plaszczyzny edycji i PWK.
+5. Dodac regresje dla ujemnego `bounds.min.y`, skalowania, rotacji, recznego
+   przesuniecia, undo/redo oraz zgodnosci viewportu z resolved PWK.
+
+Kryteria zakonczenia:
+
+- geometria nie trafia pod siatke po cichu;
+- stan ponizej ground plane jest automatycznie naprawiony albo jawnie
+  zaakceptowany i oznaczony w UI;
+- siatka, picking, gizmo, collision polygon oraz wygenerowany PWK korzystaja z
+  tej samej resolved ground-plane policy;
+- source GLB nie jest modyfikowany;
+- testy obejmuja placeable z pivotem centralnym i placeable celowo zaglebiony;
+- decyzja i wynik zostaja dopisane do dokumentacji przed zmiana zachowania
+  produkcyjnego.
+
+Powiazane dowody i kontekst:
+
+- `documentation/evidence/studio-viewport-grounded-grid-fix-2026-08-04.md`;
+- `documentation/audyt-ui-ux-manipulacji-placeablem-2026-07-26.md`;
+- `documentation/audyt-edytowalnego-footprintu-pwk-placeable-plan-implementacji-2026-07-31.md`.

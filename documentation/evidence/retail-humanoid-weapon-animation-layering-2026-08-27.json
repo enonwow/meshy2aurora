@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-27",
+  "auditMode": "offline_exact_retail_resource_readback",
+  "verdict": "retail_weapon_states_layer_over_base_locomotion",
+  "toolsetOrNwnSessionUsed": false,
+  "retailLineage": [
+    {
+      "resref": "pfh0",
+      "sha256": "1da54afc5ff270c8c7decc61829df0595c6568d70cdef75026f63d8e94362f51",
+      "supermodel": "a_fa"
+    },
+    {
+      "resref": "a_fa",
+      "sha256": "1f8b1ac2e4ab31e1b2172c7ca208160267cdbf861cd36e544775f391b5b6978d",
+      "supermodel": "a_ba"
+    },
+    {
+      "resref": "a_ba",
+      "sha256": "a38c9f0de00a7e401419d1e668ad1b9d825cfc9635712cdb9ae63e840104ee2b",
+      "supermodel": "a_ba_non_combat"
+    },
+    {
+      "resref": "a_ba_non_combat",
+      "sha256": "6222498236772cb30d44d92ed4819842f9a0b17d95a0bbfe081d447c66a7f717",
+      "supermodel": "a_ba_med_weap"
+    },
+    {
+      "resref": "a_ba_med_weap",
+      "sha256": "9894151ab16d5439e2fedc500c9b44c4e03cad664e8e4e7e6883e1072a82419d",
+      "supermodel": "a_ba_custom"
+    }
+  ],
+  "resolvedRetailStates": [
+    {
+      "name": "pause1",
+      "source": "a_fa",
+      "lengthSeconds": 2.0,
+      "transitionSeconds": 1.0,
+      "animationRoot": "rootdummy",
+      "controlledNodeCount": 49,
+      "controlsLowerBody": true,
+      "role": "base_idle"
+    },
+    {
+      "name": "walk",
+      "source": "a_fa",
+      "lengthSeconds": 1.0,
+      "transitionSeconds": 0.25,
+      "animationRoot": "rootdummy",
+      "controlledNodeCount": 49,
+      "controlsLowerBody": true,
+      "role": "base_locomotion"
+    },
+    {
+      "name": "walk_bowl",
+      "source": "a_fa",
+      "lengthSeconds": 1.0,
+      "transitionSeconds": 0.25,
+      "animationRoot": "torso_g",
+      "controlledNodeCount": 32,
+      "controlsLowerBody": false,
+      "role": "weapon_overlay_on_walk"
+    },
+    {
+      "name": "run",
+      "source": "a_fa",
+      "lengthSeconds": 0.8,
+      "transitionSeconds": 0.25,
+      "animationRoot": "rootdummy",
+      "controlledNodeCount": 46,
+      "controlsLowerBody": true,
+      "role": "base_locomotion"
+    },
+    {
+      "name": "run_bowl",
+      "source": "a_fa",
+      "lengthSeconds": 0.8,
+      "transitionSeconds": 0.25,
+      "animationRoot": "lbicep_g",
+      "controlledNodeCount": 6,
+      "controlsLowerBody": false,
+      "role": "weapon_overlay_on_run"
+    },
+    {
+      "name": "xbowr",
+      "source": "a_ba_non_combat",
+      "lengthSeconds": 1.0,
+      "transitionSeconds": 0.25,
+      "animationRoot": "rforearm_g",
+      "controlledNodeCount": 3,
+      "controlsLowerBody": false,
+      "role": "crossbow_rest_overlay"
+    },
+    {
+      "name": "xbowrdy",
+      "source": "a_ba",
+      "lengthSeconds": 1.0,
+      "transitionSeconds": 0.5,
+      "animationRoot": "rootdummy",
+      "controlsLowerBody": true,
+      "role": "crossbow_ready_action"
+    },
+    {
+      "name": "xbowshot",
+      "source": "a_ba",
+      "lengthSeconds": 1.0,
+      "transitionSeconds": 0.3,
+      "animationRoot": "rootdummy",
+      "controlsLowerBody": true,
+      "role": "crossbow_shot_action"
+    }
+  ],
+  "v14Failure": {
+    "moduleFileName": "m2aimod35d.mod",
+    "moduleSha256": "ce81eb3a2baf8e84bc851ec820f75e0ab0200eb634576c8ff21f6e7a59e1e52e",
+    "hakFileName": "m2aihak35d.hak",
+    "hakSha256": "473a9b5238a290c041192037ec23c3c032a9f18591a512c8eff8cfb8c0098082",
+    "carrierResref": "pfh0",
+    "carrierSha256": "42c5f0fadb3068c22c47851e40ed518b2dc627c0e90046b29b6b79b90253eb8d",
+    "localClipNames": [
+      "pause1",
+      "xbowrdy",
+      "xbowshot"
+    ],
+    "animationRootForEveryLocalClip": "rootdummy",
+    "trackCountPerClip": 10,
+    "controlledNodes": [
+      "torso_g",
+      "rbicep_g",
+      "rforearm_g",
+      "rhand_g",
+      "rhand",
+      "lbicep_g",
+      "lforearm_g",
+      "lhand_g",
+      "lhand",
+      "neck_g"
+    ],
+    "controlsLowerBody": false,
+    "directCause": "whole_body_animation_root_with_upper_body_only_tracks"
+  },
+  "requiredContract": {
+    "preserveInheritedBaseStates": [
+      "pause1",
+      "walk",
+      "run"
+    ],
+    "layeredStatePairs": [
+      [
+        "pause1",
+        "xbowr"
+      ],
+      [
+        "walk",
+        "walk_bowl"
+      ],
+      [
+        "run",
+        "run_bowl"
+      ]
+    ],
+    "fullBodyActionStates": [
+      "xbowrdy",
+      "xbowshot"
+    ],
+    "rejectRootdummyWithUpperBodyOnlyTracks": true,
+    "previewMustUseExactExportReadback": true
+  },
+  "proofBoundary": {
+    "newCandidateCreated": false,
+    "runtimeRoutingFullyRecoveredFromToolsetDecomp": false,
+    "ownerRuntimeProofRequiredAfterImplementation": true
+  }
+}

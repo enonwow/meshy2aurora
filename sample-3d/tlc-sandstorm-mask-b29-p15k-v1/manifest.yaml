@@ -1,0 +1,80 @@
+schema: meshy2aurora.sample-3d/v1
+asset_id: tlc-sandstorm-mask-b29-p15k-v1
+provider: meshy
+local_only: true
+qualification: offline-quality-failed-no-new-iteration-admitted
+files:
+  - role: canonical-meshy-generated-source
+    path: source.glb
+    size_bytes: 3840856
+    sha256: 9d6dac60b2cd495019f36326454c247b4e736286fc931b7bc4317ac78e996a46
+  - role: meshy-task-and-credit-provenance
+    path: meshy-run-provenance.json
+    size_bytes: 2291
+    sha256: 4d034a740cb5b6ebe12d32a705869ffe1ab4bafa0a355575b069c478a8ab6f2d
+provenance_note: owner explicitly authorized one Meshy Multi-Image generation from the four exact B29 transparent masters on 2026-09-04; B30, B31 and concept regeneration are excluded
+generation_plan:
+  date: 2026-09-04
+  source_mode: multi-image-to-3d
+  input_count: 4
+  input_order: [front, left, back, right]
+  inputs:
+    - role: front
+      path: 'C:\Projects\the last city\assets\concept-art\equipment\sandstorm-mask-b29-meshy-multiview\source_transparent_front.png'
+      size_bytes: 1569462
+      sha256: b2d0dd0c7d52490fa8fe996194cb1c69ddf20851d154a9d059f11bc5a575ba31
+    - role: left
+      path: 'C:\Projects\the last city\assets\concept-art\equipment\sandstorm-mask-b29-meshy-multiview\source_transparent_left.png'
+      size_bytes: 1755954
+      sha256: 95d5a5da2dd890d6886660476f51f05de122b2209322f6187b8ce6190a11ac41
+    - role: back
+      path: 'C:\Projects\the last city\assets\concept-art\equipment\sandstorm-mask-b29-meshy-multiview\source_transparent_back.png'
+      size_bytes: 1567596
+      sha256: ac779a34a09cd69598eb17f57aef3d42afe580b7b7a7a929223d4b0368a938a4
+    - role: right
+      path: 'C:\Projects\the last city\assets\concept-art\equipment\sandstorm-mask-b29-meshy-multiview\source_transparent_right.png'
+      size_bytes: 1650913
+      sha256: 4fca99edf3b66a9c38e90e71526a9fdbb152d9153c06d46b6a812e29f1246dd9
+  profile: S1-static-prop/v1
+  ai_model: meshy-6
+  model_type: standard
+  multi_image_contract_reason: the current Meshy API exposes Multi-Image only through the standard Meshy-6 route; Smart Topology T2 is single-image only
+  should_remesh: true
+  topology: triangle
+  target_polycount: 15000
+  should_texture: true
+  enable_pbr: false
+  image_enhancement: false
+  remove_lighting: true
+  target_format: glb
+  moderation: true
+  auto_split: not_exposed_by_multi-image-api
+  owner_credit_cap: 30
+  independent_axis_scaling: forbidden
+  concept_regeneration: forbidden
+generation_result:
+  status: succeeded
+  exact_local_bridge_run_id: 71f6237e-61b6-40b0-8cdd-acc01c595d1f
+  exact_model_task_id: 01a06c8b-f6e6-763f-8923-63c4e2b465ec
+  maximum_credits: 30
+  balance_before: 1123
+  balance_after: 1093
+  spent_credits: 30
+  generated_second_model: false
+  canonical_source_triangle_count: 15118
+  canonical_source_size_bytes: 3840856
+  canonical_source_sha256: 9d6dac60b2cd495019f36326454c247b4e736286fc931b7bc4317ac78e996a46
+  manual_mesh_or_texture_edits: false
+offline_quality_result:
+  status: failed
+  evidence: documentation/evidence/tlc-sandstorm-mask-b29-p15k-v1-offline-quality-failure-2026-09-04.md
+  qa_report: artifacts/diagnostics/tlc-sandstorm-mask-b29-p15k-v1-offline-qa/renders/offline-qa.json
+  mesh_object_count: 1
+  material_count: 1
+  spatial_welded_surface_component_count: 1
+  spatial_welded_boundary_edge_count: 86
+  spatial_welded_non_manifold_edge_count: 193
+  silhouette_verdict: failed
+  model_visibility: not_tested
+  proof_completeness: missing
+  new_model_iteration_admitted: false

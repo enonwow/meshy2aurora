@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "recordedDate": "2026-08-20",
+  "evidenceSource": "owner_report_in_current_codex_task",
+  "runtime": "NWN",
+  "candidate": {
+    "testModuleFileName": "m2aborzmod1.mod",
+    "moduleDisplayName": "Meshy2Aurora Borzoi c_wolf Demo V1",
+    "areaDisplayName": "Meshy2Aurora Borzoi Test Area V1",
+    "moduleSha256": "abe99cc1fdd9caa79869317e53e68e5475e174f1147ecdf644a2fe75024128e3",
+    "hakFileName": "m2aborzhak1.hak",
+    "hakSha256": "0833e31c0dcee182d7725c130aa9dff357a02dc6380c63dad634e102b9c26b86",
+    "installedHashesReverifiedAfterOwnerReport": true
+  },
+  "proofAxes": {
+    "modelVisibility": "visible",
+    "proofCompleteness": "verified"
+  },
+  "qualityVerdict": "failed",
+  "ownerObservations": [
+    {
+      "code": "FRONT_PAWS_NOT_SPREAD",
+      "result": "failed",
+      "description": "The front paws are not visibly separated."
+    },
+    {
+      "code": "MODEL_LEVITATES",
+      "result": "failed",
+      "description": "The animated creature is visibly above the ground."
+    },
+    {
+      "code": "MOTION_LOOKS_ARTIFICIAL",
+      "result": "failed",
+      "description": "Inherited movement deforms the creature unnaturally."
+    }
+  ],
+  "offlineDiagnosis": {
+    "frontPawPlacement": {
+      "sourceContactCentroidX": [-0.10, 0.10],
+      "authoredPawBoneX": [-0.066, 0.066],
+      "sourceContactMeanZ": 0.04,
+      "authoredPawBoneZ": 0.074,
+      "cause": "Paw bone landmarks were normalized from whole-model bounds instead of fitted to the two source contact clusters."
+    },
+    "levitation": {
+      "authoredRootdummyBindZ": 0.0,
+      "cWolfCpause1RootdummyZRange": [0.78, 0.80],
+      "cWolfCpause1RootdummyZMean": 0.79,
+      "cause": "Inherited c_wolf root position controllers replace an incompatible zero-height owned rootdummy bind during animation."
+    },
+    "artificialMotion": {
+      "currentWeighting": "coarse normalized anatomical boxes with one primary and one torso influence",
+      "cause": "Leg volumes capture portions of chest and long fur, while joint locations are not fitted to source surface landmarks."
+    }
+  },
+  "minimalIntendedRemediation": [
+    "Fit left and right paw and leg-chain landmarks to source-surface contact clusters.",
+    "Derive the owned rootdummy bind from the source length and height so its neutral frame matches the inherited c_wolf root-motion frame without copying retail bind transforms.",
+    "Replace box-classified weights with distance-to-chain weights plus torso and long-fur guards.",
+    "Preserve the exact Meshy GLB, texture, c_wolf topology, Creature Basis V3 mapping and all 60780 triangles."
+  ],
+  "newMeshyGenerationRequired": false
+}

@@ -1,6 +1,6 @@
 # WORKSPACE-INVARIANT: Canonical repo C:\Projects\meshy2aurora. Never use C:\Users\enonw\Documents\meshy2aurora for project work.
 schema_version: 1
-last_updated: "2026-07-14"
+last_updated: "2026-08-04"
 project:
   canonical_repo: "C:\\Projects\\meshy2aurora"
   canonical_workspace_enforcement: "HARD_STOP_BEFORE_FIRST_WRITE"
@@ -37,7 +37,7 @@ orchestration:
   update_rule: "Update this file before work, after every gate, after every new problem, and on every status change."
   done_rule: "A stage may be DONE only when every definition_of_done item has evidence."
   stop_rule: "Stop only when a dependency of the currently implemented slice is missing. Deferred Meshy inputs and external acceptance do not block M7-V1 through M7-V4 or S1 first pass."
-  workspace_stop_rule: "Before every write resolve repo root. If it is not exactly C:\\Projects\\meshy2aurora, stop without creating a fallback or staging directory and reopen the task in the canonical workspace."
+  workspace_stop_rule: "Before every write resolve the worktree root and Git common directory. Continue only for a worktree registered by C:\\Projects\\meshy2aurora; reject standalone copies and forbidden paths."
   implementation_supplement: "documentation/suplement-implementation-first-m7-s1-codex.md"
   implementation_wave:
     inventory_total: 10
@@ -560,8 +560,14 @@ stages:
     current_problems:
       - "Future features must not displace native E2E proof."
     bugs: []
-    next_actions: ["Follow documented F1-F10 order after S1."]
-    evidence: []
+    next_actions:
+      - "Follow documented F1-F10 order after S1."
+    evidence:
+      - "STUDIO-VIEWPORT-GROUND-001 closed offline 2026-08-17: one explicit Y=0 authoring/grid/picking/collision/PWK policy with below-ground and floating diagnostics."
+      - "documentation/placeable-audit-remediation-implementation-2026-08-17.md"
     documentation: ["documentation/przyszle-featurey-studio-codex.md", "documentation/evidence/S2-evidence.md"]
     expected_artifacts: ["Per-feature evidence packets"]
-    changed_files: []
+    changed_files:
+      - "apps/studio-web/src/features/placeable-authoring/groundPolicy.ts"
+      - "apps/studio-web/src/features/placeable-authoring/PlaceableAuthoringViewport.tsx"
+      - "apps/studio-web/src/features/placeable-authoring/diagnostics.ts"

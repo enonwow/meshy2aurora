@@ -1,5 +1,25 @@
 # Documentation
 
+- [Audyt higieny Git — 2026-09-07](audyt-higieny-git-2026-09-07.md) — klasyfikacja lokalnych payloadów, porządki `.gitignore`, zachowanie plików po usunięciu z indeksu i wyniki bramek jakości przed push.
+
+- [Creature remediation and authoring plan — 2026-09-05](brainstorm/creature-remediation-and-authoring-plan-2026-09-05.md) - proposed CR-00–CR-13 delivery backlog covering all 19 current audit findings, durable Creature projects, materials/export fidelity, animation/event authoring, visual weight repair, reusable recipes and owned supermodels; includes dependencies, tests, research gates and owner-verification boundaries.
+
+- [badania-vfx-zrodla-i-wnioski-2026-09-02.md](badania-vfx-zrodla-i-wnioski-2026-09-02.md) - żywy rejestr kolejnych badań nad edytorem VFX: źródła NWN/Aurora i porównawcze, licencje, ograniczenia, architektura React + Rust/WASM, capability report, pipeline eksportu, testy i rekomendowane priorytety.
+
+- [reference-supermodel-rig-authoring-v1-implementation-2026-08-25.md](reference-supermodel-rig-authoring-v1-implementation-2026-08-25.md) - wdrożony hash-bound authoring target riga dla dowolnego supermodelu: edycja TRS/roli/osi jointów i sparse wag w Studio, wspólny preview/product V3 oraz fail-closed ochrona nazw i hierarchii carrierów.
+
+- [skeleton-joints-preview-v1-implementation-2026-08-21.md](skeleton-joints-preview-v1-implementation-2026-08-21.md) - wdrożony semantyczny podgląd riga w Studio: osobne kości, jointy, helpery/attachmenty, etykiety, X-Ray, bind/rest pose, inspector węzła i per-clip binding report; realny `c_wolf/crun` na `c_barghest` ma 25/25 związanych jointów.
+
+- [creature-stages-1-4-5-6-7-implementation-2026-08-19.md](creature-stages-1-4-5-6-7-implementation-2026-08-19.md) - wdrożenie pełnego authoringu GIT/UTC i loadoutu V10, runtime envelope, rodzin chwytu, source-bound MotionPack/quadruped intake, animowanego MTR oraz raportów wydajności Creature.
+
+- [audyt-tworzenia-przedmiotow-plan-implementacji-2026-08-17.md](audyt-tworzenia-przedmiotow-plan-implementacji-2026-08-17.md) - plan i checkpoint wdrożenia produkcyjnego targetu `ITEM`: gotowy częściowo offline Core/WASM/Worker, profile `baseitems.2da.ModelType` 0/1/2/3, party MDL, UTI, ikony, namespace/collision gates, HAK/MOD, otwarte Studio/E2E i human-owned proof oraz mierzalne Definition of Done.
+
+- [placeable-v9-material-pipeline-implementation-2026-08-13.md](placeable-v9-material-pipeline-implementation-2026-08-13.md) - ukończona implementacja Placeable V9: compiler materiałów, quality gate, MDL/TGA/MTR/TXI, HAK/WASM/Worker, Aurora Export w Studio i pełna macierz regresji.
+
+- [placeable-v9-implementation-checkpoint-2026-08-12.md](placeable-v9-implementation-checkpoint-2026-08-12.md) - checkpoint wstrzymanej na polecenie właściciela implementacji Placeable V9: wykonane etapy, potwierdzone testy i dokładna kolejność wznowienia.
+
+- [weapon-grip-preview-v1-implementation-2026-08-03.md](weapon-grip-preview-v1-implementation-2026-08-03.md) - wdrożony podgląd chwytu Creature w Studio: proxy miecza na exact `rhand`/`lhand`, kontrolki Off/Right/Left, osie hooka oraz fail-closed zgodność raportu Core z binary-MDL readback.
+
 - [audyt-separacji-materialow-plan-implementacji-2026-08-01.md](audyt-separacji-materialow-plan-implementacji-2026-08-01.md) - audyt repozytorium, wspólna architektura Material Separation dla Creature, Placeable, Tile i przyszłych Itemów, plan MS0-MS8 oraz mierzalne warunki ukończenia.
 - [evidence/material-separation-offline-validation-2026-08-01.md](evidence/material-separation-offline-validation-2026-08-01.md) - kompletna walidacja Core/WASM/Worker/UI, realny preview A/B i finalne hashe bindingów.
 - [evidence/material-separation-placeable-v1-ready-for-owner-proof-2026-08-01.md](evidence/material-separation-placeable-v1-ready-for-owner-proof-2026-08-01.md) - zamrożony exact MS1 z dwoma authored Material IDs; owner proof z 2026-08-02 wykazał pusty wynik, a audyt znalazł niedozwolone użycie testowego `placeables.2da` i Appearance `3`.
@@ -67,6 +87,11 @@ Aktualny kierunek po audycie 2026-07-09:
 - [audyt-trzymania-broni-creature-plan-implementacji-2026-08-01.md](audyt-trzymania-broni-creature-plan-implementacji-2026-08-01.md) - audyt trzymania broni z korektą właścicielską V2: `MODELTYPE=L`, hooki `rhand`/`lhand`, prawdziwy bazowy UTI oraz rozdzielenie attachmentu, chwytu i weapon-aware animacji.
 - [evidence/creature-weapon-anchor-v1-ready-for-owner-proof-2026-08-01.md](evidence/creature-weapon-anchor-v1-ready-for-owner-proof-2026-08-01.md) - immutable negatywny wynik V1: model widoczny, ale broń niewyposażona; zapis przyczyn i supersession przez V2.
 - [evidence/creature-weapon-anchor-v2-ready-for-owner-proof-2026-08-02.md](evidence/creature-weapon-anchor-v2-ready-for-owner-proof-2026-08-02.md) - poprawiony exact handoff `m2aweapdemo2.mod`: oryginalne źródło i orientacja, `MODELTYPE=L`, `rhand/lhand`, stockowy `nw_wswss001`, readback GIT/UTC oraz hash-verified instalacja MOD/HAK.
+- [evidence/creature-weapon-grip-v5-ready-for-owner-proof-2026-08-03.md](evidence/creature-weapon-grip-v5-ready-for-owner-proof-2026-08-03.md) - exact handoff `m2aweapdemo5.mod` z geometrycznie skalibrowanym środkiem dłoni V5, stockowym mieczem w prawym slocie, 42/42 hook coverage oraz hash-verified instalacją MOD/HAK.
+- [evidence/creature-weapon-grip-v6-offline-remediation-2026-08-03.md](evidence/creature-weapon-grip-v6-offline-remediation-2026-08-03.md) - poprawka rollu chwytu: środek dłoni V5 połączony z pełnym natywnym basisem V4, jawny basis-proxy w Studio i zielone bramki core/WASM/web bez materializacji nowego kandydata.
+- [evidence/creature-held-item-v8-owner-nwn-failure-2026-08-17.md](evidence/creature-held-item-v8-owner-nwn-failure-2026-08-17.md) - właścicielski wynik NWN V8: Creature widoczny, modułowy UTI niewidoczny i demonstrator oparty na podmiocie facing-matrix; zapis dopuszczający minimalną deltę V9.
+- [evidence/creature-held-item-v9-ready-for-owner-proof-2026-08-17.md](evidence/creature-held-item-v9-ready-for-owner-proof-2026-08-17.md) - nowy demonstrator na owner-proved Void Crystal Knight ze stockowym `nw_wswss001`, prawym slotem 16, korektą roll `+90°` i hash-verified instalacją MOD/HAK.
+- [evidence/creature-weapon-grip-v3-offline-remediation-2026-08-02.md](evidence/creature-weapon-grip-v3-offline-remediation-2026-08-02.md) - właścicielski negatywny wynik chwytu V2 i systemowa kalibracja V3 z bind pose: natywny offset, kompensacja orientacji, exact macierze Fogbound oraz zatrzymanie przed nowym MOD/HAK przez model-iteration gate.
 - [evidence/tlc-fogbound-claw-guard-p300k-v1-ready-for-owner-proof-2026-07-31.md](evidence/tlc-fogbound-claw-guard-p300k-v1-ready-for-owner-proof-2026-07-31.md) - nowy humanoidalny Creature The Last City wygenerowany przez Meshy za 70 kredytow: 297 190 trojkatow, dziewiec routowanych klipow zrodlowych, pelne 42 stany NWN, ciagly pojedynczy zgon oraz hash-verified MOD/HAK z realnego Studio Worker/WASM.
 - [audyt-bramek-pre-push-2026-07-27.md](audyt-bramek-pre-push-2026-07-27.md) - zamknieta diagnoza historycznego driftu r33-r39: naprawa r45, dokladna delta `+60` core, macierz hashy i zabezpieczenia przed naruszeniem model iteration gate.
 - [audyt-creature-the-last-city-codex-2026-07-27.md](audyt-creature-the-last-city-codex-2026-07-27.md) - offline audyt wszystkich 116 UTC i 184 osadzen creature w exact `the_last_city — codex.mod`, z rozstrzygnieciem appearance/MDL, HAK, spawnów NSS/NCS, zawartosci testowej i czterech twardych bledow.

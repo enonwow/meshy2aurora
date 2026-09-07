@@ -4,12 +4,15 @@
 
 Status: `MANDATORY / HARD STOP`
 
-## One project location
+## One repository family
 
-The only canonical repository, implementation target, documentation root and
-place for project-local temporary work is:
+The canonical repository is:
 
 `C:\Projects\meshy2aurora`
+
+Its main worktree and every linked worktree registered by this repository are
+valid implementation targets. Parallel branches should remain isolated in
+their own registered worktrees.
 
 The following path is explicitly forbidden:
 
@@ -24,14 +27,14 @@ canonical repository is outside the current sandbox.
 
 Before the first write, every root agent, subagent and local automation must:
 
-1. resolve the repository root;
-2. confirm it is exactly `C:\Projects\meshy2aurora`;
-3. stop without writing when the check fails;
-4. resume only in a task whose workspace root is the canonical repository.
+1. resolve the current worktree root and Git common directory;
+2. confirm that the common directory is `C:\Projects\meshy2aurora\.git`;
+3. confirm that the current root is listed by `git worktree list`;
+4. stop without writing when either check fails.
 
-It is forbidden to prepare changes in another similarly named folder and copy
-them later. A missing permission to the canonical repository is a workspace
-configuration problem, not permission to create a second worktree.
+It is forbidden to prepare changes in an unregistered, similarly named folder
+and copy them later. Registered linked worktrees are the supported mechanism
+for parallel branches.
 
 Read-only diagnosis may identify the mismatch, but it must not create project
 files, Git objects, tests, build outputs or notes outside the canonical repo.

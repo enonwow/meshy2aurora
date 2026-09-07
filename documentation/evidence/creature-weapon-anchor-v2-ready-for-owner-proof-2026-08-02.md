@@ -1,5 +1,15 @@
 # Creature weapon attachment V2 — ready for owner proof — 2026-08-02
 
+> **Owner result 2026-08-02: GRIP PROOF FAILED.** Dokładny V2 pokazuje model
+> oraz wyposażony miecz, lecz broń jest odsunięta od dłoni i ma błędną
+> orientację. Toolset zachowuje `modelVisibility=visible`, natomiast funkcjonalny
+> proof chwytu ma `proofCompleteness=failed`. Screenshot:
+> `C:\Users\enonw\AppData\Local\Temp\codex-clipboard-373d13e3-6824-449a-9051-6e34c5277637.png`,
+> SHA-256 `d10867cb1ac2600be054fbb8b4e3145cef400ebc7e5db62bc4de95ddb80aca8c`.
+> Przyczyną jest jednostkowy transform `rhand/lhand` w V2. Naprawa kodu V3
+> wylicza offset chwytu oraz kompensację rotacji z bind pose, ale nowy
+> MOD/HAK nie został utworzony z powodu aktywnego model-iteration gate.
+
 ## Handoff
 
 1. Exact test module: `m2aweapdemo2.mod`
@@ -91,7 +101,7 @@ installed and verified byte-for-byte:
   atakach;
 - postać ma zachować oryginalną orientację źródła, bez testowego obrotu.
 
-Do czasu wyniku właściciela:
+Stan po wyniku właściciela:
 
-- Toolset: `modelVisibility=not_tested`, `proofCompleteness=missing`;
+- Toolset: `modelVisibility=visible`, `proofCompleteness=failed` dla chwytu;
 - NWN: `modelVisibility=not_tested`, `proofCompleteness=missing`.

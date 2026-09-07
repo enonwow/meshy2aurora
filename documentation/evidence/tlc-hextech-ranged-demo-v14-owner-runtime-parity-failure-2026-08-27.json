@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "candidateId": "tlc-hextech-ranged-demo-v14-20260827",
+  "status": "owner_runtime_failed",
+  "candidate": {
+    "moduleFileName": "m2aimod35d.mod",
+    "moduleSha256": "ce81eb3a2baf8e84bc851ec820f75e0ab0200eb634576c8ff21f6e7a59e1e52e",
+    "hakFileName": "m2aihak35d.hak",
+    "hakSha256": "473a9b5238a290c041192037ec23c3c032a9f18591a512c8eff8cfb8c0098082",
+    "moduleName": "Meshy2Aurora Hextech Ranged Demo V14",
+    "areaName": "Hextech Ranged Demo V14"
+  },
+  "ownerCapture": {
+    "fileName": "tlc-hextech-ranged-demo-v14-owner-runtime-parity-failure-2026-08-27.png",
+    "sha256": "4fabcf267a401deffb8f46cd2cfac002a73a95e8f4a154812a56c82da64b02f4",
+    "byteLength": 1170082,
+    "reportedAt": "2026-08-27"
+  },
+  "verdict": {
+    "modelVisibility": "visible",
+    "proofCompleteness": "verified",
+    "visualAcceptance": "failed",
+    "functionalUsability": "failed_animation_parity",
+    "projectileBehavior": "not_tested",
+    "ammunitionConsumption": "not_tested"
+  },
+  "cause": {
+    "applicationPoseRoute": "pause1-static-lower-body+firearm-authoring-upper-body",
+    "applicationBuilder": "buildAuroraFirearmUpperBodyOverlayClipsV1",
+    "applicationExcludesNativeXbowPoseDonors": true,
+    "runtimeExporterBuilder": "buildAuroraFirearmAuthoringClipsV1",
+    "runtimeTrackCountPerClip": 10,
+    "runtimeTrackCountTotal": 30,
+    "runtimeExportedLowerBodyTracks": false,
+    "runtimeLocalClipNames": ["pause1", "xbowrdy", "xbowshot"],
+    "runtimeInheritedLocomotionStates": ["walk", "run"],
+    "weaponWield": 6,
+    "weaponWieldRoute": "RETAIL_CROSSBOW/xbowshot",
+    "openRuntimeDeviations": [
+      "M4A-RUNTIME-ANIM-TREE-PROFILE-OPEN-M6",
+      "M4A-DECOMP-ANIMROOT-CONSUMER-OPEN-M6",
+      "M4A-RUNTIME-STATE-ROUTING-OPEN-M6"
+    ],
+    "directCause": "application and NWN runtime were not driven by one exported animation-state contract"
+  },
+  "nextIteration": {
+    "admitted": true,
+    "candidate": "V15",
+    "preserve": [
+      "weapon geometry",
+      "item and icon",
+      "ammunition",
+      "target",
+      "module placement"
+    ],
+    "minimalDelta": "animation parity route for idle, walk, run, ready and shot",
+    "blockMaterializationWhileStateRoutingOpen": true,
+    "requirePreviewFromExactExportedBinaryReadback": true
+  }
+}

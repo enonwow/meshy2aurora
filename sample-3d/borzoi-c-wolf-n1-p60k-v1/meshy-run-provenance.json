@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "ownerAuthorization": "Direct owner instruction on 2026-08-20 to use Meshy and prepare a c_wolf-derived dog model and NWN demo",
+  "profileId": "N1-quadruped/v1",
+  "sourceMode": "MULTI_IMAGE",
+  "localBridgeRunId": "09df91ef-16e6-453f-afb5-515602a939b9",
+  "meshyTaskIds": {
+    "PREVIEW": "01a01fbf-fdb8-77b8-b381-c6480727cd3d"
+  },
+  "status": "READY",
+  "createdAt": "2026-08-20T15:20:20.833Z",
+  "creditReview": {
+    "maximumCredits": 30,
+    "balanceBefore": 1148,
+    "balanceAfter": 1118,
+    "spentCredits": 30
+  },
+  "inputs": [
+    {
+      "path": "concept-side.png",
+      "sizeBytes": 1343115,
+      "sha256": "b43450eb82425575805bd247edce7eb8738ca8869e1fa8ed770545d21451c407"
+    },
+    {
+      "path": "concept-front.png",
+      "sizeBytes": 1238491,
+      "sha256": "ce7dd235280d44f413a2dfbcdf32056810d7daa4954669ae21f7504a2520a749"
+    },
+    {
+      "path": "concept-rear.png",
+      "sizeBytes": 1419530,
+      "sha256": "1784e994bd6b85ba5430247b06554f32f3cbe7822f44b786510b49a375ebf401"
+    }
+  ],
+  "request": {
+    "modelType": "standard",
+    "aiModel": "meshy-6",
+    "shouldRemesh": true,
+    "topology": "triangle",
+    "targetPolycount": 60000,
+    "poseMode": "",
+    "moderation": true,
+    "targetFormats": [
+      "glb"
+    ],
+    "alphaThumbnail": false,
+    "autoSize": false,
+    "originAt": "bottom",
+    "enablePbr": false,
+    "shouldTexture": true,
+    "hdTexture": false,
+    "texturePrompt": "Long-haired borzoi sighthound creature in a neutral standing pose, very long narrow muzzle, slim deep-chested body, long legs, folded ears and feathered tail. Preserve the white, cream, tan and gray coat pattern from the supplied orthographic references. Game-ready clean anatomy, four separated legs and paws, no collar, no accessories, no base, no ground, no text. Bake an evenly lit realistic diffuse coat texture without dramatic shadows.",
+    "textureImageUrl": "",
+    "removeLighting": true,
+    "imageEnhancement": false,
+    "multiViewThumbnails": false,
+    "rigHumanoid": false,
+    "rigHeightMeters": 1.7
+  },
+  "artifact": {
+    "path": "source.glb",
+    "sizeBytes": 6847588,
+    "sha256": "44b5d3c63387ae7587b4de8dc9e4a6866948cd034cd1a1e3a0c0ce69af3e6678",
+    "measuredTriangleCount": 60780,
+    "manualMeshOrTextureEdits": false
+  },
+  "redaction": {
+    "apiKeyPersisted": false,
+    "sessionTokenPersisted": false,
+    "signedUrlsPersisted": false
+  }
+}

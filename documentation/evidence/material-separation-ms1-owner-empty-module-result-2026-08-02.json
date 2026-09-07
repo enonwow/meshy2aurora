@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "recordedAt": "2026-08-02",
-  "status": "owner_failure_reported_lane_classification_required",
+  "status": "owner_toolset_and_nwn_not_visible_ms2_admitted",
   "source": "owner_report_in_active_codex_task",
   "ownerReport": "nic w tym module nie ma",
   "candidate": {
@@ -17,19 +17,19 @@
   "ownerObservation": {
     "operationalResult": "failed",
     "expectedContentVisible": false,
-    "lane": "not_specified",
-    "bindingBasis": "The report immediately follows the exact m2a_ms1 handoff, but does not state whether the empty module was observed in Toolset or NWN."
+    "lane": "toolset_and_nwn",
+    "bindingBasis": "The owner explicitly clarified that the exact m2a_ms1 module has no Placeable in both Aurora Toolset and NWN."
   },
   "axes": {
     "toolset": {
-      "modelVisibility": "not_tested",
-      "proofCompleteness": "missing"
+      "modelVisibility": "not_visible",
+      "proofCompleteness": "failed"
     },
     "nwn": {
-      "modelVisibility": "not_tested",
-      "proofCompleteness": "missing"
+      "modelVisibility": "not_visible",
+      "proofCompleteness": "failed"
     },
-    "reason": "The owner reported visible absence, but the lane is required before assigning the result to either Toolset or NWN."
+    "reason": "The owner explicitly bound the absent Placeable result to both Aurora Toolset and NWN. No screenshot was supplied, so visual absence is retained while proof completeness is failed."
   },
   "offlineReadback": {
     "moduleAreaCount": 1,
@@ -53,8 +53,20 @@
   },
   "iterationGate": {
     "ms1Frozen": true,
-    "newCandidateAdmitted": false,
+    "newCandidateAdmitted": true,
     "minimalIntendedDelta": "Use the exact full production placeables.2da baseline and append at row 16500. Preserve source GLB, geometry, recipe, textures, placement and all other artifact semantics.",
-    "resumeCondition": "Owner identifies the failed lane as Toolset or NWN so the corresponding modelVisibility can be recorded as not_visible before materializing m2a_ms2."
+    "resumeCondition": "Satisfied by the owner's explicit Toolset and NWN clarification. One minimal m2a_ms2 candidate is admitted.",
+    "ms2Materialized": true,
+    "ms2Handoff": "material-separation-placeable-v2-ready-for-owner-proof-2026-08-02.md"
+  },
+  "nextCandidate": {
+    "moduleFileName": "m2a_ms2_mod.mod",
+    "moduleSha256": "62870a6427810a555808ae8955c4a10aa3961b54f0ea90066a21a688f6524f37",
+    "hakFileName": "m2a_ms2_hak.hak",
+    "hakSha256": "ecd4ff727af740a44439371f9e5a200ecb4fde758a4cf80f6fa8be58118ac7a5",
+    "toolsetModuleName": "Meshy2Aurora Material Separation V2",
+    "areaName": "Material Separation Two Material Proof V2",
+    "appearanceRow": 16500,
+    "status": "ready_for_owner_proof"
   }
 }

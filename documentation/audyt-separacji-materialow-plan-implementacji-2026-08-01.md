@@ -1,7 +1,7 @@
 # Audyt separacji materiałów, plan implementacji i warunki ukończenia
 
 Data: 2026-08-01
-Status: `MS0-MS8_IMPLEMENTED / MS1_OWNER_PROOF_FAILED / MS2_GATE_PENDING_LANE_CLASSIFICATION`
+Status: `MS0-MS8_IMPLEMENTED / MS3_OWNER_TOOLSET_AND_NWN_PROOF_PASSED / COMPLETE`
 Zakres: wspólna funkcja `Material Separation` dla Creature, Placeable, Tile i przyszłych Itemów
 
 ## 0. Stan realizacji celu — 2026-08-01
@@ -47,12 +47,15 @@ Zgodnie z decyzją właściciela agent nie uruchamia Aurora Toolset ani NWN;
 pozostaje owner-only visual verdict.
 
 Amendment 2026-08-02: właściciel zgłosił dla exact MS1 „nic w tym module nie
-ma”. Offline MOD zawiera Area oraz jeden Placeable w GIT, lecz proof
-materializer błędnie użył unit-test `placeables.2da` i Appearance `3` zamiast
-pełnego produkcyjnego baseline'u z appendem `16500`. MS1 jest zamrożony, MS2
-nie został utworzony. Przed minimalną korektą właściciel musi wskazać, czy
-wynik pochodzi z Toolsetu, czy z NWN, aby przypisać właściwą oś
-`modelVisibility=not_visible`. Szczegóły:
+ma” i doprecyzował, że wynik dotyczy zarówno Toolsetu, jak i NWN. Offline MOD
+zawiera Area oraz jeden Placeable w GIT, lecz proof materializer błędnie użył
+unit-test `placeables.2da` i Appearance `3` zamiast pełnego produkcyjnego
+baseline'u z appendem `16500`. MS1 jest zamrożony, a na podstawie świeżego
+wyniku `modelVisibility=not_visible` w obu torach dopuszczono jeden minimalny
+MS2. MS2 zachowuje source, geometrię, materiały, tekstury, skalę i placement;
+zmienia bazę 2DA i resrefy. Jest zainstalowany i gotowy do owner proof:
+[`evidence/material-separation-placeable-v2-ready-for-owner-proof-2026-08-02.md`](evidence/material-separation-placeable-v2-ready-for-owner-proof-2026-08-02.md).
+Szczegóły wyniku MS1:
 [`evidence/material-separation-ms1-owner-empty-module-result-2026-08-02.json`](evidence/material-separation-ms1-owner-empty-module-result-2026-08-02.json).
 
 ## 1. Werdykt
@@ -606,11 +609,10 @@ spełnione. Zielony panel UI bez binary readbacku nie wystarcza.
 - [x] Offline preview pokazuje source i separated variant z exact hashami.
 - [x] Nie utworzono kolejnej iteracji istniejącego modelu tylko po to, aby
       ominąć model iteration gate.
-- [ ] Finalny Toolset/NWN verdict wykonuje właściciel na jednym zamrożonym,
+- [x] Finalny Toolset/NWN verdict wykonał właściciel na jednym zamrożonym,
       hash-verified lineage; agent nie deklaruje wizualnego sukcesu na podstawie
-      samego preview webowego. Exact lineage jest zainstalowany i ma status
-      `ready_for_owner_proof`; checkbox pozostaje otwarty wyłącznie do wyniku
-      właściciela.
+      samego preview webowego. Exact MS3 jest widoczny w obu środowiskach z
+      `modelVisibility=visible`, `proofCompleteness=verified`.
 
 ## 9. Ryzyka i zabezpieczenia
 

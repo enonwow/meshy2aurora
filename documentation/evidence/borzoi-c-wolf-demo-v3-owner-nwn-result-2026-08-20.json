@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-08-20T19:42:31Z",
+  "candidate": {
+    "testModuleFileName": "m2aborzmod3.mod",
+    "moduleDisplayName": "Meshy2Aurora Borzoi c_wolf Demo V3",
+    "areaDisplayName": "Meshy2Aurora Borzoi Test Area V3",
+    "moduleSha256": "109dd1db637b1c744fd1a18b6daacfe5fc479e9cb1e04a5a7c44442a7f454c8e",
+    "hakFileName": "m2aborzhak3.hak",
+    "hakSha256": "60f5d7fa072b4375e8be95a7f995f0674d53a6847e067aa56ac3bea51e05e7ff",
+    "modelResref": "m2aborzcre3",
+    "modelSha256": "c12087f62201fdc13c021e158194e58378912acb529508e0aca42e7b8bdba978",
+    "nativeModuleHashEqual": true,
+    "nativeHakHashEqual": true
+  },
+  "ownerEvidence": {
+    "path": "documentation/evidence/borzoi-c-wolf-demo-v3-owner-nwn-result-2026-08-20.png",
+    "sha256": "6d477f5eb0eb84a05e3ece4397ad8271bbb7667303697485fdb111d712736e80",
+    "bytes": 2285414,
+    "candidateBinding": "owner supplied the screenshot directly against the exact V3 handoff; the visible combat log names Meshy Borzoi - c_wolf inherited animations"
+  },
+  "ownerResult": {
+    "modelVisibility": "visible",
+    "proofCompleteness": "verified",
+    "animationInheritance": "observed",
+    "qualityVerdict": "failed",
+    "reportedDefects": [
+      "head and neck are severely compressed and twisted during the inherited animation",
+      "coat and limb regions form stretched spikes and sheet-like deformation artifacts",
+      "the animated silhouette and anatomy are not acceptable for a finished dog creature"
+    ]
+  },
+  "diagnosis": {
+    "status": "rig_deformation_contract_failed",
+    "triangleBudgetVerdict": "not the primary cause of the catastrophic animated deformation",
+    "confirmedGap": "the offline primary-region coverage gate proves that every leg bone influences vertices, but does not prove correct semantic ownership, rest-frame compatibility, bounded stretch or triangle orientation under inherited c_wolf clips",
+    "likelyCause": "procedural spatial chain weights and the source-fitted rest skeleton do not reproduce an authored c_wolf-compatible bind pose for the long-haired Meshy surface"
+  },
+  "iterationGate": {
+    "newModelIterationAdmitted": true,
+    "reason": "on 2026-08-20 the owner explicitly ordered correction and V4 after reviewing the exact visible but quality-failed V3 screenshot, establishing a direct quality-remediation exception",
+    "allowedNextStepWithoutNewLineage": "offline diagnosis of the exact immutable V3 model and inherited deformation contract",
+    "requiredToCreateV4": "satisfied by the owner's direct instruction to implement corrections and inspect version 4"
+  }
+}
