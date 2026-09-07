@@ -1,5 +1,10 @@
 /target/
 .codex-tmp/
+/.codex-remote-attachments/
+/.worktrees/
+/.tmp/
+# Literal directory left by Windows tooling with an unexpanded variable.
+/%SystemDrive%/
 **/.playwright-cli/
 /tmp/
 /output/
@@ -16,6 +21,15 @@ test-results/
 *.tmp
 *.log
 
+# Python bytecode and local virtual environments.
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Temporary output from the NWN script compiler.
+/NWNScriptCompilerTempScript.ncs
+
 # Local credentials and environment.
 .env
 .env.*
@@ -30,6 +44,7 @@ Thumbs.db
 Desktop.ini
 
 # Local proof payloads are generated or selected at runtime and are never fixtures.
+/artifacts/
 /proof-output/
 /local-reference-assets/
 *.hak
@@ -40,3 +55,8 @@ Desktop.ini
 /sample-3d/**/*.gltf
 /sample-3d/**/*.fbx
 /sample-3d/**/*.zip
+/sample-3d/**/*.bin
+/sample-3d/**/*.png
+/sample-3d/**/*.jpg
+/sample-3d/**/*.jpeg
+/sample-3d/**/*.webp
