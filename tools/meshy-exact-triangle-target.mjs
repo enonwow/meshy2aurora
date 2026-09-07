@@ -482,8 +482,38 @@ async function main() {
   }
   requireNonDegenerate(geometry.indices, geometry.positions);
 
-  const parts = [Buffer.from(bin)];
-  let length = bin.length;
+  const geometryViewIndices = [
+    positionAccessor.bufferView,
+    normalAccessor.bufferView,
+    uvAccessor.bufferView,
+    indexAccessor.bufferView,
+  ];
+  if (new Set(geometryViewIndices).size !== geometryViewIndices.length) {
+    throw new Error("exact-target profile requires distinct geometry buffer views");
+  }
+  const supersededGeometryViews = new Set(geometryViewIndices);
+  const parts = [];
+  let length = 0;
+  let retainedNonGeometryBytes = 0;
+  for (let viewIndex = 0; viewIndex < json.bufferViews.length; viewIndex += 1) {
+    if (supersededGeometryViews.has(viewIndex)) continue;
+    const view = json.bufferViews[viewIndex];
+    const sourceOffset = view.byteOffset ?? 0;
+    const sourceEnd = sourceOffset + view.byteLength;
+    if (
+      !Number.isSafeInteger(sourceOffset)
+      || !Number.isSafeInteger(view.byteLength)
+      || sourceOffset < 0
+      || view.byteLength < 0
+      || sourceEnd > bin.length
+    ) {
+      throw new Error(`buffer view ${viewIndex} exceeds the embedded BIN chunk`);
+    }
+    const retained = appendAligned(parts, bin.subarray(sourceOffset, sourceEnd), length);
+    view.byteOffset = retained.offset;
+    length = retained.nextLength;
+    retainedNonGeometryBytes += view.byteLength;
+  }
   const positionAppend = appendAligned(parts, geometry.positions, length);
   length = positionAppend.nextLength;
   const normalAppend = appendAligned(parts, geometry.normals, length);
@@ -540,6 +570,10 @@ async function main() {
     outputTriangles: finalIndices.length / 3,
     sourceVertices: sourcePositions.length / 3,
     outputVertices: finalPositions.length / 3,
+    sourceBinBytes: bin.length,
+    outputBinBytes: outputBin.length,
+    retainedNonGeometryBytes,
+    compactedSupersededGeometry: true,
     removedUnreferencedVertices: geometry.removedUnreferencedVertices,
     removedAuroraUnsafeTriangles: geometry.removedAuroraUnsafeTriangles,
     subdividedTriangles: geometry.subdividedTriangles,

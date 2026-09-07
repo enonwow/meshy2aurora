@@ -19,6 +19,14 @@ const array = (value: unknown, path: string): unknown[] => Array.isArray(value) 
 const string = (value: unknown, path: string): string => typeof value === "string" ? value : fail(path);
 const number = (value: unknown, path: string): number => typeof value === "number" && Number.isFinite(value) ? value : fail(path);
 const integer = (value: unknown, path: string): number => Number.isSafeInteger(value) && (value as number) >= 0 ? value as number : fail(path);
+const optionalNumber = (value: unknown, path: string): number | undefined => value === undefined ? undefined : number(value, path);
+
+const optionalVec3Tuple = (value: unknown, path: string): [number, number, number] | undefined => {
+  if (value === undefined) return undefined;
+  const values = array(value, path);
+  if (values.length !== 3) return fail(path);
+  return [number(values[0], `${path}[0]`), number(values[1], `${path}[1]`), number(values[2], `${path}[2]`)];
+};
 
 const vec3 = (value: unknown, path: string): ReadbackVec3 => {
   const item = record(value, path);
@@ -27,6 +35,16 @@ const vec3 = (value: unknown, path: string): ReadbackVec3 => {
 const vec2 = (value: unknown, path: string): ReadbackVec2 => {
   const item = record(value, path);
   return { x: number(item.x, `${path}.x`), y: number(item.y, `${path}.y`) };
+};
+const vec4Tuple = (value: unknown, path: string): [number, number, number, number] => {
+  const values = array(value, path);
+  if (values.length !== 4) return fail(path);
+  return [
+    number(values[0], `${path}[0]`),
+    number(values[1], `${path}[1]`),
+    number(values[2], `${path}[2]`),
+    number(values[3], `${path}[3]`),
+  ];
 };
 
 function controller(value: unknown, path: string): ReadbackController {
@@ -59,9 +77,23 @@ function animation(value: unknown, path: string): ReadbackAnimation {
 function mesh(value: unknown, path: string): ReadbackMesh {
   const item = record(value, path);
   return {
+    ...(item.textures === undefined ? {} : {
+      textures: array(item.textures, `${path}.textures`).map((entry, index) => string(entry, `${path}.textures[${index}]`)),
+    }),
+    ...(optionalVec3Tuple(item.diffuse, `${path}.diffuse`) === undefined ? {} : { diffuse: optionalVec3Tuple(item.diffuse, `${path}.diffuse`) }),
+    ...(optionalVec3Tuple(item.ambient, `${path}.ambient`) === undefined ? {} : { ambient: optionalVec3Tuple(item.ambient, `${path}.ambient`) }),
+    ...(optionalVec3Tuple(item.specular, `${path}.specular`) === undefined ? {} : { specular: optionalVec3Tuple(item.specular, `${path}.specular`) }),
+    ...(optionalNumber(item.shininess, `${path}.shininess`) === undefined ? {} : { shininess: optionalNumber(item.shininess, `${path}.shininess`) }),
+    ...(optionalNumber(item.transparency, `${path}.transparency`) === undefined ? {} : { transparency: optionalNumber(item.transparency, `${path}.transparency`) }),
+    ...(optionalNumber(item.renderHint, `${path}.renderHint`) === undefined ? {} : { renderHint: optionalNumber(item.renderHint, `${path}.renderHint`) }),
     vertices: array(item.vertices, `${path}.vertices`).map((entry, index) => vec3(entry, `${path}.vertices[${index}]`)),
     normals: array(item.normals, `${path}.normals`).map((entry, index) => vec3(entry, `${path}.normals[${index}]`)),
     uv0: array(item.uv0, `${path}.uv0`).map((entry, index) => vec2(entry, `${path}.uv0[${index}]`)),
+    uv1: array(item.uv1 ?? [], `${path}.uv1`).map((entry, index) => vec2(entry, `${path}.uv1[${index}]`)),
+    uv2: array(item.uv2 ?? [], `${path}.uv2`).map((entry, index) => vec2(entry, `${path}.uv2[${index}]`)),
+    uv3: array(item.uv3 ?? [], `${path}.uv3`).map((entry, index) => vec2(entry, `${path}.uv3[${index}]`)),
+    tangents: array(item.tangents ?? [], `${path}.tangents`).map((entry, index) =>
+      vec4Tuple(entry, `${path}.tangents[${index}]`)),
     rawIndices: array(item.rawIndices, `${path}.rawIndices`).map((row, rowIndex) =>
       array(row, `${path}.rawIndices[${rowIndex}]`).map((entry, index) =>
         integer(entry, `${path}.rawIndices[${rowIndex}][${index}]`))),
@@ -94,7 +126,9 @@ function skin(value: unknown, path: string): ReadbackSkin {
       return entry as number;
     }),
     inlineMapping: array(item.inlineMapping, `${path}.inlineMapping`).map((entry, index) => {
-      if (!Number.isSafeInteger(entry) || (entry as number) < -1) fail(`${path}.inlineMapping[${index}]`);
+      if (!Number.isSafeInteger(entry) || (entry as number) < -32_768 || (entry as number) > 32_767) {
+        fail(`${path}.inlineMapping[${index}]`);
+      }
       return entry as number;
     }),
     inverseBoneRotationsRaw: finiteRows("inverseBoneRotationsRaw", 4),
@@ -180,9 +214,19 @@ export function projectCanonicalReadback(readbackJson: string): BinaryMdlInspect
   const roots = array(tree.roots, "readbackJson.nodeTree.roots").map((entry, index) => node(entry, `readbackJson.nodeTree.roots[${index}]`));
   const animations = array(report.animations, "readbackJson.animations").map((entry, index) => animation(entry, `readbackJson.animations[${index}]`));
   const diagnostics = array(report.diagnostics, "readbackJson.diagnostics").map((entry, index) => diagnostic(entry, `readbackJson.diagnostics[${index}]`));
+  const modelValue = report.model === undefined || report.model === null
+    ? undefined
+    : record(report.model, "readbackJson.model");
   return {
     schemaVersion: 1,
     format,
+    ...(report.byteLength === undefined ? {} : { byteLength: integer(report.byteLength, "readbackJson.byteLength") }),
+    ...(modelValue ? { model: {
+      name: string(modelValue.name, "readbackJson.model.name"),
+      classification: integer(modelValue.classification, "readbackJson.model.classification"),
+      animationScale: number(modelValue.animationScale, "readbackJson.model.animationScale"),
+      supermodelName: string(modelValue.supermodelName, "readbackJson.model.supermodelName"),
+    } } : {}),
     nodeTree: { roots },
     animations,
     diagnostics,

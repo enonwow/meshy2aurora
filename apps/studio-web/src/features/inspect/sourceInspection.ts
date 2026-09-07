@@ -244,8 +244,8 @@ function projectClip(value: unknown, index: number): SourceAnimationClip {
   };
 }
 
-function projectGate(value: unknown, index: number): SourceGate {
-  const path = `ingestJson.report.gates[${index}]`;
+function projectGate(value: unknown, index: number, basePath = "ingestJson.report.gates"): SourceGate {
+  const path = `${basePath}[${index}]`;
   const gate = record(value, path);
   return {
     code: nonEmptyString(gate.code, `${path}.code`),
@@ -257,8 +257,12 @@ function projectGate(value: unknown, index: number): SourceGate {
   };
 }
 
-function projectDiagnostic(value: unknown, index: number): SourceDiagnostic {
-  const path = `ingestJson.report.diagnostics[${index}]`;
+function projectDiagnostic(
+  value: unknown,
+  index: number,
+  basePath = "ingestJson.report.diagnostics",
+): SourceDiagnostic {
+  const path = `${basePath}[${index}]`;
   const diagnostic = record(value, path);
   return {
     schemaVersion: schemaVersion(diagnostic.schemaVersion, `${path}.schemaVersion`),
@@ -267,6 +271,72 @@ function projectDiagnostic(value: unknown, index: number): SourceDiagnostic {
     byteOffset: optionalInteger(diagnostic.byteOffset, `${path}.byteOffset`),
     jsonPath: optionalString(diagnostic.jsonPath, `${path}.jsonPath`),
     message: nonEmptyString(diagnostic.message, `${path}.message`),
+  };
+}
+
+function projectCompactClip(value: unknown, index: number): SourceAnimationClip {
+  const path = `ingestJson.clips[${index}]`;
+  const clip = record(value, path);
+  const targetNodeIds = array(clip.targetNodeIds, `${path}.targetNodeIds`).map((value, targetIndex) =>
+    nonNegativeInteger(value, `${path}.targetNodeIds[${targetIndex}]`));
+  const targetPaths = array(clip.targetPaths, `${path}.targetPaths`).map((value, targetIndex) =>
+    nonEmptyString(value, `${path}.targetPaths[${targetIndex}]`));
+  const channelCount = nonNegativeInteger(clip.channelCount, `${path}.channelCount`);
+  equal(channelCount, targetNodeIds.length, `${path}.targetNodeIds`);
+  equal(channelCount, targetPaths.length, `${path}.targetPaths`);
+  return {
+    id: nonNegativeInteger(clip.id, `${path}.id`),
+    name: nullableString(clip.name, `${path}.name`),
+    durationSeconds: finiteNumber(clip.durationSeconds, `${path}.durationSeconds`),
+    samplerCount: nonNegativeInteger(clip.samplerCount, `${path}.samplerCount`),
+    channelCount,
+    keyframeCount: nonNegativeInteger(clip.keyframeCount, `${path}.keyframeCount`),
+    targetNodeIds,
+    targetPaths,
+  };
+}
+
+function projectHighPolyReady(root: JsonRecord): SourceInspectionProjection {
+  schemaVersion(root.schemaVersion, "ingestJson.schemaVersion");
+  equal(
+    nonEmptyString(root.inspectionMode, "ingestJson.inspectionMode"),
+    "UNSAFE_HIGH_POLY_INSPECTION_V1",
+    "ingestJson.inspectionMode",
+  );
+  const sourceJson = record(root.source, "ingestJson.source");
+  const source: SourceIdentity = {
+    format: nonEmptyString(sourceJson.format, "ingestJson.source.format"),
+    byteLength: nonNegativeInteger(sourceJson.byteLength, "ingestJson.source.byteLength"),
+    sha256: sha256(sourceJson.sha256, "ingestJson.source.sha256"),
+    assetVersion: nonEmptyString(sourceJson.assetVersion, "ingestJson.source.assetVersion"),
+    generator: nullableString(sourceJson.generator, "ingestJson.source.generator"),
+  };
+  const inventory = projectInventory(root.inventory, "ingestJson.inventory");
+  const clips = array(root.clips, "ingestJson.clips").map(projectCompactClip);
+  equal(inventory.animationCount, clips.length, "ingestJson.clips");
+  equal(
+    inventory.keyframeCount,
+    clips.reduce((sum, clip) => sum + clip.keyframeCount, 0),
+    "ingestJson.inventory.keyframeCount",
+  );
+  const conversionEligible = boolean(root.conversionEligible, "ingestJson.conversionEligible");
+  equal(conversionEligible, false, "ingestJson.conversionEligible");
+
+  return {
+    kind: "READY",
+    snapshot: {
+      schemaVersion: 1,
+      source,
+      inventory,
+      statistics: projectStatistics(root.statistics, "ingestJson.statistics"),
+      boneCount: nonNegativeInteger(root.boneCount, "ingestJson.boneCount"),
+      clips,
+      gates: array(root.gates, "ingestJson.gates")
+        .map((value, index) => projectGate(value, index, "ingestJson.gates")),
+      diagnostics: array(root.diagnostics, "ingestJson.diagnostics")
+        .map((value, index) => projectDiagnostic(value, index, "ingestJson.diagnostics")),
+      conversionEligible,
+    },
   };
 }
 
@@ -334,8 +404,10 @@ function projectReady(root: JsonRecord): SourceInspectionProjection {
       statistics: projectStatistics(report.statistics, "ingestJson.report.statistics"),
       boneCount: uniqueJointNodeIds.size,
       clips,
-      gates: array(report.gates, "ingestJson.report.gates").map(projectGate),
-      diagnostics: array(report.diagnostics, "ingestJson.report.diagnostics").map(projectDiagnostic),
+      gates: array(report.gates, "ingestJson.report.gates")
+        .map((value, index) => projectGate(value, index)),
+      diagnostics: array(report.diagnostics, "ingestJson.report.diagnostics")
+        .map((value, index) => projectDiagnostic(value, index)),
       conversionEligible: boolean(report.conversionEligible, "ingestJson.report.conversionEligible"),
     },
   };
@@ -344,6 +416,12 @@ function projectReady(root: JsonRecord): SourceInspectionProjection {
 /** Projects the exact JSON returned in `SOURCE_INSPECTED.ingestJson`. */
 export function projectSourceInspection(ingestJson: string): SourceInspectionProjection {
   const root = parseJson(ingestJson);
+  if (root.inspectionMode !== undefined) {
+    if (root.code !== undefined || root.ir !== undefined || root.report !== undefined) {
+      return fail("ingestJson");
+    }
+    return projectHighPolyReady(root);
+  }
   if (root.code !== undefined && (root.ir !== undefined || root.report !== undefined)) {
     return fail("ingestJson");
   }

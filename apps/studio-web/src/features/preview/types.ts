@@ -20,9 +20,20 @@ export interface ReadbackController {
 }
 
 export interface ReadbackMesh {
+  textures?: string[];
+  diffuse?: [number, number, number];
+  ambient?: [number, number, number];
+  specular?: [number, number, number];
+  shininess?: number;
+  transparency?: number;
+  renderHint?: number;
   vertices: ReadbackVec3[];
   normals: ReadbackVec3[];
   uv0: ReadbackVec2[];
+  uv1?: ReadbackVec2[];
+  uv2?: ReadbackVec2[];
+  uv3?: ReadbackVec2[];
+  tangents?: [number, number, number, number][];
   rawIndices: number[][];
   faces: Array<{ vertexIndices: [number, number, number] }>;
 }
@@ -87,6 +98,13 @@ export interface BinaryReadbackValidationEvidence {
 export interface BinaryMdlInspectionReport {
   schemaVersion: number;
   format: string;
+  byteLength?: number;
+  model?: {
+    name: string;
+    classification: number;
+    animationScale: number;
+    supermodelName: string;
+  };
   nodeTree: { roots: ReadbackNode[] };
   animations: ReadbackAnimation[];
   diagnostics: ReadbackDiagnostic[];

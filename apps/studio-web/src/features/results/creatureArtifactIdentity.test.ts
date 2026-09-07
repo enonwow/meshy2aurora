@@ -3,6 +3,7 @@ import {
   creatureArtifactIdentityTokenV2,
   sha256ArrayBufferHexV1,
 } from "./creatureArtifactIdentity";
+import { defaultCreatureWeaponGripOptionsV1 } from "../source/weaponGrip";
 
 const base = {
   profile: "PRODUCT_300K" as const,
@@ -13,6 +14,8 @@ const base = {
   skinAccessoryStabilizationMode: "AUTO" as const,
   skinAccessorySelectedBoneName: "",
   skinAccessoryComponentBoneOverrides: "",
+  weaponGrip: defaultCreatureWeaponGripOptionsV1(),
+  heldWeaponMode: "NONE" as const,
 };
 
 describe("creatureArtifactIdentityTokenV2", () => {
@@ -35,6 +38,7 @@ describe("creatureArtifactIdentityTokenV2", () => {
         skinAccessoryStabilizationMode: "SELECT_BONE" as const,
         skinAccessorySelectedBoneName: "Spine02",
       },
+      { ...base, heldWeaponMode: "RIGHT_HAND" as const },
       {
         ...base,
         skinAccessoryStabilizationMode: "SELECT_BONE" as const,
@@ -42,10 +46,40 @@ describe("creatureArtifactIdentityTokenV2", () => {
       },
       { ...base, profile: "EXPERIMENTAL_P300K" as const },
       { ...base, sourceForward: "NEGATIVE_X" as const },
+      {
+        ...base,
+        weaponGrip: {
+          ...base.weaponGrip,
+          mode: "AUTO_PLUS_OFFSETS" as const,
+          rightHand: { ...base.weaponGrip.rightHand, rollDegrees: 1 },
+        },
+      },
     ];
     for (const variant of variants) {
       expect(await creatureArtifactIdentityTokenV2(variant)).not.toBe(baseline);
     }
+  });
+
+  it("binds both the Face V2 recipe and its exact texture authoring document", async () => {
+    const materialBase = {
+      ...base,
+      materialSeparationSha256: "c".repeat(64),
+      modelTextureAuthoringSha256: "d".repeat(64),
+    };
+    const baseline = await creatureArtifactIdentityTokenV2(materialBase);
+
+    expect(await creatureArtifactIdentityTokenV2({
+      ...materialBase,
+      materialSeparationSha256: "e".repeat(64),
+    })).not.toBe(baseline);
+    expect(await creatureArtifactIdentityTokenV2({
+      ...materialBase,
+      modelTextureAuthoringSha256: "f".repeat(64),
+    })).not.toBe(baseline);
+    await expect(creatureArtifactIdentityTokenV2({
+      ...base,
+      materialSeparationSha256: "c".repeat(64),
+    })).rejects.toThrow("Creature material identity requires both recipe hashes");
   });
 
   it("normalizes the selected bone name only when manual selection is active", async () => {

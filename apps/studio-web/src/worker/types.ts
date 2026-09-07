@@ -17,11 +17,111 @@ export type SkinAccessoryStabilizationOptionsV2 = {
   }[];
 };
 
+export type CreatureWeaponGripOptionsV1 = {
+  schemaVersion: 1;
+  mode: "AUTO" | "AUTO_PLUS_OFFSETS";
+  itemFamily?: "SWORD" | "AXE_MACE" | "SPEAR_POLEARM" | "BOW_CROSSBOW" | "SHIELD";
+  rightHand: CreatureWeaponEulerOffsetV1;
+  leftHand: CreatureWeaponEulerOffsetV1;
+};
+
+export type CreatureDemoAuthoringV1 = import("../features/source/heldWeapon").CreatureDemoAuthoringV1;
+export type CreatureRuntimeEnvelopePolicyV1 =
+  | { mode: "MEDIUM_HUMANOID" }
+  | { mode: "BOUNDS_DERIVED" }
+  | { mode: "EXPLICIT"; value: {
+      schemaVersion: 1;
+      height: number;
+      hitDistance: number;
+      personalSpace: number;
+      creaturePersonalSpace: number;
+      preferredAttackDistance: number;
+      targetHeight: "LOW" | "MEDIUM" | "HIGH";
+      perceptionDistance: number;
+      walkDistance: number;
+      runDistance: number;
+      sizeCategory: number;
+      footstepType: number;
+    } };
+export type CreatureMotionPackV1 = {
+  schemaVersion: 1;
+  sourceIdentity: string;
+  skeletonProfile: "HUMANOID" | "QUADRUPED";
+  semanticJoints: readonly string[];
+  clips: readonly {
+    sourceClipName: string;
+    outputClipName: string;
+    weaponFamily?: "SWORD" | "AXE_MACE" | "SPEAR_POLEARM" | "BOW_CROSSBOW" | "SHIELD";
+  }[];
+};
+export type CreatureMaterialProfileV2 = {
+  schemaVersion: 2;
+  target: "AURORA_CLASSIC_SAFE" | "NWN_EE_MTR";
+  normalMaps: boolean;
+  tangentSpaceReady: boolean;
+  metallicRoughnessToSpecularGloss: boolean;
+  emissiveToSelfIllumination: boolean;
+  alphaMode: "OPAQUE" | "MASK" | "BLEND";
+  doubleSided: boolean;
+};
+export type CreaturePerformancePresetV1 = "COMPACT" | "STANDARD" | "HIGH" | "MAXIMUM";
+
+export type CreatureWeaponEulerOffsetV1 = {
+  rollDegrees: number;
+  pitchDegrees: number;
+  yawDegrees: number;
+};
+
+export type CreatureHeldWeaponOptionsV1 = {
+  schemaVersion: 1;
+  mode: "NONE" | "RIGHT_HAND" | "LEFT_HAND";
+  itemResref?: string;
+};
+
 /** @deprecated Use SkinAccessoryStabilizationOptionsV2. */
 export type SkinAccessoryStabilizationOptionsV1 = SkinAccessoryStabilizationOptionsV2;
 
 export type StudioWorkerRequest =
   | { requestId: string; type: "INITIALIZE" }
+  | {
+      requestId: string;
+      type: "INSPECT_ITEM_INPUTS";
+      baseItemsTwoDa: ArrayBuffer;
+      physicalRowIndex: number;
+      expectedSourceSha256: string;
+      sourceStateId: string;
+    }
+  | {
+      requestId: string;
+      type: "RESOLVE_ITEM_RECIPE";
+      recipeJson: string;
+      sourceStateId: string;
+      recipeStateId: string;
+    }
+  | {
+      requestId: string;
+      type: "COMPILE_ITEM_PART";
+      requestJson: string;
+      sourceStateId: string;
+      recipeStateId: string;
+    }
+  | {
+      requestId: string;
+      type: "BUILD_ITEM_ICONS";
+      recipeJson: string;
+      layersJson: string;
+      sourceStateId: string;
+      recipeStateId: string;
+    }
+  | {
+      requestId: string;
+      type: "BUILD_ITEM_PACKAGE";
+      payloadBlob: ArrayBuffer;
+      requestJson: string;
+      outputStem: string;
+      sourceStateId: string;
+      recipeStateId: string;
+    }
   | {
       requestId: string;
       type: "INSPECT_MODEL_COMPONENTS";
@@ -44,8 +144,76 @@ export type StudioWorkerRequest =
       sourceGlb: ArrayBuffer;
       target?: "CREATURE" | "PLACEABLE" | "TILE";
       creatureProfile?: "PRODUCT_300K" | "EXPERIMENTAL_P100K" | "EXPERIMENTAL_P300K";
+      unsafeHighPolyInspection?: boolean;
       experimentalAggressiveGeometryCleanup?: boolean;
       modelResref?: string;
+    }
+  | {
+      requestId: string;
+      type: "INSPECT_CREATURE_MOTION_PACK";
+      sourceGlb: ArrayBuffer;
+      motionPack: CreatureMotionPackV1;
+    }
+  | {
+      requestId: string;
+      type: "BUILD_EXACT_REFERENCE_SUPERMODEL_MOTION_CONTRACT";
+      referenceMdl: ArrayBuffer;
+      optionsJson: string;
+    }
+  | {
+      requestId: string;
+      type: "BUILD_REFERENCE_SUPERMODEL_CORRECTION";
+      targetRigJson: string;
+      motionContractJson: string;
+    }
+  | {
+      requestId: string;
+      type: "BUILD_EXACT_REFERENCE_SUPERMODEL_CARRIER";
+      targetRigJson: string;
+      motionContractJson: string;
+      referenceMdl: ArrayBuffer;
+    }
+  | {
+      requestId: string;
+      type: "PREPARE_REFERENCE_SUPERMODEL_RIG";
+      selectedSupermodelResref: string;
+      sourceGlb: ArrayBuffer;
+      referenceChainBlob: ArrayBuffer;
+      referenceChainJson: string;
+      sourceForward: CreatureSourceForwardV1;
+    }
+  | {
+      requestId: string;
+      type: "PREPARE_REFERENCE_SUPERMODEL_RIG_V2";
+      selectedSupermodelResref: string;
+      sourceGlb: ArrayBuffer;
+      referenceChainBlob: ArrayBuffer;
+      referenceChainJson: string;
+      sourceForward: CreatureSourceForwardV1;
+      authoringJson?: string;
+      authoringIsSealed?: boolean;
+      experimentalAllowExcessiveSkinBranchRepair?: boolean;
+    }
+  | {
+      requestId: string;
+      type: "BUILD_REFERENCE_SUPERMODEL_APPLIED_PREVIEW";
+      selectedSupermodelResref: string;
+      sourceGlb: ArrayBuffer;
+      referenceChainBlob: ArrayBuffer;
+      referenceChainJson: string;
+      sourceForward: CreatureSourceForwardV1;
+      experimentalAllowExcessiveSkinBranchRepair?: boolean;
+    }
+  | {
+      requestId: string;
+      type: "BUILD_REFERENCE_SUPERMODEL_AUTHORED_PREVIEW";
+      selectedSupermodelResref: string;
+      sourceGlb: ArrayBuffer;
+      referenceChainBlob: ArrayBuffer;
+      referenceChainJson: string;
+      sourceForward: CreatureSourceForwardV1;
+      authoringJson: string;
+      experimentalAllowExcessiveSkinBranchRepair?: boolean;
     }
   | {
       requestId: string;
@@ -67,12 +235,43 @@ export type StudioWorkerRequest =
       experimentalAggressiveGeometryCleanup?: boolean;
     }
   | { requestId: string; type: "INSPECT_APPEARANCE"; appearanceTwoDa: ArrayBuffer }
+  | { requestId: string; type: "INDEX_NWN_KEY_MODELS"; keyBytes: ArrayBuffer }
+  | { requestId: string; type: "INDEX_HAK_MODELS"; hakBytes: ArrayBuffer }
+  | { requestId: string; type: "PLAN_NWN_BIF_INDEX"; headerBytes: ArrayBuffer }
+  | {
+      requestId: string;
+      type: "INDEX_NWN_BIF_TABLE";
+      headerBytes: ArrayBuffer;
+      tableBytes: ArrayBuffer;
+    }
+  | {
+      requestId: string;
+      type: "INSPECT_MDL_CATALOG_HEADERS";
+      payloadBlob: ArrayBuffer;
+      descriptorsJson: string;
+    }
+  | { requestId: string; type: "BUILD_SUPERMODEL_CATALOG"; inputJson: string }
+  | { requestId: string; type: "INSPECT_BINARY_MDL"; mdlBytes: ArrayBuffer }
   | {
       requestId: string;
       type: "BUILD_MODEL_PACKAGE";
       sourceGlb: ArrayBuffer;
       appearanceTwoDa: ArrayBuffer;
       packageLane: ModelPackageLaneV1;
+    }
+  | {
+      requestId: string;
+      type: "BUILD_MODEL_PACKAGE";
+      sourceGlb: ArrayBuffer;
+      appearanceTwoDa: ArrayBuffer;
+      packageLane: "REFERENCE_SUPERMODEL_CREATURE";
+      selectedSupermodelResref: string;
+      referenceChainBlob: ArrayBuffer;
+      referenceChainJson: string;
+      identityJson: string;
+      sourceForward: CreatureSourceForwardV1;
+      rigAuthoringJson?: string;
+      experimentalAllowExcessiveSkinBranchRepair?: boolean;
     }
   | {
       requestId: string;
@@ -86,6 +285,13 @@ export type StudioWorkerRequest =
       textureArtifactCleanup: boolean;
       sourceForward: CreatureSourceForwardV1;
       skinAccessoryStabilization?: SkinAccessoryStabilizationOptionsV2;
+      weaponGrip?: CreatureWeaponGripOptionsV1;
+      heldWeapon?: CreatureHeldWeaponOptionsV1;
+      demoAuthoring?: CreatureDemoAuthoringV1;
+      runtimeEnvelope?: CreatureRuntimeEnvelopePolicyV1;
+      motionPack?: CreatureMotionPackV1;
+      materialProfile?: CreatureMaterialProfileV2;
+      performancePreset?: CreaturePerformancePresetV1;
       materialSeparationJson?: string;
       modelTextureAuthoringJson?: string;
       modelTexturePayloadBlob?: ArrayBuffer;
@@ -101,6 +307,13 @@ export type StudioWorkerRequest =
       textureArtifactCleanup: boolean;
       sourceForward: CreatureSourceForwardV1;
       skinAccessoryStabilization?: SkinAccessoryStabilizationOptionsV2;
+      weaponGrip?: CreatureWeaponGripOptionsV1;
+      heldWeapon?: CreatureHeldWeaponOptionsV1;
+      demoAuthoring?: CreatureDemoAuthoringV1;
+      runtimeEnvelope?: CreatureRuntimeEnvelopePolicyV1;
+      motionPack?: CreatureMotionPackV1;
+      materialProfile?: CreatureMaterialProfileV2;
+      performancePreset?: CreaturePerformancePresetV1;
     }
   | {
       requestId: string;
@@ -112,6 +325,13 @@ export type StudioWorkerRequest =
       textureArtifactCleanup: boolean;
       sourceForward: CreatureSourceForwardV1;
       skinAccessoryStabilization?: SkinAccessoryStabilizationOptionsV2;
+      weaponGrip?: CreatureWeaponGripOptionsV1;
+      heldWeapon?: CreatureHeldWeaponOptionsV1;
+      demoAuthoring?: CreatureDemoAuthoringV1;
+      runtimeEnvelope?: CreatureRuntimeEnvelopePolicyV1;
+      motionPack?: CreatureMotionPackV1;
+      materialProfile?: CreatureMaterialProfileV2;
+      performancePreset?: CreaturePerformancePresetV1;
     }
   | {
       requestId: string;
@@ -125,6 +345,13 @@ export type StudioWorkerRequest =
       textureArtifactCleanup: boolean;
       sourceForward: CreatureSourceForwardV1;
       skinAccessoryStabilization?: SkinAccessoryStabilizationOptionsV2;
+      weaponGrip?: CreatureWeaponGripOptionsV1;
+      heldWeapon?: CreatureHeldWeaponOptionsV1;
+      demoAuthoring?: CreatureDemoAuthoringV1;
+      runtimeEnvelope?: CreatureRuntimeEnvelopePolicyV1;
+      motionPack?: CreatureMotionPackV1;
+      materialProfile?: CreatureMaterialProfileV2;
+      performancePreset?: CreaturePerformancePresetV1;
       materialSeparationJson?: string;
       modelTextureAuthoringJson?: string;
       modelTexturePayloadBlob?: ArrayBuffer;
@@ -143,6 +370,13 @@ export type StudioWorkerRequest =
       textureArtifactCleanup: boolean;
       sourceForward: CreatureSourceForwardV1;
       skinAccessoryStabilization?: SkinAccessoryStabilizationOptionsV2;
+      weaponGrip?: CreatureWeaponGripOptionsV1;
+      heldWeapon?: CreatureHeldWeaponOptionsV1;
+      demoAuthoring?: CreatureDemoAuthoringV1;
+      runtimeEnvelope?: CreatureRuntimeEnvelopePolicyV1;
+      motionPack?: CreatureMotionPackV1;
+      materialProfile?: CreatureMaterialProfileV2;
+      performancePreset?: CreaturePerformancePresetV1;
       materialSeparationJson?: string;
       modelTextureAuthoringJson?: string;
       modelTexturePayloadBlob?: ArrayBuffer;
@@ -161,9 +395,12 @@ export type StudioWorkerRequest =
       texturePayloadBlob?: ArrayBuffer;
       texturePayloadDescriptorsJson?: string;
       materialSeparationJson?: string;
+      materialUvProjectionJson?: string;
+      materialProfile?: "AURORA_CLASSIC_SAFE" | "NWN_EE_MTR";
       modelTextureAuthoringJson?: string;
       modelTexturePayloadBlob?: ArrayBuffer;
       modelTexturePayloadDescriptorsJson?: string;
+      compatibilityPipeline?: "PLACEABLE_V1_V8";
       experimentalAggressiveGeometryCleanup?: boolean;
     }
   | {
@@ -194,7 +431,7 @@ export type StudioWorkerRequest =
 
 export interface WorkerArtifact {
   artifactId: string;
-  kind: "HAK" | "MODEL" | "MODULE" | "PWK" | "WOK" | "SET" | "TEXTURE" | "JSON_REPORT";
+  kind: "HAK" | "MODEL" | "MODULE" | "ITEM_BLUEPRINT" | "PWK" | "WOK" | "SET" | "TEXTURE" | "MATERIAL" | "TEXTURE_INFO" | "TWO_DA" | "JSON_REPORT";
   fileName: string;
   mediaType: string;
   byteLength: number;
@@ -210,10 +447,60 @@ export type StudioWorkerSuccess =
       type: "INITIALIZED";
       runtimeCapabilities: {
         schemaVersion: 1;
-        runtimeContract: "M2A_STUDIO_WASM_2026_07_31_V1";
-        creatureSourceForward: "CARDINAL_XZ_TO_AURORA_NEGATIVE_Y_V1";
+        runtimeContract: "M2A_STUDIO_WASM_2026_08_19_V3";
+        creatureSourceForward: "CARDINAL_XZ_TO_AURORA_POSITIVE_Y_V2";
         creatureTriangleBudget: 300000;
+        creatureEquipment: "COMPLETE_EMBEDDED_GIT_UTC_V2";
+        creatureMotionPack: "SOURCE_BOUND_HUMANOID_QUADRUPED_V1";
+        creatureMaterials: "ANIMATED_CLASSIC_OR_NWN_EE_MTR_V2";
+        referenceSupermodelMotion: "EXACT_REFERENCE_BIND_AND_WEIGHTED_ANCHORS_V3_WITH_MATERIAL_LEDGER";
       };
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ITEM_INPUTS_INSPECTED";
+      sourceStateId: string;
+      baseItemJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ITEM_RECIPE_RESOLVED";
+      sourceStateId: string;
+      recipeStateId: string;
+      resolutionJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ITEM_PART_COMPILED";
+      sourceStateId: string;
+      recipeStateId: string;
+      reportJson: string;
+      readbackJson: string;
+      artifacts: WorkerArtifact[];
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ITEM_ICONS_BUILT";
+      sourceStateId: string;
+      recipeStateId: string;
+      payloadBlob: ArrayBuffer;
+      descriptorsJson: string;
+      reportsJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "ITEM_PACKAGE_BUILT";
+      sourceStateId: string;
+      recipeStateId: string;
+      artifacts: WorkerArtifact[];
+      utiReportJson: string;
+      utiReadbackJson: string;
+      manifestSha256: string;
     }
   | {
       requestId: string;
@@ -242,6 +529,30 @@ export type StudioWorkerSuccess =
   | {
       requestId: string;
       ok: true;
+      type: "CREATURE_MOTION_PACK_INSPECTED";
+      reportJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "EXACT_REFERENCE_SUPERMODEL_MOTION_CONTRACT_BUILT";
+      motionContractJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "REFERENCE_SUPERMODEL_CORRECTION_BUILT";
+      correctionJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "EXACT_REFERENCE_SUPERMODEL_CARRIER_BUILT";
+      correctionJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
       type: "PLACEABLE_COLLISION_RESOLVED";
       collisionJson: string;
     }
@@ -252,6 +563,39 @@ export type StudioWorkerSuccess =
       texturesJson: string;
     }
   | { requestId: string; ok: true; type: "APPEARANCE_INSPECTED"; inspectionJson: string }
+  | { requestId: string; ok: true; type: "NWN_KEY_MODELS_INDEXED"; indexJson: string }
+  | { requestId: string; ok: true; type: "HAK_MODELS_INDEXED"; indexJson: string }
+  | { requestId: string; ok: true; type: "NWN_BIF_INDEX_PLANNED"; planJson: string }
+  | { requestId: string; ok: true; type: "NWN_BIF_TABLE_INDEXED"; indexJson: string }
+  | { requestId: string; ok: true; type: "MDL_CATALOG_HEADERS_INSPECTED"; reportJson: string }
+  | { requestId: string; ok: true; type: "SUPERMODEL_CATALOG_BUILT"; catalogJson: string }
+  | { requestId: string; ok: true; type: "BINARY_MDL_INSPECTED"; reportJson: string }
+  | {
+      requestId: string;
+      ok: true;
+      type: "REFERENCE_SUPERMODEL_RIG_PREPARED";
+      reportJson: string;
+      authoringJson: string;
+      targetRigJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "REFERENCE_SUPERMODEL_RIG_V2_PREPARED";
+      reportJson: string;
+      authoringJson: string;
+      targetRigJson: string;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      type: "REFERENCE_SUPERMODEL_APPLIED_PREVIEW_BUILT";
+      readbackJson: string;
+      applyReportJson: string;
+      authoringJson: string;
+      targetRigJson: string;
+      artifacts: WorkerArtifact[];
+    }
   | {
       requestId: string;
       ok: true;
@@ -262,6 +606,7 @@ export type StudioWorkerSuccess =
       summaryJson: string;
       readbackJson: string;
       demoReportJson?: string;
+      resultKind?: "REFERENCE_SUPERMODEL";
     }
   | {
       requestId: string;

@@ -134,9 +134,90 @@ describe("canonical result projector", () => {
     ]);
   });
 
+  it("projects strict weapon-anchor authoring evidence for the readback preview", () => {
+    const value = fixture();
+    const anchor = (anchorName: "lhand" | "rhand", anchorNodeId: number, x: number) => ({
+      anchorName,
+      anchorNodeId,
+      parentBoneName: anchorName === "rhand" ? "RightHand" : "LeftHand",
+      parentBoneNodeId: anchorNodeId - 1,
+      localMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, 0.03, 0.08, 1],
+      disposition: "added",
+      weightedVertexCount: 0,
+    });
+    Object.assign(value.report, {
+      weaponAnchorAuthoring: {
+        schemaVersion: 1,
+        status: "weapon_anchors_ready",
+        calibration: "AURORA_CREATURE_HOOK_CALIBRATION_V1",
+        profileSha256Before: "1".repeat(64),
+        profileSha256After: "2".repeat(64),
+        anchors: [anchor("rhand", 17, 0.02), anchor("lhand", 19, -0.02)],
+      },
+    });
+    const weaponAnchorAuthoring = (value.report as typeof value.report & {
+      weaponAnchorAuthoring: { anchors: Array<{ localMatrix: number[] }>; gripAdjustment?: unknown };
+    }).weaponAnchorAuthoring;
+    weaponAnchorAuthoring.gripAdjustment = {
+      schemaVersion: 1,
+      mode: "AUTO_PLUS_OFFSETS",
+      compositionOrder: "AUTO_X_RZ_YAW_X_RX_PITCH_X_RY_ROLL_LOCAL_ITEM_AXES",
+      rightHand: {
+        requested: { rollDegrees: 12.5, pitchDegrees: -3, yawDegrees: 7 },
+        automaticLocalMatrix: [...weaponAnchorAuthoring.anchors[0]!.localMatrix],
+        finalLocalMatrix: [...weaponAnchorAuthoring.anchors[0]!.localMatrix],
+      },
+      leftHand: {
+        requested: { rollDegrees: 0, pitchDegrees: 0, yawDegrees: 0 },
+        automaticLocalMatrix: [...weaponAnchorAuthoring.anchors[1]!.localMatrix],
+        finalLocalMatrix: [...weaponAnchorAuthoring.anchors[1]!.localMatrix],
+      },
+    };
+    const project = () => {
+      const reportJson = JSON.stringify(value.report);
+      value.summary.outputs.report.byteLength = bytes(reportJson).byteLength;
+      const summaryJson = JSON.stringify(value.summary);
+      const reportArtifact = value.artifacts.find(({ artifactId }) => artifactId === "report-json")!;
+      reportArtifact.bytes = bytes(reportJson);
+      reportArtifact.byteLength = reportArtifact.bytes.byteLength;
+      const summaryArtifact = value.artifacts.find(({ artifactId }) => artifactId === "summary-json")!;
+      summaryArtifact.bytes = bytes(summaryJson);
+      summaryArtifact.byteLength = summaryArtifact.bytes.byteLength;
+      return projectCanonicalResult(reportJson, summaryJson, value.manifestJson, value.artifacts);
+    };
+
+    expect(project().weaponAnchorAuthoring).toMatchObject({
+      schemaVersion: 1,
+      status: "weapon_anchors_ready",
+      calibration: "AURORA_CREATURE_HOOK_CALIBRATION_V1",
+      anchors: [
+        { anchorName: "rhand", anchorNodeId: 17, weightedVertexCount: 0 },
+        { anchorName: "lhand", anchorNodeId: 19, weightedVertexCount: 0 },
+      ],
+      gripAdjustment: {
+        schemaVersion: 1,
+        mode: "AUTO_PLUS_OFFSETS",
+        compositionOrder: "AUTO_X_RZ_YAW_X_RX_PITCH_X_RY_ROLL_LOCAL_ITEM_AXES",
+        rightHand: { requested: { rollDegrees: 12.5, pitchDegrees: -3, yawDegrees: 7 } },
+      },
+    });
+
+    const mismatchedAdjustment = weaponAnchorAuthoring.gripAdjustment as {
+      rightHand: { finalLocalMatrix: number[] };
+    };
+    mismatchedAdjustment.rightHand.finalLocalMatrix[12] += 0.5;
+    expect(project).toThrow(/gripAdjustment\.rightHand\.finalLocalMatrix/);
+    mismatchedAdjustment.rightHand.finalLocalMatrix[12] -= 0.5;
+
+    (value.report as typeof value.report & {
+      weaponAnchorAuthoring: { anchors: Array<{ localMatrix: number[] }> };
+    }).weaponAnchorAuthoring.anchors[0]!.localMatrix[12] = Number.NaN;
+    expect(project).toThrow(/report\.weaponAnchorAuthoring\.anchors\[0\]\.localMatrix/);
+  });
+
   it("projects a schema V2 production creature without inventing a proof module", () => {
     const value = fixture();
-    value.report.schemaVersion = 3;
+    value.report.schemaVersion = 4;
     delete (value.report as Partial<typeof value.report>).proofModule;
     Object.assign(value.report, {
       skinAccessoryStabilization: {
@@ -301,6 +382,18 @@ describe("canonical result projector", () => {
       byteLength: 4,
       sha256: "7".repeat(64),
       semanticReadbackStatus: "PASS",
+      heldStockWeaponReadback: {
+        schemaVersion: 2,
+        weapon: {
+          resref: "nw_wswss001",
+          resourceType: 2025,
+          resourceScope: "NWN_BASE_GAME",
+        },
+        fixtures: [{
+          hand: "right_hand",
+          equippedItemResref: "nw_wswss001",
+        }],
+      },
     };
     const demoReportJson = JSON.stringify(demoReport);
     const withDemo = [

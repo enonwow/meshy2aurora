@@ -1,79 +1,48 @@
 import { describe, expect, it } from "vitest";
-import { isCurrentModelMaterialResponseV1, parseModelMaterialResolutionV1 } from "./types";
+import { materialBoxWorldUvProjectionDocumentV1 } from "./types";
 
-const resolution = () => ({
-  schemaVersion: 1,
-  capabilities: {
-    schemaVersion: 1,
-    target: "PLACEABLE",
-    materialSeparationSupported: true,
-    maxMaterialSlots: 256,
-    maxOutputSections: 4096,
-    selectionGranularity: "CONNECTED_COMPONENTS",
-    faceSelectionSupported: false,
-    automaticMaterialInference: false,
-    preservesSourceUv0: true,
-  },
-  report: {
-    schemaVersion: 1,
-    sourceSha256: "a".repeat(64),
-    separationSha256: "b".repeat(64),
-    sourceComponentCount: 2,
-    assignedComponentCount: 2,
-    unassignedComponentCount: 0,
-    sourceTriangleCount: 2,
-    outputTriangleCount: 2,
-    sourceVertexCount: 6,
-    outputVertexCount: 6,
-    duplicatedBoundaryVertexCount: 0,
-    outputSectionCount: 2,
-    predictedTextureCount: 2,
-    materialSlots: [{}, {}],
-    unusedAuthoredMaterialIds: [],
-    warnings: [],
-  },
-  textureAuthoring: {
-    schemaVersion: 1,
-    sourceSha256: "a".repeat(64),
-    separationSha256: "b".repeat(64),
-    bindings: [{}, {}],
-  },
-});
-
-describe("Material Separation boundary parsing", () => {
-  it("requires the predicted texture count emitted by Core", () => {
-    expect(parseModelMaterialResolutionV1(JSON.stringify(resolution())).report.predictedTextureCount)
-      .toBe(2);
-
-    const missing = resolution();
-    delete (missing.report as Partial<typeof missing.report>).predictedTextureCount;
-    expect(() => parseModelMaterialResolutionV1(JSON.stringify(missing)))
-      .toThrow("MODEL-MATERIAL-RESOLUTION-INVALID");
+describe("materialBoxWorldUvProjectionDocumentV1", () => {
+  it("binds world-scale box projection to sorted material IDs", () => {
+    expect(materialBoxWorldUvProjectionDocumentV1("source", "separation", ["wood", "deck", "wood"]))
+      .toEqual({
+        schemaVersion: 1,
+        sourceSha256: "source",
+        separationSha256: "separation",
+        rules: [
+          {
+            authoredMaterialId: "deck",
+            mode: "MATERIAL_BOX_WORLD",
+            uRepeats: 0.5,
+            vMin: 0,
+            vMax: 1,
+            deterministicUPhase: false,
+          },
+          {
+            authoredMaterialId: "wood",
+            mode: "MATERIAL_BOX_WORLD",
+            uRepeats: 0.5,
+            vMin: 0,
+            vMax: 1,
+            deterministicUPhase: false,
+          },
+        ],
+      });
   });
 
-  it("rejects stale Worker responses after either source, target or recipe changes", () => {
-    const current = {
-      responseSourceStateId: `PLACEABLE:${"a".repeat(64)}`,
-      responseRecipeStateId: "recipe:v2",
-      expectedSourceStateId: `PLACEABLE:${"a".repeat(64)}`,
-      expectedRecipeStateId: "recipe:v2",
-      currentSourceSha256: "a".repeat(64),
-      expectedSourceSha256: "a".repeat(64),
-      currentTarget: "PLACEABLE" as const,
-      expectedTarget: "PLACEABLE" as const,
-    };
-    expect(isCurrentModelMaterialResponseV1(current)).toBe(true);
-    expect(isCurrentModelMaterialResponseV1({
-      ...current,
-      responseRecipeStateId: "recipe:v1",
-    })).toBe(false);
-    expect(isCurrentModelMaterialResponseV1({
-      ...current,
-      currentSourceSha256: "b".repeat(64),
-    })).toBe(false);
-    expect(isCurrentModelMaterialResponseV1({
-      ...current,
-      currentTarget: "CREATURE",
-    })).toBe(false);
+  it("keeps projection disabled when no material was selected", () => {
+    expect(materialBoxWorldUvProjectionDocumentV1("source", "separation", [])).toBeUndefined();
+  });
+
+  it("uses an independently authored physical scale per material", () => {
+    const document = materialBoxWorldUvProjectionDocumentV1(
+      "source",
+      "separation",
+      ["hull", "mast"],
+      { hull: 0.25, mast: 1.5 },
+    );
+    expect(document?.rules.map((rule) => [rule.authoredMaterialId, rule.uRepeats])).toEqual([
+      ["hull", 0.25],
+      ["mast", 1.5],
+    ]);
   });
 });

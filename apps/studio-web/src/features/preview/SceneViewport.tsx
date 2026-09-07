@@ -8,14 +8,37 @@ import {
 } from "./animationPlayback";
 import {
   availableSceneOverlays,
+  defaultSceneOverlays,
+  groundedGridY,
+  sceneObjectBounds,
   SceneOverlayRuntime,
   type SceneOverlayKind,
 } from "./sceneOverlays";
+import type { ReadbackRigInventoryV1, RigNodeDescriptorV1 } from "./rigOverlay";
 import type { ModelPartRef } from "./types";
 
 export interface SceneViewportAsset {
   root: THREE.Object3D;
   animations?: readonly THREE.AnimationClip[];
+}
+
+export interface SceneTriangleSelectionV2 {
+  readonly object: THREE.Mesh;
+  readonly faceIndex: number;
+}
+
+export interface SceneAnimationBindingClipV1 {
+  readonly clipName: string;
+  readonly animationSource: string;
+  readonly controlledNodeCount: number;
+  readonly matchedNodeCount: number;
+  readonly unmatchedNodeNames: readonly string[];
+}
+
+export interface SceneAnimationBindingV1 {
+  readonly schemaVersion: 1;
+  readonly rigSource: string;
+  readonly clips: readonly SceneAnimationBindingClipV1[];
 }
 
 interface SceneViewportProps {
@@ -24,12 +47,22 @@ interface SceneViewportProps {
   buildRoot: () => Promise<THREE.Object3D | SceneViewportAsset>;
   dependency: unknown;
   onSelectPart?: (part?: ModelPartRef) => void;
+  onSelectIntersection?: (
+    intersection: THREE.Intersection<THREE.Object3D> | undefined,
+    event: PointerEvent,
+  ) => void;
+  onSelectTriangleRectangle?: (
+    triangles: readonly SceneTriangleSelectionV2[],
+    event: PointerEvent,
+  ) => void;
+  onSelectRigNode?: (node?: RigNodeDescriptorV1) => void;
   onError?: (message: string) => void;
   tools?: {
     animationPlayback?: boolean;
     overlays?: boolean;
   };
   animationUnavailableReason?: string;
+  animationBinding?: SceneAnimationBindingV1;
 }
 
 interface AnimationUiState extends AnimationPlaybackSnapshot {
@@ -46,14 +79,21 @@ const emptyAnimationUi: AnimationUiState = {
   timeSeconds: 0,
   durationSeconds: 0,
   playbackRate: 1,
+  poseMode: "ANIMATED",
 };
 
 const overlayLabels: Record<SceneOverlayKind, string> = {
+  mesh: "Mesh",
   grid: "Grid",
   axes: "Axes",
-  skeleton: "Skeleton",
+  bones: "Kości",
+  joints: "Jointy",
+  helpers: "Helpery / attachmenty",
+  labels: "Etykiety",
+  xray: "Kości przez model (X-Ray)",
   bounds: "Bounds",
   wireframe: "Wireframe",
+  skinClusters: "Klastry skinningu",
 };
 
 function disposeMaterial(material: THREE.Material) {
@@ -84,7 +124,7 @@ function modelPart(object?: THREE.Object3D | null): ModelPartRef | undefined {
 }
 
 function fitCamera(camera: THREE.PerspectiveCamera, controls: OrbitControls, root: THREE.Object3D) {
-  const bounds = new THREE.Box3().setFromObject(root);
+  const bounds = sceneObjectBounds(root);
   const center = bounds.isEmpty() ? new THREE.Vector3() : bounds.getCenter(new THREE.Vector3());
   const size = bounds.isEmpty() ? new THREE.Vector3(1, 1, 1) : bounds.getSize(new THREE.Vector3());
   const distance = Math.max(size.length(), 1);
@@ -102,9 +142,13 @@ export function SceneViewport({
   buildRoot,
   dependency,
   onSelectPart,
+  onSelectIntersection,
+  onSelectTriangleRectangle,
+  onSelectRigNode,
   onError,
   tools,
   animationUnavailableReason,
+  animationBinding,
 }: SceneViewportProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRuntimeRef = useRef<AnimationPlaybackRuntime | undefined>(undefined);
@@ -112,6 +156,8 @@ export function SceneViewport({
   const [animationUi, setAnimationUi] = useState<AnimationUiState>(emptyAnimationUi);
   const [availableOverlays, setAvailableOverlays] = useState<SceneOverlayKind[]>([]);
   const [enabledOverlays, setEnabledOverlays] = useState<SceneOverlayKind[]>([]);
+  const [rigInventory, setRigInventory] = useState<ReadbackRigInventoryV1 | undefined>();
+  const [selectedRigNode, setSelectedRigNode] = useState<RigNodeDescriptorV1 | undefined>();
   const animationPlaybackEnabled = tools?.animationPlayback === true;
   const overlaysEnabled = tools?.overlays === true;
 
@@ -155,6 +201,7 @@ export function SceneViewport({
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
+    let rectangleStart: { x: number; y: number } | undefined;
     const select = (event: PointerEvent) => {
       const rect = canvas.getBoundingClientRect();
       pointer.set(
@@ -162,14 +209,72 @@ export function SceneViewport({
         -((event.clientY - rect.top) / rect.height) * 2 + 1,
       );
       raycaster.setFromCamera(pointer, camera);
-      onSelectPart?.(modelPart(raycaster.intersectObjects(scene.children, true)[0]?.object));
+      const intersection = raycaster.intersectObjects(scene.children, true)[0];
+      const rigNode = overlayRuntime?.rigDescriptorFromObject(intersection?.object);
+      setSelectedRigNode(rigNode);
+      onSelectRigNode?.(rigNode);
+      onSelectPart?.(modelPart(intersection?.object));
+      onSelectIntersection?.(intersection, event);
     };
     canvas.addEventListener("pointerdown", select);
+    const beginRectangle = (event: PointerEvent) => {
+      if (!onSelectTriangleRectangle || !event.shiftKey) return;
+      rectangleStart = { x: event.clientX, y: event.clientY };
+      controls.enabled = false;
+    };
+    const finishRectangle = (event: PointerEvent) => {
+      const start = rectangleStart;
+      rectangleStart = undefined;
+      controls.enabled = true;
+      if (!start || !root || !onSelectTriangleRectangle) return;
+      const rect = canvas.getBoundingClientRect();
+      const left = Math.min(start.x, event.clientX) - rect.left;
+      const right = Math.max(start.x, event.clientX) - rect.left;
+      const top = Math.min(start.y, event.clientY) - rect.top;
+      const bottom = Math.max(start.y, event.clientY) - rect.top;
+      if (right - left < 3 || bottom - top < 3) return;
+      root.updateWorldMatrix(true, true);
+      const centroid = new THREE.Vector3();
+      const projected = new THREE.Vector3();
+      const a = new THREE.Vector3();
+      const b = new THREE.Vector3();
+      const c = new THREE.Vector3();
+      const hits: SceneTriangleSelectionV2[] = [];
+      root.traverse((object) => {
+        if (!(object instanceof THREE.Mesh) || object.userData.previewOverlay) return;
+        const position = object.geometry.getAttribute("position");
+        if (!(position instanceof THREE.BufferAttribute)) return;
+        const indices = object.geometry.index;
+        const triangleCount = indices ? indices.count / 3 : position.count / 3;
+        for (let faceIndex = 0; faceIndex < triangleCount; faceIndex += 1) {
+          const ia = indices ? indices.getX(faceIndex * 3) : faceIndex * 3;
+          const ib = indices ? indices.getX(faceIndex * 3 + 1) : faceIndex * 3 + 1;
+          const ic = indices ? indices.getX(faceIndex * 3 + 2) : faceIndex * 3 + 2;
+          a.fromBufferAttribute(position, ia);
+          b.fromBufferAttribute(position, ib);
+          c.fromBufferAttribute(position, ic);
+          centroid.copy(a).add(b).add(c).multiplyScalar(1 / 3).applyMatrix4(object.matrixWorld);
+          projected.copy(centroid).project(camera);
+          if (projected.z < -1 || projected.z > 1) continue;
+          const x = (projected.x + 1) * 0.5 * rect.width;
+          const y = (1 - projected.y) * 0.5 * rect.height;
+          if (x >= left && x <= right && y >= top && y <= bottom) {
+            hits.push({ object, faceIndex });
+          }
+        }
+      });
+      onSelectTriangleRectangle(hits, event);
+    };
+    canvas.addEventListener("pointerdown", beginRectangle);
+    canvas.addEventListener("pointerup", finishRectangle);
 
     if (animationPlaybackEnabled) setAnimationUi({ ...emptyAnimationUi, loading: true });
     if (overlaysEnabled) {
       setAvailableOverlays([]);
       setEnabledOverlays([]);
+      setRigInventory(undefined);
+      setSelectedRigNode(undefined);
+      onSelectRigNode?.(undefined);
     }
 
     void buildRoot()
@@ -178,6 +283,9 @@ export function SceneViewport({
         if (stopped) return disposeObjectResources(asset.root);
         root = asset.root;
         scene.add(asset.root);
+        if (staticGrid) {
+          staticGrid.position.y = groundedGridY(sceneObjectBounds(asset.root));
+        }
         fitCamera(camera, controls, asset.root);
 
         if (animationPlaybackEnabled) {
@@ -194,9 +302,10 @@ export function SceneViewport({
           overlayRuntimeRef.current = overlayRuntime;
           const available = availableSceneOverlays(asset.root);
           setAvailableOverlays(available);
-          const defaults = available.includes("grid") ? ["grid" as const] : [];
+          const defaults = defaultSceneOverlays(available);
           defaults.forEach((kind) => overlayRuntime?.set(kind, true));
           setEnabledOverlays(defaults);
+          setRigInventory(overlayRuntime.rigInventory());
         }
       })
       .catch((error: unknown) => {
@@ -218,6 +327,7 @@ export function SceneViewport({
           setAnimationUi((current) => ({ ...current, ...snapshot }));
         }
       }
+      overlayRuntime?.update();
       renderer.render(scene, camera);
       frame = requestAnimationFrame(render);
     };
@@ -227,6 +337,8 @@ export function SceneViewport({
       stopped = true;
       cancelAnimationFrame(frame);
       canvas.removeEventListener("pointerdown", select);
+      canvas.removeEventListener("pointerdown", beginRectangle);
+      canvas.removeEventListener("pointerup", finishRectangle);
       observer.disconnect();
       controls.dispose();
       animationRuntime?.dispose();
@@ -241,7 +353,7 @@ export function SceneViewport({
       }
       renderer.dispose();
     };
-  }, [animationPlaybackEnabled, buildRoot, dependency, onSelectPart, onError, overlaysEnabled]);
+  }, [animationPlaybackEnabled, buildRoot, dependency, onSelectIntersection, onSelectPart, onSelectRigNode, onSelectTriangleRectangle, onError, overlaysEnabled]);
 
   const updateAnimation = (snapshot: AnimationPlaybackSnapshot) => {
     setAnimationUi((current) => ({ ...current, ...snapshot }));
@@ -259,6 +371,8 @@ export function SceneViewport({
       return enabled ? [...current, kind] : current.filter((candidate) => candidate !== kind);
     });
   };
+
+  const selectedBinding = animationBinding?.clips[animationUi.selectedClipIndex ?? 0];
 
   return (
     <section className="viewport" aria-label={`${provenance} model viewport`}>
@@ -280,6 +394,52 @@ export function SceneViewport({
               </label>
             ))}
         </fieldset>
+      )}
+      {rigInventory && (
+        <section className="viewport__rig" aria-label="Rig inspector">
+          <div className="viewport__rig-summary">
+            <strong>Rig / szkielet</strong>
+            <span>{rigInventory.nodes.length} węzłów transformacji</span>
+            <span>{rigInventory.counts.RIG_ROOT + rigInventory.counts.RIGID_PIVOT + rigInventory.counts.SKIN_BONE + rigInventory.counts.UNKNOWN} jointów riga</span>
+            {rigInventory.counts.RIGID_PIVOT > 0 && <span>{rigInventory.counts.RIGID_PIVOT} sztywnych pivotów</span>}
+            {rigInventory.counts.SKIN_BONE > 0 && <span>{rigInventory.counts.SKIN_BONE} skin bones</span>}
+            <span>{rigInventory.counts.ATTACHMENT + rigInventory.counts.HELPER} helperów / attachmentów</span>
+          </div>
+          <div className="viewport__rig-legend" aria-label="Rig legend">
+            <span data-category="RIG_ROOT">Rig root</span>
+            <span data-category="RIGID_PIVOT">Rigid pivot</span>
+            <span data-category="SKIN_BONE">Skin bone</span>
+            <span data-category="ATTACHMENT">Attachment</span>
+          </div>
+          <div className="viewport__joint-detail" aria-live="polite">
+            {selectedRigNode ? (
+              <>
+                <strong>{selectedRigNode.name}</strong>
+                <span>{selectedRigNode.category}</span>
+                <span>parent: {selectedRigNode.parentName ?? "—"}</span>
+                <span>node #{selectedRigNode.nodeNumber} · depth {selectedRigNode.depth}</span>
+              </>
+            ) : <span>Kliknij joint, aby zobaczyć nazwę, typ i rodzica.</span>}
+          </div>
+        </section>
+      )}
+      {animationBinding && (
+        <section className="viewport__binding" aria-label="Animation binding report">
+          <span><strong>Rig:</strong> {animationBinding.rigSource}</span>
+          {selectedBinding ? (
+            <>
+              <span><strong>Animacja:</strong> {selectedBinding.animationSource} / {selectedBinding.clipName}</span>
+              <span data-status={selectedBinding.unmatchedNodeNames.length === 0 ? "pass" : "warning"}>
+                <strong>Binding:</strong> {selectedBinding.matchedNodeCount}/{selectedBinding.controlledNodeCount}
+              </span>
+              {selectedBinding.unmatchedNodeNames.length > 0 && (
+                <span title={selectedBinding.unmatchedNodeNames.join(", ")}>
+                  Brak: {selectedBinding.unmatchedNodeNames.join(", ")}
+                </span>
+              )}
+            </>
+          ) : <span>Brak kontrolerów animacji do związania.</span>}
+        </section>
       )}
       {(animationPlaybackEnabled || animationUnavailableReason) && (
         <section className="viewport__animation" aria-label="Animation player">
@@ -325,6 +485,24 @@ export function SceneViewport({
               >
                 Stop
               </button>
+              <div className="viewport__pose" role="group" aria-label="Rig pose">
+                <button
+                  type="button"
+                  aria-pressed={animationUi.poseMode === "REST"}
+                  onClick={() => {
+                    const runtime = animationRuntimeRef.current;
+                    if (runtime) updateAnimation(runtime.setPoseMode("REST"));
+                  }}
+                >Bind / rest</button>
+                <button
+                  type="button"
+                  aria-pressed={animationUi.poseMode === "ANIMATED"}
+                  onClick={() => {
+                    const runtime = animationRuntimeRef.current;
+                    if (runtime) updateAnimation(runtime.setPoseMode("ANIMATED"));
+                  }}
+                >Animated</button>
+              </div>
               <button
                 type="button"
                 className="button button--secondary"

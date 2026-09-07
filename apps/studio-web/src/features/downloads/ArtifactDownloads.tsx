@@ -1,15 +1,19 @@
 import type { WorkerArtifact } from "../../worker/types";
 
-function extension(kind: WorkerArtifact["kind"]) {
+function extensions(kind: WorkerArtifact["kind"]) {
   switch (kind) {
-    case "HAK": return ".hak";
-    case "MODEL": return ".mdl";
-    case "MODULE": return ".mod";
-    case "PWK": return ".pwk";
-    case "WOK": return ".wok";
-    case "SET": return ".set";
-    case "TEXTURE": return ".tga";
-    case "JSON_REPORT": return ".json";
+    case "HAK": return [".hak"];
+    case "MODEL": return [".mdl"];
+    case "MODULE": return [".mod"];
+    case "ITEM_BLUEPRINT": return [".uti"];
+    case "PWK": return [".pwk"];
+    case "WOK": return [".wok"];
+    case "SET": return [".set"];
+    case "TEXTURE": return [".tga", ".dds"];
+    case "MATERIAL": return [".mtr"];
+    case "TEXTURE_INFO": return [".txi"];
+    case "TWO_DA": return [".2da"];
+    case "JSON_REPORT": return [".json"];
   }
 }
 
@@ -20,7 +24,7 @@ function validate(artifact: WorkerArtifact) {
   if (
     artifact.fileName.includes("/") ||
     artifact.fileName.includes("\\") ||
-    !artifact.fileName.toLowerCase().endsWith(extension(artifact.kind))
+    !extensions(artifact.kind).some((extension) => artifact.fileName.toLowerCase().endsWith(extension))
   ) {
     throw new Error(`Invalid artifact filename: ${artifact.fileName}`);
   }

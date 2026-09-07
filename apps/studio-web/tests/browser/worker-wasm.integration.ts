@@ -17,6 +17,7 @@ import { projectPlaceableResult } from "../../src/features/results/projectPlacea
 import { projectTileResult } from "../../src/features/results/projectTileResult";
 import { projectCanonicalReadback } from "../../src/features/results/projectReadback";
 import { StudioWorkerClient } from "../../src/worker/client";
+import type { StudioWorkerRequest } from "../../src/worker/types";
 import { App } from "../../src/App";
 
 declare module "vitest/browser" {
@@ -222,6 +223,35 @@ afterEach(async () => {
 });
 
 describe("local file to canonical web-WASM Worker integration", () => {
+  it("exposes the generic reference-supermodel boundary without a family whitelist", async () => {
+    const client = new StudioWorkerClient();
+    clients.push(client);
+    const initialized = await client.request({
+      requestId: "reference-motion-init",
+      type: "INITIALIZE",
+    });
+    expect(initialized).toMatchObject({
+      ok: true,
+      type: "INITIALIZED",
+      runtimeCapabilities: {
+        referenceSupermodelMotion:
+          "EXACT_REFERENCE_BIND_AND_WEIGHTED_ANCHORS_V3_WITH_MATERIAL_LEDGER",
+      },
+    });
+
+    const invalidSource = new TextEncoder().encode("not-a-glb").buffer;
+    const emptyChain = new ArrayBuffer(0);
+    await expect(client.request({
+      requestId: "generic-reference-selection",
+      type: "BUILD_REFERENCE_SUPERMODEL_APPLIED_PREVIEW",
+      selectedSupermodelResref: "c_serpent",
+      sourceGlb: invalidSource,
+      referenceChainBlob: emptyChain,
+      referenceChainJson: "[]",
+      sourceForward: "POSITIVE_Z",
+    }, [invalidSource, emptyChain])).rejects.toThrow("M2A-REFERENCE-SUPERMODEL-SELECTION-INVALID");
+  });
+
   it("inspects and resolves Material Separation in the Worker without returning a triangle map", async () => {
     const client = new StudioWorkerClient();
     clients.push(client);
@@ -281,7 +311,7 @@ describe("local file to canonical web-WASM Worker integration", () => {
     expect(resolutionResponse.resolutionJson).not.toContain("triangleMaterialMap");
   });
 
-  it("materializes two authored Creature materials through the real Worker and WASM", async () => {
+  it("materializes a Face Mode V2 split through the real Creature Worker and WASM", async () => {
     const client = new StudioWorkerClient();
     clients.push(client);
     const inspectionSource = await fetchBytes(proceduralHumanoidSourceUrl);
@@ -296,20 +326,18 @@ describe("local file to canonical web-WASM Worker integration", () => {
       throw new Error("Creature material inspection failed");
     }
     const bootstrap = JSON.parse(inspected.inspectionJson) as {
-      inventory: { components: Array<{ key: unknown }> };
-      document: { schemaVersion: 1; sourceSha256: string };
+      inventory: {
+        components: Array<{
+          key: { sceneId: number; nodeId: number; primitiveId: number };
+        }>;
+      };
+      document: { schemaVersion: 2; sourceSha256: string };
     };
     expect(bootstrap.inventory.components.length).toBeGreaterThan(1);
+    const firstPrimitive = bootstrap.inventory.components[0].key;
     const materialSeparation = {
       ...bootstrap.document,
       materials: [
-        {
-          authoredMaterialId: "material:hull",
-          displayName: "Hull",
-          previewColor: "#7a4f2a",
-          sourceFallbackMaterialId: null,
-          sourceFallbackImageSha256: null,
-        },
         {
           authoredMaterialId: "material:trim",
           displayName: "Trim",
@@ -318,10 +346,16 @@ describe("local file to canonical web-WASM Worker integration", () => {
           sourceFallbackImageSha256: null,
         },
       ],
-      assignments: bootstrap.inventory.components.map((component, index) => ({
-        component: component.key,
-        authoredMaterialId: index % 2 === 0 ? "material:hull" : "material:trim",
-      })),
+      componentAssignments: [],
+      faceAssignments: [{
+        selection: {
+          sceneId: firstPrimitive.sceneId,
+          nodeId: firstPrimitive.nodeId,
+          primitiveId: firstPrimitive.primitiveId,
+          triangleRanges: [{ startTriangle: 0, triangleCount: 1 }],
+        },
+        authoredMaterialId: "material:trim",
+      }],
     };
     const resolveSource = await fetchBytes(proceduralHumanoidSourceUrl);
     const resolved = await client.request({
@@ -438,6 +472,28 @@ describe("local file to canonical web-WASM Worker integration", () => {
     expect(response.artifacts.some((artifact) => artifact.fileName === "material-separation.json")).toBe(true);
   }, 60_000);
 
+  it("rejects Creature materials on legacy experiment lanes before reading model bytes", async () => {
+    const client = new StudioWorkerClient();
+    clients.push(client);
+    const request = {
+      requestId: "experiment-materials-rejected",
+      type: "BUILD_MODEL_PACKAGE",
+      sourceGlb: new ArrayBuffer(0),
+      appearanceTwoDa: new ArrayBuffer(0),
+      packageLane: "SKINNED_PROCEDURAL_HUMANOID_P100K_EXPERIMENT",
+      identityJson: "{}",
+      textureArtifactCleanup: false,
+      sourceForward: "POSITIVE_Z",
+      materialSeparationJson: "{}",
+      modelTextureAuthoringJson: "{}",
+      modelTexturePayloadBlob: new ArrayBuffer(0),
+      modelTexturePayloadDescriptorsJson: "[]",
+    } as StudioWorkerRequest;
+    await expect(client.request(request)).rejects.toThrow(
+      "CREATURE-MATERIALS-PROFILE-UNSUPPORTED",
+    );
+  });
+
   it("materializes the owned single-idle H2 through the procedural 42-state Worker lane", async () => {
     const source = await fixtureFile(
       proceduralHumanoidSourceUrl,
@@ -462,6 +518,17 @@ describe("local file to canonical web-WASM Worker integration", () => {
         packageLane: "SKINNED_PROCEDURAL_HUMANOID_42",
         textureArtifactCleanup: false,
         sourceForward: "NEGATIVE_X",
+        weaponGrip: {
+          schemaVersion: 1,
+          mode: "AUTO_PLUS_OFFSETS",
+          rightHand: { rollDegrees: 12.5, pitchDegrees: -3, yawDegrees: 7 },
+          leftHand: { rollDegrees: 0, pitchDegrees: 0, yawDegrees: 0 },
+        },
+        heldWeapon: {
+          schemaVersion: 1,
+          mode: "RIGHT_HAND",
+          itemResref: "nw_wswss001",
+        },
         identityJson: JSON.stringify({
           modelResref: "m2a_stcrmdl2",
           textureResref: "m2a_stcrtex2",
@@ -531,9 +598,20 @@ describe("local file to canonical web-WASM Worker integration", () => {
       animationEventConformance?: { requiredPairCount?: number; complete?: boolean };
       animationEventTimingPolicy?: string;
       skinAnimationConformance?: { requiredClipCount?: number; complete?: boolean };
+      weaponAnchorAuthoring?: {
+        anchors?: Array<{ anchorName?: string; localMatrix?: number[] }>;
+        gripAdjustment?: {
+          mode?: string;
+          compositionOrder?: string;
+          rightHand?: {
+            requested?: { rollDegrees?: number; pitchDegrees?: number; yawDegrees?: number };
+            finalLocalMatrix?: number[];
+          };
+        };
+      };
     };
     expect(report.conversion?.policies?.assetForwardMapping)
-      .toBe("GLTF_NEGATIVE_X_TO_AURORA_NEGATIVE_Y");
+      .toBe("GLTF_NEGATIVE_X_TO_AURORA_POSITIVE_Y");
     expect(report.conversion?.transform?.determinant).toBe(1);
     const summary = JSON.parse(response.summaryJson) as {
       status?: string;
@@ -586,15 +664,27 @@ describe("local file to canonical web-WASM Worker integration", () => {
       requiredClipCount: 5,
       complete: true,
     });
+    expect(report.weaponAnchorAuthoring?.gripAdjustment).toMatchObject({
+      mode: "AUTO_PLUS_OFFSETS",
+      compositionOrder: "AUTO_X_RZ_YAW_X_RX_PITCH_X_RY_ROLL_LOCAL_ITEM_AXES",
+      rightHand: {
+        requested: { rollDegrees: 12.5, pitchDegrees: -3, yawDegrees: 7 },
+      },
+    });
+    const rightAnchor = report.weaponAnchorAuthoring?.anchors?.find(
+      ({ anchorName }) => anchorName?.toLocaleLowerCase() === "rhand",
+    );
+    expect(report.weaponAnchorAuthoring?.gripAdjustment?.rightHand?.finalLocalMatrix)
+      .toEqual(rightAnchor?.localMatrix);
     expect(summary.status).toBe("PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED");
     expect(summary.inputGlb?.byteLength).toBe(source.size);
     expect(summary).toMatchObject({
       creatureSourceForward: "NEGATIVE_X",
-      creatureForwardMapping: "GLTF_NEGATIVE_X_TO_AURORA_NEGATIVE_Y",
+      creatureForwardMapping: "GLTF_NEGATIVE_X_TO_AURORA_POSITIVE_Y",
     });
     expect(manifest).toMatchObject({
       creatureSourceForward: "NEGATIVE_X",
-      creatureForwardMapping: "GLTF_NEGATIVE_X_TO_AURORA_NEGATIVE_Y",
+      creatureForwardMapping: "GLTF_NEGATIVE_X_TO_AURORA_POSITIVE_Y",
     });
     expect(manifest.packageManifest?.resources).toHaveLength(3);
     expect(readback.nodeTree?.roots).toHaveLength(1);
@@ -625,6 +715,16 @@ describe("local file to canonical web-WASM Worker integration", () => {
       creatureResref: "m2a_stcrutc2",
       hakResref: "m2a_stcrhak2",
       semanticReadbackStatus: "PASS",
+    });
+    const demoReport = JSON.parse(response.demoReportJson ?? "{}") as {
+      heldStockWeaponReadback?: {
+        weapon?: { resref?: string; resourceType?: number; resourceScope?: string };
+        fixtures?: Array<{ hand?: string; equippedItemResref?: string }>;
+      };
+    };
+    expect(demoReport.heldStockWeaponReadback).toMatchObject({
+      weapon: { resref: "nw_wswss001", resourceType: 2025, resourceScope: "NWN_BASE_GAME" },
+      fixtures: [{ hand: "right_hand", equippedItemResref: "nw_wswss001" }],
     });
     expect(projectCanonicalReadback(response.readbackJson).nodeTree.roots.length).toBeGreaterThan(0);
   }, 60_000);
@@ -1133,6 +1233,7 @@ describe("local file to canonical web-WASM Worker integration", () => {
       identityJson: JSON.stringify(identity),
       placementJson: JSON.stringify({ x: 10, y: 14.5, z: 0, bearing: 0 }),
       paletteId: 7,
+      compatibilityPipeline: "PLACEABLE_V1_V8",
       authoringJson: JSON.stringify(authoring.document),
       textureAuthoringJson: JSON.stringify(textureBootstrap.document),
       texturePayloadBlob: overrideBytes,
@@ -1146,7 +1247,11 @@ describe("local file to canonical web-WASM Worker integration", () => {
     if (!response.ok || response.type !== "PLACEABLE_PACKAGE_BUILT") {
       throw new Error("real Worker did not return a placeable package");
     }
-    const result = projectPlaceableResult(response.reportJson, response.artifacts);
+    const result = projectPlaceableResult(
+      response.reportJson,
+      response.readbackJson,
+      response.artifacts,
+    );
     expect(JSON.parse(response.reportJson).experimentalAggressiveGeometryCleanup).toBe(false);
     expect(result).toMatchObject({
       status: "OFFLINE_ADMISSION_PASSED",
@@ -1201,6 +1306,140 @@ describe("local file to canonical web-WASM Worker integration", () => {
       "placeable-materialization-report.json",
       response.reportJson,
     );
+  }, 30_000);
+
+  it("materializes Placeable V9 materials through the real Worker and WASM boundary", async () => {
+    const client = new StudioWorkerClient();
+    clients.push(client);
+    const rawForAuthoring = await fetchBytes(sourceUrl);
+    const authoringSource = asStaticPlaceable(rawForAuthoring);
+    const authoringResponse = await client.request({
+      requestId: "placeable-v9-authoring",
+      type: "INSPECT_SOURCE",
+      sourceGlb: authoringSource,
+      target: "PLACEABLE",
+      modelResref: "m2av9plc",
+    }, [authoringSource]);
+    if (!authoringResponse.ok || authoringResponse.type !== "SOURCE_INSPECTED") {
+      throw new Error("V9 authoring inspection failed");
+    }
+    const rawForMaterials = await fetchBytes(sourceUrl);
+    const materialSource = asStaticPlaceable(rawForMaterials);
+    const materialResponse = await client.request({
+      requestId: "placeable-v9-materials",
+      type: "INSPECT_MODEL_COMPONENTS",
+      sourceGlb: materialSource,
+      target: "PLACEABLE",
+      sourceStateId: "placeable-v9-source",
+    }, [materialSource]);
+    if (!materialResponse.ok || materialResponse.type !== "MODEL_COMPONENTS_INSPECTED") {
+      throw new Error("V9 material inspection failed");
+    }
+    const materialDocument = (JSON.parse(materialResponse.inspectionJson) as {
+      document: unknown;
+    }).document;
+    const rawForResolution = await fetchBytes(sourceUrl);
+    const resolutionSource = asStaticPlaceable(rawForResolution);
+    const resolutionResponse = await client.request({
+      requestId: "placeable-v9-material-resolution",
+      type: "RESOLVE_MODEL_MATERIALS",
+      sourceGlb: resolutionSource,
+      target: "PLACEABLE",
+      documentJson: JSON.stringify(materialDocument),
+      sourceStateId: "placeable-v9-source",
+      recipeStateId: "placeable-v9-recipe",
+    }, [resolutionSource]);
+    if (!resolutionResponse.ok || resolutionResponse.type !== "MODEL_MATERIALS_RESOLVED") {
+      throw new Error("V9 material resolution failed");
+    }
+    const textureAuthoring = (JSON.parse(resolutionResponse.resolutionJson) as {
+      textureAuthoring: { bindings: Array<Record<string, unknown>> };
+    }).textureAuthoring;
+    const canvas = document.createElement("canvas");
+    canvas.width = 512;
+    canvas.height = 512;
+    const context = canvas.getContext("2d")!;
+    for (let y = 0; y < 16; y += 1) {
+      for (let x = 0; x < 16; x += 1) {
+        context.fillStyle = (x + y) % 2 === 0 ? "rgb(58, 35, 20)" : "rgb(188, 136, 78)";
+        context.fillRect(x * 32, y * 32, 32, 32);
+      }
+    }
+    const textureBlob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(
+      (value) => value ? resolve(value) : reject(new Error("PNG encoding failed")),
+      "image/png",
+    ));
+    const texturePayload = await textureBlob.arrayBuffer();
+    const textureSha256 = await sha256(texturePayload);
+    textureAuthoring.bindings = textureAuthoring.bindings.map((binding) => ({
+      ...binding,
+      mode: "OVERRIDE",
+      overrideAssetId: "placeable-v9-checker",
+      overrideSha256: textureSha256,
+      overrideMimeType: "image/png",
+      overrideByteLength: texturePayload.byteLength,
+    }));
+    const textureDescriptors = JSON.stringify([{
+      schemaVersion: 1,
+      assetId: "placeable-v9-checker",
+      sha256: textureSha256,
+      mimeType: "image/png",
+      byteOffset: 0,
+      byteLength: texturePayload.byteLength,
+    }]);
+    const rawForBuild = await fetchBytes(sourceUrl);
+    const sourceGlb = asStaticPlaceable(rawForBuild);
+    const placeablesTwoDa = await fetchBytes(placeablesUrl);
+    const response = await client.request({
+      requestId: "placeable-v9-build",
+      type: "BUILD_PLACEABLE_PACKAGE",
+      sourceGlb,
+      placeablesTwoDa,
+      identityJson: JSON.stringify({
+        moduleResref: "m2av9mod",
+        moduleFileName: "m2av9mod.mod",
+        moduleDisplayName: "Meshy2Aurora Placeable V9",
+        areaResref: "m2av9area",
+        areaName: "Meshy2Aurora Placeable V9 Area",
+        hakResref: "m2av9hak",
+        hakFileName: "m2av9hak.hak",
+        modelResref: "m2av9plc",
+        textureResref: "m2av9tex",
+        blueprintResref: "m2av9utp",
+        objectTag: "m2av9_placeable",
+        displayName: "M2A V9 Placeable",
+      }),
+      placementJson: JSON.stringify({ x: 10, y: 14.5, z: 0, bearing: 0 }),
+      paletteId: 7,
+      authoringJson: JSON.stringify(JSON.parse(authoringResponse.placeableAuthoringJson!).document),
+      materialSeparationJson: JSON.stringify(materialDocument),
+      materialProfile: "NWN_EE_MTR",
+      modelTextureAuthoringJson: JSON.stringify(textureAuthoring),
+      modelTexturePayloadBlob: texturePayload,
+      modelTexturePayloadDescriptorsJson: textureDescriptors,
+      experimentalAggressiveGeometryCleanup: false,
+    }, [sourceGlb, placeablesTwoDa, texturePayload]);
+
+    expect(response).toMatchObject({ ok: true, type: "PLACEABLE_PACKAGE_BUILT" });
+    if (!response.ok || response.type !== "PLACEABLE_PACKAGE_BUILT") {
+      throw new Error("V9 Worker build failed");
+    }
+    const result = projectPlaceableResult(
+      response.reportJson,
+      response.readbackJson,
+      response.artifacts,
+    );
+    expect(result).toMatchObject({
+      profile: "STATIC_PLACEABLE_V9_NWN_EE_MTR",
+      materialSemanticReadbackStatus: "PASS",
+      mdlMaterialExtension: { semanticDiff: [] },
+    });
+    expect(["PASS", "WARNING"]).toContain(result.sourceQuality?.status);
+    expect(response.artifacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "MATERIAL", fileName: expect.stringMatching(/\.mtr$/) }),
+      expect.objectContaining({ kind: "TEXTURE_INFO", fileName: expect.stringMatching(/\.txi$/) }),
+      expect.objectContaining({ kind: "TEXTURE", fileName: expect.stringMatching(/\.tga$/) }),
+    ]));
   }, 30_000);
 
   it("materializes TileStaticV1 with MDL, semantic AABB, WOK, SET, HAK and 2x2 MOD in the real Worker", async () => {

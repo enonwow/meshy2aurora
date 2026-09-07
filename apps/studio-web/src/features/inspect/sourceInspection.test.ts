@@ -141,6 +141,63 @@ describe("projectSourceInspection", () => {
     expect(result.snapshot.statistics.boundsMax).toBeNull();
   });
 
+  it("projects compact high-poly diagnostics without a decoded geometry IR", () => {
+    const result = projectSourceInspection(JSON.stringify({
+      schemaVersion: 1,
+      inspectionMode: "UNSAFE_HIGH_POLY_INSPECTION_V1",
+      source: {
+        format: "GLB_2_0",
+        byteLength: 77_030_884,
+        sha256: SHA,
+        assetVersion: "2.0",
+        generator: "pygltflib@v1.16.5",
+      },
+      inventory: {
+        sceneCount: 1,
+        nodeCount: 1,
+        meshCount: 1,
+        primitiveCount: 1,
+        materialCount: 1,
+        textureCount: 3,
+        samplerCount: 1,
+        imageCount: 3,
+        skinCount: 0,
+        jointReferenceCount: 0,
+        animationCount: 0,
+        keyframeCount: 0,
+      },
+      statistics: {
+        vertexCount: 1_070_612,
+        indexCount: 5_991_192,
+        triangleCount: 1_997_064,
+        boundsMin: [-1, 0, -2],
+        boundsMax: [1, 3, 2],
+        primitivesMissingNormals: 0,
+        primitivesMissingUv0: 0,
+        nonTrianglePrimitives: 0,
+      },
+      boneCount: 0,
+      clips: [],
+      gates: [{
+        code: "M2A-GLB-HIGH-POLY-INSPECTION-ONLY",
+        severity: "BLOCKING",
+        path: "inspectionMode",
+        expected: "product conversion",
+        actual: "UNSAFE_HIGH_POLY_INSPECTION_V1",
+        message: "local inspection only",
+      }],
+      diagnostics: [],
+      conversionEligible: false,
+    }));
+
+    expect(result.kind).toBe("READY");
+    if (result.kind !== "READY") throw new Error("expected READY");
+    expect(result.snapshot.statistics.triangleCount).toBe(1_997_064);
+    expect(result.snapshot.source.byteLength).toBe(77_030_884);
+    expect(result.snapshot.conversionEligible).toBe(false);
+    expect(result.snapshot.gates[0]?.severity).toBe("BLOCKING");
+  });
+
   it("projects the fatal error shape emitted by the same WASM boundary", () => {
     expect(projectSourceInspection(JSON.stringify({
       schemaVersion: 1,

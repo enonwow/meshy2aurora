@@ -38,6 +38,23 @@ afterEach(async () => {
 });
 
 describe("SourceStep", () => {
+  it("opens the supermodel library before conversion without applying a model", async () => {
+    const onOpenSupermodelLibrary = vi.fn();
+    const container = await render(
+      <SourceStep
+        {...handlers()}
+        onContinue={vi.fn()}
+        onOpenSupermodelLibrary={onOpenSupermodelLibrary}
+        supermodelCandidateResref="c_horror"
+      />,
+    );
+    expect(container.textContent).toContain("Kandydat: c_horror");
+    const open = [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.includes("Przeglądaj bibliotekę supermodeli"));
+    await act(async () => open?.click());
+    expect(onOpenSupermodelLibrary).toHaveBeenCalledOnce();
+  });
+
   it("hides Tile by default and exposes it only when explicitly enabled", async () => {
     const callbacks = { ...handlers(), onTargetChange: vi.fn() };
     const hidden = await render(
@@ -171,6 +188,28 @@ describe("SourceStep", () => {
     expect(onTextureArtifactCleanupChange).toHaveBeenCalledWith(true);
   });
 
+  it("exposes bounded high-poly inspection while keeping product export blocked", async () => {
+    const onChange = vi.fn();
+    const container = await render(
+      <SourceStep
+        {...handlers()}
+        onCreatureProfileChange={vi.fn()}
+        onUnsafeHighPolyInspectionChange={onChange}
+        onContinue={vi.fn()}
+      />,
+    );
+    const checkbox = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Unsafe high-poly inspection"]',
+    );
+
+    expect(checkbox).not.toBeNull();
+    expect(checkbox?.checked).toBe(false);
+    expect(container.textContent).toContain("Product export remains blocked above 300,000 triangles");
+    expect(container.textContent).toContain("may use substantial memory");
+    await act(async () => checkbox?.click());
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
   it("exposes an explicit Creature source-forward axis and reports changes", async () => {
     const onCreatureSourceForwardChange = vi.fn();
     const container = await render(
@@ -185,7 +224,7 @@ describe("SourceStep", () => {
       'select[aria-label="Model front in source GLB"]',
     );
     expect(selector?.value).toBe("POSITIVE_Z");
-    expect(container.textContent).toContain("Aurora/NWN forward (-Y)");
+    expect(container.textContent).toContain("Aurora/NWN forward (+Y)");
 
     await act(async () => {
       if (!selector) throw new Error("missing source-forward selector");
@@ -360,6 +399,24 @@ describe("InputsPanel", () => {
       .find((button) => button.getAttribute("aria-label") === "Remove Meshy GLB model");
     await act(async () => removeSource?.click());
     expect(callbacks.onRemoveSource).toHaveBeenCalledOnce();
+  });
+
+  it("mirrors the high-poly inspection checkbox in the compact panel", async () => {
+    const onChange = vi.fn();
+    const container = await render(
+      <InputsPanel
+        {...handlers()}
+        onCreatureProfileChange={vi.fn()}
+        onUnsafeHighPolyInspectionChange={onChange}
+      />,
+    );
+    const checkbox = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Unsafe high-poly inspection"]',
+    );
+
+    expect(checkbox?.checked).toBe(false);
+    await act(async () => checkbox?.click());
+    expect(onChange).toHaveBeenCalledWith(true);
   });
 });
 

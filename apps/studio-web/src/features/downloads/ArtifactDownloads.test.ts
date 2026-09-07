@@ -58,6 +58,16 @@ describe("canonical Worker downloads", () => {
     expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
   });
 
+  it("accepts an exact generated Item UTI blueprint", async () => {
+    await downloadWorkerArtifact({
+      ...validArtifact(),
+      artifactId: "item-blueprint",
+      kind: "ITEM_BLUEPRINT",
+      fileName: "m2a_item_001.uti",
+    });
+    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
+  });
+
   it("rejects byte corruption even when SHA-256 metadata has a valid shape", async () => {
     await expect(downloadWorkerArtifact({
       ...validArtifact(),

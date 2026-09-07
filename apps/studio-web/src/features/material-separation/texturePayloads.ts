@@ -66,6 +66,25 @@ export async function overrideModelTextureBindingV1(
   };
 }
 
+export function reuseModelTextureOverrideV1(
+  target: ModelTextureBindingAuthoringV1,
+  source: ModelTextureBindingAuthoringV1,
+): ModelTextureBindingAuthoringV1 {
+  if (source.mode !== "OVERRIDE" || !source.overrideAssetId || !source.overrideSha256
+    || !source.overrideMimeType || source.overrideByteLength === null) {
+    throw new Error("MODEL-TEXTURE-REUSE-SOURCE-INVALID: Select an uploaded override texture.");
+  }
+  return {
+    ...target,
+    mode: "OVERRIDE",
+    overrideAssetId: source.overrideAssetId,
+    overrideSha256: source.overrideSha256,
+    overrideMimeType: source.overrideMimeType,
+    overrideByteLength: source.overrideByteLength,
+    alphaPolicy: "OPAQUE_ONLY",
+  };
+}
+
 export async function prepareModelTexturePayloadsV1(
   snapshot: ModelTextureEditorSnapshotV1,
 ): Promise<PreparedModelTexturePayloadsV1> {

@@ -32,15 +32,18 @@ import {
 } from "./features/inspect/sourceInspection";
 import type { InspectValidationCheck } from "./features/inspect/ValidationPanel";
 import { AuroraReadbackViewport } from "./features/preview/AuroraReadbackViewport";
+import { AuroraExportViewport } from "./features/preview/AuroraExportViewport";
 import { SourceViewport } from "./features/preview/SourceViewport";
 import { MaterialSeparationEditor } from "./features/material-separation/MaterialSeparationEditor";
+import { creatureMaterialCapabilitiesV1 } from "./features/material-separation/creatureCapabilities";
 import {
   isCurrentModelMaterialResponseV1,
-  parseModelComponentInspectionV1,
-  parseModelMaterialResolutionV1,
-  type ModelComponentInspectionBootstrapV1,
-  type ModelMaterialResolutionV1,
-  type ModelMaterialSeparationDocumentV1,
+  materialBoxWorldUvProjectionDocumentV1,
+  parseModelFaceInspectionV2,
+  parseModelMaterialResolutionV2,
+  type ModelFaceInspectionBootstrapV2,
+  type ModelMaterialResolutionV2,
+  type ModelMaterialSeparationDocumentV2,
 } from "./features/material-separation/types";
 import {
   prepareModelTexturePayloadsV1,
@@ -74,6 +77,7 @@ import {
   projectCanonicalResult,
   type CanonicalResultSnapshot,
 } from "./features/results/projectCanonicalResult";
+import { projectReferenceSupermodelResultV1 } from "./features/results/projectReferenceSupermodelResult";
 import {
   projectPlaceableResult,
   type PlaceableResultSnapshot,
@@ -85,6 +89,7 @@ import {
 import { projectCanonicalReadback } from "./features/results/projectReadback";
 import {
   creatureArtifactIdentityTokenV2,
+  sha256ArrayBufferBase32PrefixV1,
   sha256ArrayBufferHexV1,
 } from "./features/results/creatureArtifactIdentity";
 import {
@@ -95,7 +100,23 @@ import {
   type TileAuthoringOptions,
 } from "./features/source/InputsPanel";
 import { SourceStep } from "./features/source/SourceStep";
+import { SupermodelLibrary } from "./features/supermodels/SupermodelLibrary";
+import {
+  type SupermodelCatalogSessionV1,
+} from "./features/supermodels/filesystem";
+import { loadExactReferenceSupermodelChainV2 } from "./features/supermodels/exactChain";
+import type { SupermodelCatalogEntryV1 } from "./features/supermodels/types";
+import type { AppliedSupermodelPreviewV2 } from "./features/supermodels/appliedPreview";
 import { parseSkinAccessoryComponentBoneOverridesV2 } from "./features/source/skinAccessoryOverrides";
+import {
+  defaultCreatureWeaponGripOptionsV1,
+  type CreatureWeaponGripOptionsV1,
+} from "./features/source/weaponGrip";
+import {
+  creatureDemoAuthoringV1,
+  creatureHeldWeaponOptionsV1,
+  type CreatureHeldWeaponModeV1,
+} from "./features/source/heldWeapon";
 import { hasFullNativeDirectCreatureProfileV1 } from "./features/source/directCreatureAnimationProfile";
 import { LocalMeshyBridgeClient, type MeshyArtifactProvenance, type MeshyBridgeClient } from "./features/meshy/bridge";
 import { isMeshyLabEnabled } from "./features/meshy/feature";
@@ -198,22 +219,28 @@ async function studioPlaceablePackageIdentity(
   authoringJson: string,
   textureAuthoringJson: string,
   experimentalAggressiveGeometryCleanup: boolean,
-  materialSeparationJson?: string,
+  materialProfile: "AURORA_CLASSIC_SAFE" | "NWN_EE_MTR",
+  materialSeparationJson: string,
   modelTextureAuthoringJson?: string,
+  materialUvProjectionJson?: string,
 ): Promise<StudioPlaceableIdentityV1> {
   const identityPayload = new TextEncoder().encode(JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     sourceSha256,
     placeablesTwoDaSha256,
     authoring: JSON.parse(authoringJson),
     textures: JSON.parse(textureAuthoringJson),
     experimentalAggressiveGeometryCleanup,
-    ...(materialSeparationJson && modelTextureAuthoringJson ? {
-      materialSeparation: JSON.parse(materialSeparationJson),
+    materialProfile,
+    materialSeparation: JSON.parse(materialSeparationJson),
+    ...(modelTextureAuthoringJson ? {
       modelTextures: JSON.parse(modelTextureAuthoringJson),
     } : {}),
+    ...(materialUvProjectionJson ? {
+      materialUvProjection: JSON.parse(materialUvProjectionJson),
+    } : {}),
   }));
-  const token = (await sha256ArrayBufferHexV1(identityPayload.buffer)).slice(0, 8);
+  const token = await sha256ArrayBufferBase32PrefixV1(identityPayload.buffer, 14);
   return {
     moduleResref: `pm${token}m`,
     moduleFileName: `pm${token}m.mod`,
@@ -238,6 +265,8 @@ async function studioCreatureProductIdentity(
   skinAccessoryStabilizationMode: SkinAccessoryStabilizationModeV1,
   skinAccessorySelectedBoneName: string,
   skinAccessoryComponentBoneOverrides: string,
+  weaponGrip: CreatureWeaponGripOptionsV1,
+  _heldWeaponMode: CreatureHeldWeaponModeV1,
   materialSeparationJson?: string,
   modelTextureAuthoringJson?: string,
 ) {
@@ -258,6 +287,10 @@ async function studioCreatureProductIdentity(
     skinAccessoryStabilizationMode,
     skinAccessorySelectedBoneName,
     skinAccessoryComponentBoneOverrides,
+    weaponGrip,
+    // Equipment and UTC gameplay authoring have a separate demo identity and
+    // must never force a binary MDL/HAK rebuild.
+    heldWeaponMode: "NONE",
     materialSeparationSha256,
     modelTextureAuthoringSha256,
   });
@@ -268,8 +301,19 @@ async function studioCreatureProductIdentity(
     appearanceLabel: `M2A_CREATURE_V3_${token.toUpperCase()}`,
   };
 }
-function studioCreatureProductDemoIdentity(product: Awaited<ReturnType<typeof studioCreatureProductIdentity>>) {
-  const token = product.modelResref.slice(2);
+async function studioCreatureProductDemoIdentity(
+  product: Awaited<ReturnType<typeof studioCreatureProductIdentity>>,
+  heldWeaponMode: CreatureHeldWeaponModeV1,
+) {
+  const demoAuthoring = creatureDemoAuthoringV1(heldWeaponMode);
+  const token = await sha256ArrayBufferBase32PrefixV1(
+    new TextEncoder().encode(JSON.stringify({
+      schemaVersion: 1,
+      product,
+      demoAuthoring,
+    })).buffer,
+    14,
+  );
   return {
     module: {
       moduleResref: `cd${token}`,
@@ -277,6 +321,7 @@ function studioCreatureProductDemoIdentity(product: Awaited<ReturnType<typeof st
       hakResref: product.hakResref,
     },
     creatureResref: `cc${token}`,
+    demoAuthoring,
   };
 }
 async function studioCreatureExperimentPackageIdentity(
@@ -288,6 +333,8 @@ async function studioCreatureExperimentPackageIdentity(
   skinAccessoryStabilizationMode: SkinAccessoryStabilizationModeV1,
   skinAccessorySelectedBoneName: string,
   skinAccessoryComponentBoneOverrides: string,
+  weaponGrip: CreatureWeaponGripOptionsV1,
+  heldWeaponMode: CreatureHeldWeaponModeV1,
 ) {
   const token = await creatureArtifactIdentityTokenV2({
     profile,
@@ -299,6 +346,8 @@ async function studioCreatureExperimentPackageIdentity(
     skinAccessoryStabilizationMode,
     skinAccessorySelectedBoneName,
     skinAccessoryComponentBoneOverrides,
+    weaponGrip,
+    heldWeaponMode,
   });
   return {
     modelResref: `pm${token}`,
@@ -309,6 +358,10 @@ async function studioCreatureExperimentPackageIdentity(
       hakResref: `ph${token}`,
     },
     creatureResref: `pc${token}`,
+    heldWeapon: creatureHeldWeaponOptionsV1(
+      heldWeaponMode,
+      heldWeaponMode === "NONE" ? undefined : `pi${token}`,
+    ),
   };
 }
 const STUDIO_PLACEABLE_PLACEMENT = { x: 10, y: 14.5, z: 0, bearing: 0 } as const;
@@ -440,17 +493,24 @@ export function App({
   const [tileOptions, setTileOptions] = useState<TileAuthoringOptions>(DEFAULT_TILE_OPTIONS);
   const [creatureProfile, setCreatureProfile] =
     useState<CreatureConversionProfileV1>("PRODUCT_300K");
+  const [unsafeHighPolyInspection, setUnsafeHighPolyInspection] = useState(false);
   const [creatureSourceForward, setCreatureSourceForward] =
     useState<CreatureSourceForwardV1>("POSITIVE_Z");
   const [textureArtifactCleanup, setTextureArtifactCleanup] = useState(false);
   const [experimentalAggressiveGeometryCleanup, setExperimentalAggressiveGeometryCleanup] =
     useState(false);
+  const [placeableMaterialProfile, setPlaceableMaterialProfile] =
+    useState<"AURORA_CLASSIC_SAFE" | "NWN_EE_MTR">("NWN_EE_MTR");
   const [skinAccessoryStabilizationMode, setSkinAccessoryStabilizationMode] =
     useState<SkinAccessoryStabilizationModeV1>("AUTO");
   const [skinAccessorySelectedBoneName, setSkinAccessorySelectedBoneName] =
     useState("");
   const [skinAccessoryComponentBoneOverrides, setSkinAccessoryComponentBoneOverrides] =
     useState("");
+  const [creatureWeaponGrip, setCreatureWeaponGrip] =
+    useState<CreatureWeaponGripOptionsV1>(() => defaultCreatureWeaponGripOptionsV1());
+  const [creatureHeldWeaponMode, setCreatureHeldWeaponMode] =
+    useState<CreatureHeldWeaponModeV1>("NONE");
   const [placeableAuthoring, setPlaceableAuthoring] = useState<PlaceableAuthoringBootstrap>();
   const [placeableCollision, setPlaceableCollision] = useState<ResolvedPlaceableCollision>();
   const [placeableTextureBootstrap, setPlaceableTextureBootstrap] =
@@ -460,24 +520,36 @@ export function App({
   const [placeableResolvedTextures, setPlaceableResolvedTextures] =
     useState<ResolvedPlaceableTextures>();
   const [materialSeparationBootstrap, setMaterialSeparationBootstrap] =
-    useState<ModelComponentInspectionBootstrapV1>();
+    useState<ModelFaceInspectionBootstrapV2>();
   const [materialSeparationDocument, setMaterialSeparationDocument] =
-    useState<ModelMaterialSeparationDocumentV1>();
+    useState<ModelMaterialSeparationDocumentV2>();
   const [materialSeparationPreviewDocument, setMaterialSeparationPreviewDocument] =
-    useState<ModelMaterialSeparationDocumentV1>();
+    useState<ModelMaterialSeparationDocumentV2>();
   const [materialSeparationResolution, setMaterialSeparationResolution] =
-    useState<ModelMaterialResolutionV1>();
+    useState<ModelMaterialResolutionV2>();
   const [materialSeparationResolvedRecipeJson, setMaterialSeparationResolvedRecipeJson] =
     useState<string>();
+  const [materialUvProjectionMaterialIds, setMaterialUvProjectionMaterialIds] =
+    useState<readonly string[]>([]);
+  const [materialUvProjectionRepeatsPerMetre, setMaterialUvProjectionRepeatsPerMetre] =
+    useState<Readonly<Record<string, number>>>({});
   const [modelTextureSnapshot, setModelTextureSnapshot] =
     useState<ModelTextureEditorSnapshotV1>();
   const placeableAuthoringRef = useRef<PlaceableAuthoringBootstrap | undefined>(undefined);
   const placeableTextureSnapshotRef = useRef<PlaceableTextureEditorSnapshot | undefined>(undefined);
   const modelTextureSnapshotRef = useRef<ModelTextureEditorSnapshotV1 | undefined>(undefined);
+  const buildEpochRef = useRef(0);
   const [reviewViewport, setReviewViewport] = useState<ReviewViewport>("CONVERTED");
   const [selectedReadbackPart, setSelectedReadbackPart] = useState<ModelPartRef>();
   const [debugDrawerMessage, setDebugDrawerMessage] = useState<string>();
   const [showMeshyLab, setShowMeshyLab] = useState(false);
+  const [showSupermodelLibrary, setShowSupermodelLibrary] = useState(false);
+  const [supermodelCatalogSession, setSupermodelCatalogSession] =
+    useState<SupermodelCatalogSessionV1>();
+  const [supermodelCandidate, setSupermodelCandidate] =
+    useState<SupermodelCatalogEntryV1>();
+  const [appliedSupermodelPreview, setAppliedSupermodelPreview] =
+    useState<AppliedSupermodelPreviewV2>();
   const [meshyProvenance, setMeshyProvenance] = useState<MeshyArtifactProvenance>();
   const [recoveredArtifacts, setRecoveredArtifacts] = useState<WorkerArtifact[]>([]);
   const meshyBridgeRef = useRef<MeshyBridgeClient | undefined>(undefined);
@@ -489,24 +561,46 @@ export function App({
   placeableTextureSnapshotRef.current = placeableTextureSnapshot;
   modelTextureSnapshotRef.current = modelTextureSnapshot;
 
+  const creatureMaterialCapabilities = creatureMaterialCapabilitiesV1(creatureProfile);
+  const materialSeparationSupported = session.target !== "CREATURE"
+    || (
+      creatureMaterialCapabilities.materialSeparationSupported
+      && !unsafeHighPolyInspection
+    );
+  const invalidateBuildEpoch = useCallback(() => {
+    buildEpochRef.current += 1;
+  }, []);
+
+  const updateAppliedSupermodelPreview = useCallback((preview: AppliedSupermodelPreviewV2) => {
+    if (appliedSupermodelPreview?.rigAuthoring.contentSha256 !== preview.rigAuthoring.contentSha256) {
+      invalidateBuildEpoch();
+      dispatch({ type: "AUTHORING_DOCUMENT_CHANGED" });
+    }
+    setAppliedSupermodelPreview(preview);
+  }, [appliedSupermodelPreview?.rigAuthoring.contentSha256, invalidateBuildEpoch]);
+
   const updatePlaceableTextureSnapshot = useCallback((snapshot: PlaceableTextureEditorSnapshot) => {
     const previous = placeableTextureSnapshotRef.current;
     const recipeChanged = JSON.stringify(previous?.document) !== JSON.stringify(snapshot.document);
     placeableTextureSnapshotRef.current = snapshot;
     setPlaceableTextureSnapshot(snapshot);
     if (recipeChanged) {
+      invalidateBuildEpoch();
       setPlaceableResolvedTextures(undefined);
       dispatch({ type: "AUTHORING_DOCUMENT_CHANGED" });
     }
-  }, []);
+  }, [invalidateBuildEpoch]);
 
   const updateModelTextureSnapshot = useCallback((snapshot: ModelTextureEditorSnapshotV1) => {
     const previous = modelTextureSnapshotRef.current;
     const changed = JSON.stringify(previous?.document) !== JSON.stringify(snapshot.document);
     modelTextureSnapshotRef.current = snapshot;
     setModelTextureSnapshot(snapshot);
-    if (changed && previous) dispatch({ type: "AUTHORING_DOCUMENT_CHANGED" });
-  }, []);
+    if (changed && previous) {
+      invalidateBuildEpoch();
+      dispatch({ type: "AUTHORING_DOCUMENT_CHANGED" });
+    }
+  }, [invalidateBuildEpoch]);
 
   useEffect(() => {
     const worker = new StudioWorkerClient();
@@ -535,6 +629,7 @@ export function App({
   };
 
   const invalidateRunningBuild = () => {
+    invalidateBuildEpoch();
     if (sessionRef.current.build.kind !== "RUNNING") return;
     replaceWorker();
     setReviewViewport("CONVERTED");
@@ -564,6 +659,8 @@ export function App({
           sourceGlb,
           target: session.target,
           creatureProfile: session.target === "CREATURE" ? creatureProfile : undefined,
+          unsafeHighPolyInspection:
+            session.target === "CREATURE" ? unsafeHighPolyInspection : undefined,
           experimentalAggressiveGeometryCleanup:
             session.target === "PLACEABLE" ? experimentalAggressiveGeometryCleanup : undefined,
           modelResref: session.target === "PLACEABLE"
@@ -640,17 +737,25 @@ export function App({
     session.revision,
     session.target,
     sourceFile,
+    unsafeHighPolyInspection,
   ]);
 
   useEffect(() => {
     const sourceSha256 = session.source?.sha256;
-    if (!sourceFile || !sourceSha256) {
+    if (
+      !sourceFile
+      || !sourceSha256
+      || !materialSeparationSupported
+      || session.sourceInspection?.value.conversionEligible !== true
+    ) {
       setMaterialSeparationBootstrap(undefined);
       setMaterialSeparationDocument(undefined);
       setMaterialSeparationPreviewDocument(undefined);
       setMaterialSeparationResolution(undefined);
       setMaterialSeparationResolvedRecipeJson(undefined);
       setModelTextureSnapshot(undefined);
+      setMaterialUvProjectionMaterialIds([]);
+      setMaterialUvProjectionRepeatsPerMetre({});
       return;
     }
     const worker = workerRef.current;
@@ -661,6 +766,8 @@ export function App({
     setMaterialSeparationResolution(undefined);
     setMaterialSeparationResolvedRecipeJson(undefined);
     setModelTextureSnapshot(undefined);
+    setMaterialUvProjectionMaterialIds([]);
+    setMaterialUvProjectionRepeatsPerMetre({});
     void sourceFile.arrayBuffer()
       .then((sourceGlb) => worker.request({
         requestId: requestId(),
@@ -674,7 +781,7 @@ export function App({
         if (response.sourceStateId !== sourceStateId
           || sessionRef.current.source?.sha256 !== sourceSha256
           || sessionRef.current.target !== session.target) return;
-        const bootstrap = parseModelComponentInspectionV1(response.inspectionJson);
+        const bootstrap = parseModelFaceInspectionV2(response.inspectionJson);
         setMaterialSeparationBootstrap(bootstrap);
         setMaterialSeparationDocument(bootstrap.document);
         setMaterialSeparationPreviewDocument(bootstrap.document);
@@ -684,11 +791,22 @@ export function App({
         if (!cancelled) setSourceError(error instanceof Error ? error.message : String(error));
       });
     return () => { cancelled = true; };
-  }, [session.source?.sha256, session.target, sourceFile]);
+  }, [
+    materialSeparationSupported,
+    session.source?.sha256,
+    session.sourceInspection?.value.conversionEligible,
+    session.target,
+    sourceFile,
+  ]);
 
   useEffect(() => {
     const sourceSha256 = session.source?.sha256;
-    if (!sourceFile || !sourceSha256 || !materialSeparationPreviewDocument) {
+    if (
+      !sourceFile
+      || !sourceSha256
+      || !materialSeparationSupported
+      || !materialSeparationPreviewDocument
+    ) {
       setMaterialSeparationResolution(undefined);
       return;
     }
@@ -721,7 +839,7 @@ export function App({
             currentTarget: sessionRef.current.target,
             expectedTarget: session.target,
           })) return;
-          setMaterialSeparationResolution(parseModelMaterialResolutionV1(response.resolutionJson));
+          setMaterialSeparationResolution(parseModelMaterialResolutionV2(response.resolutionJson));
           setMaterialSeparationResolvedRecipeJson(documentJson);
           setSourceError(undefined);
         })
@@ -733,7 +851,13 @@ export function App({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [materialSeparationPreviewDocument, session.source?.sha256, session.target, sourceFile]);
+  }, [
+    materialSeparationPreviewDocument,
+    materialSeparationSupported,
+    session.source?.sha256,
+    session.target,
+    sourceFile,
+  ]);
 
   useEffect(() => {
     if (!sourceFile || session.target !== "PLACEABLE" || !placeableAuthoring) {
@@ -780,6 +904,7 @@ export function App({
       || session.target !== "PLACEABLE"
       || !placeableAuthoring
       || !placeableTextureSnapshot
+      || !materialSeparationDocument
       || !placeablesSha256
       || !sourceSha256
     ) {
@@ -801,6 +926,8 @@ export function App({
           JSON.stringify(placeableAuthoring.document),
           recipeJson,
           experimentalAggressiveGeometryCleanup,
+          placeableMaterialProfile,
+          JSON.stringify(materialSeparationDocument),
         ),
       ])
         .then(([sourceGlb, prepared, identity]) => worker.request({
@@ -830,7 +957,9 @@ export function App({
     };
   }, [
     experimentalAggressiveGeometryCleanup,
+    materialSeparationDocument,
     placeableAuthoring,
+    placeableMaterialProfile,
     placeableTextureSnapshot?.document,
     placeableTextureSnapshot?.files,
     session.appearanceInspection,
@@ -908,6 +1037,7 @@ export function App({
     setPlaceableTextureBootstrap(undefined);
     setPlaceableTextureSnapshot(undefined);
     setPlaceableResolvedTextures(undefined);
+    setAppliedSupermodelPreview(undefined);
     setMeshyProvenance(provenance);
     dispatch({ type: "SOURCE_SELECTED", file });
   };
@@ -921,20 +1051,46 @@ export function App({
     setPlaceableTextureBootstrap(undefined);
     setPlaceableTextureSnapshot(undefined);
     setPlaceableResolvedTextures(undefined);
+    if (target !== "CREATURE") setAppliedSupermodelPreview(undefined);
     if (target !== "CREATURE") setCreatureProfile("PRODUCT_300K");
+    if (target !== "CREATURE") setUnsafeHighPolyInspection(false);
     dispatch({ type: "TARGET_SELECTED", target });
   };
 
   const updateCreatureProfile = (profile: CreatureConversionProfileV1) => {
     invalidateRunningBuild();
     setCreatureProfile(profile);
+    if (profile !== "PRODUCT_300K") setUnsafeHighPolyInspection(false);
+    if (!creatureMaterialCapabilitiesV1(profile).materialSeparationSupported) {
+      setMaterialSeparationBootstrap(undefined);
+      setMaterialSeparationDocument(undefined);
+      setMaterialSeparationPreviewDocument(undefined);
+      setMaterialSeparationResolution(undefined);
+      setMaterialSeparationResolvedRecipeJson(undefined);
+      modelTextureSnapshotRef.current = undefined;
+      setModelTextureSnapshot(undefined);
+    }
     setAnimationEventsError(undefined);
+    dispatch({ type: "AUTHORING_OPTIONS_CHANGED" });
+  };
+
+  const updateUnsafeHighPolyInspection = (enabled: boolean) => {
+    invalidateRunningBuild();
+    setUnsafeHighPolyInspection(enabled);
+    setMaterialSeparationBootstrap(undefined);
+    setMaterialSeparationDocument(undefined);
+    setMaterialSeparationPreviewDocument(undefined);
+    setMaterialSeparationResolution(undefined);
+    setMaterialSeparationResolvedRecipeJson(undefined);
+    modelTextureSnapshotRef.current = undefined;
+    setModelTextureSnapshot(undefined);
     dispatch({ type: "AUTHORING_OPTIONS_CHANGED" });
   };
 
   const updateCreatureSourceForward = (sourceForward: CreatureSourceForwardV1) => {
     invalidateRunningBuild();
     setCreatureSourceForward(sourceForward);
+    setAppliedSupermodelPreview(undefined);
     dispatch({ type: "AUTHORING_OPTIONS_CHANGED" });
   };
 
@@ -954,6 +1110,28 @@ export function App({
     dispatch({ type: "AUTHORING_OPTIONS_CHANGED" });
   };
 
+  const updatePlaceableMaterialProfile = (
+    profile: "AURORA_CLASSIC_SAFE" | "NWN_EE_MTR",
+  ) => {
+    invalidateRunningBuild();
+    setPlaceableMaterialProfile(profile);
+    dispatch({ type: "AUTHORING_DOCUMENT_CHANGED" });
+  };
+
+  const updateMaterialUvProjectionMaterialIds = (ids: readonly string[]) => {
+    invalidateRunningBuild();
+    setMaterialUvProjectionMaterialIds(ids);
+    dispatch({ type: "AUTHORING_DOCUMENT_CHANGED" });
+  };
+
+  const updateMaterialUvProjectionRepeatsPerMetre = (
+    values: Readonly<Record<string, number>>,
+  ) => {
+    invalidateRunningBuild();
+    setMaterialUvProjectionRepeatsPerMetre(values);
+    dispatch({ type: "AUTHORING_DOCUMENT_CHANGED" });
+  };
+
   const updateSkinAccessoryStabilizationMode = (
     mode: SkinAccessoryStabilizationModeV1,
   ) => {
@@ -970,6 +1148,18 @@ export function App({
   const updateSkinAccessoryComponentBoneOverrides = (overrides: string) => {
     invalidateRunningBuild();
     setSkinAccessoryComponentBoneOverrides(overrides);
+    dispatch({ type: "AUTHORING_OPTIONS_CHANGED" });
+  };
+
+  const updateCreatureWeaponGrip = (weaponGrip: CreatureWeaponGripOptionsV1) => {
+    invalidateRunningBuild();
+    setCreatureWeaponGrip(weaponGrip);
+    dispatch({ type: "AUTHORING_OPTIONS_CHANGED" });
+  };
+
+  const updateCreatureHeldWeaponMode = (mode: CreatureHeldWeaponModeV1) => {
+    invalidateRunningBuild();
+    setCreatureHeldWeaponMode(mode);
     dispatch({ type: "AUTHORING_OPTIONS_CHANGED" });
   };
 
@@ -1012,6 +1202,7 @@ export function App({
     setPlaceableTextureBootstrap(undefined);
     setPlaceableTextureSnapshot(undefined);
     setPlaceableResolvedTextures(undefined);
+    setAppliedSupermodelPreview(undefined);
     dispatch({ type: "SOURCE_REMOVED" });
   };
 
@@ -1035,24 +1226,35 @@ export function App({
     setAnimationEventsError(undefined);
     setSelectedReadbackPart(undefined);
     setDebugDrawerMessage(undefined);
+    setAppliedSupermodelPreview(undefined);
     setTileOptions(DEFAULT_TILE_OPTIONS);
     setCreatureProfile("PRODUCT_300K");
+    setUnsafeHighPolyInspection(false);
     setCreatureSourceForward("POSITIVE_Z");
     setTextureArtifactCleanup(false);
     setExperimentalAggressiveGeometryCleanup(false);
     setSkinAccessoryStabilizationMode("AUTO");
     setSkinAccessorySelectedBoneName("");
     setSkinAccessoryComponentBoneOverrides("");
+    setCreatureHeldWeaponMode("NONE");
     setPlaceableAuthoring(undefined);
     setPlaceableTextureBootstrap(undefined);
     setPlaceableTextureSnapshot(undefined);
     setPlaceableResolvedTextures(undefined);
+    setMaterialUvProjectionMaterialIds([]);
+    setMaterialUvProjectionRepeatsPerMetre({});
     dispatch({ type: "START_NEW_CONVERSION" });
   };
 
   const startBuild = async () => {
     const current = sessionRef.current;
     const worker = workerRef.current;
+    if (unsafeHighPolyInspection) {
+      setDebugDrawerMessage(
+        "M2A-GLB-HIGH-POLY-INSPECTION-ONLY: Disable unsafe high-poly inspection and reduce the source to 300,000 triangles or fewer before build.",
+      );
+      return;
+    }
     if (
       !worker
       || current.currentStep !== "BUILD"
@@ -1069,8 +1271,55 @@ export function App({
       )
     ) return;
 
+    const appliedReference = current.target === "CREATURE"
+      && appliedSupermodelPreview?.sourceSha256 === current.sourceInspection.value.source.sha256
+      ? appliedSupermodelPreview
+      : undefined;
+    let referenceChainForBuild: Awaited<ReturnType<typeof loadExactReferenceSupermodelChainV2>> | undefined;
+    let referenceAppearanceDonorResrefs: string[] = [];
+    if (appliedReference) {
+      if (
+        appliedReference.report.admissionV3?.status !== "PASS"
+        || !appliedReference.report.motionCompatible
+        || !appliedReference.report.fullCarrierCoverage
+        || !appliedReference.report.requiredJointCoverage
+        || !appliedReference.report.skinInfluenceCoverage
+        || !appliedReference.report.inheritedClipCoverage
+        || !appliedReference.report.visibleMotionCoverage
+        || appliedReference.report.seamViolationCount !== 0
+        || appliedReference.report.motionQualityStatus !== "PASS"
+        || appliedReference.report.runtimeReadiness !== "RUNTIME_UNPROVEN"
+      ) {
+        setDebugDrawerMessage(
+          `${appliedReference.report.admissionV3?.blockingCodes[0] ?? "BLOCKED_CENTRAL_ADMISSION_MISSING"}: ${appliedReference.supermodelResref} jest diagnostycznym podglądem i nie może wejść do eksportu.`,
+        );
+        return;
+      }
+      const catalogEntry = supermodelCatalogSession?.catalog.entries.find(
+        (entry) => entry.resref.toLocaleLowerCase() === appliedReference.supermodelResref.toLocaleLowerCase(),
+      );
+      if (!supermodelCatalogSession || !catalogEntry) {
+        setDebugDrawerMessage("BLOCKED_EXACT_CHAIN_UNVERIFIED: ponownie połącz dokładny lokalny łańcuch MDL supermodelu.");
+        return;
+      }
+      try {
+        referenceChainForBuild = await loadExactReferenceSupermodelChainV2(
+          supermodelCatalogSession,
+          appliedReference.supermodelResref,
+          appliedReference.report.exactChain,
+        );
+        referenceAppearanceDonorResrefs = [catalogEntry.resref, ...catalogEntry.children];
+      } catch (error) {
+        setDebugDrawerMessage(error instanceof Error ? error.message : String(error));
+        return;
+      }
+    }
+
     const buildRequestId = requestId();
     const buildRevision = current.revision;
+    const buildAuthoringRevision = current.authoringRevision;
+    const buildEpoch = buildEpochRef.current + 1;
+    buildEpochRef.current = buildEpoch;
     const source = current.source.file;
     const appearance = current.appearance?.file;
     const animationEvents = current.animationEvents?.file;
@@ -1081,8 +1330,38 @@ export function App({
       : undefined;
     const materialSeparationActive = Boolean(
       materialSeparationDocument
-      && (materialSeparationDocument.materials.length || materialSeparationDocument.assignments.length),
+      && (materialSeparationDocument.materials.length
+        || materialSeparationDocument.componentAssignments.length
+        || materialSeparationDocument.faceAssignments.length),
     );
+    if (
+      current.target === "CREATURE"
+      && materialSeparationActive
+      && !creatureMaterialCapabilitiesV1(creatureProfile).materialSeparationSupported
+    ) {
+      setDebugDrawerMessage(
+        "CREATURE-MATERIALS-PROFILE-UNSUPPORTED: Material Separation is available only in the Product 300K profile.",
+      );
+      return;
+    }
+    const materialUvProjection = placeableLane
+      && materialSeparationActive
+      && materialSeparationResolution
+      && materialSeparationResolvedRecipeJson === materialSeparationJson
+      ? materialBoxWorldUvProjectionDocumentV1(
+          current.sourceInspection.value.source.sha256,
+          materialSeparationResolution.textureAuthoring.separationSha256,
+          materialUvProjectionMaterialIds.filter((id) => (
+            materialSeparationDocument?.materials.some(
+              (material) => material.authoredMaterialId === id,
+            )
+          )),
+          materialUvProjectionRepeatsPerMetre,
+        )
+      : undefined;
+    const materialUvProjectionJson = materialUvProjection
+      ? JSON.stringify(materialUvProjection)
+      : undefined;
     let modelTextureAuthoringJson = materialSeparationActive
       && materialSeparationResolution
       && materialSeparationResolvedRecipeJson === materialSeparationJson
@@ -1171,6 +1450,7 @@ export function App({
     let productDemoIdentity = {
       module: { moduleResref: "", areaResref: "", hakResref: "" },
       creatureResref: "",
+      demoAuthoring: creatureDemoAuthoringV1("NONE"),
     };
     let placeableIdentity: StudioPlaceableIdentityV1 = STUDIO_PLACEABLE_IDENTITY;
     let preparedPlaceableTextures: PreparedPlaceableTexturePayloads | undefined;
@@ -1216,11 +1496,14 @@ export function App({
             skinAccessoryStabilizationMode,
             skinAccessorySelectedBoneName,
             skinAccessoryComponentBoneOverrides,
+            creatureWeaponGrip,
+            creatureHeldWeaponMode,
           );
           creatureIdentityJson = JSON.stringify(identity);
           productDemoIdentity = {
             module: identity.module,
             creatureResref: identity.creatureResref,
+            demoAuthoring: creatureDemoAuthoringV1(creatureHeldWeaponMode),
           };
         } else {
           const identity = await studioCreatureProductIdentity(
@@ -1232,11 +1515,16 @@ export function App({
             skinAccessoryStabilizationMode,
             skinAccessorySelectedBoneName,
             skinAccessoryComponentBoneOverrides,
+            creatureWeaponGrip,
+            creatureHeldWeaponMode,
             materialSeparationActive ? materialSeparationJson : undefined,
             materialSeparationActive ? modelTextureAuthoringJson : undefined,
           );
           creatureIdentityJson = JSON.stringify(identity);
-          productDemoIdentity = studioCreatureProductDemoIdentity(identity);
+          productDemoIdentity = await studioCreatureProductDemoIdentity(
+            identity,
+            creatureHeldWeaponMode,
+          );
         }
       } catch (error) {
         setDebugDrawerMessage(error instanceof Error ? error.message : String(error));
@@ -1246,7 +1534,7 @@ export function App({
     if (placeableLane) {
       const snapshot = placeableTextureSnapshotRef.current;
       const placeablesSha256 = current.appearanceInspection?.value.sourceSha256;
-      if (!snapshot || !placeablesSha256 || !placeableAuthoringJson) {
+      if (!snapshot || !placeablesSha256 || !placeableAuthoringJson || !materialSeparationJson) {
         setDebugDrawerMessage("PLACEABLE-TEXTURE-IDENTITY-INPUT-MISSING");
         return;
       }
@@ -1258,8 +1546,10 @@ export function App({
           placeableAuthoringJson,
           preparedPlaceableTextures.authoringJson,
           experimentalAggressiveGeometryCleanup,
-          materialSeparationActive ? materialSeparationJson : undefined,
+          placeableMaterialProfile,
+          materialSeparationJson,
           modelTextureAuthoringJson,
+          materialUvProjectionJson,
         );
       } catch (error) {
         setDebugDrawerMessage(error instanceof Error ? error.message : String(error));
@@ -1270,6 +1560,8 @@ export function App({
     if (
       workerRef.current !== worker
       || currentAfterIdentity.revision !== buildRevision
+      || currentAfterIdentity.authoringRevision !== buildAuthoringRevision
+      || buildEpochRef.current !== buildEpoch
       || currentAfterIdentity.currentStep !== "BUILD"
       || currentAfterIdentity.source?.file !== source
       || currentAfterIdentity.appearance?.file !== appearance
@@ -1285,7 +1577,11 @@ export function App({
       appearance?.arrayBuffer(),
     ])
       .then(([sourceGlb, appearanceTwoDa]) => {
-        if (workerRef.current !== worker) return undefined;
+        if (
+          workerRef.current !== worker
+          || sessionRef.current.authoringRevision !== buildAuthoringRevision
+          || buildEpochRef.current !== buildEpoch
+        ) return undefined;
         const modelTexturePayloadBlob = preparedModelTextures?.payloadBlob ?? new ArrayBuffer(0);
         const modelTexturePayloadDescriptorsJson = preparedModelTextures?.descriptorsJson ?? "[]";
         if (tileLane) {
@@ -1312,6 +1608,38 @@ export function App({
           );
         }
         if (!appearanceTwoDa) throw new Error("The selected conversion target requires a base 2DA");
+        if (appliedReference && referenceChainForBuild) {
+          const baseIdentity = JSON.parse(creatureIdentityJson) as {
+            modelResref: string;
+            textureResref: string;
+            hakResref: string;
+            appearanceLabel: string;
+          };
+          const referenceIdentityJson = JSON.stringify({
+            ...baseIdentity,
+            materialResref: `cr${baseIdentity.modelResref.slice(2)}`,
+            appearanceDonorResrefs: referenceAppearanceDonorResrefs,
+            semanticControllerNames: [],
+          });
+          return worker.request(
+            {
+              requestId: buildRequestId,
+              type: "BUILD_MODEL_PACKAGE",
+              sourceGlb,
+              appearanceTwoDa,
+              packageLane: "REFERENCE_SUPERMODEL_CREATURE",
+              selectedSupermodelResref: appliedReference.supermodelResref,
+              referenceChainBlob: referenceChainForBuild.blob,
+              referenceChainJson: referenceChainForBuild.descriptorsJson,
+              identityJson: referenceIdentityJson,
+              sourceForward: creatureSourceForward,
+              rigAuthoringJson: JSON.stringify(appliedReference.rigAuthoring),
+              experimentalAllowExcessiveSkinBranchRepair:
+                appliedReference.experimentalAllowExcessiveSkinBranchRepair,
+            },
+            [sourceGlb, appearanceTwoDa, referenceChainForBuild.blob],
+          );
+        }
         return placeableLane
           ? (() => {
               return worker.request(
@@ -1327,8 +1655,10 @@ export function App({
                 textureAuthoringJson: preparedPlaceableTextures?.authoringJson,
                 texturePayloadBlob: preparedPlaceableTextures?.payloadBlob,
                 texturePayloadDescriptorsJson: preparedPlaceableTextures?.descriptorsJson,
-                ...(materialSeparationActive && materialSeparationJson && modelTextureAuthoringJson ? {
-                  materialSeparationJson,
+                materialSeparationJson: materialSeparationJson!,
+                ...(materialUvProjectionJson ? { materialUvProjectionJson } : {}),
+                materialProfile: placeableMaterialProfile,
+                ...(modelTextureAuthoringJson ? {
                   modelTextureAuthoringJson,
                   modelTexturePayloadBlob,
                   modelTexturePayloadDescriptorsJson,
@@ -1355,6 +1685,7 @@ export function App({
                   identityJson: creatureIdentityJson,
                   demoModuleIdentityJson: JSON.stringify(productDemoIdentity.module),
                   demoCreatureResref: productDemoIdentity.creatureResref,
+                  demoAuthoring: productDemoIdentity.demoAuthoring,
                   textureArtifactCleanup,
                   sourceForward: creatureSourceForward,
                   skinAccessoryStabilization: {
@@ -1371,6 +1702,7 @@ export function App({
                         }
                       : {}),
                   },
+                  weaponGrip: creatureWeaponGrip,
                   ...(materialSeparationActive && materialSeparationJson && modelTextureAuthoringJson ? {
                     materialSeparationJson,
                     modelTextureAuthoringJson,
@@ -1395,6 +1727,7 @@ export function App({
                     identityJson: creatureIdentityJson,
                     demoModuleIdentityJson: JSON.stringify(productDemoIdentity.module),
                     demoCreatureResref: productDemoIdentity.creatureResref,
+                    demoAuthoring: productDemoIdentity.demoAuthoring,
                     textureArtifactCleanup,
                     sourceForward: creatureSourceForward,
                     skinAccessoryStabilization: {
@@ -1411,6 +1744,7 @@ export function App({
                           }
                         : {}),
                     },
+                    weaponGrip: creatureWeaponGrip,
                     ...(materialSeparationActive && materialSeparationJson && modelTextureAuthoringJson ? {
                       materialSeparationJson,
                       modelTextureAuthoringJson,
@@ -1437,6 +1771,7 @@ export function App({
                     identityJson: creatureIdentityJson,
                     demoModuleIdentityJson: JSON.stringify(productDemoIdentity.module),
                     demoCreatureResref: productDemoIdentity.creatureResref,
+                    demoAuthoring: productDemoIdentity.demoAuthoring,
                     textureArtifactCleanup,
                     sourceForward: creatureSourceForward,
                     skinAccessoryStabilization: {
@@ -1453,6 +1788,7 @@ export function App({
                           }
                         : {}),
                     },
+                    weaponGrip: creatureWeaponGrip,
                     ...(packageLane === "SKINNED_PROCEDURAL_HUMANOID_42"
                       && materialSeparationActive
                       && materialSeparationJson
@@ -1487,6 +1823,8 @@ export function App({
         const currentBuild = sessionRef.current.build;
         if (
           sessionRef.current.revision !== buildRevision
+          || sessionRef.current.authoringRevision !== buildAuthoringRevision
+          || buildEpochRef.current !== buildEpoch
           || currentBuild.kind !== "RUNNING"
           || currentBuild.requestId !== buildRequestId
           || currentBuild.revision !== buildRevision
@@ -1514,7 +1852,11 @@ export function App({
         const result: StudioBuildResult = response.type === "PLACEABLE_PACKAGE_BUILT"
           ? {
               kind: "PLACEABLE",
-              placeable: projectPlaceableResult(response.reportJson, response.artifacts),
+              placeable: projectPlaceableResult(
+                response.reportJson,
+                response.readbackJson,
+                response.artifacts,
+              ),
               readback,
               readbackJson: response.readbackJson,
             }
@@ -1533,13 +1875,20 @@ export function App({
           : response.type === "MODEL_PACKAGE_BUILT"
             ? {
                 kind: "MODEL",
-                canonical: projectCanonicalResult(
-                  response.reportJson,
-                  response.summaryJson,
-                  response.manifestJson,
-                  response.artifacts,
-                  response.demoReportJson,
-                ),
+                canonical: response.resultKind === "REFERENCE_SUPERMODEL"
+                  ? projectReferenceSupermodelResultV1(
+                      response.reportJson,
+                      response.summaryJson,
+                      response.manifestJson,
+                      response.artifacts,
+                    )
+                  : projectCanonicalResult(
+                      response.reportJson,
+                      response.summaryJson,
+                      response.manifestJson,
+                      response.artifacts,
+                      response.demoReportJson,
+                    ),
                 readback,
                 readbackJson: response.readbackJson,
               }
@@ -1556,6 +1905,8 @@ export function App({
         const currentBuild = sessionRef.current.build;
         if (
           sessionRef.current.revision !== buildRevision
+          || sessionRef.current.authoringRevision !== buildAuthoringRevision
+          || buildEpochRef.current !== buildEpoch
           || currentBuild.kind !== "RUNNING"
           || currentBuild.requestId !== buildRequestId
           || currentBuild.revision !== buildRevision
@@ -1578,6 +1929,7 @@ export function App({
       requestId: current.build.requestId,
       revision: current.build.revision,
     });
+    invalidateBuildEpoch();
     replaceWorker();
   };
 
@@ -1656,12 +2008,15 @@ export function App({
       tileTargetEnabled={tileTargetEnabled}
       tileOptions={tileOptions}
       creatureProfile={creatureProfile}
+      unsafeHighPolyInspection={unsafeHighPolyInspection}
       creatureSourceForward={creatureSourceForward}
       textureArtifactCleanup={textureArtifactCleanup}
       experimentalAggressiveGeometryCleanup={experimentalAggressiveGeometryCleanup}
       skinAccessoryStabilizationMode={skinAccessoryStabilizationMode}
       skinAccessorySelectedBoneName={skinAccessorySelectedBoneName}
       skinAccessoryComponentBoneOverrides={skinAccessoryComponentBoneOverrides}
+      creatureWeaponGrip={creatureWeaponGrip}
+      creatureHeldWeaponMode={creatureHeldWeaponMode}
       source={session.source?.file}
       appearance={session.appearance?.file}
       animationEvents={session.animationEvents?.file}
@@ -1674,6 +2029,7 @@ export function App({
       onSelectAppearance={selectAppearance}
       onSelectAnimationEvents={selectAnimationEvents}
       onCreatureProfileChange={updateCreatureProfile}
+      onUnsafeHighPolyInspectionChange={updateUnsafeHighPolyInspection}
       onCreatureSourceForwardChange={updateCreatureSourceForward}
       onTextureArtifactCleanupChange={updateTextureArtifactCleanup}
       onExperimentalAggressiveGeometryCleanupChange={
@@ -1682,6 +2038,8 @@ export function App({
       onSkinAccessoryStabilizationModeChange={updateSkinAccessoryStabilizationMode}
       onSkinAccessorySelectedBoneNameChange={updateSkinAccessorySelectedBoneName}
       onSkinAccessoryComponentBoneOverridesChange={updateSkinAccessoryComponentBoneOverrides}
+      onCreatureWeaponGripChange={updateCreatureWeaponGrip}
+      onCreatureHeldWeaponModeChange={updateCreatureHeldWeaponMode}
       onRemoveSource={removeSource}
       onRemoveAppearance={removeAppearance}
       onRemoveAnimationEvents={removeAnimationEvents}
@@ -1752,18 +2110,31 @@ export function App({
           onStepSelect={(step) => dispatch({ type: "NAVIGATE", step })}
         />
       )}
-      inputs={showMeshyLab ? null : inputs}
-      aside={!showMeshyLab && session.currentStep === "SOURCE" ? requirements : undefined}
-      expandPrimaryToWorkspace={showMeshyLab}
-      workspaceMode={showMeshyLab}
-      debugDrawer={showMeshyLab ? null : (
+      inputs={showMeshyLab || showSupermodelLibrary ? null : inputs}
+      aside={!showMeshyLab && !showSupermodelLibrary && session.currentStep === "SOURCE" ? requirements : undefined}
+      expandPrimaryToWorkspace={showMeshyLab || showSupermodelLibrary}
+      workspaceMode={showMeshyLab || showSupermodelLibrary}
+      debugDrawer={showMeshyLab || showSupermodelLibrary ? null : (
         <section className="debug-drawer-placeholder" aria-label="Debug Drawer">
           <strong>Debug Drawer</strong>
           <span>{debugDrawerMessage ?? (session.currentStep === "SOURCE" ? "Disabled until inspection begins" : "Collapsed")}</span>
         </section>
       )}
     >
-      {showMeshyLab ? (
+      {showSupermodelLibrary ? (
+        <SupermodelLibrary
+          onBack={() => setShowSupermodelLibrary(false)}
+          initialSession={supermodelCatalogSession}
+          onSessionChange={setSupermodelCatalogSession}
+          selectedCandidateResref={supermodelCandidate?.resref}
+          onSelectCandidate={setSupermodelCandidate}
+          sourceFile={session.source?.file}
+          sourceSha256={session.source?.sha256 ?? undefined}
+          sourceForward={creatureSourceForward}
+          initialAppliedPreview={appliedSupermodelPreview}
+          onAppliedPreview={updateAppliedSupermodelPreview}
+        />
+      ) : showMeshyLab ? (
         <MeshyLab
           bridge={meshyBridgeRef.current}
           onBack={() => setShowMeshyLab(false)}
@@ -1779,12 +2150,15 @@ export function App({
           tileTargetEnabled={tileTargetEnabled}
           tileOptions={tileOptions}
           creatureProfile={creatureProfile}
+          unsafeHighPolyInspection={unsafeHighPolyInspection}
           creatureSourceForward={creatureSourceForward}
           textureArtifactCleanup={textureArtifactCleanup}
           experimentalAggressiveGeometryCleanup={experimentalAggressiveGeometryCleanup}
           skinAccessoryStabilizationMode={skinAccessoryStabilizationMode}
           skinAccessorySelectedBoneName={skinAccessorySelectedBoneName}
           skinAccessoryComponentBoneOverrides={skinAccessoryComponentBoneOverrides}
+          creatureWeaponGrip={creatureWeaponGrip}
+          creatureHeldWeaponMode={creatureHeldWeaponMode}
           source={session.source?.file}
           appearance={session.appearance?.file}
           animationEvents={session.animationEvents?.file}
@@ -1797,6 +2171,7 @@ export function App({
           onSelectAppearance={selectAppearance}
           onSelectAnimationEvents={selectAnimationEvents}
           onCreatureProfileChange={updateCreatureProfile}
+          onUnsafeHighPolyInspectionChange={updateUnsafeHighPolyInspection}
           onCreatureSourceForwardChange={updateCreatureSourceForward}
           onTextureArtifactCleanupChange={updateTextureArtifactCleanup}
           onExperimentalAggressiveGeometryCleanupChange={
@@ -1805,6 +2180,8 @@ export function App({
           onSkinAccessoryStabilizationModeChange={updateSkinAccessoryStabilizationMode}
           onSkinAccessorySelectedBoneNameChange={updateSkinAccessorySelectedBoneName}
           onSkinAccessoryComponentBoneOverridesChange={updateSkinAccessoryComponentBoneOverrides}
+          onCreatureWeaponGripChange={updateCreatureWeaponGrip}
+          onCreatureHeldWeaponModeChange={updateCreatureHeldWeaponMode}
           onRemoveSource={removeSource}
           onRemoveAppearance={removeAppearance}
           onRemoveAnimationEvents={removeAnimationEvents}
@@ -1813,6 +2190,12 @@ export function App({
           onTileOptionsChange={updateTileOptions}
           onContinue={() => dispatch({ type: "CONTINUE_TO_INSPECT" })}
           onOpenMeshyLab={meshyLabEnabled ? () => setShowMeshyLab(true) : undefined}
+          onOpenSupermodelLibrary={() => setShowSupermodelLibrary(true)}
+          supermodelCandidateResref={supermodelCandidate?.resref}
+          appliedSupermodelResref={appliedSupermodelPreview
+            && appliedSupermodelPreview.sourceSha256 === session.source?.sha256
+            ? appliedSupermodelPreview.supermodelResref
+            : undefined}
           meshyProvenance={meshyProvenance}
           />
           {recoveredArtifacts.length ? (
@@ -1826,8 +2209,24 @@ export function App({
       ) : session.currentStep === "INSPECT" ? (
         <InspectStep
           viewport={session.source && session.source.sha256 ? (
-            materialSeparationBootstrap ? (
+            materialSeparationBootstrap && materialSeparationSupported ? (
               <div className="material-separation-stack">
+                {session.target === "PLACEABLE" ? (
+                  <label className="field">
+                    <span>Profil materiałów Aurora</span>
+                    <select
+                      aria-label="Profil materiałów Aurora"
+                      value={placeableMaterialProfile}
+                      onChange={(event) => updatePlaceableMaterialProfile(
+                        event.target.value as "AURORA_CLASSIC_SAFE" | "NWN_EE_MTR",
+                      )}
+                    >
+                      <option value="NWN_EE_MTR">NWN:EE — MTR (normal/specular/alpha)</option>
+                      <option value="AURORA_CLASSIC_SAFE">Aurora Classic — bez MTR</option>
+                    </select>
+                    <small>Profil wpływa na wynik MDL/HAK, nie tylko na podgląd.</small>
+                  </label>
+                ) : null}
                 <MaterialSeparationEditor
                   key={`${session.source.sha256}:${session.target}`}
                   file={session.source.file}
@@ -1837,7 +2236,20 @@ export function App({
                   sourceForward={session.target === "CREATURE" ? creatureSourceForward : undefined}
                   onPreviewDocumentChange={setMaterialSeparationPreviewDocument}
                   onTextureSnapshotChange={updateModelTextureSnapshot}
+                  uvProjectionMaterialIds={session.target === "PLACEABLE"
+                    ? materialUvProjectionMaterialIds
+                    : undefined}
+                  onUvProjectionMaterialIdsChange={session.target === "PLACEABLE"
+                    ? updateMaterialUvProjectionMaterialIds
+                    : undefined}
+                  uvProjectionRepeatsPerMetre={session.target === "PLACEABLE"
+                    ? materialUvProjectionRepeatsPerMetre
+                    : undefined}
+                  onUvProjectionRepeatsPerMetreChange={session.target === "PLACEABLE"
+                    ? updateMaterialUvProjectionRepeatsPerMetre
+                    : undefined}
                   onApply={(document) => {
+                    invalidateRunningBuild();
                     setMaterialSeparationDocument(document);
                     setMaterialSeparationPreviewDocument(document);
                     dispatch({ type: "AUTHORING_DOCUMENT_CHANGED" });
@@ -1882,8 +2294,14 @@ export function App({
           canGoBack={session.build.kind !== "RUNNING"}
           canBuild={
             session.build.kind !== "RUNNING"
+            && !unsafeHighPolyInspection
             && Boolean(sourceInspection)
             && (session.target === "TILE" || Boolean(appearanceInspection))
+            && !(
+              session.target === "CREATURE"
+              && appliedSupermodelPreview?.sourceSha256 === session.source?.sha256
+              && appliedSupermodelPreview?.report.admissionV3?.status !== "PASS"
+            )
           }
           canRetry={session.build.kind === "FAILED"}
           canCancel={session.build.kind === "RUNNING"}
@@ -1908,6 +2326,13 @@ export function App({
         />
       ) : session.currentStep === "REVIEW" && currentResult?.kind === "PLACEABLE" ? (
         <>
+          <AuroraExportViewport
+            report={currentResult.readback}
+            artifacts={currentResult.placeable.artifacts}
+            selectedPart={selectedReadbackPart}
+            onSelectPart={setSelectedReadbackPart}
+            onError={setSourceError}
+          />
           <PlaceableReview result={currentResult.placeable} readback={currentResult.readback} />
           <ArtifactDownloads
             artifacts={currentResult.placeable.artifacts}
@@ -1944,8 +2369,21 @@ export function App({
               />
             )}
             convertedReadbackViewport={(
+              <AuroraExportViewport
+                report={currentResult.readback}
+                artifacts={currentResult.canonical.artifacts}
+                selectedPart={selectedReadbackPart}
+                onSelectPart={setSelectedReadbackPart}
+                onError={setSourceError}
+              />
+            )}
+            debugReadbackViewport={(
               <AuroraReadbackViewport
                 report={currentResult.readback}
+                weaponAnchorAuthoring={currentResult.canonical.weaponAnchorAuthoring}
+                heldStockWeaponReadback={currentResult.canonical.demo?.heldStockWeaponReadback}
+                appliedWeaponGrip={creatureWeaponGrip}
+                onApplyWeaponGrip={updateCreatureWeaponGrip}
                 selectedPart={selectedReadbackPart}
                 onSelectPart={setSelectedReadbackPart}
                 onError={setSourceError}

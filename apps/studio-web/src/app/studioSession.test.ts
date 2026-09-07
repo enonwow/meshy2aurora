@@ -518,11 +518,35 @@ describe("Studio session reducer", () => {
     });
     const changed = studioSessionReducer(built, { type: "AUTHORING_DOCUMENT_CHANGED" });
 
+    expect(changed.revision).toBe(built.revision);
+    expect(changed.authoringRevision).toBe(built.authoringRevision + 1);
     expect(changed.sourceInspection).toBe(built.sourceInspection);
     expect(changed.appearanceInspection).toBe(built.appearanceInspection);
     expect(changed.result).toBeNull();
     expect(changed.build.kind).toBe("IDLE");
     expect(changed.download.kind).toBe("LOCKED");
+    expect(changed.lastAvailableStep).toBe("BUILD");
+  });
+
+  it("rejects an in-flight Build result after authoring changes", () => {
+    const ready = readyBuildState<{ artifactIds: string[] }>();
+    const running = studioSessionReducer(ready, {
+      type: "BUILD_STARTED",
+      requestId: "build-stale-authoring",
+      revision: ready.revision,
+    });
+    const changed = studioSessionReducer(running, { type: "AUTHORING_DOCUMENT_CHANGED" });
+    const staleResult = studioSessionReducer(changed, {
+      type: "BUILD_SUCCEEDED",
+      requestId: "build-stale-authoring",
+      revision: ready.revision,
+      result: { artifactIds: ["stale"] },
+    });
+
+    expect(changed.authoringRevision).toBe(running.authoringRevision + 1);
+    expect(changed.build.kind).toBe("IDLE");
+    expect(changed.result).toBeNull();
+    expect(staleResult).toBe(changed);
   });
 
   it("starts a clean conversion with a newer revision", () => {

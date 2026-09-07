@@ -17,6 +17,7 @@ import type {
   PlaceableMaterialTextureInspection,
   PlaceableTextureEditorSnapshot,
 } from "./textureTypes";
+import { PLACEABLE_AUTHORING_GROUND_Y_V1 } from "./groundPolicy";
 
 interface Props {
   readonly file: File;
@@ -128,7 +129,10 @@ function rebuildCollision(
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute(
       "position",
-      new THREE.Float32BufferAttribute(resolvedVertices.flatMap(([x, z]) => [x, 0.025, z]), 3),
+      new THREE.Float32BufferAttribute(
+        resolvedVertices.flatMap(([x, z]) => [x, PLACEABLE_AUTHORING_GROUND_Y_V1 + 0.025, z]),
+        3,
+      ),
     );
     geometry.setIndex(triangles.flatMap((face) => face));
     const fill = new THREE.Mesh(
@@ -154,8 +158,16 @@ function rebuildCollision(
     const boundary = [...edges.values()]
       .filter(({ count }) => count === 1)
       .flatMap(({ edge: [a, b] }) => [
-        new THREE.Vector3(resolvedVertices[a][0], 0.035, resolvedVertices[a][1]),
-        new THREE.Vector3(resolvedVertices[b][0], 0.035, resolvedVertices[b][1]),
+        new THREE.Vector3(
+          resolvedVertices[a][0],
+          PLACEABLE_AUTHORING_GROUND_Y_V1 + 0.035,
+          resolvedVertices[a][1],
+        ),
+        new THREE.Vector3(
+          resolvedVertices[b][0],
+          PLACEABLE_AUTHORING_GROUND_Y_V1 + 0.035,
+          resolvedVertices[b][1],
+        ),
       ]);
     const outline = new THREE.LineSegments(
       new THREE.BufferGeometry().setFromPoints(boundary),
@@ -167,7 +179,11 @@ function rebuildCollision(
   if (draftVertices.length >= 2 && (editable || !triangles.length)) {
     const outline = new THREE.LineLoop(
       new THREE.BufferGeometry().setFromPoints(
-        draftVertices.map(([x, z]) => new THREE.Vector3(x, 0.045, z)),
+        draftVertices.map(([x, z]) => new THREE.Vector3(
+          x,
+          PLACEABLE_AUTHORING_GROUND_Y_V1 + 0.045,
+          z,
+        )),
       ),
       new THREE.LineDashedMaterial({ color: 0xffd39b, dashSize: 0.12, gapSize: 0.06, depthTest: false }),
     );
@@ -184,7 +200,7 @@ function rebuildCollision(
         depthTest: false,
       }),
     );
-    handle.position.set(x, 0.055, z);
+    handle.position.set(x, PLACEABLE_AUTHORING_GROUND_Y_V1 + 0.055, z);
     handle.renderOrder = 12;
     handle.userData.collisionVertexIndex = index;
     runtime.collisionRoot.add(handle);
@@ -831,6 +847,7 @@ export function PlaceableAuthoringViewport({
     key.castShadow = true;
     scene.add(key);
     const grid = new THREE.GridHelper(20, 40, 0x3c6572, 0x213640);
+    grid.position.y = PLACEABLE_AUTHORING_GROUND_Y_V1;
     scene.add(grid);
     const axes = new THREE.AxesHelper(1);
     scene.add(axes);
@@ -877,7 +894,10 @@ export function PlaceableAuthoringViewport({
       runtime.raycaster.setFromCamera(runtime.pointer, runtime.camera);
       const point = new THREE.Vector3();
       return runtime.raycaster.ray.intersectPlane(
-        new THREE.Plane(new THREE.Vector3(0, 1, 0), 0),
+        new THREE.Plane(
+          new THREE.Vector3(0, 1, 0),
+          -PLACEABLE_AUTHORING_GROUND_Y_V1,
+        ),
         point,
       ) ? point : undefined;
     };
@@ -890,7 +910,7 @@ export function PlaceableAuthoringViewport({
       const handle = runtime.collisionRoot.children.find(
         (child) => child.userData.collisionVertexIndex === runtime.collisionDraggingIndex,
       );
-      handle?.position.set(point.x, 0.055, point.z);
+      handle?.position.set(point.x, PLACEABLE_AUTHORING_GROUND_Y_V1 + 0.055, point.z);
     };
     const select = (event: PointerEvent) => {
       updatePointer(event);

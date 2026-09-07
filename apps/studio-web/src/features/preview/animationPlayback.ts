@@ -13,6 +13,7 @@ export interface AnimationPlaybackSnapshot {
   timeSeconds: number;
   durationSeconds: number;
   playbackRate: number;
+  poseMode: "REST" | "ANIMATED";
 }
 
 export function inventoryAnimationClips(clips: readonly THREE.AnimationClip[]): AnimationClipInventoryItem[] {
@@ -30,12 +31,26 @@ export class AnimationPlaybackRuntime {
   private playing = false;
   private loop = true;
   private playbackRate = 1;
+  private poseMode: "REST" | "ANIMATED" = "ANIMATED";
+  private poseTimeSeconds = 0;
+  private readonly restTransforms: Array<{
+    object: THREE.Object3D;
+    position: THREE.Vector3;
+    quaternion: THREE.Quaternion;
+    scale: THREE.Vector3;
+  }> = [];
 
   constructor(
     private readonly root: THREE.Object3D,
     private readonly clips: readonly THREE.AnimationClip[],
   ) {
     this.mixer = new THREE.AnimationMixer(root);
+    root.traverse((object) => this.restTransforms.push({
+      object,
+      position: object.position.clone(),
+      quaternion: object.quaternion.clone(),
+      scale: object.scale.clone(),
+    }));
   }
 
   selectClip(index: number) {
@@ -48,10 +63,13 @@ export class AnimationPlaybackRuntime {
     this.configureLoop();
     this.selectedAction.reset().play();
     this.selectedAction.paused = !this.playing;
+    this.poseTimeSeconds = 0;
+    if (this.poseMode === "REST") this.restoreRestPose();
     return this.snapshot();
   }
 
   setPlaying(playing: boolean) {
+    if (playing && this.poseMode === "REST") this.setPoseMode("ANIMATED");
     this.playing = Boolean(this.selectedAction) && playing;
     if (this.selectedAction) {
       if (this.playing && this.selectedAction.time >= this.selectedAction.getClip().duration) {
@@ -83,6 +101,7 @@ export class AnimationPlaybackRuntime {
       this.selectedAction.reset().play();
       this.selectedAction.paused = true;
       this.mixer.update(0);
+      this.poseTimeSeconds = 0;
     }
     return this.snapshot();
   }
@@ -99,7 +118,8 @@ export class AnimationPlaybackRuntime {
     this.playing = false;
     this.selectedAction.paused = true;
     this.selectedAction.time = target;
-    this.mixer.update(0);
+    this.poseTimeSeconds = target;
+    if (this.poseMode === "ANIMATED") this.mixer.update(0);
     return this.snapshot();
   }
 
@@ -107,7 +127,8 @@ export class AnimationPlaybackRuntime {
     if (this.selectedAction) {
       const duration = Math.max(this.selectedAction.getClip().duration, 0);
       this.selectedAction.time = Math.min(Math.max(timeSeconds, 0), duration);
-      this.mixer.update(0);
+      this.poseTimeSeconds = this.selectedAction.time;
+      if (this.poseMode === "ANIMATED") this.mixer.update(0);
     }
     return this.snapshot();
   }
@@ -119,6 +140,7 @@ export class AnimationPlaybackRuntime {
         this.playing = false;
         this.selectedAction.paused = true;
       }
+      this.poseTimeSeconds = this.selectedAction.time;
     }
     return this.snapshot();
   }
@@ -131,6 +153,7 @@ export class AnimationPlaybackRuntime {
       timeSeconds: this.selectedAction?.time ?? 0,
       durationSeconds: this.selectedAction?.getClip().duration ?? 0,
       playbackRate: this.playbackRate,
+      poseMode: this.poseMode,
     };
   }
 
@@ -141,11 +164,43 @@ export class AnimationPlaybackRuntime {
     this.selectedClipIndex = null;
     this.playing = false;
     this.playbackRate = 1;
+    this.poseMode = "ANIMATED";
+    this.poseTimeSeconds = 0;
+  }
+
+  setPoseMode(poseMode: "REST" | "ANIMATED") {
+    if (poseMode === this.poseMode) return this.snapshot();
+    if (poseMode === "REST") {
+      this.poseTimeSeconds = this.selectedAction?.time ?? this.poseTimeSeconds;
+      this.playing = false;
+      if (this.selectedAction) this.selectedAction.paused = true;
+      this.poseMode = "REST";
+      this.restoreRestPose();
+    } else {
+      this.poseMode = "ANIMATED";
+      if (this.selectedAction) {
+        this.selectedAction.time = this.poseTimeSeconds;
+        this.selectedAction.paused = false;
+        this.mixer.update(Number.EPSILON);
+        this.selectedAction.paused = true;
+        this.selectedAction.time = this.poseTimeSeconds;
+      }
+    }
+    return this.snapshot();
   }
 
   private configureLoop() {
     if (!this.selectedAction) return;
     this.selectedAction.setLoop(this.loop ? THREE.LoopRepeat : THREE.LoopOnce, this.loop ? Infinity : 1);
     this.selectedAction.clampWhenFinished = !this.loop;
+  }
+
+  private restoreRestPose() {
+    this.restTransforms.forEach(({ object, position, quaternion, scale }) => {
+      object.position.copy(position);
+      object.quaternion.copy(quaternion);
+      object.scale.copy(scale);
+    });
+    this.root.updateMatrixWorld(true);
   }
 }

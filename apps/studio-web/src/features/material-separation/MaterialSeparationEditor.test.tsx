@@ -4,9 +4,9 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
-  ModelComponentInspectionBootstrapV1,
-  ModelMaterialResolutionV1,
-  ModelMaterialSeparationDocumentV1,
+  ModelFaceInspectionBootstrapV2,
+  ModelMaterialResolutionV2,
+  ModelMaterialSeparationDocumentV2,
 } from "./types";
 
 vi.mock("../preview/SourceViewport", () => ({
@@ -41,16 +41,16 @@ afterEach(async () => {
 });
 
 const sourceSha256 = "a".repeat(64);
-const bootstrap: ModelComponentInspectionBootstrapV1 = {
-  schemaVersion: 1,
+const bootstrap: ModelFaceInspectionBootstrapV2 = {
+  schemaVersion: 2,
   capabilities: {
-    schemaVersion: 1,
+    schemaVersion: 2,
     target: "CREATURE",
     materialSeparationSupported: true,
     maxMaterialSlots: 256,
     maxOutputSections: 4096,
-    selectionGranularity: "CONNECTED_COMPONENTS",
-    faceSelectionSupported: false,
+    selectionGranularity: "CONNECTED_COMPONENTS_AND_FACES",
+    faceSelectionSupported: true,
     automaticMaterialInference: false,
     preservesSourceUv0: true,
   },
@@ -71,18 +71,28 @@ const bootstrap: ModelComponentInspectionBootstrapV1 = {
       boundsMax: [componentIndex * 2 + 1, 1, 1] as const,
     })),
   },
-  document: { schemaVersion: 1, sourceSha256, materials: [], assignments: [] },
+  document: {
+    schemaVersion: 2,
+    sourceSha256,
+    materials: [],
+    componentAssignments: [],
+    faceAssignments: [],
+  },
 };
-const resolution: ModelMaterialResolutionV1 = {
-  schemaVersion: 1,
+const resolution: ModelMaterialResolutionV2 = {
+  schemaVersion: 2,
   capabilities: bootstrap.capabilities,
   report: {
-    schemaVersion: 1,
+    schemaVersion: 2,
     sourceSha256,
     separationSha256: "b".repeat(64),
     sourceComponentCount: 2,
     assignedComponentCount: 0,
     unassignedComponentCount: 2,
+    faceAssignmentCount: 0,
+    triangleRangeCount: 0,
+    assignedFaceCount: 0,
+    unassignedFaceCount: 2,
     sourceTriangleCount: 2,
     outputTriangleCount: 2,
     sourceVertexCount: 6,
@@ -113,7 +123,54 @@ const resolution: ModelMaterialResolutionV1 = {
 };
 
 describe("MaterialSeparationEditor", () => {
-  it("supports the complete V1 edit lifecycle and publishes only on Apply", async () => {
+  it("lets the owner opt one material into coherent UV without inferring it", async () => {
+    const wood = {
+      authoredMaterialId: "wood",
+      displayName: "Wood",
+      previewColor: "#70472a",
+      sourceFallbackMaterialId: 0,
+      sourceFallbackImageSha256: "c".repeat(64),
+    };
+    const selected: Array<readonly string[]> = [];
+    const container = await render(
+      <MaterialSeparationEditor
+        file={new File(["glb"], "ship.glb", { type: "model/gltf-binary" })}
+        sourceSha256={sourceSha256}
+        bootstrap={{
+          ...bootstrap,
+          document: { ...bootstrap.document, materials: [wood] },
+        }}
+        resolution={{
+          ...resolution,
+          textureAuthoring: {
+            ...resolution.textureAuthoring,
+            bindings: [{
+              authoredMaterialId: "wood",
+              materialSlot: 0,
+              sourceMaterialId: 0,
+              sourceImageSha256: "c".repeat(64),
+              mode: "SOURCE",
+              overrideAssetId: null,
+              overrideSha256: null,
+              overrideMimeType: null,
+              overrideByteLength: null,
+              alphaPolicy: "OPAQUE_ONLY",
+            }],
+          },
+        }}
+        uvProjectionMaterialIds={[]}
+        onUvProjectionMaterialIdsChange={(ids) => selected.push(ids)}
+        onApply={() => undefined}
+      />,
+    );
+
+    const checkbox = container.querySelector("input[aria-label='World-scale UV Wood']");
+    await click(checkbox);
+
+    expect(selected).toEqual([["wood"]]);
+  });
+
+  it("supports the complete V2 edit lifecycle and publishes only on Apply", async () => {
     const applied: unknown[] = [];
     const previews: unknown[] = [];
     const container = await render(
@@ -130,15 +187,16 @@ describe("MaterialSeparationEditor", () => {
     expect(container.textContent).toContain("Sections 1");
     expect(container.textContent).toContain("Textures 1");
     expect(container.textContent).toContain("MATERIAL-SEPARATION-UV0-UNCHANGED");
-    expect(container.querySelector("[data-testid='material-overlay']")?.textContent).toBe("2");
+    expect(container.querySelector("[data-testid='material-overlay']")?.textContent).toBe("0");
 
     await click([...container.querySelectorAll("button")].find((button) => button.textContent === "Select node 0") ?? null);
+    expect(container.querySelector("[data-testid='material-overlay']")?.textContent).toBe("2");
     expect(container.querySelectorAll("[data-selected='true']")).toHaveLength(2);
     await click([...container.querySelectorAll("button")].find((button) => button.textContent === "Select primitive 0/0") ?? null);
     expect(container.querySelectorAll("[data-selected='true']")).toHaveLength(2);
 
     await click([...container.querySelectorAll("button")].find((button) => button.textContent === "New Material") ?? null);
-    const materialAfterCreate = (previews.at(-1) as ModelMaterialSeparationDocumentV1).materials[0];
+    const materialAfterCreate = (previews.at(-1) as ModelMaterialSeparationDocumentV2).materials[0];
     expect(materialAfterCreate.sourceFallbackMaterialId).toBe(0);
     expect(materialAfterCreate.sourceFallbackImageSha256).toBe("c".repeat(64));
     await click([...container.querySelectorAll(".material-separation__components button")][0]);
@@ -148,11 +206,11 @@ describe("MaterialSeparationEditor", () => {
 
     await click([...container.querySelectorAll("button")].find((button) => button.textContent === "Apply") ?? null);
     expect(applied).toHaveLength(1);
-    expect((applied[0] as { assignments: unknown[] }).assignments).toHaveLength(1);
+    expect((applied[0] as { componentAssignments: unknown[] }).componentAssignments).toHaveLength(1);
 
     await click([...container.querySelectorAll("button")].find((button) => button.textContent === "Unassign to Source") ?? null);
     await click([...container.querySelectorAll("button")].find((button) => button.textContent === "Cancel") ?? null);
-    await click([...container.querySelectorAll("button")].find((button) => button.textContent === "Select Unassigned") ?? null);
+    await click([...container.querySelectorAll("button")].find((button) => button.textContent === "Select Unassigned Components") ?? null);
     expect(container.querySelectorAll("[data-selected='true']")).toHaveLength(1);
 
     await click([...container.querySelectorAll("button")].find((button) => button.textContent === "Reset") ?? null);
@@ -164,7 +222,7 @@ describe("MaterialSeparationEditor", () => {
   });
 
   it("requires an override before Apply when the source has no exact texture fallback", async () => {
-    const withoutFallback: ModelMaterialResolutionV1 = {
+    const withoutFallback: ModelMaterialResolutionV2 = {
       ...resolution,
       report: {
         ...resolution.report,

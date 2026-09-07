@@ -110,19 +110,27 @@ function fixture() {
     ],
   };
   const reportJson = JSON.stringify(report);
+  const readbackJson = JSON.stringify({
+    schemaVersion: 1,
+    format: "nwn1-binary-mdl",
+    nodeTree: { roots: [] },
+    animations: [],
+    diagnostics: [],
+  });
   const artifacts = [
     artifact("placeable-package-hak", "HAK", report.hakFileName, [1, 2, 3], report.hakSha256),
     artifact("placeable-model-mdl", "MODEL", `${report.modelResref}.mdl`, [4, 5], report.mdlSha256),
     artifact("placeable-proof-module", "MODULE", report.moduleFileName, [6, 7, 8, 9], report.moduleSha256),
     artifact("placeable-report-json", "JSON_REPORT", "placeable-materialization-report.json", [...new TextEncoder().encode(reportJson)], hash("9")),
+    artifact("placeable-model-readback-json", "JSON_REPORT", "placeable-model-readback.json", [...new TextEncoder().encode(readbackJson)], hash("8")),
   ];
-  return { report, reportJson, artifacts };
+  return { report, reportJson, readbackJson, artifacts };
 }
 
 describe("projectPlaceableResult", () => {
   it("projects the offline statuses, exact identities, placement and resource types", () => {
     const value = fixture();
-    const result = projectPlaceableResult(value.reportJson, value.artifacts);
+    const result = projectPlaceableResult(value.reportJson, value.readbackJson, value.artifacts);
     expect(result.status).toBe("OFFLINE_ADMISSION_PASSED");
     expect(result.profile).toBe("STATIC_PLACEABLE");
     expect(result.appearanceRow).toBe(16500);
@@ -150,7 +158,7 @@ describe("projectPlaceableResult", () => {
   it("rejects a stale archive artifact instead of presenting a mixed lineage", () => {
     const value = fixture();
     value.artifacts[0] = { ...value.artifacts[0], sha256: hash("8") };
-    expect(() => projectPlaceableResult(value.reportJson, value.artifacts))
+    expect(() => projectPlaceableResult(value.reportJson, value.readbackJson, value.artifacts))
       .toThrow("placeable-package-hak.sha256");
   });
 
@@ -196,14 +204,98 @@ describe("projectPlaceableResult", () => {
         hash("7"),
       ),
     ];
-    const result = projectPlaceableResult(reportJson, artifacts);
+    const result = projectPlaceableResult(reportJson, value.readbackJson, artifacts);
     expect(result.textureAuthoring).toEqual(textureAuthoring);
+  });
+
+  it("projects neutral texture mip and double-sided quality diagnostics", () => {
+    const value = fixture();
+    const modelTextureAuthoring = {
+      schemaVersion: 1,
+      sourceSha256: hash("0"),
+      separationSha256: hash("1"),
+      authoringSha256: hash("2"),
+      alphaPolicy: "OPAQUE_ONLY",
+      uvPolicy: "MATERIAL_UV_PROJECTION_V1",
+      warnings: [
+        "MODEL-MATERIAL-DOUBLE-SIDED-TARGET-UNPROVEN:material:wood",
+        "MODEL-TEXTURE-MIP-CONTRAST-LOW:material:wood",
+      ],
+      bindings: [{
+        authoredMaterialId: "material:wood",
+        materialSlot: 0,
+        mode: "OVERRIDE",
+        outputResref: "m2a_s1_plc_tex",
+        sourceDoubleSided: true,
+        targetDoubleSidedPolicy: "UNSUPPORTED_REPORT_ONLY",
+        mipReadability: {
+          sourceWidth: 2048,
+          sourceHeight: 2048,
+          baseLumaStddevMilli: 6550,
+          mip16LumaStddevMilli: 1230,
+          contrastRetentionBasisPoints: 1878,
+          status: "LOW_CONTRAST",
+        },
+      }],
+      resources: [],
+    };
+
+    const result = projectPlaceableResult(
+      JSON.stringify({ ...value.report, modelTextureAuthoring }),
+      value.readbackJson,
+      value.artifacts,
+    );
+
+    expect(result.modelTextureAuthoring).toEqual({
+      uvPolicy: "MATERIAL_UV_PROJECTION_V1",
+      warnings: modelTextureAuthoring.warnings,
+      bindings: modelTextureAuthoring.bindings,
+    });
+  });
+
+  it("projects the complete V9 material pipeline only with semantic evidence", () => {
+    const value = fixture();
+    const report = {
+      ...value.report,
+      profile: "STATIC_PLACEABLE_V9_NWN_EE_MTR",
+      hakResourceCount: value.report.hakResourceCount + 1,
+      resources: [
+        ...value.report.resources,
+        { container: "HAK", role: "MATERIAL", resref: "m2a_s1_plc_m0", resourceType: 2072, byteLength: 3, sha256: hash("6") },
+      ],
+      materialCompilation: { schemaVersion: 1, status: "READY", targetProfile: "NWN_EE_MTR" },
+      sourceQuality: { schemaVersion: 1, status: "PASS" },
+      mdlMaterialExtension: { schemaVersion: 1, payloadSha256: value.report.mdlSha256, semanticDiff: [] },
+      materialSemanticReadbackStatus: "PASS",
+    };
+    const artifacts = [
+      ...value.artifacts,
+      artifact("placeable-texture-m2a_s1_plc_tex-tga", "TEXTURE", "m2a_s1_plc_tex.tga", [8, 8, 8], hash("c")),
+      artifact("placeable-material-resource-m2a_s1_plc_m0-2072", "MATERIAL", "m2a_s1_plc_m0.mtr", [9, 9, 9], hash("6")),
+    ];
+    const result = projectPlaceableResult(JSON.stringify(report), value.readbackJson, artifacts);
+    expect(result).toMatchObject({
+      profile: "STATIC_PLACEABLE_V9_NWN_EE_MTR",
+      materialSemanticReadbackStatus: "PASS",
+      sourceQuality: { status: "PASS" },
+      mdlMaterialExtension: { semanticDiff: [] },
+    });
+
+    delete (report as { mdlMaterialExtension?: unknown }).mdlMaterialExtension;
+    expect(() => projectPlaceableResult(JSON.stringify(report), value.readbackJson, artifacts))
+      .toThrow("report.materialPipeline");
   });
 
   it("rejects a visual-proof claim at the offline Studio boundary", () => {
     const value = fixture();
     value.report.modelVisibility = "visible";
-    expect(() => projectPlaceableResult(JSON.stringify(value.report), value.artifacts))
+    expect(() => projectPlaceableResult(JSON.stringify(value.report), value.readbackJson, value.artifacts))
       .toThrow("report.modelVisibility");
+  });
+
+  it("rejects a readback payload that is not the exact artifact in the Placeable lineage", () => {
+    const value = fixture();
+    expect(() => projectPlaceableResult(value.reportJson, "{}", value.artifacts))
+      .toThrow("placeable-model-readback-json.bytes");
   });
 });

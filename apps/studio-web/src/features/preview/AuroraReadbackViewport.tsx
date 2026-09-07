@@ -1,6 +1,11 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import * as THREE from "three";
 import { animationClipsFromReadback } from "./readbackAnimationPlayback";
+import {
+  classifyReadbackRigV1,
+  RIG_NODE_USER_DATA_V1,
+  type RigNodeDescriptorV1,
+} from "./rigOverlay";
 import { SceneViewport } from "./SceneViewport";
 import type {
   BinaryMdlInspectionReport,
@@ -10,9 +15,27 @@ import type {
   ReadbackNode,
   ReadbackSkin,
 } from "./types";
+import {
+  attachWeaponGripPreviewV1,
+  availableWeaponGripHandsV1,
+  inspectWeaponGripPreviewV1,
+  type WeaponAnchorAuthoringEvidenceV1,
+  type WeaponGripPreviewHandV1,
+  type WeaponGripPreviewOptionsV1,
+} from "./weaponGripPreview";
+import { WeaponGripControls } from "./WeaponGripControls";
+import {
+  defaultCreatureWeaponGripOptionsV1,
+  sameCreatureWeaponGripOptionsV1,
+  type CreatureWeaponGripOptionsV1,
+} from "../source/weaponGrip";
+import type { CanonicalHeldStockWeaponReadback } from "../results/projectCanonicalResult";
+
+export { inspectWeaponGripPreviewV1 } from "./weaponGripPreview";
 
 interface MeshPlan {
   owner: THREE.Bone;
+  node: ReadbackNode;
   mesh: ReadbackMesh;
   skin?: ReadbackSkin;
   selected: boolean;
@@ -61,12 +84,15 @@ function nodeFromReadback(
   selectedPart: ModelPartRef | undefined,
   nodeOrder: THREE.Bone[],
   meshPlans: MeshPlan[],
+  rigNodes: readonly RigNodeDescriptorV1[],
 ): THREE.Bone {
   // A Bone is also an Object3D. Keeping the exact readback hierarchy as bones
   // lets Three apply decoded Aurora controller tracks to the same joints that
   // deform the readback mesh.
   const bone = new THREE.Bone();
   bone.name = node.name || `node-${node.number}`;
+  const rigNode = rigNodes[nodeOrder.length];
+  if (rigNode) bone.userData[RIG_NODE_USER_DATA_V1] = rigNode;
   bone.userData.modelPart = {
     kind: "READBACK_NODE",
     id: node.number,
@@ -83,12 +109,13 @@ function nodeFromReadback(
   if (node.mesh?.vertices.length) {
     meshPlans.push({
       owner: bone,
+      node,
       mesh: node.mesh,
       skin: node.skin,
       selected: selectedPart?.kind === "READBACK_NODE" && String(selectedPart.id) === String(node.number),
     });
   }
-  node.children.forEach((child) => bone.add(nodeFromReadback(child, selectedPart, nodeOrder, meshPlans)));
+  node.children.forEach((child) => bone.add(nodeFromReadback(child, selectedPart, nodeOrder, meshPlans, rigNodes)));
   return bone;
 }
 
@@ -189,17 +216,28 @@ function assertCanonicalInverseBindings(
   });
 }
 
-function attachMeshes(root: THREE.Group, meshPlans: readonly MeshPlan[], nodeOrder: readonly THREE.Bone[]) {
+export type AuroraReadbackMaterialResolver = (
+  mesh: ReadbackMesh,
+  node: ReadbackNode,
+  selected: boolean,
+) => THREE.Material;
+
+function attachMeshes(
+  root: THREE.Group,
+  meshPlans: readonly MeshPlan[],
+  nodeOrder: readonly THREE.Bone[],
+  resolveMaterial: AuroraReadbackMaterialResolver = (_mesh, _node, selected) => material(selected),
+) {
   const skinned: Array<{ mesh: THREE.SkinnedMesh; skin: ReadbackSkin; bones: THREE.Bone[]; treeOrdinals: number[] }> = [];
   meshPlans.forEach((plan) => {
     const geometry = geometryFromReadback(plan.mesh);
     if (!plan.skin) {
-      plan.owner.add(new THREE.Mesh(geometry, material(plan.selected)));
+      plan.owner.add(new THREE.Mesh(geometry, resolveMaterial(plan.mesh, plan.node, plan.selected)));
       return;
     }
     const slots = slotBones(plan.skin, nodeOrder);
     applySkinAttributes(geometry, plan.mesh, plan.skin, slots.bones);
-    const mesh = new THREE.SkinnedMesh(geometry, material(plan.selected));
+    const mesh = new THREE.SkinnedMesh(geometry, resolveMaterial(plan.mesh, plan.node, plan.selected));
     plan.owner.add(mesh);
     skinned.push({ mesh, skin: plan.skin, bones: slots.bones, treeOrdinals: slots.treeOrdinals });
   });
@@ -214,14 +252,22 @@ function attachMeshes(root: THREE.Group, meshPlans: readonly MeshPlan[], nodeOrd
 
 interface Props {
   report: BinaryMdlInspectionReport;
+  weaponAnchorAuthoring?: WeaponAnchorAuthoringEvidenceV1;
+  heldStockWeaponReadback?: CanonicalHeldStockWeaponReadback;
   selectedPart?: ModelPartRef;
   onSelectPart: (part?: ModelPartRef) => void;
   onError?: (message: string) => void;
+  appliedWeaponGrip?: CreatureWeaponGripOptionsV1;
+  onApplyWeaponGrip?: (weaponGrip: CreatureWeaponGripOptionsV1) => void;
 }
+
+const DEFAULT_WEAPON_GRIP_V1 = defaultCreatureWeaponGripOptionsV1();
 
 export function buildAuroraReadbackAsset(
   report: BinaryMdlInspectionReport,
   selectedPart?: ModelPartRef,
+  weaponGripPreview?: WeaponGripPreviewOptionsV1,
+  materialResolver?: AuroraReadbackMaterialResolver,
 ) {
   const root = new THREE.Group();
   // Binary Aurora MDL is Z-up while Three renders its scene in Y-up. This is
@@ -229,23 +275,132 @@ export function buildAuroraReadbackAsset(
   root.rotation.x = -Math.PI / 2;
   const nodeOrder: THREE.Bone[] = [];
   const meshPlans: MeshPlan[] = [];
-  report.nodeTree.roots.forEach((node) => root.add(nodeFromReadback(node, selectedPart, nodeOrder, meshPlans)));
-  attachMeshes(root, meshPlans, nodeOrder);
+  const rig = classifyReadbackRigV1(report.nodeTree.roots);
+  report.nodeTree.roots.forEach((node) => root.add(nodeFromReadback(node, selectedPart, nodeOrder, meshPlans, rig.nodes)));
+  attachMeshes(root, meshPlans, nodeOrder, materialResolver);
+  if (weaponGripPreview) attachWeaponGripPreviewV1(root, report, weaponGripPreview);
   return { root, animations: animationClipsFromReadback(report) };
 }
 
-export function AuroraReadbackViewport({ report, selectedPart, onSelectPart, onError }: Props) {
-  const buildRoot = useCallback(async () => buildAuroraReadbackAsset(report, selectedPart), [report, selectedPart]);
+export function AuroraReadbackViewport({
+  report,
+  weaponAnchorAuthoring,
+  heldStockWeaponReadback,
+  selectedPart,
+  onSelectPart,
+  onError,
+  appliedWeaponGrip = DEFAULT_WEAPON_GRIP_V1,
+  onApplyWeaponGrip,
+}: Props) {
+  const availableHands = availableWeaponGripHandsV1(report);
+  const demoHand: WeaponGripPreviewHandV1 = heldStockWeaponReadback?.fixtures[0].hand === "right_hand"
+    ? "RIGHT"
+    : heldStockWeaponReadback?.fixtures[0].hand === "left_hand"
+      ? "LEFT"
+      : "OFF";
+  const [requestedHand, setRequestedHand] = useState<WeaponGripPreviewHandV1>(() => (
+    demoHand
+  ));
+  useEffect(() => setRequestedHand(demoHand), [
+    demoHand,
+    heldStockWeaponReadback?.weapon.resref,
+    heldStockWeaponReadback?.weapon.resourceScope,
+    heldStockWeaponReadback?.weapon.resourceType,
+  ]);
+  const [showHookAxes, setShowHookAxes] = useState(true);
+  const [draftWeaponGrip, setDraftWeaponGrip] = useState(appliedWeaponGrip);
+  useEffect(() => setDraftWeaponGrip(appliedWeaponGrip), [appliedWeaponGrip]);
+  const previewHand = requestedHand === "OFF" || availableHands.includes(requestedHand)
+    ? requestedHand
+    : availableHands[0] ?? "OFF";
+  const previewInspection = previewHand === "OFF"
+    ? undefined
+    : inspectWeaponGripPreviewV1(report, previewHand);
+  const buildRoot = useCallback(
+    async () => buildAuroraReadbackAsset(report, selectedPart, {
+      hand: previewHand,
+      showHookAxes,
+      anchorAuthoring: weaponAnchorAuthoring,
+      appliedGrip: appliedWeaponGrip,
+      draftGrip: draftWeaponGrip,
+    }),
+    [appliedWeaponGrip, draftWeaponGrip, previewHand, report, selectedPart, showHookAxes, weaponAnchorAuthoring],
+  );
+  const hasDraftChange = !sameCreatureWeaponGripOptionsV1(appliedWeaponGrip, draftWeaponGrip);
 
   return (
-    <SceneViewport
-      provenance="READBACK"
-      detail="Geometry, skinning and controller tracks reconstructed only from canonical Rust binary-MDL readback"
-      dependency={`${report.format}:${report.schemaVersion}:${selectedPart?.kind}:${selectedPart?.id}`}
-      buildRoot={buildRoot}
-      onSelectPart={onSelectPart}
-      onError={onError}
-      tools={{ animationPlayback: true, overlays: true }}
-    />
+    <section className="weapon-grip-preview-shell">
+      {availableHands.length > 0 && (
+        <section className="weapon-grip-preview" aria-label="Weapon Grip Preview">
+          <div className="weapon-grip-preview__heading">
+            <div><strong>Weapon Grip Preview</strong><small>{weaponAnchorAuthoring?.calibration ?? "Binary-MDL hook with a basis-equivalent NWN short-sword proxy"}</small></div>
+            <span className="weapon-grip-preview__fidelity">NWN SHORTSWORD BASIS PROXY</span>
+          </div>
+          <p className="weapon-grip-preview__warning">Not exact item geometry or Toolset proof.</p>
+          {heldStockWeaponReadback ? (
+            <div className="weapon-grip-preview__demo-evidence" aria-label="Demo held item readback">
+              <strong>Demo equipment readback: PASS</strong>
+              <dl className="weapon-grip-preview__readback">
+                <div><dt>Item</dt><dd><code>{heldStockWeaponReadback.weapon.resref}</code></dd></div>
+                <div><dt>Resource</dt><dd><code>{heldStockWeaponReadback.weapon.resourceScope} / {heldStockWeaponReadback.weapon.resourceType}</code></dd></div>
+                <div><dt>Equipped hand</dt><dd><code>{heldStockWeaponReadback.fixtures[0].hand}</code></dd></div>
+              </dl>
+            </div>
+          ) : (
+            <p className="weapon-grip-preview__warning">Current demo has no selected held item; the proxy starts off.</p>
+          )}
+          <label>
+            Preview hand
+            <select
+              aria-label="Preview hand"
+              value={previewHand}
+              onChange={(event) => setRequestedHand(event.target.value as WeaponGripPreviewHandV1)}
+            >
+              <option value="OFF">Off</option>
+              {availableHands.includes("RIGHT") && <option value="RIGHT">Right hand</option>}
+              {availableHands.includes("LEFT") && <option value="LEFT">Left hand</option>}
+            </select>
+          </label>
+          <label className="weapon-grip-preview__checkbox">
+            <input
+              type="checkbox"
+              checked={showHookAxes}
+              onChange={(event) => setShowHookAxes(event.target.checked)}
+              disabled={previewHand === "OFF"}
+            />
+            Show hook axes
+          </label>
+          {previewInspection ? (
+            <dl className="weapon-grip-preview__readback">
+              <div><dt>Hook</dt><dd><code>{previewInspection.anchorName}</code></dd></div>
+              <div><dt>Parent</dt><dd><code>{previewInspection.parentBoneName}</code></dd></div>
+              <div><dt>Auto position</dt><dd><code>{previewInspection.localPosition.map((value) => value.toFixed(5)).join(", ")}</code></dd></div>
+              <div><dt>Auto rotation</dt><dd><code>{previewInspection.localOrientation.map((value) => value.toFixed(5)).join(", ")}</code></dd></div>
+            </dl>
+          ) : <p className="weapon-grip-preview__off">Weapon preview is off.</p>}
+          <WeaponGripControls value={draftWeaponGrip} onChange={setDraftWeaponGrip} compact />
+          <div className="weapon-grip-preview__apply">
+            <span>{hasDraftChange ? "Draft offsets are preview-only until rebuild." : "Preview matches the current binary MDL."}</span>
+            <button
+              type="button"
+              className="button button--primary"
+              disabled={!hasDraftChange || !onApplyWeaponGrip}
+              onClick={() => onApplyWeaponGrip?.(draftWeaponGrip)}
+            >
+              Apply and rebuild
+            </button>
+          </div>
+        </section>
+      )}
+      <SceneViewport
+        provenance="READBACK"
+        detail="Geometry, skinning, controller tracks and weapon hook reconstructed from canonical Rust binary-MDL readback"
+        dependency={`${report.format}:${report.schemaVersion}:${selectedPart?.kind}:${selectedPart?.id}:${previewHand}:${showHookAxes}:${JSON.stringify(draftWeaponGrip)}`}
+        buildRoot={buildRoot}
+        onSelectPart={onSelectPart}
+        onError={onError}
+        tools={{ animationPlayback: true, overlays: true }}
+      />
+    </section>
   );
 }

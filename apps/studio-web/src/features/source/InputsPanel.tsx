@@ -1,5 +1,12 @@
 import { useId, type ChangeEvent } from "react";
 import type { StudioTarget } from "../../app/studioSession";
+import { WeaponGripControls } from "../preview/WeaponGripControls";
+import { HeldWeaponControls } from "./HeldWeaponControls";
+import type { CreatureHeldWeaponModeV1 } from "./heldWeapon";
+import {
+  defaultCreatureWeaponGripOptionsV1,
+  type CreatureWeaponGripOptionsV1,
+} from "./weaponGrip";
 
 export type TileSurface = "DIRT" | "GRASS" | "STONE" | "WOOD";
 export type CreatureConversionProfileV1 =
@@ -36,12 +43,15 @@ export interface SourceInputProps {
   appearance?: File;
   animationEvents?: File;
   creatureProfile?: CreatureConversionProfileV1;
+  unsafeHighPolyInspection?: boolean;
   creatureSourceForward?: CreatureSourceForwardV1;
   textureArtifactCleanup?: boolean;
   experimentalAggressiveGeometryCleanup?: boolean;
   skinAccessoryStabilizationMode?: SkinAccessoryStabilizationModeV1;
   skinAccessorySelectedBoneName?: string;
   skinAccessoryComponentBoneOverrides?: string;
+  creatureWeaponGrip?: CreatureWeaponGripOptionsV1;
+  creatureHeldWeaponMode?: CreatureHeldWeaponModeV1;
   sourceIdentity?: FileIdentityValue;
   appearanceIdentity?: FileIdentityValue;
   sourceError?: string;
@@ -51,6 +61,7 @@ export interface SourceInputProps {
   onSelectAppearance: (file: File) => void;
   onSelectAnimationEvents: (file: File) => void;
   onCreatureProfileChange?: (profile: CreatureConversionProfileV1) => void;
+  onUnsafeHighPolyInspectionChange?: (enabled: boolean) => void;
   onCreatureSourceForwardChange?: (sourceForward: CreatureSourceForwardV1) => void;
   onTextureArtifactCleanupChange?: (enabled: boolean) => void;
   onExperimentalAggressiveGeometryCleanupChange?: (enabled: boolean) => void;
@@ -59,6 +70,8 @@ export interface SourceInputProps {
   ) => void;
   onSkinAccessorySelectedBoneNameChange?: (boneName: string) => void;
   onSkinAccessoryComponentBoneOverridesChange?: (overrides: string) => void;
+  onCreatureWeaponGripChange?: (weaponGrip: CreatureWeaponGripOptionsV1) => void;
+  onCreatureHeldWeaponModeChange?: (mode: CreatureHeldWeaponModeV1) => void;
   onRemoveSource: () => void;
   onRemoveAppearance: () => void;
   onRemoveAnimationEvents: () => void;
@@ -162,12 +175,15 @@ export function InputsPanel({
   appearance,
   animationEvents,
   creatureProfile = "PRODUCT_300K",
+  unsafeHighPolyInspection = false,
   creatureSourceForward = "POSITIVE_Z",
   textureArtifactCleanup = false,
   experimentalAggressiveGeometryCleanup = false,
   skinAccessoryStabilizationMode = "AUTO",
   skinAccessorySelectedBoneName = "",
   skinAccessoryComponentBoneOverrides = "",
+  creatureWeaponGrip = defaultCreatureWeaponGripOptionsV1(),
+  creatureHeldWeaponMode = "NONE",
   sourceIdentity,
   appearanceIdentity,
   sourceError,
@@ -177,12 +193,15 @@ export function InputsPanel({
   onSelectAppearance,
   onSelectAnimationEvents,
   onCreatureProfileChange,
+  onUnsafeHighPolyInspectionChange,
   onCreatureSourceForwardChange,
   onTextureArtifactCleanupChange,
   onExperimentalAggressiveGeometryCleanupChange,
   onSkinAccessoryStabilizationModeChange,
   onSkinAccessorySelectedBoneNameChange,
   onSkinAccessoryComponentBoneOverridesChange,
+  onCreatureWeaponGripChange,
+  onCreatureHeldWeaponModeChange,
   onRemoveSource,
   onRemoveAppearance,
   onRemoveAnimationEvents,
@@ -235,6 +254,28 @@ export function InputsPanel({
               <option value="EXPERIMENTAL_P300K">Legacy P300K compatibility</option>
             </select>
           </label>
+          {creatureProfile !== "PRODUCT_300K" ? (
+            <p role="note">
+              Material Separation is available only in the Product 300K profile.
+            </p>
+          ) : null}
+          {creatureProfile === "PRODUCT_300K" && onUnsafeHighPolyInspectionChange ? (
+            <>
+              <label>
+                <input
+                  type="checkbox"
+                  aria-label="Unsafe high-poly inspection"
+                  checked={unsafeHighPolyInspection}
+                  onChange={(event) => onUnsafeHighPolyInspectionChange(event.currentTarget.checked)}
+                />
+                Unsafe high-poly inspection
+              </label>
+              <p role="note">
+                Local preview and diagnostics only. Product export remains blocked above 300,000
+                triangles. This mode may use substantial memory.
+              </p>
+            </>
+          ) : null}
           {onCreatureSourceForwardChange ? (
             <label>
               Model front in source GLB
@@ -306,6 +347,16 @@ export function InputsPanel({
                 </>
               ) : null}
             </>
+          ) : null}
+          {onCreatureWeaponGripChange ? (
+            <WeaponGripControls value={creatureWeaponGrip} onChange={onCreatureWeaponGripChange} compact />
+          ) : null}
+          {onCreatureHeldWeaponModeChange ? (
+            <HeldWeaponControls
+              value={creatureHeldWeaponMode}
+              onChange={onCreatureHeldWeaponModeChange}
+              compact
+            />
           ) : null}
         </>
       ) : null}

@@ -61,4 +61,21 @@ describe("AnimationPlaybackRuntime", () => {
     expect(runtime.stop()).toMatchObject({ playing: false, timeSeconds: 0, playbackRate: 2 });
     expect(() => runtime.setPlaybackRate(0)).toThrow(/positive finite/);
   });
+
+  it("switches between the immutable readback rest pose and the selected animated pose", () => {
+    const root = new THREE.Group();
+    root.position.x = 4;
+    const clip = new THREE.AnimationClip("move", 1, [
+      new THREE.NumberKeyframeTrack(".position[x]", [0, 1], [4, 8]),
+    ]);
+    const runtime = new AnimationPlaybackRuntime(root, [clip]);
+    runtime.selectClip(0);
+    runtime.seek(0.5);
+    expect(root.position.x).toBeCloseTo(6);
+
+    expect(runtime.setPoseMode("REST")).toMatchObject({ poseMode: "REST", playing: false });
+    expect(root.position.x).toBeCloseTo(4);
+    expect(runtime.setPoseMode("ANIMATED")).toMatchObject({ poseMode: "ANIMATED", timeSeconds: 0.5 });
+    expect(root.position.x).toBeCloseTo(6);
+  });
 });

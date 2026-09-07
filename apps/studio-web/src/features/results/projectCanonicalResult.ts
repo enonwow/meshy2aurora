@@ -28,14 +28,33 @@ export interface CanonicalResultSnapshot {
   };
   runtimeAcceptance: CanonicalRuntimeAcceptance;
   animationEventEvidence?: CanonicalAnimationEventEvidence;
+  weaponAnchorAuthoring?: CanonicalWeaponAnchorAuthoringReport;
   skinAccessoryStabilization?: CanonicalSkinAccessoryStabilizationReport;
   materialFidelity?: CanonicalMaterialFidelityReport;
+  referenceSupermodelCoverage?: CanonicalReferenceSupermodelCoverage;
   demo?: CanonicalCreatureDemoReport;
   runtimeFixtureContract?: CanonicalM0RuntimeFixtureContract;
   artifacts: WorkerArtifact[];
   reportJson: string;
   summaryJson: string;
   manifestJson: string;
+}
+
+export interface CanonicalReferenceSupermodelCoverage {
+  fullCarrierCoverage: true;
+  requiredJointCoverage: true;
+  skinInfluenceCoverage: true;
+  inheritedClipCoverage: true;
+  visibleMotionCoverage: true;
+  carrierNodeCount: number;
+  allowedBoneCount: number;
+  activeWeightedBoneCount: number;
+  passiveUnweightedJointNames: string[];
+  requiredClipCount: number;
+  sampledClipCount: number;
+  jointClipRequiredCount: number;
+  jointClipPassCount: number;
+  seamViolationCount: 0;
 }
 
 export interface CanonicalConversionGate {
@@ -88,6 +107,46 @@ export interface CanonicalAnimationEventEvidence {
   missingPairs: string[];
   complete: true;
   authoringCanonical: { byteLength: number; sha256: string };
+}
+
+export interface CanonicalWeaponAnchorBinding {
+  anchorName: string;
+  anchorNodeId: number;
+  parentBoneName: string;
+  parentBoneNodeId: number;
+  localMatrix: number[];
+  disposition: "added" | "reused_compatible";
+  weightedVertexCount: number;
+}
+
+export interface CanonicalWeaponAnchorAuthoringReport {
+  schemaVersion: 1;
+  status: "weapon_anchors_ready";
+  calibration: string;
+  profileSha256Before: string;
+  profileSha256After: string;
+  anchors: CanonicalWeaponAnchorBinding[];
+  gripAdjustment?: CanonicalWeaponGripAdjustmentReport;
+}
+
+export interface CanonicalWeaponEulerOffset {
+  rollDegrees: number;
+  pitchDegrees: number;
+  yawDegrees: number;
+}
+
+export interface CanonicalWeaponGripHandReport {
+  requested: CanonicalWeaponEulerOffset;
+  automaticLocalMatrix: number[];
+  finalLocalMatrix: number[];
+}
+
+export interface CanonicalWeaponGripAdjustmentReport {
+  schemaVersion: 1;
+  mode: "AUTO_PLUS_OFFSETS";
+  compositionOrder: "AUTO_X_RZ_YAW_X_RX_PITCH_X_RY_ROLL_LOCAL_ITEM_AXES";
+  rightHand: CanonicalWeaponGripHandReport;
+  leftHand: CanonicalWeaponGripHandReport;
 }
 
 export interface CanonicalSkinAccessoryDeformationMetrics {
@@ -147,6 +206,20 @@ export interface CanonicalCreatureDemoReport {
   byteLength: number;
   sha256: string;
   semanticReadbackStatus: "PASS";
+  heldStockWeaponReadback?: CanonicalHeldStockWeaponReadback;
+}
+
+export interface CanonicalHeldStockWeaponReadback {
+  schemaVersion: 2;
+  weapon: {
+    resref: string;
+    resourceType: 2025;
+    resourceScope: "NWN_BASE_GAME";
+  };
+  fixtures: [{
+    hand: "right_hand" | "left_hand";
+    equippedItemResref: string;
+  }];
 }
 
 export interface CanonicalMaterialFidelityReport {
@@ -356,6 +429,106 @@ function optionalNumber(value: unknown, path: string): number | undefined {
   return value === undefined || value === null ? undefined : number(value, path);
 }
 
+function weaponAnchorAuthoringParser(
+  value: unknown,
+  path: string,
+): CanonicalWeaponAnchorAuthoringReport {
+  const item = record(value, path);
+  if (integer(item.schemaVersion, `${path}.schemaVersion`) !== 1) fail(`${path}.schemaVersion`);
+  const status = string(item.status, `${path}.status`);
+  if (status !== "weapon_anchors_ready") fail(`${path}.status`);
+  const anchors = array(item.anchors, `${path}.anchors`).map((value, index) => {
+    const anchorPath = `${path}.anchors[${index}]`;
+    const anchor = record(value, anchorPath);
+    const dispositionValue = string(anchor.disposition, `${anchorPath}.disposition`);
+    if (dispositionValue !== "added" && dispositionValue !== "reused_compatible") {
+      fail(`${anchorPath}.disposition`);
+    }
+    const disposition = dispositionValue as CanonicalWeaponAnchorBinding["disposition"];
+    return {
+      anchorName: string(anchor.anchorName, `${anchorPath}.anchorName`),
+      anchorNodeId: integer(anchor.anchorNodeId, `${anchorPath}.anchorNodeId`),
+      parentBoneName: string(anchor.parentBoneName, `${anchorPath}.parentBoneName`),
+      parentBoneNodeId: integer(anchor.parentBoneNodeId, `${anchorPath}.parentBoneNodeId`),
+      localMatrix: finiteNumberTuple(anchor.localMatrix, 16, `${anchorPath}.localMatrix`),
+      disposition,
+      weightedVertexCount: integer(anchor.weightedVertexCount, `${anchorPath}.weightedVertexCount`),
+    };
+  });
+  const normalizedNames = anchors.map(({ anchorName }) => anchorName.toLocaleLowerCase()).sort();
+  if (normalizedNames.length !== 2 || normalizedNames[0] !== "lhand" || normalizedNames[1] !== "rhand") {
+    fail(`${path}.anchors`);
+  }
+  if (anchors.some(({ weightedVertexCount }) => weightedVertexCount !== 0)) {
+    fail(`${path}.anchors.weightedVertexCount`);
+  }
+  const gripAdjustment = item.gripAdjustment === undefined
+    ? undefined
+    : weaponGripAdjustmentParser(item.gripAdjustment, `${path}.gripAdjustment`);
+  if (gripAdjustment) {
+    for (const [anchorName, hand] of [
+      ["rhand", gripAdjustment.rightHand],
+      ["lhand", gripAdjustment.leftHand],
+    ] as const) {
+      const anchor = anchors.find((candidate) => candidate.anchorName.toLocaleLowerCase() === anchorName);
+      if (!anchor || anchor.localMatrix.some((value, index) => Math.abs(value - hand.finalLocalMatrix[index]!) > 1e-5)) {
+        fail(`${path}.gripAdjustment.${anchorName === "rhand" ? "rightHand" : "leftHand"}.finalLocalMatrix`);
+      }
+    }
+  }
+  return {
+    schemaVersion: 1,
+    status: "weapon_anchors_ready",
+    calibration: string(item.calibration, `${path}.calibration`),
+    profileSha256Before: sha256(item.profileSha256Before, `${path}.profileSha256Before`),
+    profileSha256After: sha256(item.profileSha256After, `${path}.profileSha256After`),
+    anchors,
+    ...(gripAdjustment ? { gripAdjustment } : {}),
+  };
+}
+
+function weaponGripAdjustmentParser(
+  value: unknown,
+  path: string,
+): CanonicalWeaponGripAdjustmentReport {
+  const item = record(value, path);
+  if (integer(item.schemaVersion, `${path}.schemaVersion`) !== 1) fail(`${path}.schemaVersion`);
+  if (string(item.mode, `${path}.mode`) !== "AUTO_PLUS_OFFSETS") fail(`${path}.mode`);
+  const compositionOrder = string(item.compositionOrder, `${path}.compositionOrder`);
+  const expectedComposition = "AUTO_X_RZ_YAW_X_RX_PITCH_X_RY_ROLL_LOCAL_ITEM_AXES" as const;
+  if (compositionOrder !== expectedComposition) {
+    fail(`${path}.compositionOrder`);
+  }
+  const hand = (handValue: unknown, handPath: string): CanonicalWeaponGripHandReport => {
+    const handItem = record(handValue, handPath);
+    const requested = record(handItem.requested, `${handPath}.requested`);
+    return {
+      requested: {
+        rollDegrees: number(requested.rollDegrees, `${handPath}.requested.rollDegrees`),
+        pitchDegrees: number(requested.pitchDegrees, `${handPath}.requested.pitchDegrees`),
+        yawDegrees: number(requested.yawDegrees, `${handPath}.requested.yawDegrees`),
+      },
+      automaticLocalMatrix: finiteNumberTuple(
+        handItem.automaticLocalMatrix,
+        16,
+        `${handPath}.automaticLocalMatrix`,
+      ),
+      finalLocalMatrix: finiteNumberTuple(
+        handItem.finalLocalMatrix,
+        16,
+        `${handPath}.finalLocalMatrix`,
+      ),
+    };
+  };
+  return {
+    schemaVersion: 1,
+    mode: "AUTO_PLUS_OFFSETS",
+    compositionOrder: expectedComposition,
+    rightHand: hand(item.rightHand, `${path}.rightHand`),
+    leftHand: hand(item.leftHand, `${path}.leftHand`),
+  };
+}
+
 function skinAccessoryMetrics(
   value: unknown,
   path: string,
@@ -428,11 +601,56 @@ function skinAccessoryStabilizationParser(
 function creatureDemoParser(value: unknown, path: string): CanonicalCreatureDemoReport {
   const item = record(value, path);
   if (integer(item.schemaVersion, `${path}.schemaVersion`) !== 2) fail(`${path}.schemaVersion`);
+  if (item.heldWeaponReadback !== undefined) fail(`${path}.heldWeaponReadback`);
   const semanticReadbackStatus = string(
     item.semanticReadbackStatus,
     `${path}.semanticReadbackStatus`,
   );
   if (semanticReadbackStatus !== "PASS") fail(`${path}.semanticReadbackStatus`);
+  let heldStockWeaponReadback: CanonicalHeldStockWeaponReadback | undefined;
+  if (item.heldStockWeaponReadback !== undefined) {
+    const held = record(item.heldStockWeaponReadback, `${path}.heldStockWeaponReadback`);
+    if (integer(held.schemaVersion, `${path}.heldStockWeaponReadback.schemaVersion`) !== 2) {
+      fail(`${path}.heldStockWeaponReadback.schemaVersion`);
+    }
+    const weapon = record(held.weapon, `${path}.heldStockWeaponReadback.weapon`);
+    const resref = string(weapon.resref, `${path}.heldStockWeaponReadback.weapon.resref`);
+    const resourceType = integer(
+      weapon.resourceType,
+      `${path}.heldStockWeaponReadback.weapon.resourceType`,
+    );
+    const resourceScope = string(
+      weapon.resourceScope,
+      `${path}.heldStockWeaponReadback.weapon.resourceScope`,
+    );
+    if (resourceType !== 2025) fail(`${path}.heldStockWeaponReadback.weapon.resourceType`);
+    if (resourceScope !== "NWN_BASE_GAME") fail(`${path}.heldStockWeaponReadback.weapon.resourceScope`);
+    const fixtures = array(held.fixtures, `${path}.heldStockWeaponReadback.fixtures`);
+    if (fixtures.length !== 1) fail(`${path}.heldStockWeaponReadback.fixtures`);
+    const fixture = record(fixtures[0], `${path}.heldStockWeaponReadback.fixtures[0]`);
+    const handValue = string(fixture.hand, `${path}.heldStockWeaponReadback.fixtures[0].hand`);
+    const hand: "right_hand" | "left_hand" = handValue === "right_hand"
+      ? "right_hand"
+      : handValue === "left_hand"
+        ? "left_hand"
+        : fail(`${path}.heldStockWeaponReadback.fixtures[0].hand`);
+    const equippedItemResref = string(
+      fixture.equippedItemResref,
+      `${path}.heldStockWeaponReadback.fixtures[0].equippedItemResref`,
+    );
+    if (equippedItemResref !== resref) {
+      fail(`${path}.heldStockWeaponReadback.fixtures[0].equippedItemResref`);
+    }
+    heldStockWeaponReadback = {
+      schemaVersion: 2,
+      weapon: {
+        resref,
+        resourceType: 2025,
+        resourceScope: "NWN_BASE_GAME",
+      },
+      fixtures: [{ hand, equippedItemResref }],
+    };
+  }
   return {
     schemaVersion: 2,
     moduleResref: string(item.moduleResref, `${path}.moduleResref`),
@@ -446,6 +664,7 @@ function creatureDemoParser(value: unknown, path: string): CanonicalCreatureDemo
     byteLength: integer(item.byteLength, `${path}.byteLength`),
     sha256: sha256(item.sha256, `${path}.sha256`),
     semanticReadbackStatus: "PASS",
+    ...(heldStockWeaponReadback ? { heldStockWeaponReadback } : {}),
   };
 }
 
@@ -518,9 +737,11 @@ export function projectCanonicalResult(
   const manifest = parseJson(manifestJson, "manifestJson");
   const status = string(summary.status, "summary.status");
   const productOnly = status === "PROCEDURAL_CREATURE_PRODUCT_MATERIALIZED";
-  const expectedSchemaVersion = productOnly ? 3 : 1;
-  for (const [value, path] of [[report, "report"], [summary, "summary"], [manifest, "manifest"]] as const) {
-    if (integer(value.schemaVersion, `${path}.schemaVersion`) !== expectedSchemaVersion) {
+  if (integer(report.schemaVersion, "report.schemaVersion") !== (productOnly ? 4 : 1)) {
+    fail("report.schemaVersion");
+  }
+  for (const [value, path] of [[summary, "summary"], [manifest, "manifest"]] as const) {
+    if (integer(value.schemaVersion, `${path}.schemaVersion`) !== (productOnly ? 3 : 1)) {
       fail(`${path}.schemaVersion`);
     }
   }
@@ -714,6 +935,12 @@ export function projectCanonicalResult(
       report.skinAccessoryStabilization,
       "report.skinAccessoryStabilization",
     );
+  const weaponAnchorAuthoring = report.weaponAnchorAuthoring === undefined
+    ? undefined
+    : weaponAnchorAuthoringParser(
+      report.weaponAnchorAuthoring,
+      "report.weaponAnchorAuthoring",
+    );
   const materialFidelity = report.materialFidelity === undefined
     ? undefined
     : materialFidelityParser(report.materialFidelity, "report.materialFidelity");
@@ -892,6 +1119,7 @@ export function projectCanonicalResult(
     },
     runtimeAcceptance: resolveOwnerRuntimeProofV1(outputs),
     animationEventEvidence,
+    weaponAnchorAuthoring,
     skinAccessoryStabilization,
     materialFidelity,
     demo,

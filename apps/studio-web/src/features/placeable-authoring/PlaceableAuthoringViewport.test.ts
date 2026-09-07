@@ -4,8 +4,28 @@ import {
   componentGeometry,
   connectedTriangleComponents,
 } from "./PlaceableAuthoringViewport";
+import {
+  PLACEABLE_AUTHORING_GROUND_Y_V1,
+  placeableGroundRelationV1,
+} from "./groundPolicy";
 
 describe("placeable viewport topology", () => {
+  it("shares one explicit Y=0 plane and never keeps below-ground geometry silent", () => {
+    expect(PLACEABLE_AUTHORING_GROUND_Y_V1).toBe(0);
+    expect(placeableGroundRelationV1(-0.25)).toEqual({
+      state: "BELOW",
+      distanceMeters: 0.25,
+    });
+    expect(placeableGroundRelationV1(0)).toEqual({
+      state: "GROUNDED",
+      distanceMeters: 0,
+    });
+    expect(placeableGroundRelationV1(0.25)).toEqual({
+      state: "FLOATING",
+      distanceMeters: 0.25,
+    });
+  });
+
   it("uses the same shared-index connected-component rule as core", () => {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.Float32BufferAttribute([

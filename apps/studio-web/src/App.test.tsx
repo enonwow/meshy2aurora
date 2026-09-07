@@ -113,6 +113,57 @@ function sourceInspectionJson() {
   });
 }
 
+function highPolyInspectionJson() {
+  const sha256 = "a".repeat(64);
+  return JSON.stringify({
+    schemaVersion: 1,
+    inspectionMode: "UNSAFE_HIGH_POLY_INSPECTION_V1",
+    source: {
+      format: "GLB_2_0",
+      byteLength: 77_030_884,
+      sha256,
+      assetVersion: "2.0",
+      generator: "pygltflib@v1.16.5",
+    },
+    inventory: {
+      sceneCount: 1,
+      nodeCount: 1,
+      meshCount: 1,
+      primitiveCount: 1,
+      materialCount: 1,
+      textureCount: 3,
+      samplerCount: 1,
+      imageCount: 3,
+      skinCount: 0,
+      jointReferenceCount: 0,
+      animationCount: 0,
+      keyframeCount: 0,
+    },
+    statistics: {
+      vertexCount: 1_070_612,
+      indexCount: 5_991_192,
+      triangleCount: 1_997_064,
+      boundsMin: [-1, 0, -2],
+      boundsMax: [1, 3, 2],
+      primitivesMissingNormals: 0,
+      primitivesMissingUv0: 0,
+      nonTrianglePrimitives: 0,
+    },
+    boneCount: 0,
+    clips: [],
+    gates: [{
+      code: "M2A-GLB-HIGH-POLY-INSPECTION-ONLY",
+      severity: "BLOCKING",
+      path: "inspectionMode",
+      expected: "product conversion at or below 300000 triangles",
+      actual: "UNSAFE_HIGH_POLY_INSPECTION_V1",
+      message: "local inspection only",
+    }],
+    diagnostics: [],
+    conversionEligible: false,
+  });
+}
+
 function placeableAuthoringJson() {
   const sourceSha256 = "a".repeat(64);
   return JSON.stringify({
@@ -173,6 +224,40 @@ function placeableCollisionJson() {
     authoringSha256: "1".repeat(64),
     collisionSha256: "2".repeat(64),
     pwkSha256: "3".repeat(64),
+  });
+}
+
+function emptyModelMaterialInspectionJson() {
+  const sourceSha256 = "a".repeat(64);
+  return JSON.stringify({
+    schemaVersion: 2,
+    capabilities: {
+      schemaVersion: 2,
+      target: "PLACEABLE",
+      materialSeparationSupported: true,
+      maxMaterialSlots: 64,
+      maxOutputSections: 256,
+      selectionGranularity: "CONNECTED_COMPONENTS_AND_FACES",
+      faceSelectionSupported: true,
+      automaticMaterialInference: false,
+      preservesSourceUv0: true,
+    },
+    inventory: {
+      schemaVersion: 1,
+      sourceSha256,
+      sceneId: 0,
+      renderNodeCount: 0,
+      primitiveInstanceCount: 0,
+      triangleCount: 0,
+      components: [],
+    },
+    document: {
+      schemaVersion: 2,
+      sourceSha256,
+      materials: [],
+      componentAssignments: [],
+      faceAssignments: [],
+    },
   });
 }
 
@@ -316,19 +401,20 @@ function placeableBuiltResponse(requestId: string): StudioWorkerResponse {
     collisionCompleteness: "ascii_pwk_emitted_offline_readback_passed",
     resources,
   });
+  const readbackJson = JSON.stringify({
+    schemaVersion: 1,
+    format: "nwn1-binary-mdl",
+    nodeTree: { roots: [{ offset: 12, number: 1, name: "m2a_s1_plc_ped", controllers: [], children: [] }] },
+    animations: [],
+    diagnostics: [],
+  });
   const withName = (value: WorkerArtifact, fileName: string) => ({ ...value, fileName });
   return {
     requestId,
     ok: true,
     type: "PLACEABLE_PACKAGE_BUILT",
     reportJson,
-    readbackJson: JSON.stringify({
-      schemaVersion: 1,
-      format: "nwn1-binary-mdl",
-      nodeTree: { roots: [{ offset: 12, number: 1, name: "m2a_s1_plc_ped", controllers: [], children: [] }] },
-      animations: [],
-      diagnostics: [],
-    }),
+    readbackJson,
     artifacts: [
       withName(artifact("placeable-package-hak", "HAK", [1, 2, 3], hash("a")), "m2a_s1_plc_hak.hak"),
       withName(artifact("placeable-model-mdl", "MODEL", [1, 2], hash("b")), "m2a_s1_plc_ped.mdl"),
@@ -336,6 +422,10 @@ function placeableBuiltResponse(requestId: string): StudioWorkerResponse {
       withName(
         artifact("placeable-report-json", "JSON_REPORT", [...new TextEncoder().encode(reportJson)], hash("9")),
         "placeable-materialization-report.json",
+      ),
+      withName(
+        artifact("placeable-model-readback-json", "JSON_REPORT", [...new TextEncoder().encode(readbackJson)], hash("8")),
+        "placeable-model-readback.json",
       ),
     ],
   };
@@ -507,7 +597,10 @@ async function driveToBuild(
   return { sourceInput, worker, build };
 }
 
-async function driveToPlaceableBuild(container: HTMLElement) {
+async function driveToPlaceableBuild(
+  container: HTMLElement,
+  materialProfile: "AURORA_CLASSIC_SAFE" | "NWN_EE_MTR" = "NWN_EE_MTR",
+) {
   const [sourceInput, appearanceInput] = Array.from(container.querySelectorAll<HTMLInputElement>('input[type="file"]'));
   await selectFile(sourceInput, localFile("source.glb", 1));
   await selectFile(appearanceInput, localFile("placeables.2da", 2));
@@ -527,7 +620,23 @@ async function driveToPlaceableBuild(container: HTMLElement) {
     worker.emit({ requestId: appearanceRequest.requestId, ok: true, type: "APPEARANCE_INSPECTED", inspectionJson: appearanceInspectionJson() });
     await Promise.resolve();
   });
+  const materialInspectionRequest = await waitForWorkerRequest(worker, "INSPECT_MODEL_COMPONENTS");
+  await act(async () => {
+    worker.emit({
+      requestId: materialInspectionRequest.requestId,
+      ok: true,
+      type: "MODEL_COMPONENTS_INSPECTED",
+      sourceStateId: materialInspectionRequest.sourceStateId,
+      inspectionJson: emptyModelMaterialInspectionJson(),
+    });
+    await Promise.resolve();
+  });
   await act(async () => button(container, "Continue to Inspect")?.click());
+  const profile = container.querySelector<HTMLSelectElement>(
+    'select[aria-label="Profil materiałów Aurora"]',
+  );
+  if (!profile) throw new Error("Placeable material profile selector missing");
+  await act(async () => setSelectValue(profile, materialProfile));
   await act(async () => button(container, "Apply placeable edit")?.click());
   await act(async () => {
     await new Promise((resolve) => window.setTimeout(resolve, 140));
@@ -629,6 +738,18 @@ describe("Studio workflow", () => {
     expect(container.textContent).toContain("choose Creature or Placeable");
   });
 
+  it("declares Material Separation unsupported for legacy Creature experiments", async () => {
+    const container = await renderApp();
+    const profile = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Creature conversion profile"]',
+    );
+    await act(async () => setSelectValue(profile!, "EXPERIMENTAL_P100K"));
+
+    expect(container.textContent).toContain(
+      "Material Separation is available only in the Product 300K profile.",
+    );
+  });
+
   it("moves inspected local inputs through Build into a readback-verified review", async () => {
     const container = await renderApp();
     const { build, worker } = await driveToBuild(container);
@@ -712,12 +833,20 @@ describe("Studio workflow", () => {
     });
     const suffix = identity.modelResref.slice(2);
     expect(build.skinAccessoryStabilization).toEqual({ mode: "AUTO" });
-    expect(JSON.parse(build.demoModuleIdentityJson)).toEqual({
-      moduleResref: `cd${suffix}`,
-      areaResref: `ca${suffix}`,
+    expect(build.weaponGrip).toEqual({
+      schemaVersion: 1,
+      mode: "AUTO",
+      itemFamily: "SWORD",
+      rightHand: { rollDegrees: 0, pitchDegrees: 0, yawDegrees: 0 },
+      leftHand: { rollDegrees: 0, pitchDegrees: 0, yawDegrees: 0 },
+    });
+    const demoIdentity = JSON.parse(build.demoModuleIdentityJson);
+    expect(demoIdentity).toEqual({
+      moduleResref: expect.stringMatching(/^cd[a-z2-7]{14}$/),
+      areaResref: expect.stringMatching(/^ca[a-z2-7]{14}$/),
       hakResref: `ch${suffix}`,
     });
-    expect(build.demoCreatureResref).toBe(`cc${suffix}`);
+    expect(build.demoCreatureResref).toBe(`cc${demoIdentity.moduleResref.slice(2)}`);
   });
 
   it("passes the selected source-forward axis into the canonical Creature build", async () => {
@@ -736,6 +865,103 @@ describe("Studio workflow", () => {
       throw new Error("procedural product request unavailable");
     }
     expect(build.sourceForward).toBe("NEGATIVE_X");
+  });
+
+  it("routes independent manual weapon RPY through the Creature build and artifact identity", async () => {
+    const container = await renderApp();
+    const mode = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Weapon rotation mode"]',
+    );
+    expect(mode?.value).toBe("AUTO");
+    await act(async () => setSelectValue(mode!, "AUTO_PLUS_OFFSETS"));
+    const rightRoll = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Right Roll (blade +Y)"]',
+    );
+    const leftYaw = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Left Yaw (local +Z)"]',
+    );
+    expect(rightRoll?.disabled).toBe(false);
+    expect(leftYaw?.disabled).toBe(false);
+    await act(async () => {
+      setValue(rightRoll!, "32.5");
+      setValue(leftYaw!, "-14");
+    });
+
+    const { build } = await driveToBuild(container, singleIdleSkinnedSourceInspectionJson());
+    if (
+      build.type !== "BUILD_MODEL_PACKAGE"
+      || build.packageLane !== "SKINNED_PROCEDURAL_HUMANOID_42"
+    ) {
+      throw new Error("procedural product request unavailable");
+    }
+    expect(build.weaponGrip).toEqual({
+      schemaVersion: 1,
+      mode: "AUTO_PLUS_OFFSETS",
+      itemFamily: "SWORD",
+      rightHand: { rollDegrees: 32.5, pitchDegrees: 0, yawDegrees: 0 },
+      leftHand: { rollDegrees: 0, pitchDegrees: 0, yawDegrees: -14 },
+    });
+    expect(JSON.parse(build.identityJson)).toMatchObject({
+      modelResref: expect.stringMatching(/^cm[a-z2-7]{14}$/),
+      textureResref: expect.stringMatching(/^ct[a-z2-7]{14}$/),
+      hakResref: expect.stringMatching(/^ch[a-z2-7]{14}$/),
+    });
+  });
+
+  it("places the standard demo item in the selected Creature hand", async () => {
+    const container = await renderApp();
+    const heldItem = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Item in Creature hand"]',
+    );
+    expect(heldItem?.value).toBe("NONE");
+    await act(async () => setSelectValue(heldItem!, "LEFT_HAND"));
+
+    const { build } = await driveToBuild(container, singleIdleSkinnedSourceInspectionJson());
+    if (
+      build.type !== "BUILD_MODEL_PACKAGE"
+      || build.packageLane !== "SKINNED_PROCEDURAL_HUMANOID_42"
+    ) {
+      throw new Error("procedural product request unavailable");
+    }
+    expect(build.heldWeapon).toBeUndefined();
+    expect(build.demoAuthoring).toMatchObject({
+      schemaVersion: 1,
+      equipmentLoadout: {
+        schemaVersion: 2,
+        items: [{
+          resref: "nw_wswbs001",
+          baseItem: 3,
+          modelParts: [41, 11, 11],
+          placement: "LEFT_HAND",
+        }],
+      },
+    });
+    const demoModule = JSON.parse(build.demoModuleIdentityJson) as { moduleResref: string };
+    expect(demoModule.moduleResref).toMatch(/^cd[a-z2-7]{14}$/);
+    expect(build.demoCreatureResref).toBe(`cc${demoModule.moduleResref.slice(2)}`);
+  });
+
+  it("keeps model identity stable while equipment changes only the demo/UTC identity", async () => {
+    const noneContainer = await renderApp();
+    const none = await driveToBuild(noneContainer, singleIdleSkinnedSourceInspectionJson());
+    const equippedContainer = await renderApp();
+    const heldItem = equippedContainer.querySelector<HTMLSelectElement>(
+      'select[aria-label="Item in Creature hand"]',
+    );
+    await act(async () => setSelectValue(heldItem!, "RIGHT_HAND"));
+    const equipped = await driveToBuild(
+      equippedContainer,
+      singleIdleSkinnedSourceInspectionJson(),
+    );
+    if (
+      none.build.type !== "BUILD_MODEL_PACKAGE"
+      || none.build.packageLane !== "SKINNED_PROCEDURAL_HUMANOID_42"
+      || equipped.build.type !== "BUILD_MODEL_PACKAGE"
+      || equipped.build.packageLane !== "SKINNED_PROCEDURAL_HUMANOID_42"
+    ) throw new Error("procedural product request unavailable");
+    expect(equipped.build.identityJson).toBe(none.build.identityJson);
+    expect(equipped.build.demoModuleIdentityJson).not.toBe(none.build.demoModuleIdentityJson);
+    expect(equipped.build.demoCreatureResref).not.toBe(none.build.demoCreatureResref);
   });
 
   it("routes an explicit accessory bone through the procedural build request", async () => {
@@ -868,7 +1094,57 @@ describe("Studio workflow", () => {
         hakResref: `ph${token}`,
       },
       creatureResref: `pc${token}`,
+      heldWeapon: { schemaVersion: 1, mode: "NONE" },
     });
+  });
+
+  it("routes unsafe high-poly input to compact inspection and keeps Build locked", async () => {
+    const container = await renderApp();
+    const highPoly = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Unsafe high-poly inspection"]',
+    );
+    expect(highPoly?.checked).toBe(false);
+    await act(async () => highPoly?.click());
+
+    const [sourceInput, appearanceInput] = Array.from(
+      container.querySelectorAll<HTMLInputElement>('input[type="file"]'),
+    );
+    await selectFile(sourceInput, localFile("high-poly.glb", 1));
+    await selectFile(appearanceInput, localFile("appearance.2da", 2));
+    const worker = FakeWorker.instances.at(-1)!;
+    const sourceRequest = worker.requests
+      .filter((request) => request.type === "INSPECT_SOURCE")
+      .at(-1)!;
+    const appearanceRequest = worker.requests
+      .filter((request) => request.type === "INSPECT_APPEARANCE")
+      .at(-1)!;
+    expect(sourceRequest).toMatchObject({
+      type: "INSPECT_SOURCE",
+      creatureProfile: "PRODUCT_300K",
+      unsafeHighPolyInspection: true,
+    });
+
+    await act(async () => {
+      worker.emit({
+        requestId: sourceRequest.requestId,
+        ok: true,
+        type: "SOURCE_INSPECTED",
+        ingestJson: highPolyInspectionJson(),
+      });
+      worker.emit({
+        requestId: appearanceRequest.requestId,
+        ok: true,
+        type: "APPEARANCE_INSPECTED",
+        inspectionJson: appearanceInspectionJson(),
+      });
+      await Promise.resolve();
+    });
+    expect(worker.requests.some((request) => request.type === "INSPECT_MODEL_COMPONENTS")).toBe(false);
+
+    await act(async () => button(container, "Continue to Inspect")?.click());
+    const continueToBuild = button(container, "Continue to Build");
+    expect(continueToBuild?.disabled).toBe(true);
+    expect(container.textContent).toContain("M2A-GLB-HIGH-POLY-INSPECTION-ONLY");
   });
 
   it("routes the explicit 300K Creature experiment through its own full-package app lane", async () => {
@@ -914,6 +1190,7 @@ describe("Studio workflow", () => {
         hakResref: `ph${token}`,
       },
       creatureResref: `pc${token}`,
+      heldWeapon: { schemaVersion: 1, mode: "NONE" },
     });
   });
 
@@ -961,7 +1238,15 @@ describe("Studio workflow", () => {
     const { build, worker } = await driveToPlaceableBuild(container);
     expect(build.paletteId).toBe(7);
     expect(build.experimentalAggressiveGeometryCleanup).toBe(false);
-    expect(JSON.parse(build.identityJson).modelResref).toMatch(/^pm[0-9a-f]{8}$/);
+    expect(JSON.parse(build.identityJson).modelResref).toMatch(/^pm[a-z2-7]{14}$/);
+    expect(build.materialProfile).toBe("NWN_EE_MTR");
+    expect(JSON.parse(build.materialSeparationJson ?? "{}")).toEqual({
+      schemaVersion: 2,
+      sourceSha256: "a".repeat(64),
+      materials: [],
+      componentAssignments: [],
+      faceAssignments: [],
+    });
     expect(JSON.parse(build.authoringJson ?? "{}").elements).toEqual([
       expect.objectContaining({ marker: "edited-in-placeable-editor" }),
     ]);
@@ -978,10 +1263,48 @@ describe("Studio workflow", () => {
     expect(container.querySelector("#placeable-review-heading")?.textContent)
       .toBe("Meshy2Aurora S1 Placeable Proof");
     expect(container.textContent).toContain("Owner visual proof not performed");
+    expect(container.textContent).toContain("Exact binary MDL + exported texture resources");
+    expect(container.textContent).toContain("readback 888888888888...");
     expect(container.textContent).toContain("16500");
     expect(container.textContent).not.toContain("Aurora compatible");
     expect(container.querySelector('[aria-label="Canonical Worker artifact downloads"]')?.textContent)
       .toContain("m2a_s1_plc_hak.hak");
+  });
+
+  it("binds the Placeable material profile into the V9 artifact identity", async () => {
+    const ee = await driveToPlaceableBuild(await renderApp(), "NWN_EE_MTR");
+    const classic = await driveToPlaceableBuild(await renderApp(), "AURORA_CLASSIC_SAFE");
+    const eeIdentity = JSON.parse(ee.build.identityJson) as { modelResref: string };
+    const classicIdentity = JSON.parse(classic.build.identityJson) as { modelResref: string };
+
+    expect(ee.build.materialProfile).toBe("NWN_EE_MTR");
+    expect(classic.build.materialProfile).toBe("AURORA_CLASSIC_SAFE");
+    expect(eeIdentity.modelResref).not.toBe(classicIdentity.modelResref);
+  });
+
+  it("invalidates a built Placeable after the material profile changes", async () => {
+    const container = await renderApp();
+    const { build, worker } = await driveToPlaceableBuild(container);
+    await act(async () => {
+      worker.emit(placeableBuiltResponse(build.requestId));
+      await Promise.resolve();
+    });
+    const inspectStep = container.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Inspect:"]',
+    );
+    await act(async () => inspectStep?.click());
+    const profile = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Profil materiałów Aurora"]',
+    );
+    await act(async () => setSelectValue(profile!, "AURORA_CLASSIC_SAFE"));
+
+    expect(container.querySelector('#placeable-review-heading')).toBeNull();
+    expect(container.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Review Output:"]',
+    )?.disabled).toBe(true);
+    expect(container.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Download:"]',
+    )?.disabled).toBe(true);
   });
 
   it("rejects an unknown readback contract without a partial review", async () => {

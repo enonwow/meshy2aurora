@@ -12,10 +12,16 @@ import {
 import type { StudioTarget } from "../../app/studioSession";
 import type { MeshyArtifactProvenance } from "../meshy/bridge";
 import { parseSkinAccessoryComponentBoneOverridesV2 } from "./skinAccessoryOverrides";
+import { WeaponGripControls } from "../preview/WeaponGripControls";
+import { defaultCreatureWeaponGripOptionsV1 } from "./weaponGrip";
+import { HeldWeaponControls } from "./HeldWeaponControls";
 
 export interface SourceStepProps extends SourceInputProps {
   onContinue: () => void;
   onOpenMeshyLab?: () => void;
+  onOpenSupermodelLibrary?: () => void;
+  supermodelCandidateResref?: string;
+  appliedSupermodelResref?: string;
   meshyProvenance?: MeshyArtifactProvenance;
 }
 
@@ -126,12 +132,15 @@ export function SourceStep({
   appearance,
   animationEvents,
   creatureProfile = "PRODUCT_300K",
+  unsafeHighPolyInspection = false,
   creatureSourceForward = "POSITIVE_Z",
   textureArtifactCleanup = false,
   experimentalAggressiveGeometryCleanup = false,
   skinAccessoryStabilizationMode = "AUTO",
   skinAccessorySelectedBoneName = "",
   skinAccessoryComponentBoneOverrides = "",
+  creatureWeaponGrip = defaultCreatureWeaponGripOptionsV1(),
+  creatureHeldWeaponMode = "NONE",
   sourceIdentity,
   appearanceIdentity,
   sourceError,
@@ -141,12 +150,15 @@ export function SourceStep({
   onSelectAppearance,
   onSelectAnimationEvents,
   onCreatureProfileChange,
+  onUnsafeHighPolyInspectionChange,
   onCreatureSourceForwardChange,
   onTextureArtifactCleanupChange,
   onExperimentalAggressiveGeometryCleanupChange,
   onSkinAccessoryStabilizationModeChange,
   onSkinAccessorySelectedBoneNameChange,
   onSkinAccessoryComponentBoneOverridesChange,
+  onCreatureWeaponGripChange,
+  onCreatureHeldWeaponModeChange,
   onRemoveSource,
   onRemoveAppearance,
   onRemoveAnimationEvents,
@@ -155,6 +167,9 @@ export function SourceStep({
   onTileOptionsChange,
   onContinue,
   onOpenMeshyLab,
+  onOpenSupermodelLibrary,
+  supermodelCandidateResref,
+  appliedSupermodelResref,
   meshyProvenance,
 }: SourceStepProps) {
   const headingId = useId();
@@ -319,7 +334,7 @@ export function SourceStep({
               </label>
               <p role="note">
                 Choose the axis the character faces in the source GLB. The pipeline rotates that
-                axis to Aurora/NWN forward (-Y) without mirroring the model.
+                axis to Aurora/NWN forward (+Y) without mirroring the model.
               </p>
             </>
           ) : null}
@@ -332,6 +347,28 @@ export function SourceStep({
             <p role="note">
               Historical P300K replay profile. New conversions should use the shared 300,000-triangle product profile.
             </p>
+          ) : null}
+          {creatureProfile !== "PRODUCT_300K" ? (
+            <p role="note">
+              Material Separation is available only in the Product 300K profile.
+            </p>
+          ) : null}
+          {creatureProfile === "PRODUCT_300K" && onUnsafeHighPolyInspectionChange ? (
+            <>
+              <label>
+                <input
+                  type="checkbox"
+                  aria-label="Unsafe high-poly inspection"
+                  checked={unsafeHighPolyInspection}
+                  onChange={(event) => onUnsafeHighPolyInspectionChange(event.currentTarget.checked)}
+                />
+                Unsafe high-poly inspection
+              </label>
+              <p role="note">
+                Local preview and diagnostics only. Product export remains blocked above 300,000
+                triangles. This mode may use substantial memory.
+              </p>
+            </>
           ) : null}
           {onTextureArtifactCleanupChange ? (
             <>
@@ -405,6 +442,15 @@ export function SourceStep({
               </p>
             </>
           ) : null}
+          {onCreatureWeaponGripChange ? (
+            <WeaponGripControls value={creatureWeaponGrip} onChange={onCreatureWeaponGripChange} />
+          ) : null}
+          {onCreatureHeldWeaponModeChange ? (
+            <HeldWeaponControls
+              value={creatureHeldWeaponMode}
+              onChange={onCreatureHeldWeaponModeChange}
+            />
+          ) : null}
         </fieldset>
       ) : null}
 
@@ -469,6 +515,22 @@ export function SourceStep({
           selectLabel="Select event JSON"
         /> : null}
       </div>
+
+      {target === "CREATURE" && onOpenSupermodelLibrary ? (
+        <aside className="source-step__meshy-lab" aria-label="Biblioteka supermodeli">
+          <div>
+            <strong>Chcesz najpierw obejrzeć animacje bazowej gry?</strong>
+            <span>{appliedSupermodelResref
+              ? `Nałożony podgląd: ${appliedSupermodelResref}. Animacje, kości i jointy są dostępne w bibliotece.`
+              : supermodelCandidateResref
+              ? `Kandydat: ${supermodelCandidateResref}. Nie został jeszcze nałożony na model.`
+              : "Przeskanuj lokalne KEY/BIF i obejrzyj wszystkie wykryte supermodele bez nakładania."}</span>
+          </div>
+          <button type="button" className="button button--secondary" onClick={onOpenSupermodelLibrary}>
+            Przeglądaj bibliotekę supermodeli
+          </button>
+        </aside>
+      ) : null}
 
       {onOpenMeshyLab ? (
         <aside className="source-step__meshy-lab" aria-label="Optional Meshy Lab integration">

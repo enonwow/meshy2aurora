@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   overrideModelTextureBindingV1,
   prepareModelTexturePayloadsV1,
+  reuseModelTextureOverrideV1,
   sourceModelTextureBindingV1,
 } from "./texturePayloads";
 import type { ModelTextureBindingAuthoringV1 } from "./types";
@@ -63,5 +64,20 @@ describe("neutral model texture payload preparation", () => {
     expect(descriptors[1].byteOffset).toBe(descriptors[0].byteLength);
     expect(descriptors.reduce((sum, descriptor) => sum + descriptor.byteLength, 0))
       .toBe(prepared.payloadBlob.byteLength);
+  });
+
+  it("reuses one uploaded texture across independent material groups", async () => {
+    const file = new File([new Uint8Array([137, 80, 78, 71])], "wood.png", { type: "image/png" });
+    const hull = await overrideModelTextureBindingV1(sourceBinding(0), file);
+    const deck = reuseModelTextureOverrideV1(sourceBinding(1), hull.binding);
+
+    expect(deck).toMatchObject({
+      authoredMaterialId: "material:1",
+      materialSlot: 1,
+      mode: "OVERRIDE",
+      overrideAssetId: hull.assetId,
+      overrideSha256: hull.binding.overrideSha256,
+    });
+    expect(deck.sourceMaterialId).toBe(0);
   });
 });

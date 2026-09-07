@@ -4,7 +4,7 @@ import type { CanonicalModelMetrics, CanonicalResultSnapshot } from "../results/
 import { ConversionReadiness } from "./ConversionReadiness";
 import "./ReviewModelDetails.css";
 
-export type ReviewViewport = "SOURCE" | "CONVERTED";
+export type ReviewViewport = "SOURCE" | "CONVERTED" | "READBACK_DEBUG";
 
 interface ReviewModelDetailsProps {
   result: CanonicalResultSnapshot;
@@ -14,6 +14,7 @@ interface ReviewModelDetailsProps {
   onInspectBinary: () => void;
   sourceViewport: ReactNode;
   convertedReadbackViewport: ReactNode;
+  debugReadbackViewport?: ReactNode;
 }
 
 const metricLabels: Record<keyof CanonicalModelMetrics, string> = {
@@ -57,6 +58,7 @@ export function ReviewModelDetails({
   onInspectBinary,
   sourceViewport,
   convertedReadbackViewport,
+  debugReadbackViewport,
 }: ReviewModelDetailsProps) {
   const metrics = pairedReviewMetrics(result.sourceMetrics, result.convertedMetrics);
   const semanticPass = result.semanticEvidence.semanticDiff.length === 0;
@@ -105,11 +107,23 @@ export function ReviewModelDetails({
           aria-selected={activeViewport === "CONVERTED"}
           onClick={() => onViewportChange("CONVERTED")}
         >
-          Converted Model
+          Aurora Export
         </button>
+        {debugReadbackViewport ? (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeViewport === "READBACK_DEBUG"}
+            onClick={() => onViewportChange("READBACK_DEBUG")}
+          >Binary Readback (debug)</button>
+        ) : null}
       </div>
       <div className="review-model__viewport" role="tabpanel">
-        {activeViewport === "SOURCE" ? sourceViewport : convertedReadbackViewport}
+        {activeViewport === "SOURCE"
+          ? sourceViewport
+          : activeViewport === "READBACK_DEBUG" && debugReadbackViewport
+            ? debugReadbackViewport
+            : convertedReadbackViewport}
       </div>
 
       <ConversionReadiness result={result} readback={readback} />
@@ -126,6 +140,22 @@ export function ReviewModelDetails({
             </small>
           </article>
         )}
+        {result.referenceSupermodelCoverage && (
+          <article>
+            <span>Reference supermodel skeleton</span>
+            <strong data-status="pass">FULL COVERAGE / PASS</strong>
+            <small>
+              {`${result.referenceSupermodelCoverage.carrierNodeCount} carriers · ${result.referenceSupermodelCoverage.activeWeightedBoneCount}/${result.referenceSupermodelCoverage.allowedBoneCount} active weighted joints · clips ${result.referenceSupermodelCoverage.sampledClipCount}/${result.referenceSupermodelCoverage.requiredClipCount} · joint×clip ${result.referenceSupermodelCoverage.jointClipPassCount}/${result.referenceSupermodelCoverage.jointClipRequiredCount} · seams ${result.referenceSupermodelCoverage.seamViolationCount}`}
+            </small>
+          </article>
+        )}
+        {result.referenceSupermodelCoverage?.passiveUnweightedJointNames.length ? (
+          <article>
+            <span>Passive / attachment joints</span>
+            <strong data-status="pass">LEGAL UNWEIGHTED</strong>
+            <small>{result.referenceSupermodelCoverage.passiveUnweightedJointNames.join(", ")}</small>
+          </article>
+        ) : null}
         {result.runtimeFixtureContract && (
           <article>
             <span>M0 runtime fixture</span>

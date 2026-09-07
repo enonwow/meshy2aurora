@@ -3,6 +3,14 @@ import type {
   SkinAccessoryStabilizationModeV1,
 } from "../source/InputsPanel";
 import { canonicalSkinAccessoryComponentBoneOverridesV2 } from "../source/skinAccessoryOverrides";
+import {
+  canonicalCreatureWeaponGripOptionsV1,
+  type CreatureWeaponGripOptionsV1,
+} from "../source/weaponGrip";
+import {
+  CREATURE_HELD_WEAPON_RECIPE_V1,
+  type CreatureHeldWeaponModeV1,
+} from "../source/heldWeapon";
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 const BASE32_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
@@ -17,6 +25,8 @@ export interface CreatureArtifactIdentityInputV2 {
   readonly skinAccessoryStabilizationMode: SkinAccessoryStabilizationModeV1;
   readonly skinAccessorySelectedBoneName: string;
   readonly skinAccessoryComponentBoneOverrides: string;
+  readonly weaponGrip: CreatureWeaponGripOptionsV1;
+  readonly heldWeaponMode: CreatureHeldWeaponModeV1;
   readonly materialSeparationSha256?: string;
   readonly modelTextureAuthoringSha256?: string;
 }
@@ -44,6 +54,17 @@ function base32Prefix(bytes: Uint8Array, characterCount: number) {
     output += BASE32_ALPHABET[(value << (5 - bits)) & 31];
   }
   return output.slice(0, characterCount);
+}
+
+export async function sha256ArrayBufferBase32PrefixV1(
+  bytes: ArrayBuffer,
+  characterCount: number,
+) {
+  if (!Number.isSafeInteger(characterCount) || characterCount < 1 || characterCount > 51) {
+    throw new Error("SHA-256 base32 prefix length must be an integer between 1 and 51");
+  }
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  return base32Prefix(new Uint8Array(digest), characterCount);
 }
 
 /**
@@ -83,8 +104,9 @@ export async function creatureArtifactIdentityTokenV2(
       )
     : "";
   const materialIdentityPresent = input.materialSeparationSha256 !== undefined;
+  const weaponGrip = canonicalCreatureWeaponGripOptionsV1(input.weaponGrip);
   const seed = JSON.stringify({
-    schemaVersion: materialIdentityPresent ? 5 : 4,
+    schemaVersion: materialIdentityPresent ? 9 : 8,
     profile: input.profile,
     sourceForward: input.sourceForward,
     sourceSha256: input.sourceSha256,
@@ -94,6 +116,11 @@ export async function creatureArtifactIdentityTokenV2(
     skinAccessoryStabilizationMode: input.skinAccessoryStabilizationMode,
     selectedBoneName,
     componentBoneOverrides,
+    weaponGrip,
+    heldWeapon: {
+      mode: input.heldWeaponMode,
+      recipe: CREATURE_HELD_WEAPON_RECIPE_V1,
+    },
     ...(materialIdentityPresent ? {
       materialSeparationSha256: input.materialSeparationSha256,
       modelTextureAuthoringSha256: input.modelTextureAuthoringSha256,

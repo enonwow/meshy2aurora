@@ -99,6 +99,14 @@ describe("canonical readback projector", () => {
     });
   });
 
+  it("preserves signed i16 garbage in unused retail inline-mapping slots", () => {
+    const value = valid();
+    value.nodeTree.roots[0].skin.inlineMapping = [0, 27_371, -16_617, -10_256];
+
+    expect(projectCanonicalReadback(JSON.stringify(value)).nodeTree.roots[0].skin?.inlineMapping)
+      .toEqual([0, 27_371, -16_617, -10_256]);
+  });
+
   it.each([
     ["syntax", "{"],
     ["array root", "[]"],

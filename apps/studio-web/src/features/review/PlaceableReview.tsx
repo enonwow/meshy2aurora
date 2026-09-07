@@ -107,9 +107,53 @@ export function PlaceableReview({
               </div>
             </>
           ) : null}
+          {result.modelTextureAuthoring ? (
+            <>
+              <div>
+                <dt>Material quality gate</dt>
+                <dd>
+                  <strong>{result.modelTextureAuthoring.bindings.some(
+                    (binding) => binding.mipReadability.status === "FLAT",
+                  )
+                    ? "FLAT"
+                    : result.modelTextureAuthoring.bindings.some(
+                      (binding) => binding.mipReadability.status === "LOW_CONTRAST",
+                    )
+                      ? "LOW_CONTRAST"
+                      : "READABLE"}</strong>
+                  <span>{result.modelTextureAuthoring.uvPolicy}</span>
+                </dd>
+              </div>
+              {result.modelTextureAuthoring.bindings.map((binding) => (
+                <div key={`material-quality:${binding.materialSlot}`}>
+                  <dt>{binding.authoredMaterialId}</dt>
+                  <dd>
+                    <strong>{binding.mipReadability.status}</strong>
+                    <span>
+                      mip16 contrast {(binding.mipReadability.mip16LumaStddevMilli / 1_000).toFixed(2)}
+                      {binding.sourceDoubleSided ? " · double-sided target unproven" : ""}
+                    </span>
+                  </dd>
+                </div>
+              ))}
+              {result.modelTextureAuthoring.warnings.map((warning) => (
+                <div key={warning}>
+                  <dt>Warning</dt>
+                  <dd><code>{warning}</code></dd>
+                </div>
+              ))}
+            </>
+          ) : null}
           <div>
             <dt>Binary readback</dt>
             <dd><strong>{readback.validation?.status ?? "UNAVAILABLE"}</strong><span>{nodeCount(readback.nodeTree.roots)} nodes</span></dd>
+          </div>
+          <div>
+            <dt>Export preview lineage</dt>
+            <dd>
+              <strong>Exact binary MDL + exported texture resources</strong>
+              <code title={result.readbackSha256}>readback {result.readbackSha256.slice(0, 12)}...</code>
+            </dd>
           </div>
         </dl>
       </div>

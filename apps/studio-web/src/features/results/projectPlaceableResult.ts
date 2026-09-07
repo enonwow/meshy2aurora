@@ -24,9 +24,32 @@ export interface PlaceableResourceSnapshot {
   sha256: string;
 }
 
+export interface ModelTextureQualityBindingV1 {
+  authoredMaterialId: string;
+  materialSlot: number;
+  mode: "SOURCE" | "OVERRIDE";
+  outputResref: string;
+  sourceDoubleSided: boolean;
+  targetDoubleSidedPolicy: "UNSUPPORTED_REPORT_ONLY";
+  mipReadability: {
+    sourceWidth: number;
+    sourceHeight: number;
+    baseLumaStddevMilli: number;
+    mip16LumaStddevMilli: number;
+    contrastRetentionBasisPoints: number;
+    status: "READABLE" | "LOW_CONTRAST" | "FLAT";
+  };
+}
+
+export interface ModelTextureQualitySnapshotV1 {
+  uvPolicy: string;
+  warnings: string[];
+  bindings: ModelTextureQualityBindingV1[];
+}
+
 export interface PlaceableResultSnapshot {
   status: "OFFLINE_ADMISSION_PASSED";
-  profile: "STATIC_PLACEABLE";
+  profile: "STATIC_PLACEABLE" | "STATIC_PLACEABLE_V9_AURORA_CLASSIC_SAFE" | "STATIC_PLACEABLE_V9_NWN_EE_MTR";
   componentStatuses: PlaceableComponentStatuses;
   moduleFileName: string;
   moduleDisplayName: string;
@@ -68,9 +91,16 @@ export interface PlaceableResultSnapshot {
     pwkSha256: string;
   };
   textureAuthoring?: ResolvedPlaceableTextures;
+  modelTextureAuthoring?: ModelTextureQualitySnapshotV1;
+  materialCompilation?: JsonRecord;
+  sourceQuality?: JsonRecord;
+  mdlMaterialExtension?: JsonRecord;
+  materialSemanticReadbackStatus?: "PASS";
   resources: PlaceableResourceSnapshot[];
   artifacts: WorkerArtifact[];
   reportJson: string;
+  readbackJson: string;
+  readbackSha256: string;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -87,6 +117,8 @@ const integer = (value: unknown, path: string): number =>
   Number.isSafeInteger(value) && (value as number) >= 0 ? value as number : fail(path);
 const finite = (value: unknown, path: string): number =>
   typeof value === "number" && Number.isFinite(value) ? value : fail(path);
+const boolean = (value: unknown, path: string): boolean =>
+  typeof value === "boolean" ? value : fail(path);
 const sha256 = (value: unknown, path: string): string => {
   const result = string(value, path);
   return /^[0-9a-f]{64}$/.test(result) ? result : fail(path);
@@ -146,14 +178,32 @@ function verifyArtifact(
   if (expectedSha256 && artifact.sha256 !== expectedSha256) fail(`${artifactId}.sha256`);
 }
 
+function verifyExactJsonArtifact(
+  artifacts: readonly WorkerArtifact[],
+  artifactId: string,
+  fileName: string,
+  expectedJson: string,
+) {
+  verifyArtifact(artifacts, artifactId, "JSON_REPORT", fileName, undefined);
+  const artifact = artifactById(artifacts, artifactId);
+  if (new TextDecoder().decode(artifact.bytes) !== expectedJson) fail(`${artifactId}.bytes`);
+  return artifact;
+}
+
 export function projectPlaceableResult(
   reportJson: string,
+  readbackJson: string,
   artifactsInput: readonly WorkerArtifact[],
 ): PlaceableResultSnapshot {
   const report = parseJson(reportJson);
   if (integer(report.schemaVersion, "report.schemaVersion") !== 1) fail("report.schemaVersion");
   const status = exact(report.status, "OFFLINE_ADMISSION_PASSED", "report.status");
-  const profile = exact(report.profile, "STATIC_PLACEABLE", "report.profile");
+  const profileValue = string(report.profile, "report.profile");
+  const profile = profileValue === "STATIC_PLACEABLE"
+    || profileValue === "STATIC_PLACEABLE_V9_AURORA_CLASSIC_SAFE"
+    || profileValue === "STATIC_PLACEABLE_V9_NWN_EE_MTR"
+    ? profileValue
+    : fail("report.profile");
   const statuses = record(report.componentStatuses, "report.componentStatuses");
   const componentStatuses: PlaceableComponentStatuses = {
     mdl: exact(statuses.mdl, "passed", "report.componentStatuses.mdl"),
@@ -209,6 +259,12 @@ export function projectPlaceableResult(
     "MODEL",
     `${modelResref}.mdl`,
     modelSha256,
+  );
+  const readbackArtifact = verifyExactJsonArtifact(
+    artifactsInput,
+    "placeable-model-readback-json",
+    "placeable-model-readback.json",
+    readbackJson,
   );
   verifyArtifact(
     artifactsInput,
@@ -313,6 +369,118 @@ export function projectPlaceableResult(
       if (packaged.length !== 1) fail(`report.textureAuthoring.resources.${texture.resref}`);
     }
   }
+  const modelTextureRecord = report.modelTextureAuthoring === undefined
+    ? undefined
+    : record(report.modelTextureAuthoring, "report.modelTextureAuthoring");
+  const modelTextureAuthoring = modelTextureRecord ? {
+    uvPolicy: string(modelTextureRecord.uvPolicy, "report.modelTextureAuthoring.uvPolicy"),
+    warnings: array(modelTextureRecord.warnings, "report.modelTextureAuthoring.warnings")
+      .map((warning, index) => string(warning, `report.modelTextureAuthoring.warnings[${index}]`)),
+    bindings: array(modelTextureRecord.bindings, "report.modelTextureAuthoring.bindings")
+      .map((value, index): ModelTextureQualityBindingV1 => {
+        const path = `report.modelTextureAuthoring.bindings[${index}]`;
+        const binding = record(value, path);
+        const modeValue = string(binding.mode, `${path}.mode`);
+        const mode = modeValue === "SOURCE" || modeValue === "OVERRIDE"
+          ? modeValue
+          : fail(`${path}.mode`);
+        const policy = exact(
+          binding.targetDoubleSidedPolicy,
+          "UNSUPPORTED_REPORT_ONLY",
+          `${path}.targetDoubleSidedPolicy`,
+        );
+        const mip = record(binding.mipReadability, `${path}.mipReadability`);
+        const statusValue = string(mip.status, `${path}.mipReadability.status`);
+        const status = statusValue === "READABLE"
+          || statusValue === "LOW_CONTRAST"
+          || statusValue === "FLAT"
+          ? statusValue
+          : fail(`${path}.mipReadability.status`);
+        return {
+          authoredMaterialId: string(binding.authoredMaterialId, `${path}.authoredMaterialId`),
+          materialSlot: integer(binding.materialSlot, `${path}.materialSlot`),
+          mode,
+          outputResref: string(binding.outputResref, `${path}.outputResref`),
+          sourceDoubleSided: boolean(binding.sourceDoubleSided, `${path}.sourceDoubleSided`),
+          targetDoubleSidedPolicy: policy,
+          mipReadability: {
+            sourceWidth: integer(mip.sourceWidth, `${path}.mipReadability.sourceWidth`),
+            sourceHeight: integer(mip.sourceHeight, `${path}.mipReadability.sourceHeight`),
+            baseLumaStddevMilli: integer(
+              mip.baseLumaStddevMilli,
+              `${path}.mipReadability.baseLumaStddevMilli`,
+            ),
+            mip16LumaStddevMilli: integer(
+              mip.mip16LumaStddevMilli,
+              `${path}.mipReadability.mip16LumaStddevMilli`,
+            ),
+            contrastRetentionBasisPoints: integer(
+              mip.contrastRetentionBasisPoints,
+              `${path}.mipReadability.contrastRetentionBasisPoints`,
+            ),
+            status,
+          },
+        };
+      }),
+  } : undefined;
+  const materialCompilation = report.materialCompilation === undefined
+    ? undefined
+    : record(report.materialCompilation, "report.materialCompilation");
+  const sourceQuality = report.sourceQuality === undefined
+    ? undefined
+    : record(report.sourceQuality, "report.sourceQuality");
+  const mdlMaterialExtension = report.mdlMaterialExtension === undefined
+    ? undefined
+    : record(report.mdlMaterialExtension, "report.mdlMaterialExtension");
+  const materialSemanticReadbackStatus = report.materialSemanticReadbackStatus === undefined
+    ? undefined
+    : exact(report.materialSemanticReadbackStatus, "PASS", "report.materialSemanticReadbackStatus");
+  if (profile !== "STATIC_PLACEABLE" && (
+    materialCompilation === undefined
+    || sourceQuality === undefined
+    || mdlMaterialExtension === undefined
+    || materialSemanticReadbackStatus !== "PASS"
+  )) fail("report.materialPipeline");
+  if (profile !== "STATIC_PLACEABLE") {
+    const compilationStatus = string(materialCompilation?.status, "report.materialCompilation.status");
+    if (compilationStatus !== "READY" && compilationStatus !== "READY_WITH_WARNINGS") {
+      fail("report.materialCompilation.status");
+    }
+    const expectedTarget = profile === "STATIC_PLACEABLE_V9_NWN_EE_MTR"
+      ? "NWN_EE_MTR"
+      : "AURORA_CLASSIC_SAFE";
+    exact(materialCompilation?.targetProfile, expectedTarget, "report.materialCompilation.targetProfile");
+    const qualityStatus = string(sourceQuality?.status, "report.sourceQuality.status");
+    if (qualityStatus !== "PASS" && qualityStatus !== "WARNING") fail("report.sourceQuality.status");
+    if (array(mdlMaterialExtension?.semanticDiff, "report.mdlMaterialExtension.semanticDiff").length !== 0) {
+      fail("report.mdlMaterialExtension.semanticDiff");
+    }
+    if (sha256(mdlMaterialExtension?.payloadSha256, "report.mdlMaterialExtension.payloadSha256") !== modelSha256) {
+      fail("report.mdlMaterialExtension.payloadSha256");
+    }
+    const materialResources = resources.filter((resource) => resource.container === "HAK"
+      && [3, 2022, 2033, 2072].includes(resource.resourceType));
+    if (profile === "STATIC_PLACEABLE_V9_NWN_EE_MTR"
+      && !materialResources.some((resource) => resource.resourceType === 2072)) {
+      fail("report.resources.MATERIAL");
+    }
+    for (const resource of materialResources) {
+      const metadata = resource.resourceType === 2072
+        ? { id: `placeable-material-resource-${resource.resref}-2072`, kind: "MATERIAL" as const, extension: "mtr" }
+        : resource.resourceType === 2022
+          ? { id: `placeable-material-resource-${resource.resref}-2022`, kind: "TEXTURE_INFO" as const, extension: "txi" }
+          : resource.resourceType === 2033
+            ? { id: `placeable-material-resource-${resource.resref}-2033`, kind: "TEXTURE" as const, extension: "dds" }
+            : { id: `placeable-texture-${resource.resref}-tga`, kind: "TEXTURE" as const, extension: "tga" };
+      verifyArtifact(
+        artifactsInput,
+        metadata.id,
+        metadata.kind,
+        `${resource.resref}.${metadata.extension}`,
+        resource.sha256,
+      );
+    }
+  }
 
   return {
     status,
@@ -345,8 +513,15 @@ export function projectPlaceableResult(
     authoring,
     collision,
     textureAuthoring,
+    modelTextureAuthoring,
+    materialCompilation,
+    sourceQuality,
+    mdlMaterialExtension,
+    materialSemanticReadbackStatus,
     resources,
     artifacts: [...artifactsInput],
     reportJson,
+    readbackJson,
+    readbackSha256: readbackArtifact.sha256,
   };
 }

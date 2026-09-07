@@ -5,6 +5,7 @@ import type {
   PlaceableElementInspection,
   PlaceableElementTransform,
 } from "./types";
+import { placeableGroundRelationV1 } from "./groundPolicy";
 
 export type PlaceableDiagnosticCode =
   | "ELEMENT_BELOW_GROUND"
@@ -181,19 +182,20 @@ export function diagnosePlaceableAuthoring(
   const distantThreshold = Math.max(typicalElementSize * 4, 5);
 
   for (const measurement of measurements) {
-    if (measurement.boundsMin[1] < -0.01) {
+    const ground = placeableGroundRelationV1(measurement.boundsMin[1]);
+    if (ground.state === "BELOW") {
       diagnostics.push({
         code: "ELEMENT_BELOW_GROUND",
         severity: "WARNING",
         elementIds: [measurement.id],
-        message: `${measurement.id} intersects the ground plane by ${Math.abs(measurement.boundsMin[1]).toFixed(3)} m.`,
+        message: `${measurement.id} intersects the ground plane by ${ground.distanceMeters.toFixed(3)} m.`,
       });
-    } else if (measurement.boundsMin[1] > 0.05) {
+    } else if (ground.state === "FLOATING") {
       diagnostics.push({
         code: "ELEMENT_FLOATING",
         severity: "WARNING",
         elementIds: [measurement.id],
-        message: `${measurement.id} floats ${measurement.boundsMin[1].toFixed(3)} m above the ground plane.`,
+        message: `${measurement.id} floats ${ground.distanceMeters.toFixed(3)} m above the ground plane.`,
       });
     }
     if (measurement.distanceFromOrigin > distantThreshold) {

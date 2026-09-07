@@ -67,6 +67,7 @@ export interface StudioSessionState<
   TAppearanceInspection = unknown,
 > {
   readonly revision: number;
+  readonly authoringRevision: number;
   readonly target: StudioTarget;
   readonly currentStep: WorkflowStep;
   readonly lastAvailableStep: WorkflowStep;
@@ -161,6 +162,7 @@ export function createInitialStudioSession<
 ): StudioSessionState<TInspection, TResult, TAppearanceInspection> {
   return {
     revision,
+    authoringRevision: 0,
     target: "CREATURE",
     currentStep: "SOURCE",
     lastAvailableStep: "SOURCE",
@@ -186,6 +188,7 @@ function invalidateDownstream<TInspection, TResult, TAppearanceInspection>(
     ...state,
     ...inputs,
     revision: state.revision + 1,
+    authoringRevision: state.authoringRevision + 1,
     currentStep: "SOURCE",
     lastAvailableStep: "SOURCE",
     sourceInspection: null,
@@ -243,7 +246,8 @@ export function studioSessionReducer<TInspection, TResult, TAppearanceInspection
     case "AUTHORING_DOCUMENT_CHANGED":
       return {
         ...state,
-        lastAvailableStep: state.currentStep === "REVIEW" ? "BUILD" : state.lastAvailableStep,
+        authoringRevision: state.authoringRevision + 1,
+        lastAvailableStep: "BUILD",
         build: { kind: "IDLE" },
         result: null,
         download: { kind: "LOCKED" },
@@ -437,6 +441,9 @@ export function studioSessionReducer<TInspection, TResult, TAppearanceInspection
       if (event.step === state.currentStep) return state;
       return { ...state, currentStep: event.step };
     case "START_NEW_CONVERSION":
-      return createInitialStudioSession<TInspection, TResult, TAppearanceInspection>(state.revision + 1);
+      return {
+        ...createInitialStudioSession<TInspection, TResult, TAppearanceInspection>(state.revision + 1),
+        authoringRevision: state.authoringRevision + 1,
+      };
   }
 }
