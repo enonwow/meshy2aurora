@@ -39,7 +39,6 @@ use m2a_core::{
 use sha2::{Digest, Sha256};
 
 #[path = "fixtures/build_synthetic_glb.rs"]
-#[allow(dead_code)]
 mod fixtures;
 
 fn identity_matrix() -> [f32; 16] {

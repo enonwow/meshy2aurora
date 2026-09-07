@@ -5,7 +5,9 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use m2a_core::{
     AURORA_MODEL_TRIANGLE_BUDGET_V1, AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1,
-    glb::{GlbLimits, ingest_glb, inspect_glb},
+    glb::{
+        GlbLimits, HIGH_POLY_INSPECTION_MODE_V1, ingest_glb, inspect_glb, inspect_high_poly_glb_v1,
+    },
 };
 
 #[test]
@@ -45,6 +47,30 @@ fn minimal_indexed_triangle_produces_stable_report_and_ir() {
         result_json,
         serde_json::to_vec(&ingest_glb(&input, &limits).unwrap()).unwrap()
     );
+}
+
+#[test]
+fn high_poly_inspection_is_compact_and_never_conversion_eligible() {
+    let inspection = inspect_high_poly_glb_v1(&fixtures::minimal_indexed_triangle())
+        .expect("bounded high-poly inspection");
+
+    assert_eq!(inspection.schema_version, 1);
+    assert_eq!(inspection.inspection_mode, HIGH_POLY_INSPECTION_MODE_V1);
+    assert_eq!(inspection.statistics.triangle_count, 1);
+    assert_eq!(inspection.inventory.primitive_count, 1);
+    assert_eq!(inspection.bone_count, 0);
+    assert!(inspection.clips.is_empty());
+    assert!(!inspection.conversion_eligible);
+    assert!(inspection.gates.iter().any(|gate| {
+        gate.code == "M2A-GLB-HIGH-POLY-INSPECTION-ONLY" && gate.severity == "BLOCKING"
+    }));
+
+    let json = serde_json::to_value(&inspection).unwrap();
+    assert!(
+        json.get("ir").is_none(),
+        "compact projection must omit decoded IR"
+    );
+    assert!(json.get("report").is_none());
 }
 
 #[test]

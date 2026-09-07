@@ -13,10 +13,13 @@ const TEXTURE_ARTIFACT_CLEANUP_MAD_MULTIPLIER_V3: u8 = 4;
 const TEXTURE_ARTIFACT_CLEANUP_CENTER_SUPPORT_DISTANCE_V3: u8 = 10;
 const TEXTURE_ARTIFACT_CLEANUP_MAX_CENTER_SUPPORT_V3: usize = 2;
 const TEXTURE_ARTIFACT_CLEANUP_MEDIAN_COHERENCE_DISTANCE_V3: u8 = 12;
-pub const TGA_MAX_OUTPUT_BYTES: u64 = 64 * 1024 * 1024;
-
 const HEADER_LENGTH: u64 = 18;
 const FOOTER_LENGTH: u64 = 26;
+/// Product pixel-payload budget. The container cap additionally includes the
+/// fixed 18-byte header and 26-byte footer, so an exact 4096x4096 RGBA image
+/// is representable without weakening the pixel budget.
+pub const TGA_MAX_PIXEL_BYTES: u64 = 64 * 1024 * 1024;
+pub const TGA_MAX_OUTPUT_BYTES: u64 = TGA_MAX_PIXEL_BYTES + HEADER_LENGTH + FOOTER_LENGTH;
 const FOOTER: &[u8; 26] = b"\0\0\0\0\0\0\0\0TRUEVISION-XFILE.\0";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -667,6 +670,19 @@ fn readback_tga_v1(payload: &[u8]) -> Result<TgaReadback, String> {
         height,
         pixel_format,
         pixels,
+    })
+}
+
+/// Reads a TGA written by the locked V1 profile back into canonical top-left RGB(A) pixels.
+pub fn read_tga_image_v1(payload: &[u8]) -> Result<TgaImageV1, TgaWriteError> {
+    let readback = readback_tga_v1(payload)
+        .map_err(|message| TgaWriteError::fatal("M5-TGA-READBACK-FAILED", "input", message))?;
+    Ok(TgaImageV1 {
+        schema_version: TGA_SCHEMA_VERSION,
+        width: readback.width,
+        height: readback.height,
+        pixel_format: readback.pixel_format,
+        pixels: readback.pixels,
     })
 }
 

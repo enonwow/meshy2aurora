@@ -22,7 +22,25 @@ pub use crate::direct_creature_animation::{
 };
 
 use crate::{
-    creature_equipment::{CreatureWeaponAnchorOptionsV1, author_humanoid_weapon_anchors_v1},
+    aurora_material::{AuroraMaterialTargetProfileV1, compile_gltf_materials_v1},
+    aurora_material_package::{
+        AuroraDiffuseOverrideV1, AuroraMaterialPackageV1, ensure_material_tangents_v1,
+        package_aurora_materials_v1,
+    },
+    creature_equipment::{
+        CreatureWeaponAnchorReportV1, CreatureWeaponGripModeV1, CreatureWeaponGripOptionsV1,
+        apply_humanoid_weapon_grip_offsets_v1, author_humanoid_weapon_anchors_v1,
+        derive_humanoid_weapon_anchor_options_for_family_v3,
+    },
+    creature_product::{
+        CreatureDemoAuthoringV1, CreatureMaterialProfileV2, CreatureMaterialTargetV2,
+        CreatureModelBoundsV1, CreatureMotionPackV1, CreatureMotionSkeletonProfileV1,
+        CreatureMotionSourceReportV1, CreaturePerformanceInputV1, CreaturePerformancePresetV1,
+        CreaturePerformanceReportV1, CreatureRuntimeEnvelopePolicyV1, CreatureRuntimeEnvelopeV1,
+        CreatureTargetHeightV1, derive_creature_runtime_envelope_v1,
+        evaluate_creature_performance_v1, validate_creature_demo_authoring_v1,
+        validate_creature_material_profile_v2, validate_creature_motion_pack_source_v1,
+    },
     direct_creature_contract::{
         DirectCreatureRuntimeProfileV2, SourceTopologyBindingV1,
         direct_creature_runtime_profile_digest_v2, inspect_m0_source_topology_binding_v1,
@@ -37,21 +55,23 @@ use crate::{
     mdl::{
         DirectCreatureEngineEnvelopeV1, DirectCreatureStructuralSummaryV1, MdlAnimationClipV1,
         MdlAnimationInterpolationV1, MdlAnimationSetV1, MdlAnimationTrackPathV1,
-        MdlAnimationTrackV1, MdlFormatProfileV1, MdlMaterialTextureBindingV1,
-        MdlStateProjectionProfileV1, MdlStateProjectionProvenanceV1, MdlWriterOptionsV1,
-        MdlWriterReportV1, NWN_EE_BINARY_MDL_EPSILON_V1, NodeReport,
+        MdlAnimationTrackV1, MdlFormatProfileV1, MdlMaterialExtensionOptionsV1,
+        MdlMaterialExtensionReportV1, MdlMaterialStateV1, MdlMaterialTextureBindingV1,
+        MdlSegmentMaterialStreamsV1, MdlStateProjectionProfileV1, MdlStateProjectionProvenanceV1,
+        MdlWriterOptionsV1, MdlWriterReportV1, NWN_EE_BINARY_MDL_EPSILON_V1, NodeReport,
         direct_creature_structural_summary_digest_v1, evaluate_skin_deformation_v1,
-        inspect_binary_mdl, inspect_direct_creature_engine_envelope_v1,
-        verify_direct_creature_state_projection_v1, write_binary_mdl_with_animations,
-        write_binary_mdl_with_animations_exact_face_planes_v1,
+        extend_binary_mdl_with_materials_v1, inspect_binary_mdl,
+        inspect_direct_creature_engine_envelope_v1, verify_direct_creature_state_projection_v1,
+        write_binary_mdl_with_animations, write_binary_mdl_with_animations_exact_face_planes_v1,
     },
     model_limits::{
         AURORA_MODEL_TRIANGLE_BUDGET_V1, AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1,
         MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_CEILING_V1,
     },
     model_material_separation::{
-        ModelMaterialSeparationDocumentV1, ModelMaterialSeparationReportV1,
-        resolve_model_materials_v1,
+        ModelMaterialSeparationDocumentV1, ModelMaterialSeparationDocumentV2,
+        ModelMaterialSeparationReportV1, ResolvedModelMaterialsV1, resolve_model_materials_v1,
+        resolve_model_materials_v2,
     },
     model_segmentation::segment_model_for_binary_mdl_v1,
     model_texture_authoring::{
@@ -63,31 +83,32 @@ use crate::{
     package::{PackageManifestV1, write_model_package_v1},
     profile_a::{
         AuroraCreatureIrV1, CreatureRigProfileV1, CreatureSourceForwardV1,
-        ProfileAAnimationMappingV1, ProfileAConversionReportV1, RigProvenanceV1,
-        RigSegmentDeformationV1, canonical_profile_sha256, convert_profile_a,
-        convert_profile_a_with_animations_and_material_separation_v1,
-        convert_profile_a_with_animations_exact_and_material_separation_v1,
+        ProfileAAnimationClipMappingV1, ProfileAAnimationMappingV1, ProfileAConversionReportV1,
+        RigProvenanceV1, RigSegmentDeformationV1, canonical_profile_sha256, convert_profile_a,
+        convert_profile_a_with_animations_and_resolved_materials_v1,
+        convert_profile_a_with_animations_exact_and_resolved_materials_v1,
         convert_profile_a_with_animations_exact_v1,
-        convert_profile_a_with_animations_p100k_experiment_and_material_separation_v1,
         convert_profile_a_with_animations_p100k_experiment_v1,
-        convert_profile_a_with_animations_p300k_experiment_and_material_separation_v1,
         convert_profile_a_with_animations_p300k_experiment_v1,
-        convert_profile_a_with_animations_v1, creature_source_forward_mapping_v1,
+        convert_profile_a_with_animations_v1, creature_source_forward_mapping_v2,
         derive_meshy_h1_profile_and_mapping_exact_v1,
-        derive_meshy_h1_profile_and_mapping_for_source_forward_v2,
+        derive_meshy_h1_profile_and_mapping_for_source_forward_v3,
         derive_meshy_h1_profile_and_mapping_p100k_experiment_for_source_forward_v1,
         derive_meshy_h1_profile_and_mapping_p300k_experiment_for_source_forward_v1,
         derive_meshy_m0_static_rigid_profile_v1,
-        direct_creature_profile_a_options_for_source_forward_v2,
-        direct_creature_profile_a_options_v2,
+        direct_creature_profile_a_options_for_source_forward_v3,
+        direct_creature_profile_a_options_v3,
     },
     proof_module::{
-        BinaryCreatureModuleIdentityV1, BinaryCreatureRuntimeProfileV2,
-        BinaryM0VerticalSliceIdentityV1, BinaryM0VerticalSliceReadbackV1, ProofModuleArtifactV1,
-        ProofModuleReportV2, build_binary_m0_vertical_slice_module_v1,
+        BinaryCreatureHandSlotV1, BinaryCreatureModuleIdentityV1, BinaryCreatureRuntimeProfileV2,
+        BinaryCreatureStockWeaponV2, BinaryM0VerticalSliceIdentityV1,
+        BinaryM0VerticalSliceReadbackV1, ProofModuleArtifactV1, ProofModuleReportV2,
+        build_binary_m0_vertical_slice_module_v1,
         build_binary_m0_vertical_slice_module_with_identity_v1,
         build_canonical_m0_creature_proof_module_v1, build_creature_proof_module_v1,
+        build_single_authored_creature_demo_with_identity_v6,
         build_single_profiled_creature_proof_module_with_identity_v3,
+        build_single_profiled_creature_stock_weapon_demo_with_identity_v5,
         inspect_binary_creature_profile_matrix_module_v2,
         inspect_binary_m0_vertical_slice_module_v1,
     },
@@ -185,7 +206,7 @@ pub enum DirectCreatureAppearanceSemanticProfileV2 {
 /// fresh proof candidates must supply this identity explicitly so the model,
 /// texture, appearance row, HAK, MOD, Area and UTC cannot collide with an
 /// earlier payload.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProceduralCreaturePackageIdentityV1 {
     pub model_resref: String,
@@ -205,7 +226,7 @@ pub struct ProceduralCreatureProductIdentityV2 {
     pub appearance_label: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProceduralCreatureBuildOptionsV1 {
     pub schema_version: u32,
@@ -214,6 +235,51 @@ pub struct ProceduralCreatureBuildOptionsV1 {
     pub texture_artifact_cleanup: bool,
     #[serde(default)]
     pub skin_accessory_stabilization: SkinAccessoryStabilizationOptionsV2,
+    #[serde(default)]
+    pub weapon_grip: CreatureWeaponGripOptionsV1,
+    #[serde(default)]
+    pub held_weapon: CreatureHeldWeaponOptionsV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub demo_authoring: Option<CreatureDemoAuthoringV1>,
+    #[serde(default)]
+    pub runtime_envelope: CreatureRuntimeEnvelopePolicyV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motion_pack: Option<CreatureMotionPackV1>,
+    #[serde(default)]
+    pub material_profile: CreatureMaterialProfileV2,
+    #[serde(default)]
+    pub performance_preset: CreaturePerformancePresetV1,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CreatureHeldWeaponModeV1 {
+    #[default]
+    None,
+    RightHand,
+    LeftHand,
+}
+
+/// Demo-module-only item placement. It does not author or change animations;
+/// it selects one native UTC/GIT equipment slot and the exact NWN base-game
+/// short-sword resource proven to render in the Creature attachment lane.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreatureHeldWeaponOptionsV1 {
+    pub schema_version: u32,
+    pub mode: CreatureHeldWeaponModeV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item_resref: Option<String>,
+}
+
+impl Default for CreatureHeldWeaponOptionsV1 {
+    fn default() -> Self {
+        Self {
+            schema_version: 1,
+            mode: CreatureHeldWeaponModeV1::None,
+            item_resref: None,
+        }
+    }
 }
 
 impl Default for ProceduralCreatureBuildOptionsV1 {
@@ -223,6 +289,13 @@ impl Default for ProceduralCreatureBuildOptionsV1 {
             source_forward: CreatureSourceForwardV1::PositiveZ,
             texture_artifact_cleanup: false,
             skin_accessory_stabilization: SkinAccessoryStabilizationOptionsV2::default(),
+            weapon_grip: CreatureWeaponGripOptionsV1::default(),
+            held_weapon: CreatureHeldWeaponOptionsV1::default(),
+            demo_authoring: None,
+            runtime_envelope: CreatureRuntimeEnvelopePolicyV1::default(),
+            motion_pack: None,
+            material_profile: CreatureMaterialProfileV2::default(),
+            performance_preset: CreaturePerformancePresetV1::default(),
         }
     }
 }
@@ -260,6 +333,7 @@ fn complete_direct_creature_appearance_request_v2(
     race: &str,
     error_prefix: &str,
     semantic_profile: DirectCreatureAppearanceSemanticProfileV2,
+    runtime_envelope: Option<&CreatureRuntimeEnvelopeV1>,
 ) -> Result<TwoDaAppendRequestV1, M6PipelineErrorV1> {
     for required in DIRECT_CREATURE_RUNTIME_APPEARANCE_COLUMNS_V1 {
         if !inspection
@@ -325,6 +399,21 @@ fn complete_direct_creature_appearance_request_v2(
         text_assignment("RACE", race),
     ];
     if semantic_profile == DirectCreatureAppearanceSemanticProfileV2::HumanoidMediumV1 {
+        let runtime = runtime_envelope
+            .cloned()
+            .unwrap_or_else(CreatureRuntimeEnvelopeV1::medium_humanoid);
+        let number = |value: f32| {
+            if value.fract() == 0.0 {
+                format!("{value:.0}")
+            } else {
+                value.to_string()
+            }
+        };
+        let target_height = match runtime.target_height {
+            CreatureTargetHeightV1::Low => "L",
+            CreatureTargetHeightV1::Medium => "M",
+            CreatureTargetHeightV1::High => "H",
+        };
         assignments.extend([
             TwoDaCellAssignmentV1 {
                 column_name: "STRING_REF".to_owned(),
@@ -339,14 +428,14 @@ fn complete_direct_creature_appearance_request_v2(
             text_assignment("HELMET_SCALE_M", "1.05"),
             text_assignment("HELMET_SCALE_F", "0.85"),
             text_assignment("MOVERATE", "NORM"),
-            text_assignment("WALKDIST", "1.6"),
-            text_assignment("RUNDIST", "3.2"),
-            text_assignment("PERSPACE", "0.3"),
-            text_assignment("CREPERSPACE", "0.5"),
-            text_assignment("HEIGHT", "2"),
-            text_assignment("HITDIST", "0.3"),
-            text_assignment("PREFATCKDIST", "1.7"),
-            text_assignment("TARGETHEIGHT", "H"),
+            text_assignment("WALKDIST", &number(runtime.walk_distance)),
+            text_assignment("RUNDIST", &number(runtime.run_distance)),
+            text_assignment("PERSPACE", &number(runtime.personal_space)),
+            text_assignment("CREPERSPACE", &number(runtime.creature_personal_space)),
+            text_assignment("HEIGHT", &number(runtime.height)),
+            text_assignment("HITDIST", &number(runtime.hit_distance)),
+            text_assignment("PREFATCKDIST", &number(runtime.preferred_attack_distance)),
+            text_assignment("TARGETHEIGHT", target_height),
             text_assignment("ABORTONPARRY", "1"),
             text_assignment("RACIALTYPE", "11"),
             text_assignment("HASLEGS", "1"),
@@ -355,9 +444,9 @@ fn complete_direct_creature_appearance_request_v2(
                 column_name: "PORTRAIT".to_owned(),
                 value: TwoDaCellValueV1::Null,
             },
-            text_assignment("SIZECATEGORY", "3"),
-            text_assignment("PERCEPTIONDIST", "9"),
-            text_assignment("FOOTSTEPTYPE", "0"),
+            text_assignment("SIZECATEGORY", &runtime.size_category.to_string()),
+            text_assignment("PERCEPTIONDIST", &number(runtime.perception_distance)),
+            text_assignment("FOOTSTEPTYPE", &runtime.footstep_type.to_string()),
             text_assignment("SOUNDAPPTYPE", "0"),
             text_assignment("HEADTRACK", "1"),
             text_assignment("HEAD_ARC_H", "60"),
@@ -398,6 +487,7 @@ pub fn append_direct_creature_humanoid_appearance_row_v1(
         model_resref,
         "M6",
         DirectCreatureAppearanceSemanticProfileV2::HumanoidMediumV1,
+        None,
     )?;
     append_two_da_row_v1(appearance_two_da, &request, &TwoDaLimitsV1::default())
         .map_err(|error| pipeline_error("appearance", error.code, error.path, error.message))
@@ -707,6 +797,8 @@ pub struct M6MaterialFidelityReportV1 {
     pub aurora_material_profile: String,
     pub mapped_fields: Vec<String>,
     pub unsupported_fields: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aurora_compiler: Option<crate::aurora_material::AuroraMaterialFidelityReportV1>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -774,6 +866,8 @@ pub struct M6MaterializationReportV1 {
     pub geometry: M6GeometryReportV1,
     pub ingest: crate::glb::GlbInspectionReport,
     pub conversion: ProfileAConversionReportV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weapon_anchor_authoring: Option<CreatureWeaponAnchorReportV1>,
     pub model: MdlWriterReportV1,
     pub texture: TgaWriterReportV1,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -867,16 +961,25 @@ pub struct ProceduralCreatureProductOutputIdentitiesV2 {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ProceduralCreatureProductReportV3 {
+pub struct ProceduralCreatureProductReportV4 {
     pub schema_version: u32,
     pub identity: ProceduralCreatureProductIdentityV2,
     pub appearance_semantic_profile: DirectCreatureAppearanceSemanticProfileV2,
+    pub runtime_envelope: CreatureRuntimeEnvelopeV1,
+    pub material_profile: CreatureMaterialProfileV2,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub material_extension: Option<MdlMaterialExtensionReportV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motion_pack: Option<CreatureMotionSourceReportV1>,
+    pub performance: CreaturePerformanceReportV1,
     pub resolved_base_color_image_index: usize,
     pub texture_selection: M6TextureSelectionV1,
     pub material_fidelity: M6MaterialFidelityReportV1,
     pub geometry: M6GeometryReportV1,
     pub ingest: crate::glb::GlbInspectionReport,
     pub conversion: ProfileAConversionReportV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weapon_anchor_authoring: Option<CreatureWeaponAnchorReportV1>,
     pub model: MdlWriterReportV1,
     pub texture: TgaWriterReportV1,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -942,7 +1045,7 @@ pub struct ProceduralCreatureProductArtifactV3 {
     pub package_manifest: PackageManifestV1,
     pub manifest: ProceduralCreatureProductManifestV3,
     pub manifest_json: Vec<u8>,
-    pub report: ProceduralCreatureProductReportV3,
+    pub report: ProceduralCreatureProductReportV4,
     pub report_json: Vec<u8>,
     pub summary: ProceduralCreatureProductSummaryV3,
     pub summary_json: Vec<u8>,
@@ -957,13 +1060,60 @@ pub struct CreatureModelMaterialAuthoringInputV1<'a> {
     pub texture_payload_descriptors: &'a [ModelTexturePayloadDescriptorV1],
 }
 
-#[deprecated(note = "use ProceduralCreatureProductReportV3; serialized schema is version 3")]
-pub type ProceduralCreatureProductReportV2 = ProceduralCreatureProductReportV3;
+#[derive(Clone, Copy)]
+pub enum CreatureModelMaterialSeparationInputV2<'a> {
+    ComponentV1(&'a ModelMaterialSeparationDocumentV1),
+    FaceV2(&'a ModelMaterialSeparationDocumentV2),
+}
+
+#[derive(Clone, Copy)]
+pub struct CreatureModelMaterialAuthoringInputV2<'a> {
+    pub separation: CreatureModelMaterialSeparationInputV2<'a>,
+    pub textures: &'a ModelTextureAuthoringDocumentV1,
+    pub texture_payload_blob: &'a [u8],
+    pub texture_payload_descriptors: &'a [ModelTexturePayloadDescriptorV1],
+}
+
+impl<'a> From<CreatureModelMaterialAuthoringInputV1<'a>>
+    for CreatureModelMaterialAuthoringInputV2<'a>
+{
+    fn from(value: CreatureModelMaterialAuthoringInputV1<'a>) -> Self {
+        Self {
+            separation: CreatureModelMaterialSeparationInputV2::ComponentV1(value.separation),
+            textures: value.textures,
+            texture_payload_blob: value.texture_payload_blob,
+            texture_payload_descriptors: value.texture_payload_descriptors,
+        }
+    }
+}
+
+impl CreatureModelMaterialAuthoringInputV2<'_> {
+    fn resolve(
+        self,
+        ir: &crate::glb::AuroraAssetIr,
+    ) -> Result<ResolvedModelMaterialsV1, M6PipelineErrorV1> {
+        match self.separation {
+            CreatureModelMaterialSeparationInputV2::ComponentV1(document) => {
+                resolve_model_materials_v1(ir, document)
+            }
+            CreatureModelMaterialSeparationInputV2::FaceV2(document) => {
+                resolve_model_materials_v2(ir, document)
+                    .map(|resolved| resolved.into_projection_v1())
+            }
+        }
+        .map_err(|error| pipeline_error("materials", error.code, error.path, error.message))
+    }
+}
+
+#[deprecated(note = "use ProceduralCreatureProductReportV4; serialized schema is version 4")]
+pub type ProceduralCreatureProductReportV3 = ProceduralCreatureProductReportV4;
+#[deprecated(note = "use ProceduralCreatureProductReportV4; serialized schema is version 4")]
+pub type ProceduralCreatureProductReportV2 = ProceduralCreatureProductReportV4;
 #[deprecated(note = "use ProceduralCreatureProductSummaryV3; serialized schema is version 3")]
 pub type ProceduralCreatureProductSummaryV2 = ProceduralCreatureProductSummaryV3;
 #[deprecated(note = "use ProceduralCreatureProductManifestV3; serialized schema is version 3")]
 pub type ProceduralCreatureProductManifestV2 = ProceduralCreatureProductManifestV3;
-#[deprecated(note = "use ProceduralCreatureProductArtifactV3; its reports use schema version 3")]
+#[deprecated(note = "use ProceduralCreatureProductArtifactV3; its reports use schema version 4")]
 pub type ProceduralCreatureProductArtifactV2 = ProceduralCreatureProductArtifactV3;
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -1039,7 +1189,8 @@ fn p100k_experiment_triangle_count_is_eligible_v1(triangle_count: usize) -> bool
 
 fn author_product_weapon_anchors_v1(
     rig: &mut CreatureRigProfileV1,
-) -> Result<(), M6PipelineErrorV1> {
+    weapon_grip: &CreatureWeaponGripOptionsV1,
+) -> Result<Option<CreatureWeaponAnchorReportV1>, M6PipelineErrorV1> {
     let semantic_key = |name: &str| {
         name.rsplit([':', '|', '/', '\\'])
             .next()
@@ -1063,11 +1214,28 @@ fn author_product_weapon_anchors_v1(
     // either semantic hand is present, the pair becomes an explicit contract
     // and ambiguity or a missing counterpart fails closed.
     if right_count == 0 && left_count == 0 {
-        return Ok(());
+        if *weapon_grip != CreatureWeaponGripOptionsV1::default() {
+            return Err(pipeline_error(
+                "weapon_anchor",
+                "M4A-WEAPON-GRIP-NO-HUMANOID-HANDS",
+                "buildOptions.weaponGrip",
+                "manual Creature weapon-grip offsets require semantic RightHand and LeftHand bones",
+            ));
+        }
+        return Ok(None);
     }
-    author_humanoid_weapon_anchors_v1(rig, CreatureWeaponAnchorOptionsV1::default())
-        .map(|_| ())
-        .map_err(|error| pipeline_error("weapon_anchor", error.code, error.path, error.message))
+    let automatic =
+        derive_humanoid_weapon_anchor_options_for_family_v3(rig, weapon_grip.item_family).map_err(
+            |error| pipeline_error("weapon_anchor", error.code, error.path, error.message),
+        )?;
+    let (options, adjustment) = apply_humanoid_weapon_grip_offsets_v1(automatic, *weapon_grip)
+        .map_err(|error| pipeline_error("weapon_anchor", error.code, error.path, error.message))?;
+    let mut report = author_humanoid_weapon_anchors_v1(rig, options)
+        .map_err(|error| pipeline_error("weapon_anchor", error.code, error.path, error.message))?;
+    if weapon_grip.mode == CreatureWeaponGripModeV1::AutoPlusOffsets {
+        report.grip_adjustment = Some(adjustment);
+    }
+    Ok(Some(report))
 }
 
 pub fn build_m6_model_package_v1(
@@ -1108,7 +1276,7 @@ pub fn build_meshy_h1_model_package_v1(
         appearance_two_da,
         source,
         &rig,
-        &direct_creature_profile_a_options_v2(),
+        &direct_creature_profile_a_options_v3(),
         &mapping,
     )
 }
@@ -1141,7 +1309,7 @@ pub fn build_meshy_h1_model_package_v2(
         appearance_two_da,
         source,
         &rig,
-        &direct_creature_profile_a_options_v2(),
+        &direct_creature_profile_a_options_v3(),
         &mapping,
         animation_profile,
     )
@@ -1195,7 +1363,7 @@ pub fn build_meshy_procedural_humanoid_model_package_with_identity_v1(
         appearance_two_da,
         source,
         &rig,
-        &direct_creature_profile_a_options_v2(),
+        &direct_creature_profile_a_options_v3(),
         &mapping,
         DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1,
         None,
@@ -1247,6 +1415,22 @@ pub fn build_meshy_procedural_humanoid_product_with_materials_v4(
         appearance_two_da,
         product_identity,
         build_options,
+        Some(material_authoring.into()),
+    )
+}
+
+pub fn build_meshy_procedural_humanoid_product_with_materials_v5(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    product_identity: &ProceduralCreatureProductIdentityV2,
+    build_options: &ProceduralCreatureBuildOptionsV1,
+    material_authoring: CreatureModelMaterialAuthoringInputV2<'_>,
+) -> Result<ProceduralCreatureProductArtifactV3, M6PipelineErrorV1> {
+    build_meshy_procedural_humanoid_product_internal_v4(
+        source_glb,
+        appearance_two_da,
+        product_identity,
+        build_options,
         Some(material_authoring),
     )
 }
@@ -1256,7 +1440,7 @@ fn build_meshy_procedural_humanoid_product_internal_v4(
     appearance_two_da: &[u8],
     product_identity: &ProceduralCreatureProductIdentityV2,
     build_options: &ProceduralCreatureBuildOptionsV1,
-    material_authoring: Option<CreatureModelMaterialAuthoringInputV1<'_>>,
+    material_authoring: Option<CreatureModelMaterialAuthoringInputV2<'_>>,
 ) -> Result<ProceduralCreatureProductArtifactV3, M6PipelineErrorV1> {
     let mut source = ingest_glb(source_glb, &GlbLimits::default()).map_err(|error| {
         pipeline_error(
@@ -1267,12 +1451,13 @@ fn build_meshy_procedural_humanoid_product_internal_v4(
         )
     })?;
     sanitize_meshy_h1_degenerate_triangles_exact_v1(&mut source)?;
-    let (mut rig, mut mapping) = derive_meshy_h1_profile_and_mapping_for_source_forward_v2(
+    let (mut rig, mut mapping) = derive_meshy_h1_profile_and_mapping_for_source_forward_v3(
         &source,
         build_options.source_forward,
     )
     .map_err(|error| pipeline_error("profile", error.code, error.path, error.message))?;
-    author_product_weapon_anchors_v1(&mut rig)?;
+    let weapon_anchor_authoring =
+        author_product_weapon_anchors_v1(&mut rig, &build_options.weapon_grip)?;
     apply_automatic_h1_animation_profile_names_v1(
         &source,
         &mut mapping,
@@ -1293,7 +1478,8 @@ fn build_meshy_procedural_humanoid_product_internal_v4(
         appearance_two_da,
         source,
         &rig,
-        &direct_creature_profile_a_options_for_source_forward_v2(build_options.source_forward),
+        weapon_anchor_authoring,
+        &direct_creature_profile_a_options_for_source_forward_v3(build_options.source_forward),
         &mapping,
         DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1,
         None,
@@ -1354,6 +1540,30 @@ pub fn build_meshy_full_native_h1_package_with_materials_v5(
         product_identity,
         build_options,
         event_configuration,
+        Some(material_authoring.into()),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_meshy_full_native_h1_package_with_materials_v6(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    runtime_identity: &ProceduralCreaturePackageIdentityV1,
+    product_identity: &ProceduralCreatureProductIdentityV2,
+    build_options: &ProceduralCreatureBuildOptionsV1,
+    event_configuration: Option<(
+        DirectCreatureAnimationEventProfileV1,
+        &DirectCreatureEventAuthoringV1,
+    )>,
+    material_authoring: CreatureModelMaterialAuthoringInputV2<'_>,
+) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
+    build_meshy_full_native_h1_package_internal_v5(
+        source_glb,
+        appearance_two_da,
+        runtime_identity,
+        product_identity,
+        build_options,
+        event_configuration,
         Some(material_authoring),
     )
 }
@@ -1369,7 +1579,7 @@ fn build_meshy_full_native_h1_package_internal_v5(
         DirectCreatureAnimationEventProfileV1,
         &DirectCreatureEventAuthoringV1,
     )>,
-    material_authoring: Option<CreatureModelMaterialAuthoringInputV1<'_>>,
+    material_authoring: Option<CreatureModelMaterialAuthoringInputV2<'_>>,
 ) -> Result<M6ModelPackageArtifactV1, M6PipelineErrorV1> {
     for (path, runtime, product) in [
         (
@@ -1408,12 +1618,13 @@ fn build_meshy_full_native_h1_package_internal_v5(
         )
     })?;
     sanitize_meshy_h1_degenerate_triangles_exact_v1(&mut source)?;
-    let (mut rig, mut mapping) = derive_meshy_h1_profile_and_mapping_for_source_forward_v2(
+    let (mut rig, mut mapping) = derive_meshy_h1_profile_and_mapping_for_source_forward_v3(
         &source,
         build_options.source_forward,
     )
     .map_err(|error| pipeline_error("profile", error.code, error.path, error.message))?;
-    author_product_weapon_anchors_v1(&mut rig)?;
+    let weapon_anchor_authoring =
+        author_product_weapon_anchors_v1(&mut rig, &build_options.weapon_grip)?;
     apply_automatic_h1_animation_profile_names_v1(
         &source,
         &mut mapping,
@@ -1424,7 +1635,8 @@ fn build_meshy_full_native_h1_package_internal_v5(
         appearance_two_da,
         source,
         &rig,
-        &direct_creature_profile_a_options_for_source_forward_v2(build_options.source_forward),
+        weapon_anchor_authoring,
+        &direct_creature_profile_a_options_for_source_forward_v3(build_options.source_forward),
         &mapping,
         DirectCreatureAnimationProfileV1::FullNative42ExplicitV1,
         event_configuration,
@@ -1503,7 +1715,8 @@ pub fn build_meshy_procedural_humanoid_p100k_experiment_with_options_v2(
             build_options.source_forward,
         )
         .map_err(|error| pipeline_error("profile", error.code, error.path, error.message))?;
-    author_product_weapon_anchors_v1(&mut rig)?;
+    let weapon_anchor_authoring =
+        author_product_weapon_anchors_v1(&mut rig, &build_options.weapon_grip)?;
     apply_automatic_h1_animation_profile_names_v1(
         &source,
         &mut mapping,
@@ -1515,7 +1728,8 @@ pub fn build_meshy_procedural_humanoid_p100k_experiment_with_options_v2(
         appearance_two_da,
         source,
         &rig,
-        &direct_creature_profile_a_options_for_source_forward_v2(build_options.source_forward),
+        weapon_anchor_authoring,
+        &direct_creature_profile_a_options_for_source_forward_v3(build_options.source_forward),
         &mapping,
         DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1,
         None,
@@ -1591,7 +1805,8 @@ pub fn build_meshy_procedural_humanoid_p300k_experiment_with_options_v2(
             build_options.source_forward,
         )
         .map_err(|error| pipeline_error("profile", error.code, error.path, error.message))?;
-    author_product_weapon_anchors_v1(&mut rig)?;
+    let weapon_anchor_authoring =
+        author_product_weapon_anchors_v1(&mut rig, &build_options.weapon_grip)?;
     apply_automatic_h1_animation_profile_names_v1(
         &source,
         &mut mapping,
@@ -1603,7 +1818,8 @@ pub fn build_meshy_procedural_humanoid_p300k_experiment_with_options_v2(
         appearance_two_da,
         source,
         &rig,
-        &direct_creature_profile_a_options_for_source_forward_v2(build_options.source_forward),
+        weapon_anchor_authoring,
+        &direct_creature_profile_a_options_for_source_forward_v3(build_options.source_forward),
         &mapping,
         DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1,
         None,
@@ -1663,6 +1879,39 @@ pub fn build_procedural_creature_demo_v2(
     module_identity: &BinaryCreatureModuleIdentityV1,
     creature_resref: &str,
 ) -> Result<ProofModuleArtifactV1, M6PipelineErrorV1> {
+    build_procedural_creature_demo_with_held_weapon_v3(
+        product,
+        module_identity,
+        creature_resref,
+        &CreatureHeldWeaponOptionsV1::default(),
+    )
+}
+
+/// Wraps an immutable Creature product in the standard Studio demo module and
+/// optionally equips the exact NWN base-game short sword in a native hand
+/// slot. No animation data is authored or changed by this operation.
+pub fn build_procedural_creature_demo_with_held_weapon_v3(
+    product: &ProceduralCreatureProductArtifactV3,
+    module_identity: &BinaryCreatureModuleIdentityV1,
+    creature_resref: &str,
+    held_weapon: &CreatureHeldWeaponOptionsV1,
+) -> Result<ProofModuleArtifactV1, M6PipelineErrorV1> {
+    build_procedural_creature_demo_with_authoring_v4(
+        product,
+        module_identity,
+        creature_resref,
+        held_weapon,
+        None,
+    )
+}
+
+pub fn build_procedural_creature_demo_with_authoring_v4(
+    product: &ProceduralCreatureProductArtifactV3,
+    module_identity: &BinaryCreatureModuleIdentityV1,
+    creature_resref: &str,
+    held_weapon: &CreatureHeldWeaponOptionsV1,
+    demo_authoring: Option<&CreatureDemoAuthoringV1>,
+) -> Result<ProofModuleArtifactV1, M6PipelineErrorV1> {
     if module_identity.hak_resref != product.report.identity.hak_resref {
         return Err(pipeline_error(
             "proof_module",
@@ -1674,13 +1923,96 @@ pub fn build_procedural_creature_demo_v2(
             ),
         ));
     }
-    build_single_profiled_creature_proof_module_with_identity_v3(
+    if let Some(authoring) = demo_authoring {
+        if held_weapon != &CreatureHeldWeaponOptionsV1::default() {
+            return Err(pipeline_error(
+                "proof_module",
+                "M6-CREATURE-DEMO-AUTHORING-CONFLICT",
+                "demoAuthoring",
+                "complete demo authoring cannot be combined with legacy heldWeapon",
+            ));
+        }
+        return build_single_authored_creature_demo_with_identity_v6(
+            product.report.appearance.appended_row_index,
+            module_identity,
+            creature_resref,
+            &authoring.blueprint,
+            &authoring.equipment_loadout,
+        )
+        .map_err(|error| pipeline_error("proof_module", error.code, error.path, error.message));
+    }
+    build_profiled_creature_demo_for_held_weapon_v1(
         product.report.appearance.appended_row_index,
-        BinaryCreatureRuntimeProfileV2::ActiveMonsterBaseline,
         module_identity,
         creature_resref,
+        held_weapon,
     )
     .map_err(|error| pipeline_error("proof_module", error.code, error.path, error.message))
+}
+
+fn build_profiled_creature_demo_for_held_weapon_v1(
+    appearance_row: u16,
+    module_identity: &BinaryCreatureModuleIdentityV1,
+    creature_resref: &str,
+    held_weapon: &CreatureHeldWeaponOptionsV1,
+) -> Result<ProofModuleArtifactV1, crate::proof_module::ProofModuleErrorV1> {
+    if held_weapon.schema_version != 1 {
+        return Err(crate::proof_module::ProofModuleErrorV1 {
+            schema_version: 1,
+            code: "M6-HELD-WEAPON-SCHEMA-UNSUPPORTED".to_owned(),
+            path: "heldWeapon.schemaVersion".to_owned(),
+            message: "held weapon options require schemaVersion 1".to_owned(),
+        });
+    }
+    match held_weapon.mode {
+        CreatureHeldWeaponModeV1::None => {
+            if held_weapon.item_resref.is_some() {
+                return Err(crate::proof_module::ProofModuleErrorV1 {
+                    schema_version: 1,
+                    code: "M6-HELD-WEAPON-ITEM-UNEXPECTED".to_owned(),
+                    path: "heldWeapon.itemResref".to_owned(),
+                    message: "itemResref must be absent when held weapon mode is NONE".to_owned(),
+                });
+            }
+            build_single_profiled_creature_proof_module_with_identity_v3(
+                appearance_row,
+                BinaryCreatureRuntimeProfileV2::ActiveMonsterBaseline,
+                module_identity,
+                creature_resref,
+            )
+        }
+        CreatureHeldWeaponModeV1::RightHand | CreatureHeldWeaponModeV1::LeftHand => {
+            let item_resref = held_weapon.item_resref.as_deref().ok_or_else(|| {
+                crate::proof_module::ProofModuleErrorV1 {
+                    schema_version: 1,
+                    code: "M6-HELD-WEAPON-ITEM-MISSING".to_owned(),
+                    path: "heldWeapon.itemResref".to_owned(),
+                    message: "itemResref is required when a hand slot is selected".to_owned(),
+                }
+            })?;
+            if item_resref != crate::proof_module::NWN_BASE_SHORTSWORD_RESREF_V2 {
+                return Err(crate::proof_module::ProofModuleErrorV1 {
+                    schema_version: 1,
+                    code: "M6-HELD-WEAPON-ITEM-RESREF-UNSUPPORTED".to_owned(),
+                    path: "heldWeapon.itemResref".to_owned(),
+                    message: "selected Creature hands currently require the exact NWN base-game short sword nw_wswss001".to_owned(),
+                });
+            }
+            let hand = match held_weapon.mode {
+                CreatureHeldWeaponModeV1::RightHand => BinaryCreatureHandSlotV1::RightHand,
+                CreatureHeldWeaponModeV1::LeftHand => BinaryCreatureHandSlotV1::LeftHand,
+                CreatureHeldWeaponModeV1::None => unreachable!("NONE handled above"),
+            };
+            build_single_profiled_creature_stock_weapon_demo_with_identity_v5(
+                appearance_row,
+                BinaryCreatureRuntimeProfileV2::ActiveMonsterBaseline,
+                module_identity,
+                creature_resref,
+                hand,
+                &BinaryCreatureStockWeaponV2::nwn_base_shortsword(),
+            )
+        }
+    }
 }
 
 /// Automatic H1 route with caller-owned event authoring and exact binary
@@ -1709,7 +2041,7 @@ pub fn build_meshy_h1_model_package_v3(
         appearance_two_da,
         source,
         &rig,
-        &direct_creature_profile_a_options_v2(),
+        &direct_creature_profile_a_options_v3(),
         &mapping,
         animation_profile,
         Some((event_profile, event_authoring)),
@@ -1749,6 +2081,98 @@ fn apply_automatic_h1_animation_profile_names_v1(
                 .unwrap_or_else(|| format!("m2a_h1_{index}"))
         };
     }
+}
+
+fn apply_creature_motion_pack_v1(
+    source: &GlbIngestResult,
+    mapping: &mut ProfileAAnimationMappingV1,
+    pack: &CreatureMotionPackV1,
+    selected_weapon_family: crate::creature_product::CreatureItemGripFamilyV1,
+) -> Result<CreatureMotionSourceReportV1, M6PipelineErrorV1> {
+    if pack.skeleton_profile != CreatureMotionSkeletonProfileV1::Humanoid {
+        return Err(pipeline_error(
+            "animation",
+            "M6-MOTION-PACK-SKELETON-PROFILE",
+            "buildOptions.motionPack.skeletonProfile",
+            "the humanoid product lane rejects quadruped motion packs; use the dedicated quadruped profile",
+        ));
+    }
+    let source_joint_names = source
+        .ir
+        .nodes
+        .iter()
+        .filter_map(|node| node.name.clone())
+        .collect::<Vec<_>>();
+    let source_clip_names = source
+        .ir
+        .animations
+        .iter()
+        .filter_map(|animation| animation.name.clone())
+        .collect::<Vec<_>>();
+    let source_report = validate_creature_motion_pack_source_v1(
+        pack,
+        &source.ir.source.sha256,
+        &source_joint_names,
+        &source_clip_names,
+        Some(selected_weapon_family),
+    )
+    .map_err(|error| pipeline_error("animation", error.code, error.path, error.message))?;
+    for (index, authored) in pack.clips.iter().enumerate() {
+        if authored
+            .weapon_family
+            .is_some_and(|family| family != selected_weapon_family)
+        {
+            continue;
+        }
+        let matching = source
+            .ir
+            .animations
+            .iter()
+            .filter(|animation| {
+                animation
+                    .name
+                    .as_deref()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(&authored.source_clip_name))
+            })
+            .collect::<Vec<_>>();
+        let [animation] = matching.as_slice() else {
+            return Err(pipeline_error(
+                "animation",
+                "M6-MOTION-PACK-SOURCE-CLIP",
+                format!("buildOptions.motionPack.clips[{index}].sourceClipName"),
+                "source clip name must resolve to exactly one animation in the selected GLB",
+            ));
+        };
+        let output = FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1
+            .iter()
+            .find(|candidate| candidate.eq_ignore_ascii_case(&authored.output_clip_name))
+            .copied()
+            .ok_or_else(|| {
+                pipeline_error(
+                    "animation",
+                    "M6-MOTION-PACK-OUTPUT-CLIP",
+                    format!("buildOptions.motionPack.clips[{index}].outputClipName"),
+                    "output clip must be one of the exact 42 direct-Creature runtime states",
+                )
+            })?;
+        if let Some(existing) = mapping
+            .clip_mappings
+            .iter_mut()
+            .find(|entry| entry.source_animation_id == animation.id)
+        {
+            existing.output_clip_name = output.to_owned();
+        } else {
+            mapping.clip_mappings.push(ProfileAAnimationClipMappingV1 {
+                source_animation_id: animation.id,
+                output_clip_name: output.to_owned(),
+                transition_seconds: 0.25,
+            });
+        }
+    }
+    mapping
+        .clip_mappings
+        .sort_by_key(|entry| entry.source_animation_id);
+    Ok(source_report)
 }
 
 /// Materializes the first independent Meshy runtime control (M0).  Unlike
@@ -1948,6 +2372,7 @@ fn build_meshy_m0_static_rigid_package_internal(
             race,
             "M0",
             DirectCreatureAppearanceSemanticProfileV2::LegacyDirectMonsterDonorV1,
+            None,
         )
     };
     let (
@@ -2129,6 +2554,7 @@ fn build_meshy_m0_static_rigid_package_internal(
         },
         ingest: ingest.report,
         conversion: conversion.report,
+        weapon_anchor_authoring: None,
         model: mdl.report,
         texture: tga.report,
         material_separation: None,
@@ -2909,7 +3335,7 @@ pub fn build_meshy_h1_rigid_runtime_diagnostic_package_v1(
         appearance_two_da,
         source,
         &rig,
-        &direct_creature_profile_a_options_v2(),
+        &direct_creature_profile_a_options_v3(),
         &mapping,
     )
 }
@@ -3086,6 +3512,7 @@ fn build_m6_model_package_with_ingest_v4(
         appearance_two_da,
         ingest,
         rig,
+        None,
         profile_options,
         mapping,
         animation_profile,
@@ -3108,6 +3535,7 @@ fn build_m6_model_package_with_ingest_v5(
     appearance_two_da: &[u8],
     ingest: GlbIngestResult,
     rig: &CreatureRigProfileV1,
+    weapon_anchor_authoring: Option<CreatureWeaponAnchorReportV1>,
     profile_options: &crate::profile_a::ProfileAOptionsV1,
     mapping: &ProfileAAnimationMappingV1,
     animation_profile: DirectCreatureAnimationProfileV1,
@@ -3120,7 +3548,7 @@ fn build_m6_model_package_with_ingest_v5(
     output: M6BuildOutputV2,
     geometry_policy: M6GeometryPolicyV1,
     build_options: &ProceduralCreatureBuildOptionsV1,
-    material_authoring: Option<CreatureModelMaterialAuthoringInputV1<'_>>,
+    material_authoring: Option<CreatureModelMaterialAuthoringInputV2<'_>>,
 ) -> Result<M6BuildArtifactV2, M6PipelineErrorV1> {
     validate_procedural_creature_product_identity_v2(product_identity)?;
     if build_options.schema_version != 1 {
@@ -3134,6 +3562,33 @@ fn build_m6_model_package_with_ingest_v5(
             ),
         ));
     }
+    validate_creature_held_weapon_options_v1(&build_options.held_weapon)?;
+    if let Some(authoring) = &build_options.demo_authoring {
+        validate_creature_demo_authoring_v1(authoring).map_err(|source| {
+            pipeline_error("proof_module", source.code, source.path, source.message)
+        })?;
+        if build_options.held_weapon != CreatureHeldWeaponOptionsV1::default() {
+            return Err(pipeline_error(
+                "proof_module",
+                "M6-CREATURE-DEMO-AUTHORING-CONFLICT",
+                "buildOptions.demoAuthoring",
+                "complete demoAuthoring cannot be combined with the legacy heldWeapon shortcut",
+            ));
+        }
+    }
+    validate_creature_material_profile_v2(&build_options.material_profile)
+        .map_err(|source| pipeline_error("materials", source.code, source.path, source.message))?;
+    let mut effective_mapping = mapping.clone();
+    let motion_pack_report = if let Some(motion_pack) = &build_options.motion_pack {
+        Some(apply_creature_motion_pack_v1(
+            &ingest,
+            &mut effective_mapping,
+            motion_pack,
+            build_options.weapon_grip.item_family,
+        )?)
+    } else {
+        None
+    };
     let input_glb_identity = identity(source_glb);
     let input_appearance_identity = identity(appearance_two_da);
     let glb_limits = match geometry_policy {
@@ -3142,64 +3597,91 @@ fn build_m6_model_package_with_ingest_v5(
         M6GeometryPolicyV1::P300kSegmentedExperiment => p300k_experiment_glb_limits_v1(),
     };
     let degeneracy_policy = triangle_degeneracy_policy_for_build_v1(output, geometry_policy);
-    let separation = material_authoring.map(|authoring| authoring.separation);
-    let animated = match (geometry_policy, degeneracy_policy, separation) {
+    if material_authoring.is_some() && geometry_policy != M6GeometryPolicyV1::ProductBudget {
+        return Err(pipeline_error(
+            "materials",
+            "CREATURE-MATERIALS-PROFILE-UNSUPPORTED",
+            "materialSeparation",
+            "Material Separation is available only in the shared 300K Creature product profile",
+        ));
+    }
+    let resolved_materials = material_authoring
+        .map(|authoring| authoring.resolve(&ingest.ir))
+        .transpose()?;
+    let animated = match (
+        geometry_policy,
+        degeneracy_policy,
+        resolved_materials.as_ref(),
+    ) {
         (
             M6GeometryPolicyV1::ProductBudget,
             TriangleDegeneracyPolicyV1::ExactFiniteNonCollinear,
             None,
-        ) => convert_profile_a_with_animations_exact_v1(&ingest, rig, profile_options, mapping),
-        (
-            M6GeometryPolicyV1::ProductBudget,
-            TriangleDegeneracyPolicyV1::ExactFiniteNonCollinear,
-            Some(separation),
-        ) => convert_profile_a_with_animations_exact_and_material_separation_v1(
+        ) => convert_profile_a_with_animations_exact_v1(
             &ingest,
             rig,
             profile_options,
-            mapping,
-            separation,
+            &effective_mapping,
+        ),
+        (
+            M6GeometryPolicyV1::ProductBudget,
+            TriangleDegeneracyPolicyV1::ExactFiniteNonCollinear,
+            Some(materials),
+        ) => convert_profile_a_with_animations_exact_and_resolved_materials_v1(
+            &ingest,
+            rig,
+            profile_options,
+            &effective_mapping,
+            materials,
         ),
         (
             M6GeometryPolicyV1::ProductBudget,
             TriangleDegeneracyPolicyV1::LegacyAbsoluteEpsilon,
             None,
-        ) => convert_profile_a_with_animations_v1(&ingest, rig, profile_options, mapping),
+        ) => {
+            convert_profile_a_with_animations_v1(&ingest, rig, profile_options, &effective_mapping)
+        }
         (
             M6GeometryPolicyV1::ProductBudget,
             TriangleDegeneracyPolicyV1::LegacyAbsoluteEpsilon,
-            Some(separation),
-        ) => convert_profile_a_with_animations_and_material_separation_v1(
+            Some(materials),
+        ) => convert_profile_a_with_animations_and_resolved_materials_v1(
             &ingest,
             rig,
             profile_options,
-            mapping,
-            separation,
+            &effective_mapping,
+            materials,
         ),
         (
             M6GeometryPolicyV1::P100kSegmentedExperiment,
             TriangleDegeneracyPolicyV1::ExactFiniteNonCollinear,
             None,
-        ) => convert_profile_a_with_animations_p100k_experiment_v1(&ingest, rig, mapping),
+        ) => convert_profile_a_with_animations_p100k_experiment_v1(
+            &ingest,
+            rig,
+            profile_options,
+            &effective_mapping,
+        ),
         (
             M6GeometryPolicyV1::P100kSegmentedExperiment,
             TriangleDegeneracyPolicyV1::ExactFiniteNonCollinear,
-            Some(separation),
-        ) => convert_profile_a_with_animations_p100k_experiment_and_material_separation_v1(
-            &ingest, rig, mapping, separation,
-        ),
+            Some(_),
+        ) => unreachable!("Creature experiment material inputs fail before conversion"),
         (
             M6GeometryPolicyV1::P300kSegmentedExperiment,
             TriangleDegeneracyPolicyV1::ExactFiniteNonCollinear,
             None,
-        ) => convert_profile_a_with_animations_p300k_experiment_v1(&ingest, rig, mapping),
+        ) => convert_profile_a_with_animations_p300k_experiment_v1(
+            &ingest,
+            rig,
+            profile_options,
+            &effective_mapping,
+        ),
         (
             M6GeometryPolicyV1::P300kSegmentedExperiment,
             TriangleDegeneracyPolicyV1::ExactFiniteNonCollinear,
-            Some(separation),
-        ) => convert_profile_a_with_animations_p300k_experiment_and_material_separation_v1(
-            &ingest, rig, mapping, separation,
-        ),
+            Some(_),
+        ) => unreachable!("Creature experiment material inputs fail before conversion"),
         (
             M6GeometryPolicyV1::P100kSegmentedExperiment
             | M6GeometryPolicyV1::P300kSegmentedExperiment,
@@ -3239,9 +3721,9 @@ fn build_m6_model_package_with_ingest_v5(
         ));
     }
     let facing = &animated.base.report;
-    let expected_forward_mapping = creature_source_forward_mapping_v1(build_options.source_forward);
-    if rig.profile_id == "meshy-h1-derived-user-rig-v2"
-        && (facing.policies.basis_status != "CREATURE_BASIS_V2_RESOLVED"
+    let expected_forward_mapping = creature_source_forward_mapping_v2(build_options.source_forward);
+    if rig.profile_id == "meshy-h1-derived-user-rig-v3"
+        && (facing.policies.basis_status != "CREATURE_BASIS_V3_RESOLVED"
             || facing.policies.asset_forward_mapping != expected_forward_mapping
             || facing.policies.engine_facing_proof != "OWNER_PROOF_REQUIRED"
             || (facing.transform.determinant - 1.0).abs() > 1.0e-6)
@@ -3251,7 +3733,7 @@ fn build_m6_model_package_with_ingest_v5(
             "M6-CREATURE-FACING-UNRESOLVED",
             "conversion.report.policies",
             format!(
-                "direct-Creature output requires the selected Creature Basis V2 source forward to map to Aurora -Y with determinant +1 (expected {expected_forward_mapping}); got basisStatus={}, forwardMapping={}, engineFacingProof={}, determinant={}",
+                "direct-Creature output requires the selected Creature Basis V3 source forward to map to Aurora +Y with determinant +1 (expected {expected_forward_mapping}); got basisStatus={}, forwardMapping={}, engineFacingProof={}, determinant={}",
                 facing.policies.basis_status,
                 facing.policies.asset_forward_mapping,
                 facing.policies.engine_facing_proof,
@@ -3424,18 +3906,19 @@ fn build_m6_model_package_with_ingest_v5(
     let tga = write_tga_v1(&texture_cleanup.image, &TgaWriterOptionsV1::default())
         .map_err(|error| pipeline_error("texture", error.code, error.path, error.message))?;
     let (
-        writer_material_textures,
-        material_texture_payloads,
+        mut writer_material_textures,
+        mut material_texture_payloads,
         material_separation_report,
         model_texture_authoring_report,
     ) = if let Some(authoring) = material_authoring {
-        let materials = resolve_model_materials_v1(&ingest.ir, authoring.separation)
-            .map_err(|error| pipeline_error("materials", error.code, error.path, error.message))?;
+        let materials = resolved_materials
+            .as_ref()
+            .expect("material authoring resolves before profile conversion");
         let textures = resolve_model_texture_authoring_v1(
             source_glb,
             &glb_limits,
             &ingest,
-            &materials,
+            materials,
             &product_identity.texture_resref,
             authoring.textures,
             authoring.texture_payload_blob,
@@ -3445,7 +3928,7 @@ fn build_m6_model_package_with_ingest_v5(
         (
             textures.material_textures,
             textures.textures,
-            Some(materials.report),
+            Some(materials.report.clone()),
             Some(textures.report),
         )
     } else {
@@ -3464,6 +3947,86 @@ fn build_m6_model_package_with_ingest_v5(
         )
     };
 
+    let material_package: Option<AuroraMaterialPackageV1> = if build_options.material_profile.target
+        == CreatureMaterialTargetV2::NwnEeMtr
+    {
+        let compilation = compile_gltf_materials_v1(
+            &ingest.ir.source.sha256,
+            &ingest.ir.materials,
+            AuroraMaterialTargetProfileV1::NwnEeMtr,
+        )
+        .map_err(|source| pipeline_error("materials", source.code, source.path, source.message))?;
+        let diffuse_overrides = model_texture_authoring_report
+            .as_ref()
+            .map(|report| {
+                report
+                    .bindings
+                    .iter()
+                    .map(|binding| {
+                        let payload = material_texture_payloads
+                            .iter()
+                            .find(|texture| texture.resref == binding.output_resref)
+                            .ok_or_else(|| {
+                                pipeline_error(
+                                    "materials",
+                                    "CREATURE-MATERIAL-DIFFUSE-PAYLOAD-MISSING",
+                                    "modelTextureAuthoring.resources",
+                                    format!(
+                                        "resolved texture {} has no byte payload",
+                                        binding.output_resref
+                                    ),
+                                )
+                            })?;
+                        Ok(AuroraDiffuseOverrideV1 {
+                            material_slot: binding.material_slot,
+                            source_material_id: binding.source_material_id.ok_or_else(|| {
+                                pipeline_error(
+                                    "materials",
+                                    "CREATURE-MATERIAL-SOURCE-MATERIAL-MISSING",
+                                    "modelTextureAuthoring.bindings.sourceMaterialId",
+                                    "MTR compilation requires a source material identity",
+                                )
+                            })?,
+                            resref: binding.output_resref.clone(),
+                            tga_payload: payload.payload.clone(),
+                            texture_readability: binding.mip_readability.clone(),
+                        })
+                    })
+                    .collect::<Result<Vec<_>, M6PipelineErrorV1>>()
+            })
+            .transpose()?
+            .unwrap_or_default();
+        let package = package_aurora_materials_v1(
+            source_glb,
+            &ingest,
+            &creature,
+            &compilation,
+            &product_identity.texture_resref,
+            &diffuse_overrides,
+        )
+        .map_err(|source| pipeline_error("materials", source.code, source.path, source.message))?;
+        ensure_material_tangents_v1(&mut creature, &package.slots).map_err(|source| {
+            pipeline_error("materials", source.code, source.path, source.message)
+        })?;
+        writer_material_textures = package
+            .slots
+            .iter()
+            .map(|entry| entry.diffuse_binding.clone())
+            .collect();
+        material_texture_payloads = package
+            .resources
+            .iter()
+            .map(|resource| ResolvedModelTexturePayloadV1 {
+                resref: resource.resref.clone(),
+                resource_type: resource.resource_type,
+                payload: resource.payload.clone(),
+            })
+            .collect();
+        Some(package)
+    } else {
+        None
+    };
+
     let writer_options = MdlWriterOptionsV1 {
         schema_version: 1,
         format_profile: if animation_profile
@@ -3478,7 +4041,7 @@ fn build_m6_model_package_with_ingest_v5(
         model_resource_resref: product_identity.model_resref.clone(),
         diffuse_texture_resref_by_material_slot: writer_material_textures,
     };
-    let mdl = match degeneracy_policy {
+    let mut mdl = match degeneracy_policy {
         TriangleDegeneracyPolicyV1::LegacyAbsoluteEpsilon => {
             write_binary_mdl_with_animations(&creature, &animations, &writer_options)
         }
@@ -3491,6 +4054,35 @@ fn build_m6_model_package_with_ingest_v5(
         }
     }
     .map_err(|error| pipeline_error("model", error.code, error.path, error.message))?;
+    let material_extension = if let Some(package) = &material_package {
+        let extension = extend_binary_mdl_with_materials_v1(
+            &creature,
+            mdl,
+            &MdlMaterialExtensionOptionsV1 {
+                schema_version: 1,
+                materials: package
+                    .slots
+                    .iter()
+                    .map(|entry| entry.state.clone())
+                    .collect::<Vec<MdlMaterialStateV1>>(),
+                segment_streams: creature
+                    .segments
+                    .iter()
+                    .map(|segment| MdlSegmentMaterialStreamsV1 {
+                        segment_id: segment.segment_id,
+                        uv1: Vec::new(),
+                        uv2: Vec::new(),
+                        uv3: Vec::new(),
+                    })
+                    .collect(),
+            },
+        )
+        .map_err(|source| pipeline_error("materials", source.code, source.path, source.message))?;
+        mdl = extension.binary;
+        Some(extension.material_report)
+    } else {
+        None
+    };
     let animation_behavior = is_full_native_42_profile(animation_profile)
         .then(|| evaluate_direct_creature_animation_behavior_v2(&mdl.inspection));
     if let Some(behavior) = animation_behavior.as_ref()
@@ -3591,6 +4183,16 @@ fn build_m6_model_package_with_ingest_v5(
 
     let appearance_inspection = inspect_two_da_v2(appearance_two_da, &TwoDaLimitsV1::default())
         .map_err(|error| pipeline_error("appearance", error.code, error.path, error.message))?;
+    let runtime_envelope = if is_full_native_42_profile(animation_profile) {
+        let bounds = creature_model_bounds_v1(&creature)?;
+        Some(
+            derive_creature_runtime_envelope_v1(&build_options.runtime_envelope, bounds).map_err(
+                |source| pipeline_error("appearance", source.code, source.path, source.message),
+            )?,
+        )
+    } else {
+        None
+    };
     let appearance_request = complete_direct_creature_appearance_request_v2(
         appearance_two_da,
         &appearance_inspection,
@@ -3602,6 +4204,7 @@ fn build_m6_model_package_with_ingest_v5(
         } else {
             DirectCreatureAppearanceSemanticProfileV2::LegacyDirectMonsterDonorV1
         },
+        runtime_envelope.as_ref(),
     )?;
     let appearance = append_two_da_row_v1(
         appearance_two_da,
@@ -3727,6 +4330,46 @@ fn build_m6_model_package_with_ingest_v5(
         active_joint_count,
     };
 
+    let performance = evaluate_creature_performance_v1(&CreaturePerformanceInputV1 {
+        preset: build_options.performance_preset,
+        triangle_count: u32::try_from(output_triangle_count).map_err(|_| {
+            pipeline_error(
+                "performance",
+                "CREATURE-PERFORMANCE-TRIANGLE-COUNT-OVERFLOW",
+                "performance.triangleCount",
+                "output triangle count does not fit the Creature performance contract",
+            )
+        })?,
+        segment_count: u32::try_from(creature.segments.len()).unwrap_or(u32::MAX),
+        material_count: u32::try_from(
+            creature
+                .segments
+                .iter()
+                .map(|segment| segment.material_slot)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+        )
+        .unwrap_or(u32::MAX),
+        draw_call_count: u32::try_from(creature.segments.len()).unwrap_or(u32::MAX),
+        joint_count: u32::try_from(active_joint_count).unwrap_or(u32::MAX),
+        controller_count: u32::try_from(
+            animations
+                .clips
+                .iter()
+                .map(|clip| clip.tracks.len())
+                .sum::<usize>(),
+        )
+        .unwrap_or(u32::MAX),
+        model_bytes: mdl.payload.len() as u64,
+        texture_bytes: material_texture_payloads
+            .iter()
+            .map(|texture| texture.payload.len() as u64)
+            .sum(),
+        hak_bytes: package.hak.payload.len() as u64,
+        instance_count: 1,
+    })
+    .map_err(|source| pipeline_error("performance", source.code, source.path, source.message))?;
+
     if output == M6BuildOutputV2::ProceduralProduct {
         let lineage = animation_lineage.clone().ok_or_else(|| {
             pipeline_error(
@@ -3736,17 +4379,30 @@ fn build_m6_model_package_with_ingest_v5(
                 "the procedural product requires exact V2 clip lineage",
             )
         })?;
-        let report = ProceduralCreatureProductReportV3 {
-            schema_version: 3,
+        let report = ProceduralCreatureProductReportV4 {
+            schema_version: 4,
             identity: product_identity.clone(),
             appearance_semantic_profile:
                 DirectCreatureAppearanceSemanticProfileV2::HumanoidMediumV1,
+            runtime_envelope: runtime_envelope.clone().ok_or_else(|| {
+                pipeline_error(
+                    "appearance",
+                    "CREATURE-RUNTIME-ENVELOPE-MISSING",
+                    "runtimeEnvelope",
+                    "procedural Creature product requires a complete runtime envelope",
+                )
+            })?,
+            material_profile: build_options.material_profile.clone(),
+            material_extension,
+            motion_pack: motion_pack_report,
+            performance,
             resolved_base_color_image_index: texture_selection.source_image_index,
             texture_selection: texture_selection.clone(),
             material_fidelity,
             geometry: geometry_report,
             ingest: ingest.report,
             conversion: animated.base.report,
+            weapon_anchor_authoring: weapon_anchor_authoring.clone(),
             model: mdl.report,
             texture: tga.report,
             material_separation: material_separation_report.clone(),
@@ -3813,7 +4469,16 @@ fn build_m6_model_package_with_ingest_v5(
         )];
         generated_payloads.extend(material_texture_payloads.iter().map(|texture| {
             (
-                format!("generated/{}.tga", texture.resref),
+                format!(
+                    "generated/{}.{}",
+                    texture.resref,
+                    match texture.resource_type {
+                        3 => "tga",
+                        2022 => "txi",
+                        2072 => "mtr",
+                        _ => "bin",
+                    }
+                ),
                 texture.payload.as_slice(),
             )
         }));
@@ -3881,12 +4546,22 @@ fn build_m6_model_package_with_ingest_v5(
         == DirectCreatureAnimationProfileV1::FullNative42ProceduralHumanoidV1
         || runtime_identity != &ProceduralCreaturePackageIdentityV1::historical_default()
     {
-        build_single_profiled_creature_proof_module_with_identity_v3(
-            appearance.report.appended_row_index,
-            BinaryCreatureRuntimeProfileV2::ActiveMonsterBaseline,
-            &runtime_identity.module,
-            &runtime_identity.creature_resref,
-        )
+        if let Some(authoring) = &build_options.demo_authoring {
+            build_single_authored_creature_demo_with_identity_v6(
+                appearance.report.appended_row_index,
+                &runtime_identity.module,
+                &runtime_identity.creature_resref,
+                &authoring.blueprint,
+                &authoring.equipment_loadout,
+            )
+        } else {
+            build_profiled_creature_demo_for_held_weapon_v1(
+                appearance.report.appended_row_index,
+                &runtime_identity.module,
+                &runtime_identity.creature_resref,
+                &build_options.held_weapon,
+            )
+        }
     } else {
         build_creature_proof_module_v1(appearance.report.appended_row_index)
     }
@@ -3899,6 +4574,7 @@ fn build_m6_model_package_with_ingest_v5(
         geometry: geometry_report,
         ingest: ingest.report,
         conversion: animated.base.report,
+        weapon_anchor_authoring,
         model: mdl.report,
         texture: tga.report,
         material_separation: material_separation_report,
@@ -3971,7 +4647,16 @@ fn build_m6_model_package_with_ingest_v5(
     ];
     generated_payloads.extend(material_texture_payloads.iter().map(|texture| {
         (
-            format!("generated/{}.tga", texture.resref),
+            format!(
+                "generated/{}.{}",
+                texture.resref,
+                match texture.resource_type {
+                    3 => "tga",
+                    2022 => "txi",
+                    2072 => "mtr",
+                    _ => "bin",
+                }
+            ),
             texture.payload.as_slice(),
         )
     }));
@@ -4040,6 +4725,75 @@ fn build_m6_model_package_with_ingest_v5(
             material_textures: material_texture_payloads,
         },
     )))
+}
+
+fn validate_creature_held_weapon_options_v1(
+    options: &CreatureHeldWeaponOptionsV1,
+) -> Result<(), M6PipelineErrorV1> {
+    if options.schema_version != 1 {
+        return Err(pipeline_error(
+            "proof_module",
+            "M6-HELD-WEAPON-SCHEMA-UNSUPPORTED",
+            "buildOptions.heldWeapon.schemaVersion",
+            "held weapon options require schemaVersion 1",
+        ));
+    }
+    match (&options.mode, options.item_resref.as_deref()) {
+        (CreatureHeldWeaponModeV1::None, None) => Ok(()),
+        (CreatureHeldWeaponModeV1::None, Some(_)) => Err(pipeline_error(
+            "proof_module",
+            "M6-HELD-WEAPON-ITEM-UNEXPECTED",
+            "buildOptions.heldWeapon.itemResref",
+            "itemResref must be absent when held weapon mode is NONE",
+        )),
+        (CreatureHeldWeaponModeV1::RightHand | CreatureHeldWeaponModeV1::LeftHand, None) => {
+            Err(pipeline_error(
+                "proof_module",
+                "M6-HELD-WEAPON-ITEM-MISSING",
+                "buildOptions.heldWeapon.itemResref",
+                "itemResref is required when a hand slot is selected",
+            ))
+        }
+        (_, Some(item_resref))
+            if item_resref != crate::proof_module::NWN_BASE_SHORTSWORD_RESREF_V2 =>
+        {
+            Err(pipeline_error(
+                "proof_module",
+                "M6-HELD-WEAPON-ITEM-RESREF-UNSUPPORTED",
+                "buildOptions.heldWeapon.itemResref",
+                "selected Creature hands currently require the exact NWN base-game short sword nw_wswss001",
+            ))
+        }
+        (_, Some(_)) => Ok(()),
+    }
+}
+
+fn creature_model_bounds_v1(
+    creature: &AuroraCreatureIrV1,
+) -> Result<CreatureModelBoundsV1, M6PipelineErrorV1> {
+    let mut min = [f32::INFINITY; 3];
+    let mut max = [f32::NEG_INFINITY; 3];
+    let mut count = 0usize;
+    for position in creature
+        .segments
+        .iter()
+        .flat_map(|segment| segment.positions.iter())
+    {
+        count += 1;
+        for axis in 0..3 {
+            min[axis] = min[axis].min(position[axis]);
+            max[axis] = max[axis].max(position[axis]);
+        }
+    }
+    if count == 0 {
+        return Err(pipeline_error(
+            "appearance",
+            "M6-CREATURE-RUNTIME-BOUNDS-MISSING",
+            "creature.segments",
+            "runtime envelope requires at least one emitted model vertex",
+        ));
+    }
+    Ok(CreatureModelBoundsV1 { min, max })
 }
 
 fn validate_procedural_creature_product_identity_v2(
@@ -5338,6 +6092,11 @@ fn prepare_creature_base_color_texture_v1(
                 "selected source material is absent from the ingested IR",
             )
         })?;
+    let aurora_compilation = crate::aurora_material::compile_gltf_material_v1(
+        material,
+        crate::aurora_material::AuroraMaterialTargetProfileV1::AuroraClassicSafe,
+    )
+    .map_err(|error| pipeline_error("material", error.code, error.path, error.message))?;
     // glTF explicitly ignores base-color alpha when alphaMode is OPAQUE.
     // Keeping an arbitrary source alpha channel in the classic Aurora TGA
     // would silently change that meaning, because the runtime can consume it.
@@ -5414,6 +6173,7 @@ fn prepare_creature_base_color_texture_v1(
             aurora_material_profile: "CLASSIC_DIFFUSE_TGA_SAFE_V1".to_owned(),
             mapped_fields,
             unsupported_fields,
+            aurora_compiler: Some(aurora_compilation.fidelity),
         },
     ))
 }
@@ -6164,23 +6924,31 @@ mod tests {
 
     use super::{
         M6_REQUIRED_DIRECT_CREATURE_CLIPS, M6BuildOutputV2, M6GeometryPolicyV1,
-        TriangleDegeneracyPolicyV1, bake_gltf_base_color_factor_v1,
-        discard_ignored_opaque_alpha_v1, materialize_direct_creature_runtime_clips,
-        p100k_experiment_glb_limits_v1, p100k_experiment_triangle_count_is_eligible_v1,
-        p300k_experiment_glb_limits_v1, sanitize_meshy_h1_degenerate_triangles_exact_v1,
-        sanitize_meshy_h1_degenerate_triangles_v1, sanitize_runtime_creature_face_planes_exact_v1,
-        sanitize_runtime_creature_face_planes_v1,
+        TriangleDegeneracyPolicyV1, author_product_weapon_anchors_v1,
+        bake_gltf_base_color_factor_v1, discard_ignored_opaque_alpha_v1,
+        materialize_direct_creature_runtime_clips, p100k_experiment_glb_limits_v1,
+        p100k_experiment_triangle_count_is_eligible_v1, p300k_experiment_glb_limits_v1,
+        sanitize_meshy_h1_degenerate_triangles_exact_v1, sanitize_meshy_h1_degenerate_triangles_v1,
+        sanitize_runtime_creature_face_planes_exact_v1, sanitize_runtime_creature_face_planes_v1,
         sanitize_static_model_degenerate_triangles_aggressive_v1,
         sanitize_static_model_degenerate_triangles_v1, split_creature_segments_for_binary_mdl_v1,
         triangle_degeneracy_policy_for_build_v1,
     };
     use crate::{
+        creature_equipment::{
+            CreatureWeaponEulerOffsetV1, CreatureWeaponGripModeV1, CreatureWeaponGripOptionsV1,
+            derive_humanoid_weapon_anchor_options_v2,
+        },
         glb::{GlbGate, GlbLimits, ingest_glb},
         mdl::{MdlAnimationClipV1, MdlAnimationSetV1, NWN_EE_MAX_MESH_INDEX_COUNT_V1},
         owned_fixture::synthetic_owned_m6_glb_v1,
         profile_a::{
-            AuroraCreatureIrV1, AuroraCreatureSegmentV1, AuroraVertexWeightsV1,
-            RigSegmentDeformationV1, derive_meshy_h1_profile_and_mapping_p300k_experiment_v1,
+            AuroraCreatureIrV1, AuroraCreatureSegmentV1, AuroraVertexWeightsV1, Bounds3V1,
+            CreatureRigNodeV1, CreatureRigProfileV1, CreatureRigSegmentV1, CreatureSourceForwardV1,
+            RigProvenanceAttestationsV1, RigProvenanceKindV1, RigProvenanceV1,
+            RigSegmentDeformationV1, canonical_profile_sha256,
+            derive_meshy_h1_profile_and_mapping_p300k_experiment_for_source_forward_v1,
+            derive_meshy_h1_profile_and_mapping_p300k_experiment_v1,
         },
         tga::{TgaImageV1, TgaPixelFormatV1},
     };
@@ -6343,6 +7111,89 @@ mod tests {
         assert!(p100k_experiment_triangle_count_is_eligible_v1(110_000));
         assert!(!p100k_experiment_triangle_count_is_eligible_v1(20_000));
         assert!(!p100k_experiment_triangle_count_is_eligible_v1(110_001));
+    }
+
+    #[test]
+    #[ignore = "requires the local Git-ignored canonical Fogbound Claw Guard GLB"]
+    fn fogbound_claw_guard_weapon_hooks_are_bind_calibrated_without_materializing_a_candidate() {
+        let source_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
+            "../../sample-3d/tlc-fogbound-claw-guard-h1-p300k-v1/source-death-continuous.glb",
+        );
+        let source_bytes = fs::read(source_path).expect("canonical local Fogbound source");
+        let mut source = ingest_glb(&source_bytes, &p300k_experiment_glb_limits_v1())
+            .expect("canonical Fogbound ingest");
+        sanitize_meshy_h1_degenerate_triangles_exact_v1(&mut source)
+            .expect("exact geometry sanitation");
+        let (rig, _) = derive_meshy_h1_profile_and_mapping_p300k_experiment_for_source_forward_v1(
+            &source,
+            CreatureSourceForwardV1::PositiveZ,
+        )
+        .expect("Fogbound Profile A rig");
+        let options =
+            derive_humanoid_weapon_anchor_options_v2(&rig).expect("bind-calibrated item hooks");
+        let expected = [
+            [
+                -0.209_275_92,
+                0.301_792_92,
+                0.930_120_5,
+                0.0,
+                0.930_121_84,
+                0.354_992_54,
+                0.094_092_91,
+                0.0,
+                -0.301_789_37,
+                0.884_816_94,
+                -0.354_995_58,
+                0.0,
+                0.010_831_743_5,
+                0.000_135_510_23,
+                0.096_782_23,
+                1.0,
+            ],
+            [
+                -0.203_411_22,
+                -0.293_084_08,
+                -0.934_197_7,
+                0.0,
+                -0.934_198_3,
+                0.343_712_5,
+                0.095_579_05,
+                0.0,
+                0.293_082_74,
+                0.892_167_87,
+                -0.343_713_76,
+                0.0,
+                -0.009_370_008_5,
+                0.001_263_715_3,
+                0.103_344_23,
+                1.0,
+            ],
+        ];
+        for (matrix, expected_matrix) in [
+            options.right_hand_local_matrix,
+            options.left_hand_local_matrix,
+        ]
+        .into_iter()
+        .zip(expected)
+        {
+            let extension =
+                (matrix[12] * matrix[12] + matrix[13] * matrix[13] + matrix[14] * matrix[14])
+                    .sqrt();
+            assert!((0.07..=0.11).contains(&extension));
+            assert_ne!(
+                matrix,
+                [
+                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                ]
+            );
+            for (actual, expected) in matrix.into_iter().zip(expected_matrix) {
+                assert!((actual - expected).abs() <= 1.0e-5);
+            }
+        }
+        println!(
+            "right={:?}\nleft={:?}",
+            options.right_hand_local_matrix, options.left_hand_local_matrix
+        );
     }
 
     #[test]
@@ -6891,5 +7742,112 @@ mod tests {
                 diagnostic.code == "M4A-MESHY-H1-UNREFERENCED-VERTICES-REMOVED"
             })
         );
+    }
+
+    #[test]
+    fn product_weapon_anchor_stage_records_manual_rpy_without_touching_surface_data() {
+        let identity = [
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ];
+        let translated = |x: f32, y: f32, z: f32| {
+            let mut matrix = identity;
+            matrix[12] = x;
+            matrix[13] = y;
+            matrix[14] = z;
+            matrix
+        };
+        let mut rig = CreatureRigProfileV1 {
+            schema_version: 1,
+            profile_id: "weapon-rpy-pipeline-test".to_owned(),
+            content_sha256: String::new(),
+            provenance: RigProvenanceV1 {
+                kind: RigProvenanceKindV1::Synthetic,
+                export_allowed: true,
+                attestations: RigProvenanceAttestationsV1 {
+                    controlled_construction: true,
+                    no_reference_payload_copied: true,
+                    rights_confirmed: true,
+                },
+            },
+            target_bounds: Bounds3V1 {
+                min: [-1.0; 3],
+                max: [1.0; 3],
+            },
+            alignment_anchor: [0.0; 3],
+            nodes: vec![
+                CreatureRigNodeV1 {
+                    id: 1,
+                    name: "Hips".to_owned(),
+                    parent_id: None,
+                    bind_local_matrix: identity,
+                },
+                CreatureRigNodeV1 {
+                    id: 2,
+                    name: "RightForeArm".to_owned(),
+                    parent_id: Some(1),
+                    bind_local_matrix: identity,
+                },
+                CreatureRigNodeV1 {
+                    id: 3,
+                    name: "RightHand".to_owned(),
+                    parent_id: Some(2),
+                    bind_local_matrix: translated(0.0, 0.0, 0.3),
+                },
+                CreatureRigNodeV1 {
+                    id: 4,
+                    name: "LeftForeArm".to_owned(),
+                    parent_id: Some(1),
+                    bind_local_matrix: translated(1.0, 0.0, 0.0),
+                },
+                CreatureRigNodeV1 {
+                    id: 5,
+                    name: "LeftHand".to_owned(),
+                    parent_id: Some(4),
+                    bind_local_matrix: translated(0.0, 0.0, 0.3),
+                },
+            ],
+            segments: vec![CreatureRigSegmentV1 {
+                id: 1,
+                name: "body".to_owned(),
+                deformation: RigSegmentDeformationV1::Skin,
+                parent_node_id: 1,
+                surface_positions: vec![[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+                surface_indices: vec![0, 1, 2],
+                allowed_bone_node_ids: vec![1, 2, 3, 4, 5],
+                reference_weights: vec![Vec::new(), Vec::new(), Vec::new()],
+            }],
+        };
+        rig.content_sha256 = canonical_profile_sha256(&rig).unwrap();
+        let segments_before = rig.segments.clone();
+        let report = author_product_weapon_anchors_v1(
+            &mut rig,
+            &CreatureWeaponGripOptionsV1 {
+                schema_version: 1,
+                item_family: crate::creature_product::CreatureItemGripFamilyV1::Sword,
+                mode: CreatureWeaponGripModeV1::AutoPlusOffsets,
+                right_hand: CreatureWeaponEulerOffsetV1 {
+                    roll_degrees: 90.0,
+                    pitch_degrees: -5.0,
+                    yaw_degrees: 10.0,
+                },
+                left_hand: CreatureWeaponEulerOffsetV1::default(),
+            },
+        )
+        .unwrap()
+        .unwrap();
+        let adjustment = report.grip_adjustment.as_ref().unwrap();
+        assert_eq!(adjustment.right_hand.requested.roll_degrees, 90.0);
+        assert_eq!(rig.segments, segments_before);
+        for (anchor, hand) in report
+            .anchors
+            .iter()
+            .zip([&adjustment.right_hand, &adjustment.left_hand])
+        {
+            assert_eq!(anchor.local_matrix, hand.final_local_matrix);
+            assert_eq!(
+                &anchor.local_matrix[12..15],
+                &hand.automatic_local_matrix[12..15]
+            );
+        }
     }
 }

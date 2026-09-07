@@ -2,8 +2,9 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use m2a_core::glb::{EmbeddedImageDecodeLimitsV1, GlbLimits, decode_embedded_image_to_tga_v1};
 use m2a_core::tga::{
-    TGA_MAX_OUTPUT_BYTES, TextureArtifactCleanupOptionsV1, TgaImageV1, TgaPixelFormatV1,
-    TgaWriterLimitsV1, TgaWriterOptionsV1, cleanup_texture_artifacts_v1, write_tga_v1,
+    TGA_MAX_OUTPUT_BYTES, TGA_MAX_PIXEL_BYTES, TextureArtifactCleanupOptionsV1, TgaImageV1,
+    TgaPixelFormatV1, TgaWriterLimitsV1, TgaWriterOptionsV1, cleanup_texture_artifacts_v1,
+    write_tga_v1,
 };
 
 const FOOTER: &[u8] = b"\0\0\0\0\0\0\0\0TRUEVISION-XFILE.\0";
@@ -229,6 +230,7 @@ fn validation_order_and_stable_taxonomy_cover_schema_dimensions_limit_and_length
 
 #[test]
 fn exact_output_limit_and_maximum_dimension_are_inclusive() {
+    assert_eq!(TGA_MAX_OUTPUT_BYTES, TGA_MAX_PIXEL_BYTES + 44);
     let small = rgb_image();
     let artifact = write_tga_v1(&small, &options(56)).expect("exact output limit is legal");
     assert_eq!(artifact.report.byte_length, 56);

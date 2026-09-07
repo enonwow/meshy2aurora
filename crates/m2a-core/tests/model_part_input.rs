@@ -6,7 +6,6 @@ use m2a_core::{
 };
 
 #[path = "fixtures/build_synthetic_glb.rs"]
-#[allow(dead_code)]
 mod fixtures;
 
 #[test]

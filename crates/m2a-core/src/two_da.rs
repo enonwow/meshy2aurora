@@ -729,17 +729,16 @@ fn parse_columns(line: LineSpan<'_>, limits: &TwoDaLimitsV1) -> Result<ParsedCol
     for (index, token) in tokens.into_iter().enumerate() {
         if token.quoted
             || token.bytes.is_empty()
-            || !token
-                .bytes
-                .iter()
-                .all(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+            || !token.bytes.iter().enumerate().all(|(byte_index, byte)| {
+                byte.is_ascii_alphanumeric() || *byte == b'_' || (byte_index == 0 && *byte == b'%')
+            })
         {
             return Err(line_error(
                 COLUMN_INVALID,
                 &format!("columns[{index}]"),
                 line,
                 token.byte_offset,
-                "column name must match [A-Za-z0-9_]+",
+                "column name must match %?[A-Za-z0-9_]+",
             ));
         }
 

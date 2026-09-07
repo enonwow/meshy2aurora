@@ -47,6 +47,15 @@ fn inspection_preserves_lexical_null_text_and_physical_row_identity() {
 }
 
 #[test]
+fn native_percent_prefixed_animation_columns_are_accepted() {
+    let source = b"2DA V2.0\r\n\r\nlabel %AnimSlashL %AnimSlashR\r\n0 helmet 35 65\r\n";
+    let report = inspect_two_da_v2(source, &TwoDaLimitsV1::default()).unwrap();
+
+    assert_eq!(report.columns, ["label", "%AnimSlashL", "%AnimSlashR"]);
+    assert_eq!(report.physical_row_count, 1);
+}
+
+#[test]
 fn append_is_exact_prefix_plus_deterministic_source_eol_suffix() {
     let source = b"2DA V2.0\n\nLABEL VALUE OPTIONAL\n0 old **** keep";
     let first_request = request(vec![("value", text("A B")), ("LABEL", text("****"))]);

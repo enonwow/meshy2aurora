@@ -25,7 +25,8 @@ use crate::model_material_capabilities::{
     ModelRenderTargetV1, validate_material_separation_counts_v1,
 };
 use crate::model_material_separation::{
-    ModelMaterialSeparationDocumentV1, ResolvedModelMaterialsV1, resolve_model_materials_v1,
+    ModelMaterialSeparationDocumentV1, ModelMaterialSeparationDocumentV2, ResolvedModelMaterialsV1,
+    ResolvedModelMaterialsV2, resolve_model_materials_v1, resolve_model_materials_v2,
 };
 
 pub const PLACEABLE_AUTHORING_SCHEMA_VERSION_V1: u32 = 1;
@@ -1150,6 +1151,16 @@ fn append_component(
     transform: Mat4,
     path: &str,
 ) -> Result<(), PlaceableAuthoringErrorV1> {
+    append_component_triangles(output, source, &component.triangle_indices, transform, path)
+}
+
+fn append_component_triangles(
+    output: &mut IrPrimitive,
+    source: &IrPrimitive,
+    triangle_indices: &[usize],
+    transform: Mat4,
+    path: &str,
+) -> Result<(), PlaceableAuthoringErrorV1> {
     if !source.joints0.is_empty() || !source.weights0.is_empty() {
         return Err(error(
             "PLACEABLE-AUTHORING-SKINNED-UNSUPPORTED",
@@ -1166,8 +1177,16 @@ fn append_component(
     })?;
     let tangent_matrix = transform.linear();
     let mirrored = transform.determinant() < 0.0;
+    let vertex_indices = triangle_indices
+        .iter()
+        .flat_map(|triangle_index| {
+            source.indices[triangle_index * 3..triangle_index * 3 + 3]
+                .iter()
+                .copied()
+        })
+        .collect::<BTreeSet<_>>();
     let mut remap = BTreeMap::new();
-    for source_index in &component.vertex_indices {
+    for source_index in &vertex_indices {
         let source_usize = *source_index as usize;
         let output_index = u32::try_from(output.positions.len()).map_err(|_| {
             error(
@@ -1210,7 +1229,7 @@ fn append_component(
             output.uv0.push(source.uv0[source_usize]);
         }
     }
-    for triangle_index in &component.triangle_indices {
+    for triangle_index in triangle_indices {
         let triangle = &source.indices[triangle_index * 3..triangle_index * 3 + 3];
         let order = if mirrored { [0, 2, 1] } else { [0, 1, 2] };
         for corner in order {
@@ -1338,6 +1357,47 @@ pub fn apply_placeable_authoring_with_material_separation_v1(
     )
     .map_err(|source| error(&source.code, source.path, source.message))?;
     apply_placeable_authoring_resolved_v1(ir, document, Some(&resolved))
+}
+
+pub fn apply_placeable_authoring_with_material_separation_v2(
+    ir: &mut AuroraAssetIr,
+    document: &PlaceableAuthoringDocumentV1,
+    separation: &ModelMaterialSeparationDocumentV2,
+) -> Result<PlaceableAuthoringApplyReportV1, PlaceableAuthoringErrorV1> {
+    let resolved = resolve_model_materials_v2(ir, separation)
+        .map(ResolvedModelMaterialsV2::into_projection_v1)
+        .map_err(|source| {
+            error(
+                &source
+                    .code
+                    .replacen("MATERIAL-SEPARATION", "PLACEABLE-MATERIAL-SEPARATION", 1),
+                source.path,
+                source.message,
+            )
+        })?;
+    validate_material_separation_counts_v1(
+        ModelRenderTargetV1::Placeable,
+        resolved.report.material_slots.len(),
+        resolved.report.output_section_count,
+    )
+    .map_err(|source| error(&source.code, source.path, source.message))?;
+    apply_placeable_authoring_resolved_v1(ir, document, Some(&resolved))
+}
+
+pub(crate) fn apply_placeable_authoring_with_resolved_materials_to_ingest_v1(
+    ingest: &mut GlbIngestResult,
+    document: &PlaceableAuthoringDocumentV1,
+    resolved: &ResolvedModelMaterialsV1,
+) -> Result<PlaceableAuthoringApplyReportV1, PlaceableAuthoringErrorV1> {
+    validate_material_separation_counts_v1(
+        ModelRenderTargetV1::Placeable,
+        resolved.report.material_slots.len(),
+        resolved.report.output_section_count,
+    )
+    .map_err(|source| error(&source.code, source.path, source.message))?;
+    let report = apply_placeable_authoring_resolved_v1(&mut ingest.ir, document, Some(resolved))?;
+    update_ingest_report(ingest);
+    Ok(report)
 }
 
 fn apply_placeable_authoring_resolved_v1(
@@ -1540,22 +1600,7 @@ fn apply_placeable_authoring_resolved_v1(
                 let source_primitive = &original.primitives[primitive_id as usize];
                 let component = &components[&primitive_id][component_index as usize];
                 if !element.deleted && element.flags.renderable {
-                    let projected_material_id = if let Some(projection) = material_projection {
-                        let first_triangle =
-                            component.triangle_indices.first().ok_or_else(|| {
-                                error(
-                                    "PLACEABLE-MATERIAL-SEPARATION-COMPONENT-EMPTY",
-                                    format!("primitives[{primitive_id}].indices"),
-                                    "connected component has no source triangle",
-                                )
-                            })?;
-                        let triangle_index = u32::try_from(*first_triangle).map_err(|_| {
-                            error(
-                                "PLACEABLE-AUTHORING-LIMIT-EXCEEDED",
-                                format!("primitives[{primitive_id}].indices"),
-                                "source triangle index exceeds u32",
-                            )
-                        })?;
+                    if let Some(projection) = material_projection {
                         let scene_id = original.default_scene_id.ok_or_else(|| {
                             error(
                                 "PLACEABLE-MATERIAL-SEPARATION-SCENE-MISSING",
@@ -1563,65 +1608,119 @@ fn apply_placeable_authoring_resolved_v1(
                                 "Material Separation requires an explicit default scene",
                             )
                         })?;
-                        let slot = projection
-                            .material_slot_for_triangle(
-                                scene_id,
-                                node.id,
-                                primitive_id,
-                                triangle_index,
-                            )
-                            .ok_or_else(|| {
-                                error(
-                                    "PLACEABLE-MATERIAL-SEPARATION-TRIANGLE-MISSING",
-                                    format!("primitives[{primitive_id}].indices"),
-                                    "source component has no resolved material slot",
+                        let mut triangles_by_material = BTreeMap::<Option<u32>, Vec<usize>>::new();
+                        for triangle_index in &component.triangle_indices {
+                            let source_triangle_index =
+                                u32::try_from(*triangle_index).map_err(|_| {
+                                    error(
+                                        "PLACEABLE-AUTHORING-LIMIT-EXCEEDED",
+                                        format!("primitives[{primitive_id}].indices"),
+                                        "source triangle index exceeds u32",
+                                    )
+                                })?;
+                            let slot = projection
+                                .material_slot_for_triangle(
+                                    scene_id,
+                                    node.id,
+                                    primitive_id,
+                                    source_triangle_index,
                                 )
-                            })?;
-                        *material_id_by_slot.get(&slot).ok_or_else(|| {
-                            error(
-                                "PLACEABLE-MATERIAL-SEPARATION-SLOT-MISSING",
-                                "materialSlots",
-                                "resolved material slot has no authored IR material",
-                            )
-                        })?
+                                .ok_or_else(|| {
+                                    error(
+                                        "PLACEABLE-MATERIAL-SEPARATION-TRIANGLE-MISSING",
+                                        format!("primitives[{primitive_id}].indices"),
+                                        "source triangle has no resolved material slot",
+                                    )
+                                })?;
+                            let projected_material_id =
+                                *material_id_by_slot.get(&slot).ok_or_else(|| {
+                                    error(
+                                        "PLACEABLE-MATERIAL-SEPARATION-SLOT-MISSING",
+                                        "materialSlots",
+                                        "resolved material slot has no authored IR material",
+                                    )
+                                })?;
+                            let target_material_id = if element.flags.cast_shadow {
+                                projected_material_id
+                            } else {
+                                let source_material_id = projected_material_id.ok_or_else(|| {
+                                    error(
+                                        "PLACEABLE-AUTHORING-SHADOW-MATERIAL-MISSING",
+                                        format!("primitives[{primitive_id}].materialId"),
+                                        "per-element shadow control requires an explicit source material",
+                                    )
+                                })?;
+                                Some(*shadowless_material_ids.get(&source_material_id).ok_or_else(
+                                    || {
+                                        error(
+                                            "PLACEABLE-AUTHORING-SHADOW-MATERIAL-MISSING",
+                                            format!("materials[{source_material_id}]"),
+                                            "source material cannot be duplicated for shadow control",
+                                        )
+                                    },
+                                )?)
+                            };
+                            triangles_by_material
+                                .entry(target_material_id)
+                                .or_default()
+                                .push(*triangle_index);
+                        }
+                        for (target_material_id, triangle_indices) in triangles_by_material {
+                            let target = authored_primitives
+                                .entry((
+                                    primitive_id,
+                                    element.flags.cast_shadow,
+                                    target_material_id,
+                                ))
+                                .or_insert_with(|| {
+                                    let mut primitive = empty_authored_primitive(source_primitive);
+                                    primitive.material_id = target_material_id;
+                                    primitive
+                                });
+                            append_component_triangles(
+                                target,
+                                source_primitive,
+                                &triangle_indices,
+                                local_bake,
+                                &format!("elements[{}]", element.id),
+                            )?;
+                        }
                     } else {
-                        source_primitive.material_id
-                    };
-                    let target_material_id =
-                        if element.flags.cast_shadow {
-                            projected_material_id
+                        let target_material_id = if element.flags.cast_shadow {
+                            source_primitive.material_id
                         } else {
-                            let source_material_id = projected_material_id.ok_or_else(|| {
-                            error(
-                                "PLACEABLE-AUTHORING-SHADOW-MATERIAL-MISSING",
-                                format!("primitives[{primitive_id}].materialId"),
-                                "per-element shadow control requires an explicit source material",
-                            )
-                        })?;
-                            Some(*shadowless_material_ids.get(&source_material_id).ok_or_else(
-                            || {
+                            let source_material_id = source_primitive.material_id.ok_or_else(|| {
                                 error(
                                     "PLACEABLE-AUTHORING-SHADOW-MATERIAL-MISSING",
-                                    format!("materials[{source_material_id}]"),
-                                    "source material cannot be duplicated for shadow control",
+                                    format!("primitives[{primitive_id}].materialId"),
+                                    "per-element shadow control requires an explicit source material",
                                 )
-                            },
-                        )?)
+                            })?;
+                            Some(*shadowless_material_ids.get(&source_material_id).ok_or_else(
+                                || {
+                                    error(
+                                        "PLACEABLE-AUTHORING-SHADOW-MATERIAL-MISSING",
+                                        format!("materials[{source_material_id}]"),
+                                        "source material cannot be duplicated for shadow control",
+                                    )
+                                },
+                            )?)
                         };
-                    let target = authored_primitives
-                        .entry((primitive_id, element.flags.cast_shadow, target_material_id))
-                        .or_insert_with(|| {
-                            let mut primitive = empty_authored_primitive(source_primitive);
-                            primitive.material_id = target_material_id;
-                            primitive
-                        });
-                    append_component(
-                        target,
-                        source_primitive,
-                        component,
-                        local_bake,
-                        &format!("elements[{}]", element.id),
-                    )?;
+                        let target = authored_primitives
+                            .entry((primitive_id, element.flags.cast_shadow, target_material_id))
+                            .or_insert_with(|| {
+                                let mut primitive = empty_authored_primitive(source_primitive);
+                                primitive.material_id = target_material_id;
+                                primitive
+                            });
+                        append_component(
+                            target,
+                            source_primitive,
+                            component,
+                            local_bake,
+                            &format!("elements[{}]", element.id),
+                        )?;
+                    }
                 }
                 if !element.deleted
                     && (element.flags.include_in_collision || element.flags.cast_shadow)

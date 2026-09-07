@@ -2,6 +2,7 @@ use m2a_core::{
     mdl::NWN_EE_MAX_MESH_INDEX_COUNT_V1,
     model_ir::{
         AuroraModelIrV1, AuroraModelNodeV1, AuroraModelSegmentV1, AuroraSegmentDeformationV1,
+        AuroraVertexWeightsV1,
     },
     model_limits::{
         AURORA_MODEL_TRIANGLE_BUDGET_V1, AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1,
@@ -44,6 +45,92 @@ fn rigid_model(triangle_count: usize) -> AuroraModelIrV1 {
             weights: vec![],
         }],
     }
+}
+
+fn skin_model_with_vertex_identity(triangle_count: usize) -> AuroraModelIrV1 {
+    let vertex_count = triangle_count * 3;
+    let mut positions = Vec::with_capacity(vertex_count);
+    let mut weights = Vec::with_capacity(vertex_count);
+    for vertex in 0..vertex_count {
+        let triangle = vertex / 3;
+        let corner = vertex % 3;
+        let position = match corner {
+            0 => [triangle as f32, 0.0, 0.0],
+            1 => [triangle as f32, 1.0, 0.0],
+            _ => [triangle as f32, 0.0, 1.0],
+        };
+        let tag = ((vertex % 1000) + 1) as f32 / 1001.0;
+        positions.push(position);
+        weights.push(AuroraVertexWeightsV1 {
+            bone_node_ids: [Some(1), Some(2), None, None],
+            values: [tag, 1.0 - tag, 0.0, 0.0],
+            influence_count: 2,
+        });
+    }
+    AuroraModelIrV1 {
+        schema_version: 1,
+        profile_id: "segmentation-skin-identity-test".to_owned(),
+        source_sha256: "1".repeat(64),
+        basis_status: "PASS".to_owned(),
+        engine_facing_proof: "PASS".to_owned(),
+        uv_runtime_proof: "PASS".to_owned(),
+        nodes: vec![
+            AuroraModelNodeV1 {
+                id: 1,
+                name: "root".to_owned(),
+                parent_id: None,
+                bind_local_matrix: [
+                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                ],
+            },
+            AuroraModelNodeV1 {
+                id: 2,
+                name: "bone".to_owned(),
+                parent_id: Some(1),
+                bind_local_matrix: [
+                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                ],
+            },
+        ],
+        material_source_bindings: vec![],
+        segments: vec![AuroraModelSegmentV1 {
+            segment_id: 9,
+            material_slot: 0,
+            deformation: AuroraSegmentDeformationV1::Skin,
+            parent_node_id: 1,
+            cast_shadow: true,
+            positions,
+            normals: vec![[1.0, 0.0, 0.0]; vertex_count],
+            tangents: None,
+            uv0: vec![[0.0, 0.0]; vertex_count],
+            indices: (0..vertex_count as u32).collect(),
+            face_surface_ids: vec![],
+            weights,
+        }],
+    }
+}
+
+fn interleaved_two_component_model(triangles_per_component: usize) -> AuroraModelIrV1 {
+    let mut model = rigid_model(0);
+    let segment = &mut model.segments[0];
+    segment.positions = vec![
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [10.0, 0.0, 0.0],
+        [11.0, 0.0, 0.0],
+        [10.0, 1.0, 0.0],
+    ];
+    segment.normals = vec![[0.0, 0.0, 1.0]; 6];
+    segment.tangents = Some(vec![[1.0, 0.0, 0.0, 1.0]; 6]);
+    segment.uv0 = vec![[0.0, 0.0]; 6];
+    segment.indices = (0..triangles_per_component)
+        .flat_map(|_| [0_u32, 1, 2, 3, 4, 5])
+        .collect();
+    segment.face_surface_ids = (0..triangles_per_component)
+        .flat_map(|_| [11_i32, 22_i32])
+        .collect();
+    model
 }
 
 #[test]
@@ -103,6 +190,57 @@ fn oversized_segment_is_partitioned_without_losing_geometry_or_metadata() {
             .sum::<usize>(),
         triangle_count
     );
+}
+
+#[test]
+fn oversized_partition_keeps_interleaved_connected_components_whole() {
+    let triangles_per_component = NWN_EE_MAX_MESH_INDEX_COUNT_V1 / 6 + 1;
+    let mut model = interleaved_two_component_model(triangles_per_component);
+
+    let report = segment_model_for_binary_mdl_v1(&mut model).expect("partition components");
+
+    assert_eq!(report.output_segment_count, 2);
+    assert_eq!(model.segments.len(), 2);
+    for segment in &model.segments {
+        assert_eq!(segment.indices.len() / 3, triangles_per_component);
+        assert_eq!(segment.face_surface_ids.len(), triangles_per_component);
+        let surface_ids = segment
+            .face_surface_ids
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(surface_ids.len(), 1);
+        assert!(
+            surface_ids == [11].into_iter().collect() || surface_ids == [22].into_iter().collect()
+        );
+    }
+}
+
+#[test]
+fn skin_partition_preserves_the_vertex_to_weight_identity_across_the_stream_boundary() {
+    let triangle_count = NWN_EE_MAX_MESH_INDEX_COUNT_V1 / 3 + 1;
+    let mut model = skin_model_with_vertex_identity(triangle_count);
+
+    segment_model_for_binary_mdl_v1(&mut model).expect("partition skinned model");
+
+    assert_eq!(model.segments.len(), 2);
+    for segment in &model.segments {
+        assert_eq!(segment.positions.len(), segment.weights.len());
+        for (position, row) in segment.positions.iter().zip(&segment.weights) {
+            let triangle = position[0] as usize;
+            let corner = if position[1] == 1.0 {
+                1
+            } else if position[2] == 1.0 {
+                2
+            } else {
+                0
+            };
+            let source_vertex = triangle * 3 + corner;
+            let expected = ((source_vertex % 1000) + 1) as f32 / 1001.0;
+            assert_eq!(row.bone_node_ids, [Some(1), Some(2), None, None]);
+            assert_eq!(row.values, [expected, 1.0 - expected, 0.0, 0.0]);
+        }
+    }
 }
 
 #[test]

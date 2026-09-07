@@ -7,7 +7,7 @@
 //! removing triangles or changing material, hierarchy, deformation or surface
 //! metadata.
 
-use std::fmt;
+use std::{collections::VecDeque, fmt};
 
 use serde::{Deserialize, Serialize};
 
@@ -63,8 +63,11 @@ fn error(
 /// Partitions only mesh streams that exceed the binary MDL per-stream
 /// boundary. Streams already safe for the writer remain byte-for-byte equal.
 ///
-/// The operation preserves the total ordered triangle sequence and copies all
-/// vertex, material, hierarchy, deformation and optional surface metadata.
+/// The operation preserves every source triangle and copies all vertex,
+/// material, hierarchy, deformation and optional surface metadata. Whole
+/// connected surface components are kept in one stream whenever they fit the
+/// format boundary. Only an individually oversized component is split, and
+/// then each output fragment is grown through triangle adjacency.
 pub fn segment_model_for_binary_mdl_v1(
     model: &mut AuroraModelIrV1,
 ) -> Result<ModelSegmentationReportV1, ModelSegmentationErrorV1> {
@@ -206,16 +209,10 @@ fn partition_segment(
 ) -> Result<(), ModelSegmentationErrorV1> {
     let triangles_per_stream = NWN_EE_MAX_MESH_INDEX_COUNT_V1 / 3;
     let source_triangle_total = segment.indices.len() / 3;
-    for triangle_start in (0..source_triangle_total).step_by(triangles_per_stream) {
-        let triangle_end = (triangle_start + triangles_per_stream).min(source_triangle_total);
-        let source_indices = &segment.indices[triangle_start * 3..triangle_end * 3];
-        let mut remap = vec![u32::MAX; segment.positions.len()];
-        let mut positions = Vec::new();
-        let mut normals = Vec::new();
-        let mut tangents = segment.tangents.as_ref().map(|_| Vec::new());
-        let mut uv0 = Vec::new();
-        let mut weights = Vec::new();
-        let mut indices = Vec::with_capacity(source_indices.len());
+    let mut first_triangle_by_vertex = vec![usize::MAX; segment.positions.len()];
+    let mut triangle_neighbors = vec![Vec::<usize>::new(); source_triangle_total];
+    let mut components = TriangleUnionFindV1::new(source_triangle_total);
+    for (triangle, source_indices) in segment.indices.chunks_exact(3).enumerate() {
         for &source_index in source_indices {
             let source_vertex = usize::try_from(source_index).map_err(|_| {
                 error(
@@ -224,30 +221,129 @@ fn partition_segment(
                     "source vertex index does not fit this platform",
                 )
             })?;
-            let output_index = if remap[source_vertex] == u32::MAX {
-                let output_index = u32::try_from(positions.len()).map_err(|_| {
+            let first_triangle = first_triangle_by_vertex[source_vertex];
+            if first_triangle == usize::MAX {
+                first_triangle_by_vertex[source_vertex] = triangle;
+            } else {
+                components.union(triangle, first_triangle);
+                if triangle != first_triangle {
+                    triangle_neighbors[triangle].push(first_triangle);
+                    triangle_neighbors[first_triangle].push(triangle);
+                }
+            }
+        }
+    }
+
+    let mut faces_by_component = std::collections::BTreeMap::<usize, Vec<usize>>::new();
+    for triangle in 0..source_triangle_total {
+        let root = components.find(triangle);
+        faces_by_component.entry(root).or_default().push(triangle);
+    }
+    let mut source_components = faces_by_component.into_values().collect::<Vec<_>>();
+    source_components.sort_by_key(|faces| faces[0]);
+
+    let mut partitions = Vec::<Vec<usize>>::new();
+    let mut current_partition = Vec::<usize>::new();
+    let mut emitted_large_component_faces = vec![false; source_triangle_total];
+    let mut queued_large_component_faces = vec![false; source_triangle_total];
+    for source_component in source_components {
+        if source_component.len() <= triangles_per_stream {
+            if current_partition.len() + source_component.len() > triangles_per_stream {
+                partitions.push(std::mem::take(&mut current_partition));
+            }
+            current_partition.extend(source_component);
+            continue;
+        }
+
+        if !current_partition.is_empty() {
+            partitions.push(std::mem::take(&mut current_partition));
+        }
+        for &seed in &source_component {
+            if emitted_large_component_faces[seed] {
+                continue;
+            }
+            let mut queue = VecDeque::from([seed]);
+            queued_large_component_faces[seed] = true;
+            let mut fragment = Vec::with_capacity(triangles_per_stream);
+            while fragment.len() < triangles_per_stream {
+                let Some(triangle) = queue.pop_front() else {
+                    break;
+                };
+                queued_large_component_faces[triangle] = false;
+                if emitted_large_component_faces[triangle] {
+                    continue;
+                }
+                emitted_large_component_faces[triangle] = true;
+                fragment.push(triangle);
+                for &neighbor in &triangle_neighbors[triangle] {
+                    if !emitted_large_component_faces[neighbor]
+                        && !queued_large_component_faces[neighbor]
+                    {
+                        queued_large_component_faces[neighbor] = true;
+                        queue.push_back(neighbor);
+                    }
+                }
+            }
+            for queued in queue {
+                queued_large_component_faces[queued] = false;
+            }
+            if fragment.is_empty() {
+                return Err(error(
+                    "M2A-MODEL-SEGMENTATION-COMPONENT",
+                    "model.segments",
+                    "topology-aware partition produced an empty component fragment",
+                ));
+            }
+            partitions.push(fragment);
+        }
+    }
+    if !current_partition.is_empty() {
+        partitions.push(current_partition);
+    }
+
+    for source_faces in partitions {
+        let mut remap = vec![u32::MAX; segment.positions.len()];
+        let mut positions = Vec::new();
+        let mut normals = Vec::new();
+        let mut tangents = segment.tangents.as_ref().map(|_| Vec::new());
+        let mut uv0 = Vec::new();
+        let mut weights = Vec::new();
+        let mut indices = Vec::with_capacity(source_faces.len() * 3);
+        for &source_face in &source_faces {
+            for &source_index in &segment.indices[source_face * 3..source_face * 3 + 3] {
+                let source_vertex = usize::try_from(source_index).map_err(|_| {
                     error(
-                        "M2A-MODEL-SEGMENTATION-OVERFLOW",
+                        "M2A-MODEL-SEGMENTATION-INDEX",
                         "model.segments",
-                        "partition vertex index exceeds u32",
+                        "source vertex index does not fit this platform",
                     )
                 })?;
-                remap[source_vertex] = output_index;
-                positions.push(segment.positions[source_vertex]);
-                normals.push(segment.normals[source_vertex]);
-                uv0.push(segment.uv0[source_vertex]);
-                if let (Some(source), Some(output)) = (segment.tangents.as_ref(), tangents.as_mut())
-                {
-                    output.push(source[source_vertex]);
-                }
-                if segment.deformation == AuroraSegmentDeformationV1::Skin {
-                    weights.push(segment.weights[source_vertex].clone());
-                }
-                output_index
-            } else {
-                remap[source_vertex]
-            };
-            indices.push(output_index);
+                let output_index = if remap[source_vertex] == u32::MAX {
+                    let output_index = u32::try_from(positions.len()).map_err(|_| {
+                        error(
+                            "M2A-MODEL-SEGMENTATION-OVERFLOW",
+                            "model.segments",
+                            "partition vertex index exceeds u32",
+                        )
+                    })?;
+                    remap[source_vertex] = output_index;
+                    positions.push(segment.positions[source_vertex]);
+                    normals.push(segment.normals[source_vertex]);
+                    uv0.push(segment.uv0[source_vertex]);
+                    if let (Some(source), Some(output)) =
+                        (segment.tangents.as_ref(), tangents.as_mut())
+                    {
+                        output.push(source[source_vertex]);
+                    }
+                    if segment.deformation == AuroraSegmentDeformationV1::Skin {
+                        weights.push(segment.weights[source_vertex].clone());
+                    }
+                    output_index
+                } else {
+                    remap[source_vertex]
+                };
+                indices.push(output_index);
+            }
         }
         if positions.len() > usize::from(u16::MAX) || indices.len() > NWN_EE_MAX_MESH_INDEX_COUNT_V1
         {
@@ -271,10 +367,54 @@ fn partition_segment(
             face_surface_ids: if segment.face_surface_ids.is_empty() {
                 Vec::new()
             } else {
-                segment.face_surface_ids[triangle_start..triangle_end].to_vec()
+                source_faces
+                    .iter()
+                    .map(|face| segment.face_surface_ids[*face])
+                    .collect()
             },
             weights,
         });
     }
     Ok(())
+}
+
+#[derive(Clone, Debug)]
+struct TriangleUnionFindV1 {
+    parent: Vec<usize>,
+}
+
+impl TriangleUnionFindV1 {
+    fn new(len: usize) -> Self {
+        Self {
+            parent: (0..len).collect(),
+        }
+    }
+
+    fn find(&mut self, value: usize) -> usize {
+        let mut root = value;
+        while self.parent[root] != root {
+            root = self.parent[root];
+        }
+        let mut current = value;
+        while self.parent[current] != current {
+            let next = self.parent[current];
+            self.parent[current] = root;
+            current = next;
+        }
+        root
+    }
+
+    fn union(&mut self, left: usize, right: usize) {
+        let left_root = self.find(left);
+        let right_root = self.find(right);
+        if left_root == right_root {
+            return;
+        }
+        let (root, child) = if left_root < right_root {
+            (left_root, right_root)
+        } else {
+            (right_root, left_root)
+        };
+        self.parent[child] = root;
+    }
 }

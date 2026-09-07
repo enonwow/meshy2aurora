@@ -4,6 +4,16 @@ version.workspace = true
 edition.workspace = true
 publish = false
 
+[features]
+default = []
+# Frozen rejected/demo lineage only. The Studio/WASM product boundary must not
+# depend on this family-specific authoring implementation.
+legacy-c-wolf-demo = []
+
+[[example]]
+name = "materialize_borzoi_c_wolf_demo_v1"
+required-features = ["legacy-c-wolf-demo"]
+
 [dependencies]
 gltf = { version = "=1.4.1", default-features = false, features = ["extensions", "names", "utils"] }
 image = { version = "=0.25.8", default-features = false, features = ["jpeg", "png"] }

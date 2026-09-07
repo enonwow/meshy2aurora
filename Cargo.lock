@@ -291,6 +291,7 @@ dependencies = [
 name = "m2a-wasm"
 version = "0.1.0"
 dependencies = [
+ "image",
  "m2a-core",
  "serde",
  "serde_json",

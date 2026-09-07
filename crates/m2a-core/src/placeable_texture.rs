@@ -544,6 +544,7 @@ fn decode_override_image_v1(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn resolve_placeable_texture_overrides_v1(
     source_glb: &[u8],
     glb_limits: &GlbLimits,
@@ -732,7 +733,7 @@ pub fn resolve_placeable_texture_overrides_v1(
     })
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, clippy::too_many_arguments)]
 fn resolve_placeable_texture_overrides_legacy_v1(
     source_glb: &[u8],
     glb_limits: &GlbLimits,

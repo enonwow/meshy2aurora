@@ -13,6 +13,20 @@ if (!packagePath) {
 }
 const wasm = require(path.resolve(packagePath));
 
+const runtimeCapabilities = JSON.parse(wasm.studioRuntimeCapabilitiesV1Json());
+assert.equal(
+  runtimeCapabilities.referenceSupermodelMotion,
+  "EXACT_REFERENCE_BIND_AND_WEIGHTED_ANCHORS_V3_WITH_MATERIAL_LEDGER",
+);
+assert.equal(typeof wasm.buildReferenceSupermodelAppliedPreviewV2, "function");
+assert.equal(typeof wasm.prepareReferenceSupermodelRigV2, "function");
+assert.equal(typeof wasm.prepareReferenceSupermodelAuthoredRigV2, "function");
+assert.equal(typeof wasm.validateReferenceSupermodelSealedRigV2, "function");
+assert.equal(typeof wasm.buildReferenceSupermodelAppliedPreviewV3, "function");
+assert.equal(typeof wasm.buildReferenceSupermodelAuthoredPreviewV2, "function");
+assert.equal(typeof wasm.buildReferenceSupermodelCreatureProductV2, "function");
+assert.equal(typeof wasm.buildReferenceSupermodelCreatureProductV4, "function");
+
 const sha256 = (bytes) =>
   createHash("sha256").update(Buffer.from(bytes)).digest("hex");
 
@@ -58,7 +72,7 @@ const HAK_BYTE_LENGTH = 265;
 const HAK_SHA256 =
   "494862f6a12f91d5a269519d0579a05ace5bb50fd8f72b5711fcae7445444477";
 const M7_READY_BATCH_JSON_SHA256 =
-  "ee04ebfcdbb3e1265913de8f88d3c05f9277d18c7d0c75bdbcecc8139046c808";
+  "dbe8d7254dc6fedc0a2a3cd0f1f82f18aee8848de00b528accaf286d7f22988d";
 
 const tgaImage = JSON.stringify({
   schemaVersion: 1,
@@ -359,7 +373,7 @@ try {
   }
 
   const humanoid = readFileSync(
-    path.join(generatedOutputDirectory, "generated/source-owned.glb"),
+    path.join(generatedOutputDirectory, "generated/source.glb"),
   );
   const staticGlb = withoutRigAndAnimations(humanoid);
   const appearance = readFileSync(appearancePath);

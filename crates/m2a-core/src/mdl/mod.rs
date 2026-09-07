@@ -1,5 +1,6 @@
 mod binary_reader;
 mod errors;
+mod material_extension;
 mod parse_binary_mdl;
 mod runtime_conformance;
 mod semantic_readback;
@@ -9,6 +10,11 @@ mod write_binary_mdl;
 mod writer_types;
 
 pub use errors::ParseError;
+pub use material_extension::{
+    MdlMaterialExtensionArtifactV1, MdlMaterialExtensionOptionsV1, MdlMaterialExtensionReportV1,
+    MdlMaterialSegmentReadbackV1, MdlMaterialStateV1, MdlRenderHintV1, MdlSegmentMaterialStreamsV1,
+    extend_binary_mdl_with_materials_v1, write_binary_mdl_with_materials_v1,
+};
 pub use parse_binary_mdl::{inspect_binary_mdl, inspect_binary_mdl_with_limits};
 pub use runtime_conformance::{
     DirectCreatureAnimationProjectionV1, DirectCreatureEngineEnvelopeV1,
@@ -28,20 +34,28 @@ pub use runtime_conformance::{
     verify_direct_creature_state_projection_with_expected_provenance_v1,
 };
 pub use skin_deformation::{
+    ReferenceSupermodelNodeWorldMatrixSampleV2, ReferenceSupermodelNodeWorldSampleV1,
     SkinDeformationNodeSampleV1, SkinDeformationSampleV1, SkinDeformationVertexSampleV1,
-    evaluate_skin_deformation_v1,
+    evaluate_reference_supermodel_node_world_matrices_v2,
+    evaluate_reference_supermodel_node_world_positions_v1,
+    evaluate_reference_supermodel_render_deformation_samples_v3,
+    evaluate_reference_supermodel_render_deformation_v2,
+    evaluate_reference_supermodel_skin_deformation_v1, evaluate_skin_deformation_v1,
 };
-pub(crate) use types::AnimationReport;
 pub use types::{AabbEntryReport, AabbTreeReport, InspectionReport, NodeReport, ParserLimits};
+pub(crate) use types::{
+    AnimationEventReport, AnimationReport, ArrayReport, ByteRangeReport, ControllerReport,
+    FileHeaderReport, ModelReport, NodeTreeReport, Vec3,
+};
 pub use write_binary_mdl::{
     write_binary_mdl, write_binary_mdl_with_animations,
-    write_binary_mdl_with_animations_and_supermodel, write_binary_mdl_with_supermodel,
+    write_binary_mdl_with_animations_and_supermodel,
+    write_binary_mdl_with_animations_and_supermodel_exact_face_planes_v1,
+    write_binary_mdl_with_supermodel, write_binary_mdl_with_supermodel_exact_face_planes_v1,
     write_binary_tile_mdl_v1,
 };
 pub(crate) use write_binary_mdl::{
-    write_binary_mdl_exact_face_planes_v1,
-    write_binary_mdl_exact_face_planes_with_readback_limits_v1,
-    write_binary_mdl_with_animations_exact_face_planes_v1,
+    write_binary_mdl_exact_face_planes_v1, write_binary_mdl_with_animations_exact_face_planes_v1,
 };
 pub use writer_types::{
     BinaryMdlArtifactV1, M4SemanticProjectionV1, MdlAabbNodeLayoutV1, MdlAnimationClipLayoutV1,

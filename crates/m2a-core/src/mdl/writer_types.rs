@@ -35,6 +35,11 @@ pub enum MdlFormatProfileV1 {
     /// derives model bounds from caller-owned geometry instead of the
     /// historical direct-creature culling envelope.
     PlaceableStaticRigidNativeV1,
+    /// Static, unskinned modular item part. Retail item-part models use model
+    /// retail-parity classification 4 (CHARACTER), fixed native culling
+    /// bounds, a controllerless
+    /// model-named identity root and checked face adjacency.
+    ItemPartStaticRigidNativeV1,
     /// Non-default, offline-only controlled experiment. It preserves the M0
     /// native mesh policy while allowing caller-bound source transform dummies.
     SourceTopologyPreservingRigidExperimentV1,

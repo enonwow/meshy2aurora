@@ -69,6 +69,32 @@ fn parses_deep_model_controllers_trimesh_and_all_animation_roots() {
 }
 
 #[test]
+fn untextured_non_rendering_mesh_may_omit_uv0_like_retail_helper_geometry() {
+    let mut bytes = build_deep_binary_mdl();
+    write_i16(&mut bytes, ROOT_NODE_ABSOLUTE + 0x232, 0);
+    write_i32(&mut bytes, ROOT_NODE_ABSOLUTE + 0x234, -1);
+
+    let report = inspect_binary_mdl(&bytes)
+        .expect("retail helper geometry with no texture must not require UV0");
+    let mesh = report.node_tree.roots[0]
+        .mesh
+        .as_ref()
+        .expect("mesh report");
+    assert_eq!(mesh.texture_count, 0);
+    assert!(mesh.uv0.is_empty());
+}
+
+#[test]
+fn textured_mesh_still_requires_uv0() {
+    let mut bytes = build_deep_binary_mdl();
+    write_i32(&mut bytes, ROOT_NODE_ABSOLUTE + 0x234, -1);
+
+    let error = inspect_binary_mdl(&bytes).expect_err("textured mesh without UV0 must fail");
+    assert_eq!(error.code, "M2A-MDL-POINTER-OOB");
+    assert_eq!(error.context, "required uv0 pointer is null");
+}
+
+#[test]
 fn parses_both_explicit_skin_variants_without_using_map_count_as_classifier() {
     let legacy = inspect_binary_mdl(&build_skin_binary_mdl_with_map_count(false, 28))
         .expect("canonical-shaped legacy17/count28 skin");

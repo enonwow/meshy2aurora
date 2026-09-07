@@ -9,14 +9,15 @@ use m2a_core::{
         validate_material_separation_counts_v1,
     },
     model_material_separation::{
-        AuthoredMaterialV1, ModelMaterialAssignmentV1, ModelMaterialSeparationDocumentV1,
-        default_model_material_separation_v1, model_material_separation_hash_v1,
-        resolve_model_materials_v1,
+        AuthoredMaterialV1, ModelMaterialAssignmentV1, ModelMaterialFaceAssignmentV2,
+        ModelMaterialSeparationDocumentV1, ModelMaterialSeparationDocumentV2,
+        SourceFaceSelectionV2, SourceTriangleRangeV2, default_model_material_separation_v1,
+        default_model_material_separation_v2, model_material_separation_hash_v1,
+        model_material_separation_hash_v2, resolve_model_materials_v1, resolve_model_materials_v2,
     },
 };
 
 #[path = "fixtures/build_synthetic_glb.rs"]
-#[allow(dead_code)]
 mod fixtures;
 
 #[test]
@@ -175,6 +176,30 @@ fn triangle_budget_ir(triangle_count: usize) -> AuroraAssetIr {
     ir
 }
 
+fn fragmented_ir(triangle_count: usize) -> AuroraAssetIr {
+    let mut ir = two_component_ir();
+    let primitive = &mut ir.primitives[0];
+    primitive.positions.clear();
+    primitive.normals.clear();
+    primitive.tangents.clear();
+    primitive.uv0.clear();
+    primitive.indices.clear();
+    for triangle in 0..triangle_count {
+        let x = triangle as f32 * 2.0;
+        let start = primitive.positions.len() as u32;
+        primitive
+            .positions
+            .extend([[x, 0.0, 0.0], [x + 1.0, 0.0, 0.0], [x, 1.0, 0.0]]);
+        primitive.normals.extend([[0.0, 0.0, 1.0]; 3]);
+        primitive.tangents.extend([[1.0, 0.0, 0.0, 1.0]; 3]);
+        primitive.uv0.extend([[0.0, 0.0]; 3]);
+        primitive.indices.extend([start, start + 1, start + 2]);
+    }
+    primitive.bounds_max = [triangle_count as f32 * 2.0, 1.0, 0.0];
+    ir.materials[0].double_sided = true;
+    ir
+}
+
 fn component(component_index: u32) -> SourceComponentKeyV1 {
     SourceComponentKeyV1 {
         scene_id: 0,
@@ -232,6 +257,26 @@ fn material_resolution_blocks_one_triangle_above_the_shared_budget_before_adjace
     let document = default_model_material_separation_v1(&ir);
     let error = resolve_model_materials_v1(&ir, &document).expect_err("300K + 1 must block");
     assert_eq!(error.code, "MODEL-COMPONENTS-TRIANGLE-BUDGET-EXCEEDED");
+}
+
+#[test]
+fn face_mode_reports_fragmentation_and_unmapped_double_sided_risks() {
+    let ir = fragmented_ir(1_001);
+    let document = default_model_material_separation_v2(&ir);
+    let resolved = resolve_model_materials_v2(&ir, &document).expect("resolve fragmented source");
+
+    assert!(
+        resolved.report.warnings.iter().any(|warning| {
+            warning.starts_with("MATERIAL-SEPARATION-SOURCE-FRAGMENTATION-RISKY:")
+        })
+    );
+    assert!(
+        resolved
+            .report
+            .warnings
+            .iter()
+            .any(|warning| { warning == "MATERIAL-SEPARATION-DOUBLE-SIDED-TARGET-UNPROVEN" })
+    );
 }
 
 #[test]
@@ -426,4 +471,140 @@ fn stale_overlap_and_unknown_material_fail_closed() {
     });
     let error = resolve_model_materials_v1(&ir, &unknown).expect_err("unknown material");
     assert_eq!(error.code, "MATERIAL-SEPARATION-MATERIAL-MISSING");
+}
+
+fn face_assignment(
+    start_triangle: u32,
+    triangle_count: u32,
+    authored_material_id: &str,
+) -> ModelMaterialFaceAssignmentV2 {
+    ModelMaterialFaceAssignmentV2 {
+        selection: SourceFaceSelectionV2 {
+            scene_id: 0,
+            node_id: 0,
+            primitive_id: 0,
+            triangle_ranges: vec![SourceTriangleRangeV2 {
+                start_triangle,
+                triangle_count,
+            }],
+        },
+        authored_material_id: authored_material_id.to_owned(),
+    }
+}
+
+#[test]
+fn face_mode_v2_assigns_exact_triangles_without_changing_geometry() {
+    let ir = two_component_ir();
+    let document = ModelMaterialSeparationDocumentV2 {
+        schema_version: 2,
+        source_sha256: ir.source.sha256.clone(),
+        materials: vec![
+            material("material:wood", "Wood"),
+            material("material:sail", "Sail"),
+        ],
+        component_assignments: Vec::new(),
+        face_assignments: vec![
+            face_assignment(0, 1, "material:wood"),
+            face_assignment(1, 1, "material:sail"),
+        ],
+    };
+    let resolved = resolve_model_materials_v2(&ir, &document).expect("resolve Face Mode V2");
+
+    assert_eq!(resolved.report.schema_version, 2);
+    assert_eq!(resolved.report.face_assignment_count, 2);
+    assert_eq!(resolved.report.triangle_range_count, 2);
+    assert_eq!(resolved.report.assigned_face_count, 2);
+    assert_eq!(resolved.report.unassigned_face_count, 0);
+    assert_eq!(resolved.report.source_triangle_count, 2);
+    assert_eq!(resolved.report.output_triangle_count, 2);
+    assert_eq!(
+        resolved.report.source_vertex_count,
+        resolved.report.output_vertex_count
+    );
+    assert_eq!(resolved.report.duplicated_boundary_vertex_count, 0);
+    assert_eq!(resolved.material_slot_for_triangle(0, 0, 0, 0), Some(1));
+    assert_eq!(resolved.material_slot_for_triangle(0, 0, 0, 1), Some(0));
+    assert_eq!(resolved.projection_v1().report.schema_version, 2);
+}
+
+#[test]
+fn face_mode_v2_hash_is_canonical_across_assignment_order() {
+    let ir = two_component_ir();
+    let first = ModelMaterialSeparationDocumentV2 {
+        schema_version: 2,
+        source_sha256: ir.source.sha256.clone(),
+        materials: vec![
+            material("material:wood", "Wood"),
+            material("material:sail", "Sail"),
+        ],
+        component_assignments: Vec::new(),
+        face_assignments: vec![
+            face_assignment(0, 1, "material:wood"),
+            face_assignment(1, 1, "material:sail"),
+        ],
+    };
+    let mut second = first.clone();
+    second.materials.reverse();
+    second.face_assignments.reverse();
+    assert_eq!(
+        model_material_separation_hash_v2(&first).expect("first hash"),
+        model_material_separation_hash_v2(&second).expect("second hash")
+    );
+}
+
+#[test]
+fn face_mode_v2_rejects_overlapping_noncanonical_and_out_of_bounds_ranges() {
+    let ir = two_component_ir();
+    let mut document = default_model_material_separation_v2(&ir);
+    document.materials.push(material("material:wood", "Wood"));
+    document.face_assignments = vec![
+        face_assignment(0, 2, "material:wood"),
+        face_assignment(1, 1, "material:wood"),
+    ];
+    let error = resolve_model_materials_v2(&ir, &document).expect_err("face overlap");
+    assert_eq!(error.schema_version, 2);
+    assert_eq!(error.code, "MATERIAL-SEPARATION-FACE-OVERLAP");
+
+    document.face_assignments = vec![ModelMaterialFaceAssignmentV2 {
+        selection: SourceFaceSelectionV2 {
+            scene_id: 0,
+            node_id: 0,
+            primitive_id: 0,
+            triangle_ranges: vec![
+                SourceTriangleRangeV2 {
+                    start_triangle: 0,
+                    triangle_count: 1,
+                },
+                SourceTriangleRangeV2 {
+                    start_triangle: 1,
+                    triangle_count: 1,
+                },
+            ],
+        },
+        authored_material_id: "material:wood".to_owned(),
+    }];
+    let error = resolve_model_materials_v2(&ir, &document).expect_err("adjacent ranges");
+    assert_eq!(error.code, "MATERIAL-SEPARATION-FACE-RANGE-NONCANONICAL");
+
+    document.face_assignments = vec![face_assignment(2, 1, "material:wood")];
+    let error = resolve_model_materials_v2(&ir, &document).expect_err("out of bounds");
+    assert_eq!(error.code, "MATERIAL-SEPARATION-FACE-RANGE-OOB");
+}
+
+#[test]
+fn face_mode_v2_rejects_component_and_face_overlap() {
+    let ir = two_component_ir();
+    let mut document = default_model_material_separation_v2(&ir);
+    document.materials.push(material("material:wood", "Wood"));
+    document
+        .component_assignments
+        .push(ModelMaterialAssignmentV1 {
+            component: component(0),
+            authored_material_id: "material:wood".to_owned(),
+        });
+    document
+        .face_assignments
+        .push(face_assignment(0, 1, "material:wood"));
+    let error = resolve_model_materials_v2(&ir, &document).expect_err("mixed overlap");
+    assert_eq!(error.code, "MATERIAL-SEPARATION-SELECTION-OVERLAP");
 }

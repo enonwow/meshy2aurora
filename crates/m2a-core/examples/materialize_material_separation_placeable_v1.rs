@@ -28,17 +28,127 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 #[path = "../tests/fixtures/build_synthetic_glb.rs"]
-#[allow(dead_code)]
 mod synthetic_glb;
 
-const OUTPUT_PATH: &str =
-    r"C:\Projects\meshy2aurora\proof-output\material-separation-placeable-v1-20260801";
-const NATIVE_MOD_PATH: &str =
-    r"C:\Users\enonw\Documents\Neverwinter Nights\modules\m2a_ms1_mod.mod";
-const NATIVE_HAK_PATH: &str = r"C:\Users\enonw\Documents\Neverwinter Nights\hak\m2a_ms1_hak.hak";
+const FULL_BASE_PLACEABLES_PATH: &str = r"C:\Projects\meshy2aurora\proof-output\tlc-meshy-p20k-placeables-v1-20260725\generated\base-placeables.2da";
+const FULL_BASE_PLACEABLES_SHA256: &str =
+    "b772eafec5e6b380ad41e163e2a52585f2ddcec1c5bd7acea230b7e1a618df90";
+
+#[derive(Clone, Copy)]
+struct Candidate {
+    version: &'static str,
+    output_path: &'static str,
+    native_mod_path: &'static str,
+    native_hak_path: &'static str,
+    module_resref: &'static str,
+    module_file_name: &'static str,
+    module_display_name: &'static str,
+    area_resref: &'static str,
+    area_name: &'static str,
+    hak_resref: &'static str,
+    hak_file_name: &'static str,
+    model_resref: &'static str,
+    texture_resref: &'static str,
+    blueprint_resref: &'static str,
+    object_tag: &'static str,
+    display_name: &'static str,
+    expected_appearance_row: u32,
+    expected_triangle_count: usize,
+    use_full_base_placeables: bool,
+    use_judgeable_closed_geometry: bool,
+}
+
+impl Candidate {
+    const fn v1() -> Self {
+        Self {
+            version: "MS1",
+            output_path: r"C:\Projects\meshy2aurora\proof-output\material-separation-placeable-v1-20260801",
+            native_mod_path: r"C:\Users\enonw\Documents\Neverwinter Nights\modules\m2a_ms1_mod.mod",
+            native_hak_path: r"C:\Users\enonw\Documents\Neverwinter Nights\hak\m2a_ms1_hak.hak",
+            module_resref: "m2a_ms1_mod",
+            module_file_name: "m2a_ms1_mod.mod",
+            module_display_name: "Meshy2Aurora Material Separation V1",
+            area_resref: "m2a_ms1_area",
+            area_name: "Material Separation Two Material Proof",
+            hak_resref: "m2a_ms1_hak",
+            hak_file_name: "m2a_ms1_hak.hak",
+            model_resref: "m2a_ms1_mdl",
+            texture_resref: "m2a_ms1_tex",
+            blueprint_resref: "m2a_ms1_utp",
+            object_tag: "m2a_ms1_two_material_panels",
+            display_name: "Material Separation Red Blue Panels",
+            expected_appearance_row: 3,
+            expected_triangle_count: 2,
+            use_full_base_placeables: false,
+            use_judgeable_closed_geometry: false,
+        }
+    }
+
+    const fn v2() -> Self {
+        Self {
+            version: "MS2",
+            output_path: r"C:\Projects\meshy2aurora\proof-output\material-separation-placeable-v2-20260802",
+            native_mod_path: r"C:\Users\enonw\Documents\Neverwinter Nights\modules\m2a_ms2_mod.mod",
+            native_hak_path: r"C:\Users\enonw\Documents\Neverwinter Nights\hak\m2a_ms2_hak.hak",
+            module_resref: "m2a_ms2_mod",
+            module_file_name: "m2a_ms2_mod.mod",
+            module_display_name: "Meshy2Aurora Material Separation V2",
+            area_resref: "m2a_ms2_area",
+            area_name: "Material Separation Two Material Proof V2",
+            hak_resref: "m2a_ms2_hak",
+            hak_file_name: "m2a_ms2_hak.hak",
+            model_resref: "m2a_ms2_mdl",
+            texture_resref: "m2a_ms2_tex",
+            blueprint_resref: "m2a_ms2_utp",
+            object_tag: "m2a_ms2_two_material_panels",
+            display_name: "Material Separation Red Blue Panels V2",
+            expected_appearance_row: 16_500,
+            expected_triangle_count: 2,
+            use_full_base_placeables: true,
+            use_judgeable_closed_geometry: false,
+        }
+    }
+
+    const fn v3() -> Self {
+        Self {
+            version: "MS3",
+            output_path: r"C:\Projects\meshy2aurora\proof-output\material-separation-placeable-v3-20260802",
+            native_mod_path: r"C:\Users\enonw\Documents\Neverwinter Nights\modules\m2a_ms3_mod.mod",
+            native_hak_path: r"C:\Users\enonw\Documents\Neverwinter Nights\hak\m2a_ms3_hak.hak",
+            module_resref: "m2a_ms3_mod",
+            module_file_name: "m2a_ms3_mod.mod",
+            module_display_name: "Meshy2Aurora Material Separation V3",
+            area_resref: "m2a_ms3_area",
+            area_name: "Material Separation Closed Panels Proof V3",
+            hak_resref: "m2a_ms3_hak",
+            hak_file_name: "m2a_ms3_hak.hak",
+            model_resref: "m2a_ms3_mdl",
+            texture_resref: "m2a_ms3_tex",
+            blueprint_resref: "m2a_ms3_utp",
+            object_tag: "m2a_ms3_two_material_panels",
+            display_name: "Material Separation Closed Red Blue Panels V3",
+            expected_appearance_row: 16_500,
+            expected_triangle_count: 24,
+            use_full_base_placeables: true,
+            use_judgeable_closed_geometry: true,
+        }
+    }
+}
 
 fn main() -> ExitCode {
-    match run() {
+    execute(Candidate::v1())
+}
+
+pub fn main_v2() -> ExitCode {
+    execute(Candidate::v2())
+}
+
+pub fn main_v3() -> ExitCode {
+    execute(Candidate::v3())
+}
+
+fn execute(candidate: Candidate) -> ExitCode {
+    match run(&candidate) {
         Ok(summary) => {
             println!("{summary}");
             ExitCode::SUCCESS
@@ -50,18 +160,24 @@ fn main() -> ExitCode {
     }
 }
 
-fn run() -> Result<String, String> {
-    let output = PathBuf::from(OUTPUT_PATH);
+fn run(candidate: &Candidate) -> Result<String, String> {
+    let output = PathBuf::from(candidate.output_path);
     if output.exists() {
         return Err(format!("MS1-OUTPUT-EXISTS: {}", output.display()));
     }
-    let source = synthetic_glb::one_primitive_two_disconnected_triangles_with_embedded_texture();
+    let source = if candidate.use_judgeable_closed_geometry {
+        synthetic_glb::one_primitive_two_disconnected_boxes_with_embedded_texture()
+    } else {
+        synthetic_glb::one_primitive_two_disconnected_triangles_with_embedded_texture()
+    };
     let source_sha256 = sha256(&source);
     let ingest = ingest_glb(&source, &GlbLimits::default())
         .map_err(|error| exact_error("MS1-INGEST", &error))?;
-    if ingest.report.statistics.triangle_count != 2 {
+    if ingest.report.statistics.triangle_count != candidate.expected_triangle_count {
         return Err(format!(
-            "MS1-SOURCE-TRIANGLES: expected 2, got {}",
+            "{}-SOURCE-TRIANGLES: expected {}, got {}",
+            candidate.version,
+            candidate.expected_triangle_count,
             ingest.report.statistics.triangle_count
         ));
     }
@@ -143,18 +259,18 @@ fn run() -> Result<String, String> {
     element.transform.scale = [2.5; 3];
 
     let identity = StaticPlaceableIdentityV1 {
-        module_resref: "m2a_ms1_mod".to_owned(),
-        module_file_name: "m2a_ms1_mod.mod".to_owned(),
-        module_display_name: "Meshy2Aurora Material Separation V1".to_owned(),
-        area_resref: "m2a_ms1_area".to_owned(),
-        area_name: "Material Separation Two Material Proof".to_owned(),
-        hak_resref: "m2a_ms1_hak".to_owned(),
-        hak_file_name: "m2a_ms1_hak.hak".to_owned(),
-        model_resref: "m2a_ms1_mdl".to_owned(),
-        texture_resref: "m2a_ms1_tex".to_owned(),
-        blueprint_resref: "m2a_ms1_utp".to_owned(),
-        object_tag: "m2a_ms1_two_material_panels".to_owned(),
-        display_name: "Material Separation Red Blue Panels".to_owned(),
+        module_resref: candidate.module_resref.to_owned(),
+        module_file_name: candidate.module_file_name.to_owned(),
+        module_display_name: candidate.module_display_name.to_owned(),
+        area_resref: candidate.area_resref.to_owned(),
+        area_name: candidate.area_name.to_owned(),
+        hak_resref: candidate.hak_resref.to_owned(),
+        hak_file_name: candidate.hak_file_name.to_owned(),
+        model_resref: candidate.model_resref.to_owned(),
+        texture_resref: candidate.texture_resref.to_owned(),
+        blueprint_resref: candidate.blueprint_resref.to_owned(),
+        object_tag: candidate.object_tag.to_owned(),
+        display_name: candidate.display_name.to_owned(),
     };
     let placement = PlaceablePlacementV1 {
         x: 10.0,
@@ -162,10 +278,12 @@ fn run() -> Result<String, String> {
         z: 0.0,
         bearing: 0.0,
     };
+    let base_placeables = base_placeables_2da(candidate)?;
+    let base_placeables_sha256 = sha256(&base_placeables);
     let build = || {
         build_meshy_static_placeable_package_v6(
             &source,
-            &base_placeables_2da(),
+            &base_placeables,
             &identity,
             placement,
             7,
@@ -185,6 +303,14 @@ fn run() -> Result<String, String> {
         || serde_json::to_vec(&artifact.report).ok() != serde_json::to_vec(&repeated.report).ok()
     {
         return Err("MS1-NONDETERMINISTIC-PACKAGE".to_owned());
+    }
+    if artifact.report.appearance_row.value != candidate.expected_appearance_row {
+        return Err(format!(
+            "{}-APPEARANCE-ROW: expected {}, got {}",
+            candidate.version,
+            candidate.expected_appearance_row,
+            artifact.report.appearance_row.value
+        ));
     }
 
     let separation_report = artifact
@@ -226,7 +352,7 @@ fn run() -> Result<String, String> {
         .iter()
         .map(|resource| resource.resref.clone())
         .collect::<BTreeSet<_>>();
-    if mdl_triangles != 2 || mdl_textures != expected_textures {
+    if mdl_triangles != candidate.expected_triangle_count || mdl_textures != expected_textures {
         return Err(format!(
             "MS1-MDL-MATERIAL-READBACK: triangles={mdl_triangles} textures={mdl_textures:?} expected={expected_textures:?}"
         ));
@@ -241,7 +367,7 @@ fn run() -> Result<String, String> {
         &json!({
             "schemaVersion": 1,
             "sourceSha256": source_sha256,
-            "sourceTriangles": 2,
+            "sourceTriangles": candidate.expected_triangle_count,
             "outputTriangles": mdl_triangles,
             "materialSlotCount": separation_report.material_slots.len(),
             "textureResrefs": mdl_textures,
@@ -287,17 +413,18 @@ fn run() -> Result<String, String> {
 
     let installed_mod = install_exact(
         &generated.join(&identity.module_file_name),
-        Path::new(NATIVE_MOD_PATH),
+        Path::new(candidate.native_mod_path),
         "MOD",
     )?;
     let installed_hak = install_exact(
         &generated.join(&identity.hak_file_name),
-        Path::new(NATIVE_HAK_PATH),
+        Path::new(candidate.native_hak_path),
         "HAK",
     )?;
     let handoff = json!({
         "schemaVersion": 1,
         "status": "ready_for_owner_proof",
+        "candidateVersion": candidate.version,
         "testModuleFileName": identity.module_file_name,
         "toolsetModuleName": identity.module_display_name,
         "areaName": identity.area_name,
@@ -309,12 +436,18 @@ fn run() -> Result<String, String> {
         "blueprintResref": identity.blueprint_resref,
         "objectTag": identity.object_tag,
         "appearanceRow": artifact.report.appearance_row.value,
+        "basePlaceables2da": {
+            "kind": if candidate.use_full_base_placeables { "PRODUCTION_BASELINE" } else { "SYNTHETIC_TEST_BASELINE" },
+            "path": if candidate.use_full_base_placeables { Some(FULL_BASE_PLACEABLES_PATH) } else { None },
+            "sha256": base_placeables_sha256,
+            "expectedAppearanceRow": candidate.expected_appearance_row,
+        },
         "placement": placement,
         "source": {
             "kind": "PROJECT_OWNED_SYNTHETIC_FIXTURE",
             "sha256": source_sha256,
             "byteLength": source.len(),
-            "triangleCount": 2,
+            "triangleCount": candidate.expected_triangle_count,
             "componentCount": 2,
             "meshyApiCalls": 0,
             "meshyCreditsSpent": 0,
@@ -361,7 +494,20 @@ fn collect_render_readback(
     }
 }
 
-fn base_placeables_2da() -> Vec<u8> {
+fn base_placeables_2da(candidate: &Candidate) -> Result<Vec<u8>, String> {
+    if candidate.use_full_base_placeables {
+        let path = Path::new(FULL_BASE_PLACEABLES_PATH);
+        let bytes = read(path, "FULL-BASE-PLACEABLES")?;
+        let actual_sha256 = sha256(&bytes);
+        if actual_sha256 != FULL_BASE_PLACEABLES_SHA256 {
+            return Err(format!(
+                "{}-FULL-BASE-PLACEABLES-HASH: expected {}, got {}",
+                candidate.version, FULL_BASE_PLACEABLES_SHA256, actual_sha256
+            ));
+        }
+        return Ok(bytes);
+    }
+
     let columns = [
         "Label",
         "StrRef",
@@ -384,14 +530,14 @@ fn base_placeables_2da() -> Vec<u8> {
         ]
         .join(" ")
     };
-    format!(
+    Ok(format!(
         "2DA V2.0\n\n{}\n0 {}\n1 {}\n2 {}\n",
         columns.join(" "),
         row("ARMOIRE", "plc_a01"),
         row("OS_RESERVED", "****"),
         row("ACTIVE_AFTER_RESERVED", "plc_b08"),
     )
-    .into_bytes()
+    .into_bytes())
 }
 
 fn install_exact(source: &Path, destination: &Path, label: &str) -> Result<Value, String> {

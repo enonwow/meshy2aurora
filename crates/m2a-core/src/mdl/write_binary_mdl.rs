@@ -64,6 +64,7 @@ struct RigPlan {
     keys: usize,
     data: usize,
     quaternion: [f32; 4],
+    bind_scale: Option<f32>,
 }
 
 struct MeshPlan {
@@ -236,22 +237,6 @@ pub(crate) fn write_binary_mdl_exact_face_planes_v1(
     )
 }
 
-pub(crate) fn write_binary_mdl_exact_face_planes_with_readback_limits_v1(
-    model: &AuroraModelIrV1,
-    options: &MdlWriterOptionsV1,
-    readback_limits: &ParserLimits,
-) -> Result<BinaryMdlArtifactV1, MdlWriteError> {
-    write_binary_mdl_internal(
-        model,
-        &MdlAnimationSetV1::empty(),
-        "NULL",
-        options,
-        None,
-        FacePlaneDegeneracyPolicyV1::ExactFiniteNonCollinear,
-        Some(readback_limits),
-    )
-}
-
 /// Emits a model that inherits animation state from an existing compatible
 /// supermodel. The caller remains responsible for providing an independently
 /// owned/user-provided rig whose ordered node topology matches that
@@ -268,6 +253,24 @@ pub fn write_binary_mdl_with_supermodel(
         options,
         None,
         FacePlaneDegeneracyPolicyV1::LegacyAbsoluteEpsilon,
+        None,
+    )
+}
+
+/// Emits a static model against an existing supermodel while preserving every
+/// finite, exactly non-collinear face plane, including valid microtriangles.
+pub fn write_binary_mdl_with_supermodel_exact_face_planes_v1(
+    creature: &AuroraModelIrV1,
+    supermodel_resref: &str,
+    options: &MdlWriterOptionsV1,
+) -> Result<BinaryMdlArtifactV1, MdlWriteError> {
+    write_binary_mdl_internal(
+        creature,
+        &MdlAnimationSetV1::empty(),
+        supermodel_resref,
+        options,
+        None,
+        FacePlaneDegeneracyPolicyV1::ExactFiniteNonCollinear,
         None,
     )
 }
@@ -317,6 +320,27 @@ pub fn write_binary_mdl_with_animations_and_supermodel(
         options,
         None,
         FacePlaneDegeneracyPolicyV1::LegacyAbsoluteEpsilon,
+        None,
+    )
+}
+
+/// Emits caller-owned local animation clips while retaining an exact
+/// supermodel reference and the strict finite/non-collinear face policy used
+/// by dense Meshy render meshes. Local clips may override inherited states;
+/// their provenance and admission remain the caller's responsibility.
+pub fn write_binary_mdl_with_animations_and_supermodel_exact_face_planes_v1(
+    creature: &AuroraModelIrV1,
+    animations: &MdlAnimationSetV1,
+    supermodel_resref: &str,
+    options: &MdlWriterOptionsV1,
+) -> Result<BinaryMdlArtifactV1, MdlWriteError> {
+    write_binary_mdl_internal(
+        creature,
+        animations,
+        supermodel_resref,
+        options,
+        None,
+        FacePlaneDegeneracyPolicyV1::ExactFiniteNonCollinear,
         None,
     )
 }
@@ -600,12 +624,22 @@ fn plan_with_face_plane_policy(
         }
         (_, None) => {}
     }
+    if options.format_profile == MdlFormatProfileV1::ItemPartStaticRigidNativeV1
+        && !animations.clips.is_empty()
+    {
+        return Err(error(
+            "ITEM-MDL-ANIMATION-UNSUPPORTED",
+            "animations",
+            "ItemPartStaticRigidNativeV1 cannot emit local animations",
+        ));
+    }
     let mesh_type = match options.format_profile {
         MdlFormatProfileV1::M4DirectCreatureExtended64V1
         | MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedV2
         | MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedControllerlessRootV3 => 3,
         MdlFormatProfileV1::M0StaticRigidNativeV1 => 3,
         MdlFormatProfileV1::PlaceableStaticRigidNativeV1 => 3,
+        MdlFormatProfileV1::ItemPartStaticRigidNativeV1 => 3,
         MdlFormatProfileV1::TileStaticV1 => 3,
         MdlFormatProfileV1::SourceTopologyPreservingRigidExperimentV1 => 3,
         MdlFormatProfileV1::SourceTopologyPreservingRigidCandidateV1 => 3,
@@ -615,6 +649,7 @@ fn plan_with_face_plane_policy(
         options.format_profile,
         MdlFormatProfileV1::M0StaticRigidNativeV1
             | MdlFormatProfileV1::PlaceableStaticRigidNativeV1
+            | MdlFormatProfileV1::ItemPartStaticRigidNativeV1
             | MdlFormatProfileV1::TileStaticV1
             | MdlFormatProfileV1::SourceTopologyPreservingRigidExperimentV1
             | MdlFormatProfileV1::SourceTopologyPreservingRigidCandidateV1
@@ -683,6 +718,7 @@ fn plan_with_face_plane_policy(
     let controllerless_root_index = if matches!(
         options.format_profile,
         MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedControllerlessRootV3
+            | MdlFormatProfileV1::ItemPartStaticRigidNativeV1
     ) {
         validate_controllerless_identity_root(creature, options, roots[0])?;
         Some(roots[0])
@@ -713,11 +749,22 @@ fn plan_with_face_plane_policy(
     validate_acyclic(&parent_indices)?;
 
     let mut quaternions = Vec::with_capacity(node_count);
+    let mut bind_scales = Vec::with_capacity(node_count);
     for (index, node) in creature.nodes.iter().enumerate() {
-        quaternions.push(matrix_quaternion(
-            node.bind_local_matrix,
-            &format!("creature.nodes[{index}].bindLocalMatrix"),
-        )?);
+        let path = format!("creature.nodes[{index}].bindLocalMatrix");
+        if options.format_profile == MdlFormatProfileV1::ItemPartStaticRigidNativeV1 {
+            let (quaternion, scale) =
+                matrix_quaternion_with_uniform_scale(node.bind_local_matrix, &path)?;
+            quaternions.push(quaternion);
+            bind_scales.push(if (scale - 1.0).abs() > EPSILON {
+                Some(scale)
+            } else {
+                None
+            });
+        } else {
+            quaternions.push(matrix_quaternion(node.bind_local_matrix, &path)?);
+            bind_scales.push(None);
+        }
     }
 
     let mut cursor = MODEL_HEADER_SIZE;
@@ -770,6 +817,7 @@ fn plan_with_face_plane_policy(
             keys: 0,
             data: 0,
             quaternion: quaternions[source_index],
+            bind_scale: bind_scales[source_index],
         });
     }
 
@@ -914,13 +962,10 @@ fn plan_with_face_plane_policy(
     cursor = align4(cursor, "layout.controllerKeys")?;
     for node in &mut rig {
         if node.emit_bind_controllers {
+            let key_count = CONTROLLER_KEY_COUNT + usize::from(node.bind_scale.is_some());
             node.keys = take(
                 &mut cursor,
-                mul(
-                    CONTROLLER_KEY_COUNT,
-                    CONTROLLER_KEY_SIZE,
-                    "layout.controllerKeys",
-                )?,
+                mul(key_count, CONTROLLER_KEY_SIZE, "layout.controllerKeys")?,
                 "layout.controllerKeys",
             )?;
         }
@@ -940,9 +985,10 @@ fn plan_with_face_plane_policy(
     }
     for node in &mut rig {
         if node.emit_bind_controllers {
+            let data_count = CONTROLLER_DATA_COUNT + 2 * usize::from(node.bind_scale.is_some());
             node.data = take(
                 &mut cursor,
-                mul(CONTROLLER_DATA_COUNT, 4, "layout.controllerData")?,
+                mul(data_count, 4, "layout.controllerData")?,
                 "layout.controllerData",
             )?;
         }
@@ -1860,6 +1906,7 @@ fn validate_public_contract(
             | MdlFormatProfileV1::M4DirectCreatureExtended64ZeroTerminatedControllerlessRootV3
             | MdlFormatProfileV1::M0StaticRigidNativeV1
             | MdlFormatProfileV1::PlaceableStaticRigidNativeV1
+            | MdlFormatProfileV1::ItemPartStaticRigidNativeV1
             | MdlFormatProfileV1::TileStaticV1
             | MdlFormatProfileV1::SourceTopologyPreservingRigidExperimentV1
             | MdlFormatProfileV1::SourceTopologyPreservingRigidCandidateV1
@@ -1875,6 +1922,7 @@ fn validate_public_contract(
         options.format_profile,
         MdlFormatProfileV1::M0StaticRigidNativeV1
             | MdlFormatProfileV1::PlaceableStaticRigidNativeV1
+            | MdlFormatProfileV1::ItemPartStaticRigidNativeV1
             | MdlFormatProfileV1::TileStaticV1
             | MdlFormatProfileV1::SourceTopologyPreservingRigidExperimentV1
             | MdlFormatProfileV1::SourceTopologyPreservingRigidCandidateV1
@@ -2241,10 +2289,10 @@ fn emit_model(
             )?;
         }
     }
-    core[0x72] = if options.format_profile == MdlFormatProfileV1::TileStaticV1 {
-        2
-    } else {
-        4
+    core[0x72] = match options.format_profile {
+        MdlFormatProfileV1::ItemPartStaticRigidNativeV1 => 4,
+        MdlFormatProfileV1::TileStaticV1 => 2,
+        _ => 4,
     };
     core[0x73] = 1;
     write_vec3(core, 0x88, plan.model_bounds_min)?;
@@ -2413,8 +2461,10 @@ fn emit_nodes(
         }
         write_u32(core, item.offset + 0x6c, 0x01)?;
         if item.emit_bind_controllers {
-            write_array(core, item.offset + 0x54, item.keys, CONTROLLER_KEY_COUNT)?;
-            write_array(core, item.offset + 0x60, item.data, CONTROLLER_DATA_COUNT)?;
+            let key_count = CONTROLLER_KEY_COUNT + usize::from(item.bind_scale.is_some());
+            let data_count = CONTROLLER_DATA_COUNT + 2 * usize::from(item.bind_scale.is_some());
+            write_array(core, item.offset + 0x54, item.keys, key_count)?;
+            write_array(core, item.offset + 0x60, item.data, data_count)?;
             write_controller_key(core, item.keys, 8, 0, 1, 3)?;
             write_controller_key(core, item.keys + CONTROLLER_KEY_SIZE, 20, 4, 5, 4)?;
             let matrix = node.bind_local_matrix;
@@ -2433,6 +2483,18 @@ fn emit_nodes(
             .enumerate()
             {
                 write_f32(core, item.data + data_index * 4, value)?;
+            }
+            if let Some(scale) = item.bind_scale {
+                write_controller_key(
+                    core,
+                    item.keys + CONTROLLER_KEY_COUNT * CONTROLLER_KEY_SIZE,
+                    36,
+                    9,
+                    10,
+                    1,
+                )?;
+                write_f32(core, item.data + CONTROLLER_DATA_COUNT * 4, 0.0)?;
+                write_f32(core, item.data + (CONTROLLER_DATA_COUNT + 1) * 4, scale)?;
             }
         }
     }
@@ -3259,10 +3321,10 @@ fn expected_readback(
         model_bounds_min: plan.model_bounds_min,
         model_bounds_max: plan.model_bounds_max,
         model_radius: plan.model_radius,
-        classification: if options.format_profile == MdlFormatProfileV1::TileStaticV1 {
-            2
-        } else {
-            4
+        classification: match options.format_profile {
+            MdlFormatProfileV1::ItemPartStaticRigidNativeV1 => 4,
+            MdlFormatProfileV1::TileStaticV1 => 2,
+            _ => 4,
         },
         root_part_number: plan
             .rig
@@ -3966,6 +4028,49 @@ fn matrix_quaternion(matrix: [f32; 16], path: &str) -> Result<[f32; 4], MdlWrite
     Ok(q)
 }
 
+fn matrix_quaternion_with_uniform_scale(
+    matrix: [f32; 16],
+    path: &str,
+) -> Result<([f32; 4], f32), MdlWriteError> {
+    if matrix.iter().any(|value| !value.is_finite())
+        || matrix[3].abs() > EPSILON
+        || matrix[7].abs() > EPSILON
+        || matrix[11].abs() > EPSILON
+        || (matrix[15] - 1.0).abs() > EPSILON
+    {
+        return Err(error(
+            "ITEM-MDL-BIND-TRANSFORM-UNSUPPORTED",
+            path,
+            "item-part bind matrix must be finite affine",
+        ));
+    }
+    let columns = [
+        [matrix[0], matrix[1], matrix[2]],
+        [matrix[4], matrix[5], matrix[6]],
+        [matrix[8], matrix[9], matrix[10]],
+    ];
+    let lengths = columns.map(length3);
+    let scale = (lengths[0] + lengths[1] + lengths[2]) / 3.0;
+    let tolerance = EPSILON * scale.max(1.0);
+    if !scale.is_finite()
+        || scale <= EPSILON
+        || lengths
+            .iter()
+            .any(|length| (*length - scale).abs() > tolerance)
+    {
+        return Err(error(
+            "ITEM-MDL-BIND-TRANSFORM-UNSUPPORTED",
+            path,
+            "item-part bind matrix must have a positive uniform scale",
+        ));
+    }
+    let mut rigid = matrix;
+    for index in [0, 1, 2, 4, 5, 6, 8, 9, 10] {
+        rigid[index] /= scale;
+    }
+    matrix_quaternion(rigid, path).map(|quaternion| (quaternion, scale))
+}
+
 fn mesh_metrics(positions: &[[f32; 3]]) -> Result<MeshMetrics, MdlWriteError> {
     let mut min = [f32::INFINITY; 3];
     let mut max = [f32::NEG_INFINITY; 3];
@@ -4374,7 +4479,9 @@ fn face_adjacency_for_profile(
 ) -> Result<Vec<[i16; 3]>, MdlWriteError> {
     if matches!(
         profile,
-        MdlFormatProfileV1::PlaceableStaticRigidNativeV1 | MdlFormatProfileV1::TileStaticV1
+        MdlFormatProfileV1::PlaceableStaticRigidNativeV1
+            | MdlFormatProfileV1::ItemPartStaticRigidNativeV1
+            | MdlFormatProfileV1::TileStaticV1
     ) {
         checked_face_adjacency(positions, indices, path)
     } else {

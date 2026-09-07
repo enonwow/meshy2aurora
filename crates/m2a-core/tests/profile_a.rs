@@ -1,5 +1,4 @@
 #[path = "fixtures/build_synthetic_glb.rs"]
-#[allow(dead_code)]
 mod fixtures;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -25,6 +24,7 @@ use m2a_core::{
         convert_profile_a_with_animations_and_material_separation_v1,
         convert_profile_a_with_animations_v1, convert_profile_a_with_material_separation_v1,
         direct_creature_profile_a_options_for_source_forward_v2,
+        direct_creature_profile_a_options_for_source_forward_v3,
         direct_creature_profile_a_options_v2,
     },
 };
@@ -705,6 +705,63 @@ fn creature_basis_v2_supports_all_explicit_cardinal_source_forward_axes() {
         assert_eq!(
             outcome.report.policies.basis_status,
             "CREATURE_BASIS_V2_RESOLVED"
+        );
+    }
+}
+
+#[test]
+fn creature_basis_v3_maps_every_selected_source_front_to_retail_positive_y() {
+    let cases = [
+        (
+            CreatureSourceForwardV1::PositiveZ,
+            "GLTF_POSITIVE_Z_TO_AURORA_POSITIVE_Y",
+            [
+                -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+        ),
+        (
+            CreatureSourceForwardV1::NegativeZ,
+            "GLTF_NEGATIVE_Z_TO_AURORA_POSITIVE_Y",
+            [
+                1.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+        ),
+        (
+            CreatureSourceForwardV1::PositiveX,
+            "GLTF_POSITIVE_X_TO_AURORA_POSITIVE_Y",
+            [
+                0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+        ),
+        (
+            CreatureSourceForwardV1::NegativeX,
+            "GLTF_NEGATIVE_X_TO_AURORA_POSITIVE_Y",
+            [
+                0.0, 0.0, -1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+        ),
+    ];
+
+    for (source_forward, expected_mapping, expected_matrix) in cases {
+        let outcome = convert_profile_a(
+            &minimal_source(),
+            &profile(1.0),
+            &direct_creature_profile_a_options_for_source_forward_v3(source_forward),
+        )
+        .expect("retail-positive-Y Creature source-forward conversion");
+        assert_eq!(outcome.report.transform.basis_matrix, expected_matrix);
+        assert_eq!(outcome.report.transform.determinant, 1.0);
+        assert_eq!(
+            outcome.report.policies.asset_forward_mapping,
+            expected_mapping
+        );
+        assert_eq!(
+            outcome.report.policies.basis_status,
+            "CREATURE_BASIS_V3_RESOLVED"
+        );
+        assert_eq!(
+            outcome.report.policies.basis_evidence,
+            "SOURCE_HEADFRONT_AND_RETAIL_NATIVE_POSITIVE_Y"
         );
     }
 }

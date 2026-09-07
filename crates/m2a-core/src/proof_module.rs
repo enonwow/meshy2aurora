@@ -7,12 +7,20 @@
 //! exact `Creature List` placement fields.  No retail resource payload is
 //! copied into this archive.
 
-use std::{collections::HashSet, fmt};
+use std::{
+    collections::{BTreeSet, HashSet},
+    fmt,
+};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
+    creature_product::{
+        CreatureBlueprintAuthoringV1, CreatureEquipmentItemV2, CreatureEquipmentLoadoutReportV2,
+        CreatureEquipmentLoadoutV2, validate_creature_blueprint_authoring_v1,
+        validate_creature_equipment_loadout_v2,
+    },
     erf::{ErfArchive, ErfFileType},
     gff::{
         GffDocumentV1, GffFieldV1, GffFileTypeV1, GffLimitsV1, GffLocStringV1, GffLocSubstringV1,
@@ -262,6 +270,19 @@ impl BinaryCreatureWeaponItemV1 {
             model_parts: [11, 11, 11],
         }
     }
+
+    /// Clean-room ordinary longsword whose recipe is independently matched to
+    /// the NWN:EE retail `nw_wswls001` model-part selection.
+    pub fn owned_standard_longsword_v2(resref: impl Into<String>) -> Self {
+        Self {
+            resref: resref.into(),
+            display_name: "Meshy2Aurora standard longsword".to_owned(),
+            base_item: 1,
+            // Independently confirmed in the local NWN:EE resource index for
+            // the ordinary longsword blueprint nw_wswls001.
+            model_parts: [61, 11, 11],
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -330,6 +351,114 @@ pub struct BinaryCreatureWeaponDemoArtifactV2 {
     pub readback: BinaryCreatureWeaponDemoReadbackV2,
 }
 
+/// Exact stock item instance produced by the owner's corrective Toolset save.
+///
+/// A placed Creature does not hold a weapon merely because its GIT contains an
+/// `EquippedRes` shortcut. The working oracle embeds the complete item instance
+/// in native hand slot 16 and grants the proficiency required by BaseItem 3.
+pub const NWN_BASE_BASTARD_SWORD_RESREF_V3: &str = "nw_wswbs001";
+pub const NWN_FEAT_WEAPON_PROFICIENCY_EXOTIC_V3: u16 = 44;
+pub const NWN_BASE_BASTARD_SWORD_MODEL_PARTS_V3: [u8; 3] = [41, 11, 11];
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BinaryCreatureEmbeddedStockWeaponV3 {
+    pub resref: String,
+    pub resource_type: u16,
+    pub resource_scope: BinaryCreatureWeaponResourceScopeV2,
+    pub base_item: i32,
+    pub model_parts: [u8; 3],
+    pub required_proficiency_feat: u16,
+}
+
+impl BinaryCreatureEmbeddedStockWeaponV3 {
+    pub fn nwn_base_bastard_sword() -> Self {
+        Self {
+            resref: NWN_BASE_BASTARD_SWORD_RESREF_V3.to_owned(),
+            resource_type: UTI_RESOURCE_TYPE,
+            resource_scope: BinaryCreatureWeaponResourceScopeV2::NwnBaseGame,
+            base_item: 3,
+            model_parts: NWN_BASE_BASTARD_SWORD_MODEL_PARTS_V3,
+            required_proficiency_feat: NWN_FEAT_WEAPON_PROFICIENCY_EXOTIC_V3,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BinaryCreatureEmbeddedStockWeaponDemoReadbackV3 {
+    pub schema_version: u32,
+    pub scene: BinaryCreatureProfileMatrixModuleReadbackV2,
+    pub weapon: BinaryCreatureEmbeddedStockWeaponV3,
+    pub proficiency_feat: u16,
+    pub fixtures: Vec<BinaryCreatureEquippedFixtureV1>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BinaryCreatureEmbeddedStockWeaponDemoArtifactV3 {
+    pub payload: Vec<u8>,
+    pub byte_length: u64,
+    pub sha256: String,
+    pub readback: BinaryCreatureEmbeddedStockWeaponDemoReadbackV3,
+}
+
+/// Full product readback for a gameplay-authored Creature demo. Equipment is
+/// represented only by complete embedded item instances; `EquippedRes`
+/// shortcuts and module-local UTI substitutions are not part of this lane.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BinaryCreatureAuthoredDemoReadbackV4 {
+    pub schema_version: u32,
+    pub scene: BinaryCreatureMultiFixtureModuleReadbackV1,
+    pub blueprint: CreatureBlueprintAuthoringV1,
+    pub loadout: CreatureEquipmentLoadoutV2,
+    pub loadout_report: CreatureEquipmentLoadoutReportV2,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BinaryCreatureAuthoredDemoArtifactV4 {
+    pub payload: Vec<u8>,
+    pub byte_length: u64,
+    pub sha256: String,
+    pub readback: BinaryCreatureAuthoredDemoReadbackV4,
+}
+
+/// Exact NWScript/VFX contract used by the Fogbound Creature demo.
+///
+/// Effect 478 is the base-game Ghostly Visage visual without the repeating
+/// `sdr_ghostly` sound owned by effect 9.
+pub const VFX_DUR_GHOSTLY_VISAGE_NO_SOUND_V1: u16 = 478;
+pub const GHOSTLY_VISAGE_NO_SOUND_SPAWN_SCRIPT_V1: &str = "void main()\n{\n    effect eGhost = EffectVisualEffect(VFX_DUR_GHOSTLY_VISAGE_NO_SOUND);\n    ApplyEffectToObject(DURATION_TYPE_PERMANENT, eGhost, OBJECT_SELF);\n}\n";
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BinaryCreatureGhostlyVisageScriptV1 {
+    pub resref: String,
+    pub visual_effect_id: u16,
+    pub source: Vec<u8>,
+    pub compiled: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BinaryCreatureGhostlyVisageDemoReadbackV1 {
+    pub schema_version: u32,
+    pub scene: BinaryCreatureProfileMatrixModuleReadbackV2,
+    pub script_resref: String,
+    pub visual_effect_id: u16,
+    pub source_sha256: String,
+    pub compiled_sha256: String,
+    pub fixtures: Vec<BinaryCreatureProfiledFixtureV2>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BinaryCreatureGhostlyVisageDemoArtifactV1 {
+    pub payload: Vec<u8>,
+    pub byte_length: u64,
+    pub sha256: String,
+    pub readback: BinaryCreatureGhostlyVisageDemoReadbackV1,
+}
+
 impl BinaryM0VerticalSliceIdentityV1 {
     pub fn historical_default() -> Self {
         Self {
@@ -347,6 +476,8 @@ const GIT_RESOURCE_TYPE: u16 = 2023;
 const UTC_RESOURCE_TYPE: u16 = 2027;
 const UTI_RESOURCE_TYPE: u16 = 2025;
 const FAC_RESOURCE_TYPE: u16 = 2038;
+const NSS_RESOURCE_TYPE: u16 = 2009;
+const NCS_RESOURCE_TYPE: u16 = 2010;
 const BINARY_CREATURE_RUNTIME_MAX_HIT_POINTS: i16 = 13;
 const BINARY_CREATURE_RUNTIME_SKILL_COUNT: usize = 28;
 
@@ -401,6 +532,12 @@ pub struct ProofModuleReportV2 {
     pub byte_length: u64,
     pub sha256: String,
     pub semantic_readback_status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub held_weapon_readback: Option<BinaryCreatureWeaponDemoReadbackV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub held_stock_weapon_readback: Option<BinaryCreatureWeaponDemoReadbackV2>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authored_creature_readback: Option<BinaryCreatureAuthoredDemoReadbackV4>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub binary_m0_runtime_fixture: Option<BinaryM0VerticalSliceReadbackV1>,
 }
@@ -528,6 +665,221 @@ pub fn build_single_profiled_creature_proof_module_with_identity_v3(
             byte_length: artifact.byte_length,
             sha256: artifact.sha256,
             semantic_readback_status: "PASS".to_owned(),
+            held_weapon_readback: None,
+            held_stock_weapon_readback: None,
+            authored_creature_readback: None,
+            binary_m0_runtime_fixture: None,
+        },
+        payload: artifact.payload,
+    })
+}
+
+/// Builds the standard one-creature demo with one owned longsword equipped in
+/// the selected native hand slot. The generated UTI and the non-empty
+/// `Equip_ItemList` in both GIT and UTC are validated from the emitted MOD.
+pub fn build_single_profiled_creature_owned_weapon_demo_with_identity_v4(
+    appearance_row: u16,
+    runtime_profile: BinaryCreatureRuntimeProfileV2,
+    identity: &BinaryCreatureModuleIdentityV1,
+    creature_resref: &str,
+    hand: BinaryCreatureHandSlotV1,
+    weapon: &BinaryCreatureWeaponItemV1,
+) -> Result<ProofModuleArtifactV1, ProofModuleErrorV1> {
+    const MODULE_DISPLAY_NAME: &str = "Meshy2Aurora procedural humanoid item placement";
+    const AREA_DISPLAY_NAME: &str = "Meshy2Aurora procedural humanoid item placement area";
+    let fixture = BinaryCreatureEquippedFixtureV1 {
+        profiled_fixture: BinaryCreatureProfiledFixtureV2 {
+            fixture: BinaryCreatureOwnedFixtureV1 {
+                id: "m2a_procedural_creature".to_owned(),
+                template_resref: creature_resref.to_owned(),
+                display_name: "Meshy procedural humanoid with held item".to_owned(),
+                appearance_row,
+                position: M0RuntimePositionV1 {
+                    x: M0_RUNTIME_FIXTURE_X,
+                    y: M0_RUNTIME_FIXTURE_Y,
+                    z: M0_RUNTIME_FIXTURE_Z,
+                },
+                orientation: M0RuntimeDirectionV1 { x: 0.0, y: -1.0 },
+            },
+            runtime_profile,
+        },
+        hand,
+        equipped_item_resref: weapon.resref.clone(),
+    };
+    let fixtures = [fixture];
+    let artifact = build_binary_creature_owned_weapon_demo_module_named_v2(
+        identity,
+        &fixtures,
+        weapon,
+        MODULE_DISPLAY_NAME,
+        AREA_DISPLAY_NAME,
+        "One owned procedural humanoid fixture with one owned standard longsword in the selected native hand slot.",
+    )?;
+    if artifact.readback.fixtures != fixtures || artifact.readback.weapon != *weapon {
+        return Err(error(
+            "M6-HELD-WEAPON-PROOF-MODULE-SEMANTIC-DIFF",
+            "module",
+            "held item, hand slot, GIT instance or module-local UTC differs from authored input",
+        ));
+    }
+    Ok(ProofModuleArtifactV1 {
+        report: ProofModuleReportV2 {
+            schema_version: 2,
+            module_resref: identity.module_resref.clone(),
+            module_display_name: MODULE_DISPLAY_NAME.to_owned(),
+            area_resref: identity.area_resref.clone(),
+            area_display_name: AREA_DISPLAY_NAME.to_owned(),
+            creature_resref: creature_resref.to_owned(),
+            hak_resref: identity.hak_resref.clone(),
+            appearance_row,
+            resource_count: (6 + fixtures.len()) as u32,
+            byte_length: artifact.byte_length,
+            sha256: artifact.sha256,
+            semantic_readback_status: "PASS".to_owned(),
+            held_weapon_readback: Some(artifact.readback),
+            held_stock_weapon_readback: None,
+            authored_creature_readback: None,
+            binary_m0_runtime_fixture: None,
+        },
+        payload: artifact.payload,
+    })
+}
+
+/// Builds the standard one-creature demo with the exact NWN base-game short
+/// sword equipped in the selected native hand slot. Unlike the historical
+/// owned-UTI route, this wrapper never treats parser-visible module-local item
+/// bytes as runtime resolution proof.
+pub fn build_single_profiled_creature_stock_weapon_demo_with_identity_v5(
+    appearance_row: u16,
+    runtime_profile: BinaryCreatureRuntimeProfileV2,
+    identity: &BinaryCreatureModuleIdentityV1,
+    creature_resref: &str,
+    hand: BinaryCreatureHandSlotV1,
+    weapon: &BinaryCreatureStockWeaponV2,
+) -> Result<ProofModuleArtifactV1, ProofModuleErrorV1> {
+    const MODULE_DISPLAY_NAME: &str = "Meshy2Aurora procedural humanoid item placement";
+    const AREA_DISPLAY_NAME: &str = "Meshy2Aurora procedural humanoid item placement area";
+    let fixture = BinaryCreatureEquippedFixtureV1 {
+        profiled_fixture: BinaryCreatureProfiledFixtureV2 {
+            fixture: BinaryCreatureOwnedFixtureV1 {
+                id: "m2a_procedural_creature".to_owned(),
+                template_resref: creature_resref.to_owned(),
+                display_name: "Meshy procedural humanoid with held item".to_owned(),
+                appearance_row,
+                position: M0RuntimePositionV1 {
+                    x: M0_RUNTIME_FIXTURE_X,
+                    y: M0_RUNTIME_FIXTURE_Y,
+                    z: M0_RUNTIME_FIXTURE_Z,
+                },
+                orientation: M0RuntimeDirectionV1 { x: 0.0, y: -1.0 },
+            },
+            runtime_profile,
+        },
+        hand,
+        equipped_item_resref: weapon.resref.clone(),
+    };
+    let fixtures = [fixture];
+    let artifact = build_binary_creature_stock_weapon_demo_module_named_v3(
+        identity,
+        &fixtures,
+        weapon,
+        MODULE_DISPLAY_NAME,
+        AREA_DISPLAY_NAME,
+        "One owned procedural humanoid fixture with the exact NWN base-game short sword in the selected native hand slot.",
+    )?;
+    if artifact.readback.fixtures != fixtures || artifact.readback.weapon != *weapon {
+        return Err(error(
+            "M6-HELD-STOCK-WEAPON-PROOF-MODULE-SEMANTIC-DIFF",
+            "module",
+            "held stock item, hand slot, GIT instance or module-local UTC differs from authored input",
+        ));
+    }
+    Ok(ProofModuleArtifactV1 {
+        report: ProofModuleReportV2 {
+            schema_version: 2,
+            module_resref: identity.module_resref.clone(),
+            module_display_name: MODULE_DISPLAY_NAME.to_owned(),
+            area_resref: identity.area_resref.clone(),
+            area_display_name: AREA_DISPLAY_NAME.to_owned(),
+            creature_resref: creature_resref.to_owned(),
+            hak_resref: identity.hak_resref.clone(),
+            appearance_row,
+            resource_count: (5 + fixtures.len()) as u32,
+            byte_length: artifact.byte_length,
+            sha256: artifact.sha256,
+            semantic_readback_status: "PASS".to_owned(),
+            held_weapon_readback: None,
+            held_stock_weapon_readback: Some(artifact.readback),
+            authored_creature_readback: None,
+            binary_m0_runtime_fixture: None,
+        },
+        payload: artifact.payload,
+    })
+}
+
+/// Builds one product demo with caller-owned gameplay fields and a complete
+/// embedded equipment loadout. GIT and UTC are authored from one source and
+/// compared after binary GFF/ERF readback. This is the production successor
+/// of the parser-visible `EquippedRes` shortcut used by V5.
+pub fn build_single_authored_creature_demo_with_identity_v6(
+    appearance_row: u16,
+    identity: &BinaryCreatureModuleIdentityV1,
+    creature_resref: &str,
+    blueprint: &CreatureBlueprintAuthoringV1,
+    loadout: &CreatureEquipmentLoadoutV2,
+) -> Result<ProofModuleArtifactV1, ProofModuleErrorV1> {
+    const MODULE_DISPLAY_NAME: &str = "Meshy2Aurora authored Creature demo";
+    const AREA_DISPLAY_NAME: &str = "Meshy2Aurora authored Creature demo area";
+    validate_creature_blueprint_authoring_v1(blueprint)
+        .map_err(map_creature_product_contract_error)?;
+    validate_creature_equipment_loadout_v2(loadout).map_err(map_creature_product_contract_error)?;
+    if !is_owned_resref(creature_resref) {
+        return Err(binary_creature_input_error(
+            "creatureResref",
+            "Creature UTC resref must contain 1..16 lowercase ASCII characters",
+        ));
+    }
+    let fixture = BinaryCreatureProfiledFixtureV2 {
+        fixture: BinaryCreatureOwnedFixtureV1 {
+            id: blueprint.tag.clone(),
+            template_resref: creature_resref.to_owned(),
+            display_name: blueprint.first_name.clone(),
+            appearance_row,
+            position: M0RuntimePositionV1 {
+                x: M0_RUNTIME_FIXTURE_X,
+                y: M0_RUNTIME_FIXTURE_Y,
+                z: M0_RUNTIME_FIXTURE_Z,
+            },
+            orientation: M0RuntimeDirectionV1 { x: 0.0, y: -1.0 },
+        },
+        runtime_profile: BinaryCreatureRuntimeProfileV2::ActiveMonsterBaseline,
+    };
+    let artifact = build_binary_creature_authored_demo_module_named_v4(
+        identity,
+        &fixture,
+        blueprint,
+        loadout,
+        MODULE_DISPLAY_NAME,
+        AREA_DISPLAY_NAME,
+        "One generated Creature with separate runtime/UTC authoring and complete embedded hand items.",
+    )?;
+    Ok(ProofModuleArtifactV1 {
+        report: ProofModuleReportV2 {
+            schema_version: 2,
+            module_resref: identity.module_resref.clone(),
+            module_display_name: MODULE_DISPLAY_NAME.to_owned(),
+            area_resref: identity.area_resref.clone(),
+            area_display_name: AREA_DISPLAY_NAME.to_owned(),
+            creature_resref: creature_resref.to_owned(),
+            hak_resref: identity.hak_resref.clone(),
+            appearance_row,
+            resource_count: 6,
+            byte_length: artifact.byte_length,
+            sha256: artifact.sha256,
+            semantic_readback_status: "PASS".to_owned(),
+            held_weapon_readback: None,
+            held_stock_weapon_readback: None,
+            authored_creature_readback: Some(artifact.readback),
             binary_m0_runtime_fixture: None,
         },
         payload: artifact.payload,
@@ -641,6 +993,9 @@ pub fn build_binary_m0_vertical_slice_module_with_identity_v1(
             byte_length: archive.payload.len() as u64,
             sha256: sha256(&archive.payload),
             semantic_readback_status: "PASS".to_owned(),
+            held_weapon_readback: None,
+            held_stock_weapon_readback: None,
+            authored_creature_readback: None,
             binary_m0_runtime_fixture: Some(binary_m0_runtime_fixture),
         },
         payload: archive.payload,
@@ -741,6 +1096,24 @@ pub fn build_binary_creature_profile_matrix_module_v2(
     )
 }
 
+/// Builds the same owned offline creature scene as V2 while letting a caller
+/// bind explicit human-facing module and Area names for an immutable handoff.
+pub fn build_binary_creature_profile_matrix_module_named_v3(
+    identity: &BinaryCreatureModuleIdentityV1,
+    fixtures: &[BinaryCreatureProfiledFixtureV2],
+    module_display_name: &str,
+    area_display_name: &str,
+    module_description: &str,
+) -> Result<BinaryCreatureProfileMatrixModuleArtifactV2, ProofModuleErrorV1> {
+    build_binary_creature_profile_matrix_module_named_v2(
+        identity,
+        fixtures,
+        module_display_name,
+        area_display_name,
+        module_description,
+    )
+}
+
 fn build_binary_creature_profile_matrix_module_named_v2(
     identity: &BinaryCreatureModuleIdentityV1,
     fixtures: &[BinaryCreatureProfiledFixtureV2],
@@ -820,6 +1193,92 @@ fn build_binary_creature_profile_matrix_module_named_v2(
     })
 }
 
+/// Builds one Creature demo whose exact module-local `OnSpawn` script applies
+/// permanent base-game Ghostly Visage without sound. Both the placed GIT
+/// instance and its UTC blueprint bind the compiled NCS by the same resref.
+pub fn build_binary_creature_ghostly_visage_demo_module_named_v1(
+    identity: &BinaryCreatureModuleIdentityV1,
+    fixtures: &[BinaryCreatureProfiledFixtureV2],
+    script: &BinaryCreatureGhostlyVisageScriptV1,
+    module_display_name: &str,
+    area_display_name: &str,
+    module_description: &str,
+) -> Result<BinaryCreatureGhostlyVisageDemoArtifactV1, ProofModuleErrorV1> {
+    let owned = fixtures
+        .iter()
+        .map(|fixture| fixture.fixture.clone())
+        .collect::<Vec<_>>();
+    validate_binary_creature_multi_fixture_input(identity, &owned)?;
+    validate_binary_creature_ghostly_visage_script_v1(script)?;
+
+    let mut resources = Vec::with_capacity(7 + fixtures.len());
+    resources.extend([
+        resource(
+            "module",
+            IFO_RESOURCE_TYPE,
+            binary_m0_module_ifo_for_ee_v3(
+                &identity.module_resref,
+                &identity.area_resref,
+                &[identity.hak_resref.as_str()],
+                module_display_name,
+                module_description,
+            )?,
+        ),
+        resource("repute", FAC_RESOURCE_TYPE, proof_factions()?),
+        resource(
+            &identity.area_resref,
+            ARE_RESOURCE_TYPE,
+            binary_m0_area_for_named_ee_v2(&identity.area_resref, area_display_name)?,
+        ),
+        resource(
+            &identity.area_resref,
+            GIC_RESOURCE_TYPE,
+            binary_creature_multi_fixture_gic(&owned)?,
+        ),
+        resource(
+            &identity.area_resref,
+            GIT_RESOURCE_TYPE,
+            binary_creature_ghostly_visage_demo_git(fixtures, &script.resref)?,
+        ),
+        resource(&script.resref, NSS_RESOURCE_TYPE, script.source.clone()),
+        resource(&script.resref, NCS_RESOURCE_TYPE, script.compiled.clone()),
+    ]);
+    for fixture in fixtures {
+        resources.push(resource(
+            &fixture.fixture.template_resref,
+            UTC_RESOURCE_TYPE,
+            binary_creature_ghostly_visage_fixture_utc(fixture, &script.resref)?,
+        ));
+    }
+
+    let archive = write_erf_archive_v1(
+        ErfFileType::Module,
+        &resources,
+        &HakWriterOptionsV1::default(),
+    )
+    .map_err(|write_error| {
+        error(
+            "M0-BINARY-GHOSTLY-VISAGE-DEMO-WRITE-FAILED",
+            "module",
+            write_error.to_string(),
+        )
+    })?;
+    let readback = inspect_binary_creature_ghostly_visage_demo_module_v1(&archive.payload, script)?;
+    if readback.fixtures != fixtures {
+        return Err(error(
+            "M0-BINARY-GHOSTLY-VISAGE-DEMO-SEMANTIC-DIFF",
+            "module",
+            "spawn-script or profiled fixture readback differs from authored input",
+        ));
+    }
+    Ok(BinaryCreatureGhostlyVisageDemoArtifactV1 {
+        byte_length: archive.payload.len() as u64,
+        sha256: sha256(&archive.payload),
+        payload: archive.payload,
+        readback,
+    })
+}
+
 /// Builds a clean-room right/left-hand attachment demo.  Both the placed GIT
 /// instances and their module-local UTC blueprints own the same non-empty
 /// `Equip_ItemList`, while one generated UTI supplies the visible weapon.
@@ -827,6 +1286,54 @@ pub fn build_binary_creature_weapon_demo_module_v1(
     identity: &BinaryCreatureModuleIdentityV1,
     fixtures: &[BinaryCreatureEquippedFixtureV1],
     weapon: &BinaryCreatureWeaponItemV1,
+) -> Result<BinaryCreatureWeaponDemoArtifactV1, ProofModuleErrorV1> {
+    build_binary_creature_owned_weapon_demo_module(
+        identity,
+        fixtures,
+        weapon,
+        "Meshy2Aurora Creature Weapon Anchors V1",
+        "Meshy2Aurora Creature Weapon Test",
+        "Generated by Meshy2Aurora to test right- and left-hand item attachment anchors.",
+        BinaryCreatureOwnedWeaponUtiProfileV1::LegacyV1,
+    )
+}
+
+/// Builds a clean-room Creature weapon demo whose equipped resource is a real
+/// module-local UTI, rather than an unresolved or external-only resref.
+/// Caller-owned names keep the immutable demo lineage explicit.
+pub fn build_binary_creature_owned_weapon_demo_module_named_v2(
+    identity: &BinaryCreatureModuleIdentityV1,
+    fixtures: &[BinaryCreatureEquippedFixtureV1],
+    weapon: &BinaryCreatureWeaponItemV1,
+    module_display_name: &str,
+    area_display_name: &str,
+    module_description: &str,
+) -> Result<BinaryCreatureWeaponDemoArtifactV1, ProofModuleErrorV1> {
+    build_binary_creature_owned_weapon_demo_module(
+        identity,
+        fixtures,
+        weapon,
+        module_display_name,
+        area_display_name,
+        module_description,
+        BinaryCreatureOwnedWeaponUtiProfileV1::StandardLongswordV2,
+    )
+}
+
+#[derive(Clone, Copy)]
+enum BinaryCreatureOwnedWeaponUtiProfileV1 {
+    LegacyV1,
+    StandardLongswordV2,
+}
+
+fn build_binary_creature_owned_weapon_demo_module(
+    identity: &BinaryCreatureModuleIdentityV1,
+    fixtures: &[BinaryCreatureEquippedFixtureV1],
+    weapon: &BinaryCreatureWeaponItemV1,
+    module_display_name: &str,
+    area_display_name: &str,
+    module_description: &str,
+    uti_profile: BinaryCreatureOwnedWeaponUtiProfileV1,
 ) -> Result<BinaryCreatureWeaponDemoArtifactV1, ProofModuleErrorV1> {
     let profiled = fixtures
         .iter()
@@ -848,15 +1355,15 @@ pub fn build_binary_creature_weapon_demo_module_v1(
                 &identity.module_resref,
                 &identity.area_resref,
                 &[identity.hak_resref.as_str()],
-                "Meshy2Aurora Creature Weapon Anchors V1",
-                "Generated by Meshy2Aurora to test right- and left-hand item attachment anchors.",
+                module_display_name,
+                module_description,
             )?,
         ),
         resource("repute", FAC_RESOURCE_TYPE, proof_factions()?),
         resource(
             &identity.area_resref,
             ARE_RESOURCE_TYPE,
-            binary_m0_area_for_named(&identity.area_resref, "Meshy2Aurora Creature Weapon Test")?,
+            binary_m0_area_for_named(&identity.area_resref, area_display_name)?,
         ),
         resource(
             &identity.area_resref,
@@ -871,7 +1378,14 @@ pub fn build_binary_creature_weapon_demo_module_v1(
         resource(
             &weapon.resref,
             UTI_RESOURCE_TYPE,
-            binary_creature_weapon_uti(weapon)?,
+            match uti_profile {
+                BinaryCreatureOwnedWeaponUtiProfileV1::LegacyV1 => {
+                    binary_creature_weapon_uti(weapon)?
+                }
+                BinaryCreatureOwnedWeaponUtiProfileV1::StandardLongswordV2 => {
+                    binary_creature_standard_longsword_uti_v2(weapon)?
+                }
+            },
         ),
     ]);
     for fixture in fixtures {
@@ -917,6 +1431,29 @@ pub fn build_binary_creature_stock_weapon_demo_module_v2(
     fixtures: &[BinaryCreatureEquippedFixtureV1],
     weapon: &BinaryCreatureStockWeaponV2,
 ) -> Result<BinaryCreatureWeaponDemoArtifactV2, ProofModuleErrorV1> {
+    build_binary_creature_stock_weapon_demo_module_named_v3(
+        identity,
+        fixtures,
+        weapon,
+        "Meshy2Aurora Creature Weapon Attachment V2",
+        "Meshy2Aurora Creature Weapon Test V2",
+        "Generated by Meshy2Aurora to test a native-resolved stock weapon on corrected Creature attachment hooks.",
+    )
+}
+
+/// Builds the stock-weapon Creature demo with caller-owned display names.
+///
+/// V2 remains byte-compatible for its historical proof lineage. V3 only
+/// removes the hard-coded V2 labels so a newly materialized candidate has the
+/// same identity in its filename, IFO and ARE resources.
+pub fn build_binary_creature_stock_weapon_demo_module_named_v3(
+    identity: &BinaryCreatureModuleIdentityV1,
+    fixtures: &[BinaryCreatureEquippedFixtureV1],
+    weapon: &BinaryCreatureStockWeaponV2,
+    module_display_name: &str,
+    area_display_name: &str,
+    module_description: &str,
+) -> Result<BinaryCreatureWeaponDemoArtifactV2, ProofModuleErrorV1> {
     let profiled = fixtures
         .iter()
         .map(|fixture| fixture.profiled_fixture.clone())
@@ -937,18 +1474,15 @@ pub fn build_binary_creature_stock_weapon_demo_module_v2(
                 &identity.module_resref,
                 &identity.area_resref,
                 &[identity.hak_resref.as_str()],
-                "Meshy2Aurora Creature Weapon Attachment V2",
-                "Generated by Meshy2Aurora to test a native-resolved stock weapon on corrected Creature attachment hooks.",
+                module_display_name,
+                module_description,
             )?,
         ),
         resource("repute", FAC_RESOURCE_TYPE, proof_factions()?),
         resource(
             &identity.area_resref,
             ARE_RESOURCE_TYPE,
-            binary_m0_area_for_named(
-                &identity.area_resref,
-                "Meshy2Aurora Creature Weapon Test V2",
-            )?,
+            binary_m0_area_for_named(&identity.area_resref, area_display_name)?,
         ),
         resource(
             &identity.area_resref,
@@ -994,6 +1528,202 @@ pub fn build_binary_creature_stock_weapon_demo_module_v2(
         payload: archive.payload,
         readback,
     })
+}
+
+/// Builds a Toolset-compatible EE demo from the exact owner-corrected placed
+/// Creature contract: a complete embedded bastard-sword item in the GIT hand
+/// slot plus the required exotic-weapon proficiency feat. The module contains
+/// no synthetic or copied UTI resource.
+pub fn build_binary_creature_embedded_stock_weapon_demo_module_named_v4(
+    identity: &BinaryCreatureModuleIdentityV1,
+    fixtures: &[BinaryCreatureEquippedFixtureV1],
+    weapon: &BinaryCreatureEmbeddedStockWeaponV3,
+    module_display_name: &str,
+    area_display_name: &str,
+    module_description: &str,
+) -> Result<BinaryCreatureEmbeddedStockWeaponDemoArtifactV3, ProofModuleErrorV1> {
+    let profiled = fixtures
+        .iter()
+        .map(|fixture| fixture.profiled_fixture.clone())
+        .collect::<Vec<_>>();
+    let owned = profiled
+        .iter()
+        .map(|fixture| fixture.fixture.clone())
+        .collect::<Vec<_>>();
+    validate_binary_creature_multi_fixture_input(identity, &owned)?;
+    validate_binary_creature_embedded_stock_weapon_demo_input_v3(fixtures, weapon)?;
+
+    let mut resources = Vec::with_capacity(5 + fixtures.len());
+    resources.extend([
+        resource(
+            "module",
+            IFO_RESOURCE_TYPE,
+            binary_m0_module_ifo_for_ee_v3(
+                &identity.module_resref,
+                &identity.area_resref,
+                &[identity.hak_resref.as_str()],
+                module_display_name,
+                module_description,
+            )?,
+        ),
+        resource("repute", FAC_RESOURCE_TYPE, proof_factions()?),
+        resource(
+            &identity.area_resref,
+            ARE_RESOURCE_TYPE,
+            binary_m0_area_for_named_ee_v2(&identity.area_resref, area_display_name)?,
+        ),
+        resource(
+            &identity.area_resref,
+            GIC_RESOURCE_TYPE,
+            binary_creature_multi_fixture_gic(&owned)?,
+        ),
+        resource(
+            &identity.area_resref,
+            GIT_RESOURCE_TYPE,
+            binary_creature_embedded_stock_weapon_demo_git(fixtures, weapon)?,
+        ),
+    ]);
+    for fixture in fixtures {
+        resources.push(resource(
+            &fixture.profiled_fixture.fixture.template_resref,
+            UTC_RESOURCE_TYPE,
+            binary_creature_equipped_fixture_utc(fixture)?,
+        ));
+    }
+    let archive = write_erf_archive_v1(
+        ErfFileType::Module,
+        &resources,
+        &HakWriterOptionsV1::default(),
+    )
+    .map_err(|write_error| {
+        error(
+            "M0-BINARY-EMBEDDED-WEAPON-DEMO-V3-WRITE-FAILED",
+            "module",
+            write_error.to_string(),
+        )
+    })?;
+    let readback =
+        inspect_binary_creature_embedded_stock_weapon_demo_module_v3(&archive.payload, weapon)?;
+    if readback.weapon != *weapon || readback.fixtures != fixtures {
+        return Err(error(
+            "M0-BINARY-EMBEDDED-WEAPON-DEMO-V3-SEMANTIC-DIFF",
+            "module",
+            "embedded stock weapon or equipped fixture differs from authored input",
+        ));
+    }
+    Ok(BinaryCreatureEmbeddedStockWeaponDemoArtifactV3 {
+        byte_length: archive.payload.len() as u64,
+        sha256: sha256(&archive.payload),
+        payload: archive.payload,
+        readback,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_binary_creature_authored_demo_module_named_v4(
+    identity: &BinaryCreatureModuleIdentityV1,
+    fixture: &BinaryCreatureProfiledFixtureV2,
+    blueprint: &CreatureBlueprintAuthoringV1,
+    loadout: &CreatureEquipmentLoadoutV2,
+    module_display_name: &str,
+    area_display_name: &str,
+    module_description: &str,
+) -> Result<BinaryCreatureAuthoredDemoArtifactV4, ProofModuleErrorV1> {
+    validate_binary_creature_multi_fixture_input(identity, std::slice::from_ref(&fixture.fixture))?;
+    validate_creature_blueprint_authoring_v1(blueprint)
+        .map_err(map_creature_product_contract_error)?;
+    let loadout_report = validate_creature_equipment_loadout_v2(loadout)
+        .map_err(map_creature_product_contract_error)?;
+    let resources = vec![
+        resource(
+            "module",
+            IFO_RESOURCE_TYPE,
+            binary_m0_module_ifo_for_ee_v3(
+                &identity.module_resref,
+                &identity.area_resref,
+                &[identity.hak_resref.as_str()],
+                module_display_name,
+                module_description,
+            )?,
+        ),
+        resource("repute", FAC_RESOURCE_TYPE, proof_factions()?),
+        resource(
+            &identity.area_resref,
+            ARE_RESOURCE_TYPE,
+            binary_m0_area_for_named_ee_v2(&identity.area_resref, area_display_name)?,
+        ),
+        resource(
+            &identity.area_resref,
+            GIC_RESOURCE_TYPE,
+            binary_creature_multi_fixture_gic(std::slice::from_ref(&fixture.fixture))?,
+        ),
+        resource(
+            &identity.area_resref,
+            GIT_RESOURCE_TYPE,
+            binary_creature_authored_demo_git(fixture, blueprint, loadout)?,
+        ),
+        resource(
+            &fixture.fixture.template_resref,
+            UTC_RESOURCE_TYPE,
+            binary_creature_authored_fixture_utc(fixture, blueprint, loadout)?,
+        ),
+    ];
+    let archive = write_erf_archive_v1(
+        ErfFileType::Module,
+        &resources,
+        &HakWriterOptionsV1::default(),
+    )
+    .map_err(|source| {
+        error(
+            "M6-AUTHORED-CREATURE-DEMO-WRITE-FAILED",
+            "module",
+            source.to_string(),
+        )
+    })?;
+    let readback = inspect_binary_creature_authored_demo_module_v4(
+        &archive.payload,
+        fixture,
+        blueprint,
+        loadout,
+    )?;
+    if readback.blueprint != *blueprint
+        || readback.loadout != *loadout
+        || readback.loadout_report != loadout_report
+    {
+        return Err(binary_creature_readback_error(
+            "module",
+            "authored Creature GIT/UTC readback differs from caller-owned contracts",
+        ));
+    }
+    Ok(BinaryCreatureAuthoredDemoArtifactV4 {
+        byte_length: archive.payload.len() as u64,
+        sha256: sha256(&archive.payload),
+        payload: archive.payload,
+        readback,
+    })
+}
+
+fn validate_binary_creature_embedded_stock_weapon_demo_input_v3(
+    fixtures: &[BinaryCreatureEquippedFixtureV1],
+    weapon: &BinaryCreatureEmbeddedStockWeaponV3,
+) -> Result<(), ProofModuleErrorV1> {
+    if weapon != &BinaryCreatureEmbeddedStockWeaponV3::nwn_base_bastard_sword() {
+        return Err(binary_creature_input_error(
+            "weapon",
+            "V3 embedded-item proof accepts only the exact owner-corrected NWN base bastard sword nw_wswbs001",
+        ));
+    }
+    if fixtures.is_empty()
+        || fixtures
+            .iter()
+            .any(|fixture| fixture.equipped_item_resref != weapon.resref)
+    {
+        return Err(binary_creature_input_error(
+            "fixtures.equippedItemResref",
+            "every V3 fixture must reference the exact embedded NWN base bastard sword",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_binary_creature_stock_weapon_demo_input_v2(
@@ -1059,6 +1789,36 @@ fn validate_binary_creature_weapon_demo_input(
         return Err(binary_creature_input_error(
             "fixtures.equippedItemResref",
             "every demo fixture must reference the generated weapon UTI",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_binary_creature_ghostly_visage_script_v1(
+    script: &BinaryCreatureGhostlyVisageScriptV1,
+) -> Result<(), ProofModuleErrorV1> {
+    if !is_owned_resref(&script.resref) {
+        return Err(binary_creature_input_error(
+            "script.resref",
+            "script resref must contain 1..16 lowercase ASCII letters, digits, or underscores",
+        ));
+    }
+    if script.visual_effect_id != VFX_DUR_GHOSTLY_VISAGE_NO_SOUND_V1 {
+        return Err(binary_creature_input_error(
+            "script.visualEffectId",
+            "Ghostly Visage demo requires exact base-game visual effect 478 (no sound)",
+        ));
+    }
+    if script.source != GHOSTLY_VISAGE_NO_SOUND_SPAWN_SCRIPT_V1.as_bytes() {
+        return Err(binary_creature_input_error(
+            "script.source",
+            "spawn NSS must exactly apply permanent VFX_DUR_GHOSTLY_VISAGE_NO_SOUND to OBJECT_SELF",
+        ));
+    }
+    if script.compiled.len() <= 8 || !script.compiled.starts_with(b"NCS V1.0") {
+        return Err(binary_creature_input_error(
+            "script.compiled",
+            "compiled spawn script must contain an NCS V1.0 payload",
         ));
     }
     Ok(())
@@ -1165,6 +1925,12 @@ fn binary_creature_input_error(
     message: impl Into<String>,
 ) -> ProofModuleErrorV1 {
     error("M0-BINARY-MULTI-FIXTURE-INPUT-INVALID", path, message)
+}
+
+fn map_creature_product_contract_error(
+    source: crate::creature_product::CreatureProductContractErrorV1,
+) -> ProofModuleErrorV1 {
+    error(source.code, source.path, source.message)
 }
 
 fn binary_creature_readback_error(
@@ -1946,13 +2712,14 @@ fn inspect_binary_creature_multi_fixture_module_with_extras_v1(
 pub fn inspect_binary_creature_profile_matrix_module_v2(
     bytes: &[u8],
 ) -> Result<BinaryCreatureProfileMatrixModuleReadbackV2, ProofModuleErrorV1> {
-    inspect_binary_creature_profile_matrix_module_with_extras_v2(bytes, &[], false)
+    inspect_binary_creature_profile_matrix_module_with_extras_v2(bytes, &[], false, false)
 }
 
 fn inspect_binary_creature_profile_matrix_module_with_extras_v2(
     bytes: &[u8],
     allowed_extra_resources: &[(String, u16)],
     ignore_hand_equipment_for_profile_classification: bool,
+    ignore_spawn_script_for_profile_classification: bool,
 ) -> Result<BinaryCreatureProfileMatrixModuleReadbackV2, ProofModuleErrorV1> {
     let scene = inspect_binary_creature_multi_fixture_module_with_extras_v1(
         bytes,
@@ -1984,6 +2751,7 @@ fn inspect_binary_creature_profile_matrix_module_with_extras_v2(
         let git_fields = runtime_profile_classification_fields(
             &creature.fields,
             ignore_hand_equipment_for_profile_classification,
+            ignore_spawn_script_for_profile_classification,
         );
         let git_profile =
             classify_binary_creature_runtime_profile(&git_fields, fixture, &git_path)?;
@@ -1998,6 +2766,7 @@ fn inspect_binary_creature_profile_matrix_module_with_extras_v2(
         let utc_fields = runtime_profile_classification_fields(
             &utc.root.fields,
             ignore_hand_equipment_for_profile_classification,
+            ignore_spawn_script_for_profile_classification,
         );
         let utc_profile =
             classify_binary_creature_runtime_profile(&utc_fields, fixture, &utc_path)?;
@@ -2023,16 +2792,124 @@ fn inspect_binary_creature_profile_matrix_module_with_extras_v2(
 fn runtime_profile_classification_fields(
     fields: &[GffFieldV1],
     ignore_hand_equipment: bool,
+    ignore_spawn_script: bool,
 ) -> Vec<GffFieldV1> {
     let mut normalized = fields.to_vec();
-    if ignore_hand_equipment
-        && let Some(equipment) = normalized
+    if ignore_hand_equipment {
+        if let Some(equipment) = normalized
             .iter_mut()
             .find(|field| field.label == "Equip_ItemList")
+        {
+            equipment.value = GffValueV1::List(Vec::new());
+        }
+        if let Some(feats) = normalized
+            .iter_mut()
+            .find(|field| field.label == "FeatList")
+        {
+            feats.value = GffValueV1::List(Vec::new());
+        }
+    }
+    if ignore_spawn_script
+        && let Some(script) = normalized
+            .iter_mut()
+            .find(|field| field.label == "ScriptSpawn")
     {
-        equipment.value = GffValueV1::List(Vec::new());
+        script.value = resref("");
     }
     normalized
+}
+
+/// Reads the final MOD and independently proves the complete Ghostly Visage
+/// chain: exact NSS/NCS resources, exact script resref in both GIT and UTC,
+/// and the original runtime profile after normalizing only that script field.
+pub fn inspect_binary_creature_ghostly_visage_demo_module_v1(
+    bytes: &[u8],
+    script: &BinaryCreatureGhostlyVisageScriptV1,
+) -> Result<BinaryCreatureGhostlyVisageDemoReadbackV1, ProofModuleErrorV1> {
+    validate_binary_creature_ghostly_visage_script_v1(script)?;
+    let allowed = [
+        (script.resref.clone(), NSS_RESOURCE_TYPE),
+        (script.resref.clone(), NCS_RESOURCE_TYPE),
+    ];
+    let scene =
+        inspect_binary_creature_profile_matrix_module_with_extras_v2(bytes, &allowed, false, true)?;
+    let archive = ErfArchive::parse(bytes)
+        .map_err(|value| error(value.code, "module.archive", value.context))?;
+    let source = archive
+        .find(&script.resref, NSS_RESOURCE_TYPE)
+        .map_err(|value| error(value.code, "script.nss", value.context))?;
+    let compiled = archive
+        .find(&script.resref, NCS_RESOURCE_TYPE)
+        .map_err(|value| error(value.code, "script.ncs", value.context))?;
+    if source != script.source || compiled != script.compiled {
+        return Err(binary_creature_readback_error(
+            "script.resources",
+            "embedded NSS or NCS bytes differ from the exact authored script",
+        ));
+    }
+
+    let git = read_gff_v32(
+        archive
+            .find(&scene.scene.area_resref, GIT_RESOURCE_TYPE)
+            .map_err(|value| error(value.code, "area.git", value.context))?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|value| error(value.code, "area.git", value.message))?;
+    let creatures =
+        match binary_creature_field(&git.root.fields, "Creature List", "area.git.Creature List")? {
+            GffValueV1::List(values) if values.len() == scene.fixtures.len() => values,
+            _ => {
+                return Err(binary_creature_readback_error(
+                    "area.git.Creature List",
+                    "Ghostly Visage fixture count differs from profile readback",
+                ));
+            }
+        };
+    for (index, (fixture, creature)) in scene.fixtures.iter().zip(creatures).enumerate() {
+        require_binary_creature_spawn_script(
+            &creature.fields,
+            &script.resref,
+            &format!("area.git.Creature List[{index}].ScriptSpawn"),
+        )?;
+        let utc_path = format!("fixtures[{index}].utc");
+        let utc = read_gff_v32(
+            archive
+                .find(&fixture.fixture.template_resref, UTC_RESOURCE_TYPE)
+                .map_err(|value| error(value.code, &utc_path, value.context))?,
+            &GffLimitsV1::default(),
+        )
+        .map_err(|value| error(value.code, &utc_path, value.message))?;
+        require_binary_creature_spawn_script(
+            &utc.root.fields,
+            &script.resref,
+            &format!("{utc_path}.ScriptSpawn"),
+        )?;
+    }
+
+    Ok(BinaryCreatureGhostlyVisageDemoReadbackV1 {
+        schema_version: 1,
+        scene: scene.clone(),
+        script_resref: script.resref.clone(),
+        visual_effect_id: script.visual_effect_id,
+        source_sha256: sha256(source),
+        compiled_sha256: sha256(compiled),
+        fixtures: scene.fixtures,
+    })
+}
+
+fn require_binary_creature_spawn_script(
+    fields: &[GffFieldV1],
+    expected_resref: &str,
+    path: &str,
+) -> Result<(), ProofModuleErrorV1> {
+    let actual = binary_creature_resref(binary_creature_field(fields, "ScriptSpawn", path)?, path)?;
+    if actual != expected_resref {
+        return Err(binary_creature_readback_error(
+            path,
+            "ScriptSpawn differs from the embedded Ghostly Visage NCS resref",
+        ));
+    }
+    Ok(())
 }
 
 /// Reads the final MOD bytes and independently binds both GIT and UTC
@@ -2059,6 +2936,7 @@ pub fn inspect_binary_creature_weapon_demo_module_v1(
         bytes,
         &[(weapon_resref.clone(), UTI_RESOURCE_TYPE)],
         true,
+        false,
     )?;
     let weapon_document = read_gff_v32(
         archive
@@ -2202,7 +3080,8 @@ pub fn inspect_binary_creature_stock_weapon_demo_module_v2(
             "V2 stock-weapon demo must resolve the base UTI and must not embed a module-local UTI",
         ));
     }
-    let scene = inspect_binary_creature_profile_matrix_module_with_extras_v2(bytes, &[], true)?;
+    let scene =
+        inspect_binary_creature_profile_matrix_module_with_extras_v2(bytes, &[], true, false)?;
     let git = read_gff_v32(
         archive
             .find(&scene.scene.area_resref, GIT_RESOURCE_TYPE)
@@ -2258,6 +3137,272 @@ pub fn inspect_binary_creature_stock_weapon_demo_module_v2(
         weapon: weapon.clone(),
         fixtures,
     })
+}
+
+pub fn inspect_binary_creature_embedded_stock_weapon_demo_module_v3(
+    bytes: &[u8],
+    weapon: &BinaryCreatureEmbeddedStockWeaponV3,
+) -> Result<BinaryCreatureEmbeddedStockWeaponDemoReadbackV3, ProofModuleErrorV1> {
+    if weapon != &BinaryCreatureEmbeddedStockWeaponV3::nwn_base_bastard_sword() {
+        return Err(binary_creature_readback_error(
+            "weapon",
+            "V3 readback requires the exact owner-corrected NWN base bastard sword",
+        ));
+    }
+    let archive = ErfArchive::parse(bytes)
+        .map_err(|value| error(value.code, "module.archive", value.context))?;
+    if archive
+        .resources()
+        .iter()
+        .any(|resource| resource.resource_type == UTI_RESOURCE_TYPE)
+    {
+        return Err(binary_creature_readback_error(
+            "module.resources.uti",
+            "embedded stock-weapon demo must not copy or synthesize a module-local UTI",
+        ));
+    }
+    let scene =
+        inspect_binary_creature_profile_matrix_module_with_extras_v2(bytes, &[], true, false)?;
+    let git = read_gff_v32(
+        archive
+            .find(&scene.scene.area_resref, GIT_RESOURCE_TYPE)
+            .map_err(|value| error(value.code, "area.git", value.context))?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|value| error(value.code, "area.git", value.message))?;
+    let creatures =
+        match binary_creature_field(&git.root.fields, "Creature List", "area.git.Creature List")? {
+            GffValueV1::List(values) if values.len() == scene.fixtures.len() => values,
+            _ => {
+                return Err(binary_creature_readback_error(
+                    "area.git.Creature List",
+                    "V3 embedded weapon fixture count differs from profile readback",
+                ));
+            }
+        };
+    let mut fixtures = Vec::with_capacity(scene.fixtures.len());
+    for (index, (profiled_fixture, git_creature)) in
+        scene.fixtures.iter().zip(creatures).enumerate()
+    {
+        let git_path = format!("area.git.Creature List[{index}]");
+        let hand = read_binary_creature_embedded_stock_weapon(
+            &git_creature.fields,
+            &format!("{git_path}.Equip_ItemList"),
+            weapon,
+        )?;
+        read_binary_creature_proficiency_feat(
+            &git_creature.fields,
+            &format!("{git_path}.FeatList"),
+            weapon.required_proficiency_feat,
+        )?;
+
+        let utc_path = format!("fixtures[{index}].utc");
+        let utc = read_gff_v32(
+            archive
+                .find(&profiled_fixture.fixture.template_resref, UTC_RESOURCE_TYPE)
+                .map_err(|value| error(value.code, &utc_path, value.context))?,
+            &GffLimitsV1::default(),
+        )
+        .map_err(|value| error(value.code, &utc_path, value.message))?;
+        let utc_equipment = read_binary_creature_hand_equipment(
+            &utc.root.fields,
+            &format!("{utc_path}.Equip_ItemList"),
+        )?;
+        if utc_equipment.0 != hand || utc_equipment.1 != weapon.resref {
+            return Err(binary_creature_readback_error(
+                format!("fixtures[{index}].Equip_ItemList"),
+                "placed embedded item and UTC equipment must use the same hand and stock resref",
+            ));
+        }
+        fixtures.push(BinaryCreatureEquippedFixtureV1 {
+            profiled_fixture: profiled_fixture.clone(),
+            hand,
+            equipped_item_resref: weapon.resref.clone(),
+        });
+    }
+    Ok(BinaryCreatureEmbeddedStockWeaponDemoReadbackV3 {
+        schema_version: 3,
+        scene,
+        weapon: weapon.clone(),
+        proficiency_feat: weapon.required_proficiency_feat,
+        fixtures,
+    })
+}
+
+pub fn inspect_binary_creature_authored_demo_module_v4(
+    bytes: &[u8],
+    fixture: &BinaryCreatureProfiledFixtureV2,
+    blueprint: &CreatureBlueprintAuthoringV1,
+    loadout: &CreatureEquipmentLoadoutV2,
+) -> Result<BinaryCreatureAuthoredDemoReadbackV4, ProofModuleErrorV1> {
+    validate_creature_blueprint_authoring_v1(blueprint)
+        .map_err(map_creature_product_contract_error)?;
+    let loadout_report = validate_creature_equipment_loadout_v2(loadout)
+        .map_err(map_creature_product_contract_error)?;
+    let archive = ErfArchive::parse(bytes)
+        .map_err(|source| error(source.code, "module.archive", source.context))?;
+    if archive
+        .resources()
+        .iter()
+        .any(|resource| resource.resource_type == UTI_RESOURCE_TYPE)
+    {
+        return Err(binary_creature_readback_error(
+            "module.resources.uti",
+            "complete embedded loadout must not contain a module-local UTI",
+        ));
+    }
+    let scene = inspect_binary_creature_multi_fixture_module_with_extras_v1(bytes, &[])?;
+    if scene.fixtures != [fixture.fixture.clone()] {
+        return Err(binary_creature_readback_error(
+            "area.git.Creature List",
+            "authored demo scene differs from the requested singleton fixture",
+        ));
+    }
+    let git = read_gff_v32(
+        archive
+            .find(&scene.area_resref, GIT_RESOURCE_TYPE)
+            .map_err(|source| error(source.code, "area.git", source.context))?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|source| error(source.code, "area.git", source.message))?;
+    let actual_git =
+        match binary_creature_field(&git.root.fields, "Creature List", "area.git.Creature List")? {
+            GffValueV1::List(values) if values.len() == 1 => &values[0],
+            _ => {
+                return Err(binary_creature_readback_error(
+                    "area.git.Creature List",
+                    "authored demo requires exactly one placed Creature",
+                ));
+            }
+        };
+    let expected_git = binary_creature_authored_fixture_git_creature(fixture, blueprint, loadout)?;
+    reject_equipped_res_shortcuts(&actual_git.fields, "area.git.Creature List[0]")?;
+    if actual_git != &expected_git {
+        return Err(binary_creature_readback_error(
+            "area.git.Creature List[0]",
+            "placed Creature fields differ from the authored blueprint/loadout",
+        ));
+    }
+
+    let utc_path = "fixture.utc";
+    let actual_utc = read_gff_v32(
+        archive
+            .find(&fixture.fixture.template_resref, UTC_RESOURCE_TYPE)
+            .map_err(|source| error(source.code, utc_path, source.context))?,
+        &GffLimitsV1::default(),
+    )
+    .map_err(|source| error(source.code, utc_path, source.message))?;
+    let expected_utc_bytes = binary_creature_authored_fixture_utc(fixture, blueprint, loadout)?;
+    let expected_utc = read_gff_v32(&expected_utc_bytes, &GffLimitsV1::default())
+        .map_err(|source| error(source.code, "expected.utc", source.message))?;
+    if actual_utc.root != expected_utc.root {
+        return Err(binary_creature_readback_error(
+            utc_path,
+            "module-local UTC differs from the authored GIT gameplay contract",
+        ));
+    }
+    reject_equipped_res_shortcuts(&actual_utc.root.fields, utc_path)?;
+    Ok(BinaryCreatureAuthoredDemoReadbackV4 {
+        schema_version: 4,
+        scene,
+        blueprint: blueprint.clone(),
+        loadout: loadout.clone(),
+        loadout_report,
+    })
+}
+
+fn reject_equipped_res_shortcuts(
+    fields: &[GffFieldV1],
+    path: &str,
+) -> Result<(), ProofModuleErrorV1> {
+    let equipment = match binary_creature_field(fields, "Equip_ItemList", path)? {
+        GffValueV1::List(values) => values,
+        _ => {
+            return Err(binary_creature_readback_error(
+                format!("{path}.Equip_ItemList"),
+                "equipment field must be a GFF list",
+            ));
+        }
+    };
+    if equipment
+        .iter()
+        .flat_map(|item| &item.fields)
+        .any(|field| field.label == "EquippedRes")
+    {
+        return Err(binary_creature_readback_error(
+            format!("{path}.Equip_ItemList"),
+            "EquippedRes shortcuts are forbidden in the complete loadout lane",
+        ));
+    }
+    Ok(())
+}
+
+fn read_binary_creature_embedded_stock_weapon(
+    fields: &[GffFieldV1],
+    path: &str,
+    weapon: &BinaryCreatureEmbeddedStockWeaponV3,
+) -> Result<BinaryCreatureHandSlotV1, ProofModuleErrorV1> {
+    let list = match binary_creature_field(fields, "Equip_ItemList", path)? {
+        GffValueV1::List(values) if values.len() == 1 => values,
+        _ => {
+            return Err(binary_creature_readback_error(
+                path,
+                "expected exactly one embedded equipped hand item",
+            ));
+        }
+    };
+    let hand = match list[0].struct_id {
+        16 => BinaryCreatureHandSlotV1::RightHand,
+        32 => BinaryCreatureHandSlotV1::LeftHand,
+        other => {
+            return Err(binary_creature_readback_error(
+                path,
+                format!("unsupported native hand slot struct id {other}"),
+            ));
+        }
+    };
+    let expected = binary_creature_embedded_stock_weapon_fields(weapon);
+    if list[0].fields.len() != expected.len()
+        || expected.iter().any(|expected_field| {
+            !list[0].fields.iter().any(|actual_field| {
+                actual_field.label == expected_field.label
+                    && actual_field.value == expected_field.value
+            })
+        })
+    {
+        return Err(binary_creature_readback_error(
+            path,
+            "embedded item fields differ from the exact owner-corrected stock bastard-sword contract",
+        ));
+    }
+    Ok(hand)
+}
+
+fn read_binary_creature_proficiency_feat(
+    fields: &[GffFieldV1],
+    path: &str,
+    expected_feat: u16,
+) -> Result<(), ProofModuleErrorV1> {
+    let list = match binary_creature_field(fields, "FeatList", path)? {
+        GffValueV1::List(values) if values.len() == 1 => values,
+        _ => {
+            return Err(binary_creature_readback_error(
+                path,
+                "expected exactly one required weapon proficiency feat",
+            ));
+        }
+    };
+    if list[0].struct_id != 1
+        || list[0].fields.len() != 1
+        || binary_creature_field(&list[0].fields, "Feat", &format!("{path}[0].Feat"))?
+            != &GffValueV1::Word(expected_feat)
+    {
+        return Err(binary_creature_readback_error(
+            path,
+            format!("expected exact proficiency feat {expected_feat}"),
+        ));
+    }
+    Ok(())
 }
 
 fn read_binary_creature_hand_equipment(
@@ -2364,6 +3509,9 @@ fn build_canonical_creature_proof_module_v1(
             byte_length: archive.payload.len() as u64,
             sha256: sha256(&archive.payload),
             semantic_readback_status: "PASS".to_owned(),
+            held_weapon_readback: None,
+            held_stock_weapon_readback: None,
+            authored_creature_readback: None,
             binary_m0_runtime_fixture: None,
         },
         payload: archive.payload,
@@ -2465,6 +3613,9 @@ pub fn build_m0_control_proof_module_v1(
             byte_length: archive.payload.len() as u64,
             sha256: sha256(&archive.payload),
             semantic_readback_status: "PASS".to_owned(),
+            held_weapon_readback: None,
+            held_stock_weapon_readback: None,
+            authored_creature_readback: None,
             binary_m0_runtime_fixture: None,
         },
         payload: archive.payload,
@@ -2505,6 +3656,37 @@ pub(crate) fn binary_m0_module_ifo_for(
         (M0_RUNTIME_ENTRY_X, M0_RUNTIME_ENTRY_Y, M0_RUNTIME_ENTRY_Z),
         (M0_RUNTIME_ENTRY_DIR_X, M0_RUNTIME_ENTRY_DIR_Y),
     )
+}
+
+fn binary_m0_module_ifo_for_ee_v3(
+    module_resref: &str,
+    area_resref: &str,
+    hak_resrefs: &[&str],
+    display_name: &str,
+    description: &str,
+) -> Result<Vec<u8>, ProofModuleErrorV1> {
+    let payload = binary_m0_module_ifo_for(
+        module_resref,
+        area_resref,
+        hak_resrefs,
+        display_name,
+        description,
+    )?;
+    let mut document = read_gff_v32(&payload, &GffLimitsV1::default()).map_err(|value| {
+        error(
+            value.code,
+            "module.ifo",
+            format!("generated IFO readback failed: {}", value.message),
+        )
+    })?;
+    for item in &mut document.root.fields {
+        match item.label.as_str() {
+            "Mod_MinGameVer" => item.value = string("1.89"),
+            "Expansion_Pack" => item.value = GffValueV1::Word(3),
+            _ => {}
+        }
+    }
+    gff(GffFileTypeV1::Ifo, document.root.fields)
 }
 
 fn module_ifo_for_with_entry(
@@ -2743,6 +3925,29 @@ pub(crate) fn binary_m0_area_for_named(
     )
 }
 
+fn binary_m0_area_for_named_ee_v2(
+    area_resref: &str,
+    area_display_name: &str,
+) -> Result<Vec<u8>, ProofModuleErrorV1> {
+    let payload = binary_m0_area_for_named(area_resref, area_display_name)?;
+    let mut document = read_gff_v32(&payload, &GffLimitsV1::default()).map_err(|value| {
+        error(
+            value.code,
+            "area.are",
+            format!("generated ARE readback failed: {}", value.message),
+        )
+    })?;
+    if let Some(version) = document
+        .root
+        .fields
+        .iter_mut()
+        .find(|field| field.label == "Version")
+    {
+        version.value = GffValueV1::Dword(2);
+    }
+    gff(GffFileTypeV1::Are, document.root.fields)
+}
+
 fn binary_m0_tile(tile_id: i32, orientation: i32) -> GffStructV1 {
     GffStructV1 {
         struct_id: 1,
@@ -2899,6 +4104,49 @@ fn binary_creature_profile_matrix_git(
     gff(GffFileTypeV1::Git, fields)
 }
 
+fn binary_creature_ghostly_visage_demo_git(
+    fixtures: &[BinaryCreatureProfiledFixtureV2],
+    script_resref: &str,
+) -> Result<Vec<u8>, ProofModuleErrorV1> {
+    let mut fields = vec![
+        field(
+            "AreaProperties",
+            GffValueV1::Struct(GffStructV1 {
+                struct_id: 100,
+                fields: [
+                    "AmbientSndDay",
+                    "AmbientSndNight",
+                    "AmbientSndDayVol",
+                    "AmbientSndNitVol",
+                    "EnvAudio",
+                    "MusicBattle",
+                    "MusicDay",
+                    "MusicNight",
+                    "MusicDelay",
+                ]
+                .into_iter()
+                .map(|label| field(label, GffValueV1::Int(0)))
+                .collect(),
+            }),
+        ),
+        field(
+            "Creature List",
+            GffValueV1::List(
+                fixtures
+                    .iter()
+                    .map(|fixture| {
+                        let mut creature = binary_creature_profiled_fixture_git_creature(fixture);
+                        apply_binary_creature_spawn_script(&mut creature.fields, script_resref);
+                        creature
+                    })
+                    .collect(),
+            ),
+        ),
+    ];
+    fields.extend(empty_area_instance_lists());
+    gff(GffFileTypeV1::Git, fields)
+}
+
 fn binary_creature_weapon_demo_git(
     fixtures: &[BinaryCreatureEquippedFixtureV1],
 ) -> Result<Vec<u8>, ProofModuleErrorV1> {
@@ -2929,6 +4177,84 @@ fn binary_creature_weapon_demo_git(
                 fixtures
                     .iter()
                     .map(binary_creature_equipped_fixture_git_creature)
+                    .collect(),
+            ),
+        ),
+    ];
+    fields.extend(empty_area_instance_lists());
+    gff(GffFileTypeV1::Git, fields)
+}
+
+fn binary_creature_authored_demo_git(
+    fixture: &BinaryCreatureProfiledFixtureV2,
+    blueprint: &CreatureBlueprintAuthoringV1,
+    loadout: &CreatureEquipmentLoadoutV2,
+) -> Result<Vec<u8>, ProofModuleErrorV1> {
+    let mut fields = vec![
+        field(
+            "AreaProperties",
+            GffValueV1::Struct(GffStructV1 {
+                struct_id: 100,
+                fields: [
+                    "AmbientSndDay",
+                    "AmbientSndNight",
+                    "AmbientSndDayVol",
+                    "AmbientSndNitVol",
+                    "EnvAudio",
+                    "MusicBattle",
+                    "MusicDay",
+                    "MusicNight",
+                    "MusicDelay",
+                ]
+                .into_iter()
+                .map(|label| field(label, GffValueV1::Int(0)))
+                .collect(),
+            }),
+        ),
+        field(
+            "Creature List",
+            GffValueV1::List(vec![binary_creature_authored_fixture_git_creature(
+                fixture, blueprint, loadout,
+            )?]),
+        ),
+    ];
+    fields.extend(empty_area_instance_lists());
+    gff(GffFileTypeV1::Git, fields)
+}
+
+fn binary_creature_embedded_stock_weapon_demo_git(
+    fixtures: &[BinaryCreatureEquippedFixtureV1],
+    weapon: &BinaryCreatureEmbeddedStockWeaponV3,
+) -> Result<Vec<u8>, ProofModuleErrorV1> {
+    let mut fields = vec![
+        field(
+            "AreaProperties",
+            GffValueV1::Struct(GffStructV1 {
+                struct_id: 100,
+                fields: [
+                    "AmbientSndDay",
+                    "AmbientSndNight",
+                    "AmbientSndDayVol",
+                    "AmbientSndNitVol",
+                    "EnvAudio",
+                    "MusicBattle",
+                    "MusicDay",
+                    "MusicNight",
+                    "MusicDelay",
+                ]
+                .into_iter()
+                .map(|label| field(label, GffValueV1::Int(0)))
+                .collect(),
+            }),
+        ),
+        field(
+            "Creature List",
+            GffValueV1::List(
+                fixtures
+                    .iter()
+                    .map(|fixture| {
+                        binary_creature_embedded_stock_weapon_fixture_git_creature(fixture, weapon)
+                    })
                     .collect(),
             ),
         ),
@@ -2980,6 +4306,201 @@ fn binary_creature_equipped_fixture_git_creature(
     creature
 }
 
+fn binary_creature_embedded_stock_weapon_fixture_git_creature(
+    fixture: &BinaryCreatureEquippedFixtureV1,
+    weapon: &BinaryCreatureEmbeddedStockWeaponV3,
+) -> GffStructV1 {
+    let mut creature = binary_creature_profiled_fixture_git_creature(&fixture.profiled_fixture);
+    apply_binary_creature_embedded_stock_weapon(&mut creature.fields, fixture.hand, weapon);
+    apply_binary_creature_proficiency_feat(&mut creature.fields, weapon.required_proficiency_feat);
+    creature
+}
+
+fn binary_creature_authored_fixture_git_creature(
+    fixture: &BinaryCreatureProfiledFixtureV2,
+    blueprint: &CreatureBlueprintAuthoringV1,
+    loadout: &CreatureEquipmentLoadoutV2,
+) -> Result<GffStructV1, ProofModuleErrorV1> {
+    validate_creature_blueprint_authoring_v1(blueprint)
+        .map_err(map_creature_product_contract_error)?;
+    validate_creature_equipment_loadout_v2(loadout).map_err(map_creature_product_contract_error)?;
+    let mut creature = binary_creature_profiled_fixture_git_creature(fixture);
+    apply_binary_creature_blueprint_authoring(&mut creature.fields, blueprint);
+    apply_binary_creature_complete_loadout(&mut creature.fields, blueprint, loadout);
+    Ok(creature)
+}
+
+fn apply_binary_creature_blueprint_authoring(
+    fields: &mut [GffFieldV1],
+    blueprint: &CreatureBlueprintAuthoringV1,
+) {
+    for item in fields {
+        item.value = match item.label.as_str() {
+            "FirstName" => loc(&blueprint.first_name),
+            "LastName" => loc(&blueprint.last_name),
+            "Description" => loc(&blueprint.description),
+            "Tag" => string(&blueprint.tag),
+            "Conversation" => resref(&blueprint.conversation),
+            "FactionID" => GffValueV1::Word(blueprint.faction_id),
+            "PortraitId" => GffValueV1::Word(blueprint.portrait_id),
+            "SoundSetFile" => GffValueV1::Word(blueprint.sound_set_file),
+            "Race" => GffValueV1::Byte(blueprint.race),
+            "Gender" => GffValueV1::Byte(blueprint.gender),
+            "HitPoints" => GffValueV1::Short(blueprint.hit_points),
+            "CurrentHitPoints" => GffValueV1::Short(blueprint.current_hit_points),
+            "MaxHitPoints" => GffValueV1::Short(blueprint.max_hit_points),
+            "ChallengeRating" => GffValueV1::Float(blueprint.challenge_rating),
+            "Str" => GffValueV1::Byte(blueprint.abilities[0]),
+            "Dex" => GffValueV1::Byte(blueprint.abilities[1]),
+            "Con" => GffValueV1::Byte(blueprint.abilities[2]),
+            "Int" => GffValueV1::Byte(blueprint.abilities[3]),
+            "Wis" => GffValueV1::Byte(blueprint.abilities[4]),
+            "Cha" => GffValueV1::Byte(blueprint.abilities[5]),
+            "NaturalAC" => GffValueV1::Byte(blueprint.natural_ac),
+            "PerceptionRange" => GffValueV1::Byte(blueprint.perception_range),
+            "Plot" => GffValueV1::Byte(u8::from(blueprint.plot)),
+            "IsImmortal" => GffValueV1::Byte(u8::from(blueprint.immortal)),
+            "Interruptable" => GffValueV1::Byte(u8::from(blueprint.interruptable)),
+            "Lootable" => GffValueV1::Byte(u8::from(blueprint.lootable)),
+            "ClassList" => GffValueV1::List(vec![GffStructV1 {
+                struct_id: 2,
+                fields: vec![
+                    field("Class", GffValueV1::Int(blueprint.class.class_id)),
+                    field("ClassLevel", GffValueV1::Short(blueprint.class.level)),
+                ],
+            }]),
+            "FeatList" => GffValueV1::List(
+                blueprint
+                    .feats
+                    .iter()
+                    .copied()
+                    .map(binary_creature_feat_struct)
+                    .collect(),
+            ),
+            label => creature_script_value(blueprint, label).unwrap_or_else(|| item.value.clone()),
+        };
+    }
+}
+
+fn creature_script_value(
+    blueprint: &CreatureBlueprintAuthoringV1,
+    label: &str,
+) -> Option<GffValueV1> {
+    let value = match label {
+        "ScriptHeartbeat" => &blueprint.scripts.heartbeat,
+        "ScriptOnNotice" => &blueprint.scripts.notice,
+        "ScriptSpellAt" => &blueprint.scripts.spell_at,
+        "ScriptAttacked" => &blueprint.scripts.attacked,
+        "ScriptDamaged" => &blueprint.scripts.damaged,
+        "ScriptDisturbed" => &blueprint.scripts.disturbed,
+        "ScriptEndRound" => &blueprint.scripts.end_round,
+        "ScriptDialogue" => &blueprint.scripts.dialogue,
+        "ScriptSpawn" => &blueprint.scripts.spawn,
+        "ScriptRested" => &blueprint.scripts.rested,
+        "ScriptDeath" => &blueprint.scripts.death,
+        "ScriptUserDefine" => &blueprint.scripts.user_defined,
+        "ScriptOnBlocked" => &blueprint.scripts.blocked,
+        _ => return None,
+    };
+    Some(resref(value))
+}
+
+fn binary_creature_feat_struct(feat: u16) -> GffStructV1 {
+    GffStructV1 {
+        struct_id: 1,
+        fields: vec![field("Feat", GffValueV1::Word(feat))],
+    }
+}
+
+fn apply_binary_creature_complete_loadout(
+    fields: &mut [GffFieldV1],
+    blueprint: &CreatureBlueprintAuthoringV1,
+    loadout: &CreatureEquipmentLoadoutV2,
+) {
+    let mut feats = blueprint.feats.iter().copied().collect::<BTreeSet<_>>();
+    for item in &loadout.items {
+        feats.extend(item.required_proficiency_feats.iter().copied());
+    }
+    for field_value in fields {
+        match field_value.label.as_str() {
+            "Equip_ItemList" => {
+                field_value.value = GffValueV1::List(
+                    loadout
+                        .items
+                        .iter()
+                        .map(|item| GffStructV1 {
+                            struct_id: item.placement.primary_native_struct_id(),
+                            fields: binary_creature_equipment_item_fields_v4(item),
+                        })
+                        .collect(),
+                );
+            }
+            "FeatList" => {
+                field_value.value = GffValueV1::List(
+                    feats
+                        .iter()
+                        .copied()
+                        .map(binary_creature_feat_struct)
+                        .collect(),
+                );
+            }
+            _ => {}
+        }
+    }
+}
+
+fn binary_creature_equipment_item_fields_v4(item: &CreatureEquipmentItemV2) -> Vec<GffFieldV1> {
+    let [part1, part2, part3] = item.model_parts;
+    let localized_name = if item.localized_name_strref == u32::MAX {
+        loc(&item.display_name)
+    } else {
+        GffValueV1::LocString(GffLocStringV1 {
+            string_ref: item.localized_name_strref,
+            substrings: Vec::new(),
+        })
+    };
+    vec![
+        field("XPosition", GffValueV1::Float(-1.0)),
+        field("YPosition", GffValueV1::Float(-1.0)),
+        field("ZPosition", GffValueV1::Float(-1.0)),
+        field("XOrientation", GffValueV1::Float(0.0)),
+        field("YOrientation", GffValueV1::Float(1.0)),
+        field("TemplateResRef", resref(&item.resref)),
+        field("BaseItem", GffValueV1::Int(item.base_item)),
+        field("LocalizedName", localized_name),
+        field(
+            "Description",
+            GffValueV1::LocString(GffLocStringV1 {
+                string_ref: u32::MAX,
+                substrings: Vec::new(),
+            }),
+        ),
+        field(
+            "DescIdentified",
+            GffValueV1::LocString(GffLocStringV1 {
+                string_ref: u32::MAX,
+                substrings: Vec::new(),
+            }),
+        ),
+        field("Tag", string(&item.resref.to_ascii_uppercase())),
+        field("Charges", GffValueV1::Byte(0)),
+        field("Cost", GffValueV1::Dword(item.cost)),
+        field("Stolen", GffValueV1::Byte(0)),
+        field("StackSize", GffValueV1::Word(1)),
+        field("Plot", GffValueV1::Byte(0)),
+        field("AddCost", GffValueV1::Dword(0)),
+        field("Identified", GffValueV1::Byte(1)),
+        field("Cursed", GffValueV1::Byte(0)),
+        field("ModelPart1", GffValueV1::Byte(part1)),
+        field("xModelPart1", GffValueV1::Word(part1.into())),
+        field("ModelPart2", GffValueV1::Byte(part2)),
+        field("xModelPart2", GffValueV1::Word(part2.into())),
+        field("ModelPart3", GffValueV1::Byte(part3)),
+        field("xModelPart3", GffValueV1::Word(part3.into())),
+        field("PropertiesList", GffValueV1::List(Vec::new())),
+    ]
+}
+
 fn apply_binary_creature_equipment(
     fields: &mut [GffFieldV1],
     hand: BinaryCreatureHandSlotV1,
@@ -2994,6 +4515,89 @@ fn apply_binary_creature_equipment(
             fields: vec![field("EquippedRes", resref(item_resref))],
         }]);
     }
+}
+
+fn apply_binary_creature_spawn_script(fields: &mut [GffFieldV1], script_resref: &str) {
+    if let Some(script) = fields.iter_mut().find(|field| field.label == "ScriptSpawn") {
+        script.value = resref(script_resref);
+    }
+}
+
+fn apply_binary_creature_embedded_stock_weapon(
+    fields: &mut [GffFieldV1],
+    hand: BinaryCreatureHandSlotV1,
+    weapon: &BinaryCreatureEmbeddedStockWeaponV3,
+) {
+    if let Some(item) = fields
+        .iter_mut()
+        .find(|field| field.label == "Equip_ItemList")
+    {
+        item.value = GffValueV1::List(vec![GffStructV1 {
+            struct_id: hand.native_struct_id(),
+            fields: binary_creature_embedded_stock_weapon_fields(weapon),
+        }]);
+    }
+}
+
+fn apply_binary_creature_proficiency_feat(fields: &mut [GffFieldV1], feat: u16) {
+    if let Some(item) = fields.iter_mut().find(|field| field.label == "FeatList") {
+        item.value = GffValueV1::List(vec![GffStructV1 {
+            struct_id: 1,
+            fields: vec![field("Feat", GffValueV1::Word(feat))],
+        }]);
+    }
+}
+
+fn binary_creature_embedded_stock_weapon_fields(
+    weapon: &BinaryCreatureEmbeddedStockWeaponV3,
+) -> Vec<GffFieldV1> {
+    let [part1, part2, part3] = weapon.model_parts;
+    vec![
+        field("XPosition", GffValueV1::Float(-1.0)),
+        field("YPosition", GffValueV1::Float(-1.0)),
+        field("ZPosition", GffValueV1::Float(-1.0)),
+        field("XOrientation", GffValueV1::Float(0.0)),
+        field("YOrientation", GffValueV1::Float(1.0)),
+        field("TemplateResRef", resref(&weapon.resref)),
+        field("BaseItem", GffValueV1::Int(weapon.base_item)),
+        field(
+            "LocalizedName",
+            GffValueV1::LocString(GffLocStringV1 {
+                string_ref: 168,
+                substrings: Vec::new(),
+            }),
+        ),
+        field(
+            "Description",
+            GffValueV1::LocString(GffLocStringV1 {
+                string_ref: u32::MAX,
+                substrings: Vec::new(),
+            }),
+        ),
+        field(
+            "DescIdentified",
+            GffValueV1::LocString(GffLocStringV1 {
+                string_ref: u32::MAX,
+                substrings: Vec::new(),
+            }),
+        ),
+        field("Tag", string(&weapon.resref.to_ascii_uppercase())),
+        field("Charges", GffValueV1::Byte(0)),
+        field("Cost", GffValueV1::Dword(70)),
+        field("Stolen", GffValueV1::Byte(0)),
+        field("StackSize", GffValueV1::Word(1)),
+        field("Plot", GffValueV1::Byte(0)),
+        field("AddCost", GffValueV1::Dword(0)),
+        field("Identified", GffValueV1::Byte(1)),
+        field("Cursed", GffValueV1::Byte(0)),
+        field("ModelPart1", GffValueV1::Byte(part1)),
+        field("xModelPart1", GffValueV1::Word(part1.into())),
+        field("ModelPart2", GffValueV1::Byte(part2)),
+        field("xModelPart2", GffValueV1::Word(part2.into())),
+        field("ModelPart3", GffValueV1::Byte(part3)),
+        field("xModelPart3", GffValueV1::Word(part3.into())),
+        field("PropertiesList", GffValueV1::List(Vec::new())),
+    ]
 }
 
 /// Applies the exact two-field normalization observed when Aurora saved the
@@ -3058,6 +4662,27 @@ fn binary_creature_profiled_fixture_utc(
     gff(GffFileTypeV1::Utc, fields)
 }
 
+fn binary_creature_ghostly_visage_fixture_utc(
+    fixture: &BinaryCreatureProfiledFixtureV2,
+    script_resref: &str,
+) -> Result<Vec<u8>, ProofModuleErrorV1> {
+    let mut fields = binary_creature_profiled_fixture_git_creature(fixture).fields;
+    apply_binary_creature_spawn_script(&mut fields, script_resref);
+    fields.drain(..5);
+    fields.insert(0, field("PaletteID", GffValueV1::Byte(0)));
+    fields.insert(
+        1,
+        field(
+            "Comment",
+            string(&format!(
+                "Generated by Meshy2Aurora for Ghostly Visage fixture {}.",
+                fixture.fixture.id
+            )),
+        ),
+    );
+    gff(GffFileTypeV1::Utc, fields)
+}
+
 fn binary_creature_equipped_fixture_utc(
     fixture: &BinaryCreatureEquippedFixtureV1,
 ) -> Result<Vec<u8>, ProofModuleErrorV1> {
@@ -3072,6 +4697,25 @@ fn binary_creature_equipped_fixture_utc(
                 "Generated by Meshy2Aurora for equipped fixture {}.",
                 fixture.profiled_fixture.fixture.id
             )),
+        ),
+    );
+    gff(GffFileTypeV1::Utc, fields)
+}
+
+fn binary_creature_authored_fixture_utc(
+    fixture: &BinaryCreatureProfiledFixtureV2,
+    blueprint: &CreatureBlueprintAuthoringV1,
+    loadout: &CreatureEquipmentLoadoutV2,
+) -> Result<Vec<u8>, ProofModuleErrorV1> {
+    let mut fields =
+        binary_creature_authored_fixture_git_creature(fixture, blueprint, loadout)?.fields;
+    fields.drain(..5);
+    fields.insert(0, field("PaletteID", GffValueV1::Byte(0)));
+    fields.insert(
+        1,
+        field(
+            "Comment",
+            string("Generated by Meshy2Aurora from CreatureBlueprintAuthoringV1."),
         ),
     );
     gff(GffFileTypeV1::Utc, fields)
@@ -3110,6 +4754,39 @@ fn binary_creature_weapon_uti(
             field("Tag", string(&weapon.resref.to_ascii_uppercase())),
             field("Stolen", GffValueV1::Byte(0)),
             field("ModelPart1", GffValueV1::Byte(part1)),
+        ],
+    )
+}
+
+fn binary_creature_standard_longsword_uti_v2(
+    weapon: &BinaryCreatureWeaponItemV1,
+) -> Result<Vec<u8>, ProofModuleErrorV1> {
+    let [part1, part2, part3] = weapon.model_parts;
+    gff(
+        GffFileTypeV1::Uti,
+        vec![
+            field("DescIdentified", loc("")),
+            field("ModelPart3", GffValueV1::Byte(part3)),
+            field("AddCost", GffValueV1::Dword(0)),
+            field("LocalizedName", loc(&weapon.display_name)),
+            field("PropertiesList", GffValueV1::List(Vec::new())),
+            field("TemplateResRef", resref(&weapon.resref)),
+            field("ModelPart2", GffValueV1::Byte(part2)),
+            field("Charges", GffValueV1::Byte(0)),
+            field("Stolen", GffValueV1::Byte(0)),
+            field("ModelPart1", GffValueV1::Byte(part1)),
+            field("Description", loc("")),
+            field("Cost", GffValueV1::Dword(30)),
+            field("StackSize", GffValueV1::Word(1)),
+            field("Tag", string(&weapon.resref.to_ascii_uppercase())),
+            field("PaletteID", GffValueV1::Byte(36)),
+            field("Plot", GffValueV1::Byte(0)),
+            field("Identified", GffValueV1::Byte(1)),
+            field(
+                "Comment",
+                string("Generated by Meshy2Aurora as a module-local ordinary longsword."),
+            ),
+            field("BaseItem", GffValueV1::Int(weapon.base_item)),
         ],
     )
 }
@@ -4336,6 +6013,42 @@ mod tests {
     }
 
     #[test]
+    fn standard_single_creature_demo_places_owned_item_in_selected_hand() {
+        let identity = BinaryCreatureModuleIdentityV1 {
+            module_resref: "m2ahanddemo".to_owned(),
+            area_resref: "m2ahandarea".to_owned(),
+            hak_resref: "m2ahandhak".to_owned(),
+        };
+        for (hand, expected_slot) in [
+            (BinaryCreatureHandSlotV1::RightHand, 16),
+            (BinaryCreatureHandSlotV1::LeftHand, 32),
+        ] {
+            let weapon = BinaryCreatureWeaponItemV1::owned_standard_longsword_v2(match hand {
+                BinaryCreatureHandSlotV1::RightHand => "m2arightitem",
+                BinaryCreatureHandSlotV1::LeftHand => "m2aleftitem",
+            });
+            let artifact = build_single_profiled_creature_owned_weapon_demo_with_identity_v4(
+                15_100,
+                BinaryCreatureRuntimeProfileV2::ActiveMonsterBaseline,
+                &identity,
+                "m2ahandcreature",
+                hand,
+                &weapon,
+            )
+            .unwrap();
+            let readback = artifact
+                .report
+                .held_weapon_readback
+                .expect("held item readback");
+            assert_eq!(readback.weapon, weapon);
+            assert_eq!(readback.fixtures.len(), 1);
+            assert_eq!(readback.fixtures[0].hand.native_struct_id(), expected_slot);
+            assert_eq!(readback.fixtures[0].equipped_item_resref, weapon.resref);
+            assert_eq!(artifact.report.resource_count, 7);
+        }
+    }
+
+    #[test]
     fn stock_weapon_demo_v2_has_real_equipment_reference_and_no_synthetic_uti() {
         let identity = BinaryCreatureModuleIdentityV1 {
             module_resref: "m2aweapdemo2".to_owned(),
@@ -4398,6 +6111,574 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(error.path, "weapon");
+    }
+
+    #[test]
+    fn stock_weapon_demo_v3_writes_caller_owned_module_and_area_names() {
+        let identity = BinaryCreatureModuleIdentityV1 {
+            module_resref: "m2aweapdemo5".to_owned(),
+            area_resref: "m2aweaparea5".to_owned(),
+            hak_resref: "m2aweaphak5".to_owned(),
+        };
+        let weapon = BinaryCreatureStockWeaponV2::nwn_base_shortsword();
+        let fixtures = vec![BinaryCreatureEquippedFixtureV1 {
+            profiled_fixture: BinaryCreatureProfiledFixtureV2 {
+                fixture: BinaryCreatureOwnedFixtureV1 {
+                    id: "m2a_weapon_right_v5".to_owned(),
+                    template_resref: "m2awrhand5".to_owned(),
+                    display_name: "V5 right-hand grip".to_owned(),
+                    appearance_row: 15_104,
+                    position: M0RuntimePositionV1 {
+                        x: 10.0,
+                        y: 14.5,
+                        z: 0.0,
+                    },
+                    orientation: M0RuntimeDirectionV1 { x: 0.0, y: -1.0 },
+                },
+                runtime_profile: BinaryCreatureRuntimeProfileV2::ActiveMonsterBaseline,
+            },
+            hand: BinaryCreatureHandSlotV1::RightHand,
+            equipped_item_resref: weapon.resref.clone(),
+        }];
+        let module_name = "Meshy2Aurora Creature Weapon Grip V5";
+        let area_name = "Meshy2Aurora Creature Weapon Test V5";
+        let artifact = build_binary_creature_stock_weapon_demo_module_named_v3(
+            &identity,
+            &fixtures,
+            &weapon,
+            module_name,
+            area_name,
+            "V5 grip test",
+        )
+        .unwrap();
+        let archive = ErfArchive::parse(&artifact.payload).unwrap();
+        let ifo = read_gff_v32(
+            archive.find("module", IFO_RESOURCE_TYPE).unwrap(),
+            &Default::default(),
+        )
+        .unwrap();
+        let are = read_gff_v32(
+            archive
+                .find(&identity.area_resref, ARE_RESOURCE_TYPE)
+                .unwrap(),
+            &Default::default(),
+        )
+        .unwrap();
+        let read_owned_name = |document: &GffDocumentV1, label: &str| {
+            let field = document
+                .root
+                .fields
+                .iter()
+                .find(|field| field.label == label)
+                .unwrap();
+            binary_creature_loc_string(&field.value, label).unwrap()
+        };
+        assert_eq!(read_owned_name(&ifo, "Mod_Name"), module_name);
+        assert_eq!(read_owned_name(&are, "Name"), area_name);
+    }
+
+    #[test]
+    fn ghostly_visage_demo_embeds_and_binds_the_exact_spawn_script() {
+        let identity = BinaryCreatureModuleIdentityV1 {
+            module_resref: "m2aghostdemo1".to_owned(),
+            area_resref: "m2aghostarea1".to_owned(),
+            hak_resref: "m2aghosthak1".to_owned(),
+        };
+        let fixtures = vec![BinaryCreatureProfiledFixtureV2 {
+            fixture: BinaryCreatureOwnedFixtureV1 {
+                id: "m2a_fogbound_ghost_v1".to_owned(),
+                template_resref: "m2aghostutc1".to_owned(),
+                display_name: "Fogbound Claw Guard with Ghostly Visage".to_owned(),
+                appearance_row: 15_100,
+                position: M0RuntimePositionV1 {
+                    x: 10.0,
+                    y: 14.5,
+                    z: 0.0,
+                },
+                orientation: M0RuntimeDirectionV1 { x: 0.0, y: -1.0 },
+            },
+            runtime_profile: BinaryCreatureRuntimeProfileV2::PassiveMonsterBaseline,
+        }];
+        let script = BinaryCreatureGhostlyVisageScriptV1 {
+            resref: "m2aghostsp1".to_owned(),
+            visual_effect_id: VFX_DUR_GHOSTLY_VISAGE_NO_SOUND_V1,
+            source: GHOSTLY_VISAGE_NO_SOUND_SPAWN_SCRIPT_V1.as_bytes().to_vec(),
+            compiled: b"NCS V1.0synthetic-test-payload".to_vec(),
+        };
+
+        let artifact = build_binary_creature_ghostly_visage_demo_module_named_v1(
+            &identity,
+            &fixtures,
+            &script,
+            "Meshy2Aurora Fogbound Ghostly Visage V1",
+            "Meshy2Aurora Fogbound VFX Test V1",
+            "Fogbound Claw Guard with permanent Ghostly Visage No Sound.",
+        )
+        .unwrap();
+        assert_eq!(artifact.readback.schema_version, 1);
+        assert_eq!(artifact.readback.script_resref, script.resref);
+        assert_eq!(artifact.readback.visual_effect_id, 478);
+        assert_eq!(artifact.readback.fixtures, fixtures);
+
+        let archive = ErfArchive::parse(&artifact.payload).unwrap();
+        assert_eq!(archive.resources().len(), 8);
+        assert_eq!(
+            archive.find(&script.resref, NSS_RESOURCE_TYPE).unwrap(),
+            script.source
+        );
+        assert_eq!(
+            archive.find(&script.resref, NCS_RESOURCE_TYPE).unwrap(),
+            script.compiled
+        );
+        assert!(
+            archive
+                .resources()
+                .iter()
+                .all(|resource| resource.resource_type != UTI_RESOURCE_TYPE)
+        );
+
+        let git = read_gff_v32(
+            archive
+                .find(&identity.area_resref, GIT_RESOURCE_TYPE)
+                .unwrap(),
+            &Default::default(),
+        )
+        .unwrap();
+        let creatures = match binary_creature_field(
+            &git.root.fields,
+            "Creature List",
+            "area.git.Creature List",
+        )
+        .unwrap()
+        {
+            GffValueV1::List(values) => values,
+            _ => panic!("Creature List must be a list"),
+        };
+        assert_eq!(
+            binary_creature_field(&creatures[0].fields, "ScriptSpawn", "placed.ScriptSpawn")
+                .unwrap(),
+            &GffValueV1::ResRef(script.resref.clone())
+        );
+        let utc = read_gff_v32(
+            archive
+                .find(&fixtures[0].fixture.template_resref, UTC_RESOURCE_TYPE)
+                .unwrap(),
+            &Default::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            binary_creature_field(&utc.root.fields, "ScriptSpawn", "utc.ScriptSpawn").unwrap(),
+            &GffValueV1::ResRef(script.resref.clone())
+        );
+        assert_eq!(
+            inspect_binary_creature_ghostly_visage_demo_module_v1(&artifact.payload, &script)
+                .unwrap(),
+            artifact.readback
+        );
+    }
+
+    #[test]
+    fn embedded_stock_weapon_demo_v4_matches_the_owner_corrected_git_contract() {
+        let identity = BinaryCreatureModuleIdentityV1 {
+            module_resref: "m2aweapdemo10".to_owned(),
+            area_resref: "m2aweaparea10".to_owned(),
+            hak_resref: "m2aweaphak10".to_owned(),
+        };
+        let weapon = BinaryCreatureEmbeddedStockWeaponV3::nwn_base_bastard_sword();
+        let fixtures = vec![BinaryCreatureEquippedFixtureV1 {
+            profiled_fixture: BinaryCreatureProfiledFixtureV2 {
+                fixture: BinaryCreatureOwnedFixtureV1 {
+                    id: "m2a_weapon_right_v10".to_owned(),
+                    template_resref: "m2awrhand10".to_owned(),
+                    display_name: "V10 owner-corrected right-hand item".to_owned(),
+                    appearance_row: 15_100,
+                    position: M0RuntimePositionV1 {
+                        x: 10.0,
+                        y: 14.5,
+                        z: 0.0,
+                    },
+                    orientation: M0RuntimeDirectionV1 { x: 0.0, y: -1.0 },
+                },
+                runtime_profile: BinaryCreatureRuntimeProfileV2::ActiveMonsterBaseline,
+            },
+            hand: BinaryCreatureHandSlotV1::RightHand,
+            equipped_item_resref: weapon.resref.clone(),
+        }];
+
+        let artifact = build_binary_creature_embedded_stock_weapon_demo_module_named_v4(
+            &identity,
+            &fixtures,
+            &weapon,
+            "Meshy2Aurora correct held-item demo V10",
+            "Meshy2Aurora correct held-item test area V10",
+            "Owner-corrected embedded item contract.",
+        )
+        .unwrap();
+        assert_eq!(artifact.readback.schema_version, 3);
+        assert_eq!(artifact.readback.weapon, weapon);
+        assert_eq!(artifact.readback.fixtures, fixtures);
+        assert_eq!(
+            artifact.readback.proficiency_feat,
+            NWN_FEAT_WEAPON_PROFICIENCY_EXOTIC_V3
+        );
+
+        let archive = ErfArchive::parse(&artifact.payload).unwrap();
+        assert_eq!(archive.resources().len(), 6);
+        assert!(
+            archive
+                .resources()
+                .iter()
+                .all(|resource| resource.resource_type != UTI_RESOURCE_TYPE)
+        );
+        let ifo = read_gff_v32(
+            archive.find("module", IFO_RESOURCE_TYPE).unwrap(),
+            &Default::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            binary_creature_string(
+                binary_creature_field(&ifo.root.fields, "Mod_MinGameVer", "module.ifo").unwrap(),
+                "module.ifo.Mod_MinGameVer",
+            )
+            .unwrap(),
+            "1.89"
+        );
+        assert_eq!(
+            binary_creature_field(&ifo.root.fields, "Expansion_Pack", "module.ifo").unwrap(),
+            &GffValueV1::Word(3)
+        );
+        let are = read_gff_v32(
+            archive
+                .find(&identity.area_resref, ARE_RESOURCE_TYPE)
+                .unwrap(),
+            &Default::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            binary_creature_field(&are.root.fields, "Version", "area.are").unwrap(),
+            &GffValueV1::Dword(2)
+        );
+
+        let git = read_gff_v32(
+            archive
+                .find(&identity.area_resref, GIT_RESOURCE_TYPE)
+                .unwrap(),
+            &Default::default(),
+        )
+        .unwrap();
+        let creatures = match binary_creature_field(
+            &git.root.fields,
+            "Creature List",
+            "area.git.Creature List",
+        )
+        .unwrap()
+        {
+            GffValueV1::List(values) => values,
+            _ => panic!("Creature List must be a list"),
+        };
+        let equipment = match binary_creature_field(
+            &creatures[0].fields,
+            "Equip_ItemList",
+            "area.git.Creature List[0].Equip_ItemList",
+        )
+        .unwrap()
+        {
+            GffValueV1::List(values) => values,
+            _ => panic!("Equip_ItemList must be a list"),
+        };
+        assert_eq!(equipment[0].struct_id, 16);
+        assert!(
+            equipment[0]
+                .fields
+                .iter()
+                .all(|field| field.label != "EquippedRes")
+        );
+        assert_eq!(
+            binary_creature_field(&equipment[0].fields, "BaseItem", "embeddedItem").unwrap(),
+            &GffValueV1::Int(3)
+        );
+        for (label, expected) in [("ModelPart1", 41), ("ModelPart2", 11), ("ModelPart3", 11)] {
+            assert_eq!(
+                binary_creature_field(&equipment[0].fields, label, "embeddedItem").unwrap(),
+                &GffValueV1::Byte(expected)
+            );
+        }
+        assert_eq!(
+            inspect_binary_creature_embedded_stock_weapon_demo_module_v3(
+                &artifact.payload,
+                &weapon,
+            )
+            .unwrap(),
+            artifact.readback
+        );
+    }
+
+    #[test]
+    fn authored_demo_embeds_v10_loadout_in_git_and_utc_and_rejects_equipped_res_mutation() {
+        let identity = BinaryCreatureModuleIdentityV1 {
+            module_resref: "m2aloadout1".to_owned(),
+            area_resref: "m2aloadarea1".to_owned(),
+            hak_resref: "m2aloadhak1".to_owned(),
+        };
+        let blueprint = CreatureBlueprintAuthoringV1::active_monster_default();
+        let loadout = CreatureEquipmentLoadoutV2::v10_bastard_sword_right_hand();
+        let artifact = build_single_authored_creature_demo_with_identity_v6(
+            15_100,
+            &identity,
+            "m2aloadutc1",
+            &blueprint,
+            &loadout,
+        )
+        .unwrap();
+        let readback = artifact.report.authored_creature_readback.as_ref().unwrap();
+        assert_eq!(readback.loadout, loadout);
+        assert_eq!(readback.blueprint, blueprint);
+        assert!(readback.loadout_report.no_equipped_res_shortcuts);
+        assert_eq!(readback.loadout_report.native_slots, vec![16]);
+        assert_eq!(readback.loadout_report.required_proficiency_feats, vec![44]);
+
+        let archive = ErfArchive::parse(&artifact.payload).unwrap();
+        let mut git = read_gff_v32(
+            archive
+                .find(&identity.area_resref, GIT_RESOURCE_TYPE)
+                .unwrap(),
+            &Default::default(),
+        )
+        .unwrap();
+        let creatures = match git
+            .root
+            .fields
+            .iter_mut()
+            .find(|field| field.label == "Creature List")
+            .map(|field| &mut field.value)
+        {
+            Some(GffValueV1::List(values)) => values,
+            _ => panic!("Creature List"),
+        };
+        let equipment = match creatures[0]
+            .fields
+            .iter_mut()
+            .find(|field| field.label == "Equip_ItemList")
+            .map(|field| &mut field.value)
+        {
+            Some(GffValueV1::List(values)) => values,
+            _ => panic!("Equip_ItemList"),
+        };
+        equipment[0].fields = vec![field("EquippedRes", resref(&loadout.items[0].resref))];
+        let mutated_git = gff(GffFileTypeV1::Git, git.root.fields).unwrap();
+        let resources = archive
+            .resources()
+            .iter()
+            .map(|entry| {
+                resource(
+                    &entry.resref,
+                    entry.resource_type,
+                    if entry.resref == identity.area_resref
+                        && entry.resource_type == GIT_RESOURCE_TYPE
+                    {
+                        mutated_git.clone()
+                    } else {
+                        archive
+                            .find(&entry.resref, entry.resource_type)
+                            .unwrap()
+                            .to_vec()
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+        let mutated = write_erf_archive_v1(
+            ErfFileType::Module,
+            &resources,
+            &HakWriterOptionsV1::default(),
+        )
+        .unwrap();
+        let fixture = BinaryCreatureProfiledFixtureV2 {
+            fixture: BinaryCreatureOwnedFixtureV1 {
+                id: blueprint.tag.clone(),
+                template_resref: "m2aloadutc1".to_owned(),
+                display_name: blueprint.first_name.clone(),
+                appearance_row: 15_100,
+                position: M0RuntimePositionV1 {
+                    x: M0_RUNTIME_FIXTURE_X,
+                    y: M0_RUNTIME_FIXTURE_Y,
+                    z: M0_RUNTIME_FIXTURE_Z,
+                },
+                orientation: M0RuntimeDirectionV1 { x: 0.0, y: -1.0 },
+            },
+            runtime_profile: BinaryCreatureRuntimeProfileV2::ActiveMonsterBaseline,
+        };
+        let error = inspect_binary_creature_authored_demo_module_v4(
+            &mutated.payload,
+            &fixture,
+            &blueprint,
+            &loadout,
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .message
+                .contains("EquippedRes shortcuts are forbidden")
+        );
+    }
+
+    #[test]
+    fn gameplay_only_blueprint_edit_changes_utc_module_bytes_without_a_model_input() {
+        let identity = BinaryCreatureModuleIdentityV1 {
+            module_resref: "m2autconly1".to_owned(),
+            area_resref: "m2autcarea1".to_owned(),
+            hak_resref: "m2amodelhak1".to_owned(),
+        };
+        let loadout = CreatureEquipmentLoadoutV2::default();
+        let first = CreatureBlueprintAuthoringV1::active_monster_default();
+        let mut second = first.clone();
+        second.hit_points = 30;
+        second.current_hit_points = 30;
+        let first_artifact = build_single_authored_creature_demo_with_identity_v6(
+            15_101,
+            &identity,
+            "m2autcunit1",
+            &first,
+            &loadout,
+        )
+        .unwrap();
+        let second_artifact = build_single_authored_creature_demo_with_identity_v6(
+            15_101,
+            &identity,
+            "m2autcunit1",
+            &second,
+            &loadout,
+        )
+        .unwrap();
+        assert_ne!(first_artifact.report.sha256, second_artifact.report.sha256);
+        assert_eq!(
+            first_artifact.report.hak_resref,
+            second_artifact.report.hak_resref
+        );
+        assert_eq!(
+            second_artifact
+                .report
+                .authored_creature_readback
+                .as_ref()
+                .unwrap()
+                .blueprint
+                .hit_points,
+            30
+        );
+    }
+
+    #[test]
+    fn named_owned_weapon_demo_embeds_the_exact_uti_referenced_by_equipment() {
+        let identity = BinaryCreatureModuleIdentityV1 {
+            module_resref: "m2aweapdemo7".to_owned(),
+            area_resref: "m2aweaparea7".to_owned(),
+            hak_resref: "m2aweaphak7".to_owned(),
+        };
+        let weapon = BinaryCreatureWeaponItemV1::owned_standard_longsword_v2("m2aweapitem7");
+        let fixtures = vec![BinaryCreatureEquippedFixtureV1 {
+            profiled_fixture: BinaryCreatureProfiledFixtureV2 {
+                fixture: BinaryCreatureOwnedFixtureV1 {
+                    id: "m2a_weapon_right_v7".to_owned(),
+                    template_resref: "m2awrhand7".to_owned(),
+                    display_name: "V7 right-hand module-local UTI".to_owned(),
+                    appearance_row: 15_104,
+                    position: M0RuntimePositionV1 {
+                        x: 10.0,
+                        y: 14.5,
+                        z: 0.0,
+                    },
+                    orientation: M0RuntimeDirectionV1 { x: 0.0, y: -1.0 },
+                },
+                runtime_profile: BinaryCreatureRuntimeProfileV2::ActiveMonsterBaseline,
+            },
+            hand: BinaryCreatureHandSlotV1::RightHand,
+            equipped_item_resref: weapon.resref.clone(),
+        }];
+        let module_name = "Meshy2Aurora Creature Weapon Grip V7";
+        let area_name = "Meshy2Aurora Creature Weapon Test V7";
+
+        let artifact = build_binary_creature_owned_weapon_demo_module_named_v2(
+            &identity,
+            &fixtures,
+            &weapon,
+            module_name,
+            area_name,
+            "V7 module-local UTI grip test",
+        )
+        .unwrap();
+
+        assert_eq!(artifact.readback.weapon, weapon);
+        assert_eq!(artifact.readback.fixtures, fixtures);
+        assert_eq!(artifact.readback.weapon.base_item, 1);
+        assert_eq!(artifact.readback.weapon.model_parts, [61, 11, 11]);
+        let archive = ErfArchive::parse(&artifact.payload).unwrap();
+        assert_eq!(
+            archive
+                .resources()
+                .iter()
+                .filter(|resource| resource.resource_type == UTI_RESOURCE_TYPE)
+                .count(),
+            1
+        );
+        assert!(
+            archive
+                .find(&artifact.readback.weapon.resref, UTI_RESOURCE_TYPE)
+                .is_ok()
+        );
+        let uti = read_gff_v32(
+            archive
+                .find(&artifact.readback.weapon.resref, UTI_RESOURCE_TYPE)
+                .unwrap(),
+            &Default::default(),
+        )
+        .unwrap();
+        let actual_uti_fields = field_labels(&uti.root).into_iter().collect::<HashSet<_>>();
+        let expected_uti_fields = [
+            "DescIdentified",
+            "ModelPart3",
+            "AddCost",
+            "LocalizedName",
+            "PropertiesList",
+            "TemplateResRef",
+            "ModelPart2",
+            "Charges",
+            "Stolen",
+            "ModelPart1",
+            "Description",
+            "Cost",
+            "StackSize",
+            "Tag",
+            "PaletteID",
+            "Plot",
+            "Identified",
+            "Comment",
+            "BaseItem",
+        ]
+        .into_iter()
+        .collect::<HashSet<_>>();
+        assert_eq!(actual_uti_fields, expected_uti_fields);
+        let ifo = read_gff_v32(
+            archive.find("module", IFO_RESOURCE_TYPE).unwrap(),
+            &Default::default(),
+        )
+        .unwrap();
+        let are = read_gff_v32(
+            archive
+                .find(&identity.area_resref, ARE_RESOURCE_TYPE)
+                .unwrap(),
+            &Default::default(),
+        )
+        .unwrap();
+        let read_owned_name = |document: &GffDocumentV1, label: &str| {
+            let field = document
+                .root
+                .fields
+                .iter()
+                .find(|field| field.label == label)
+                .unwrap();
+            binary_creature_loc_string(&field.value, label).unwrap()
+        };
+        assert_eq!(read_owned_name(&ifo, "Mod_Name"), module_name);
+        assert_eq!(read_owned_name(&are, "Name"), area_name);
     }
 
     #[test]

@@ -5,12 +5,15 @@ use m2a_core::{
     },
     model_components::SourceComponentKeyV1,
     model_material_separation::{
-        AuthoredMaterialV1, ModelMaterialAssignmentV1, ModelMaterialSeparationDocumentV1,
+        AuthoredMaterialV1, ModelMaterialAssignmentV1, ModelMaterialFaceAssignmentV2,
+        ModelMaterialSeparationDocumentV1, ModelMaterialSeparationDocumentV2,
+        SourceFaceSelectionV2, SourceTriangleRangeV2,
     },
     placeable_authoring::{
         PlaceableAuthoringElementV1, PlaceableElementFlagsV1, PlaceableElementKindV1,
         PlaceableElementTransformV1, apply_placeable_authoring_v1,
-        apply_placeable_authoring_with_material_separation_v1, default_placeable_authoring_v1,
+        apply_placeable_authoring_with_material_separation_v1,
+        apply_placeable_authoring_with_material_separation_v2, default_placeable_authoring_v1,
         inspect_placeable_elements_v1, split_placeable_node_components_v1,
     },
 };
@@ -322,6 +325,76 @@ fn material_separation_splits_render_buckets_and_copies_inherit_material() {
                 .iter()
                 .any(|position| position[0] == 10.0)
     }));
+}
+
+#[test]
+fn face_mode_splits_two_materials_inside_one_connected_component() {
+    let mut ir = two_component_ir();
+    let primitive = &mut ir.primitives[0];
+    primitive.positions = vec![
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [1.0, 1.0, 0.0],
+    ];
+    primitive.normals = vec![[0.0, 0.0, 1.0]; 4];
+    primitive.tangents = vec![[1.0, 0.0, 0.0, 1.0]; 4];
+    primitive.uv0 = vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
+    primitive.indices = vec![0, 1, 2, 1, 3, 2];
+    primitive.bounds_max = [1.0, 1.0, 0.0];
+    let document = default_placeable_authoring_v1(&ir).expect("default authoring");
+    let material = |id: &str| AuthoredMaterialV1 {
+        authored_material_id: id.to_owned(),
+        display_name: id.to_owned(),
+        preview_color: "#806040".to_owned(),
+        source_fallback_material_id: Some(0),
+        source_fallback_image_sha256: None,
+    };
+    let face = |triangle, material_id: &str| ModelMaterialFaceAssignmentV2 {
+        selection: SourceFaceSelectionV2 {
+            scene_id: 0,
+            node_id: 0,
+            primitive_id: 0,
+            triangle_ranges: vec![SourceTriangleRangeV2 {
+                start_triangle: triangle,
+                triangle_count: 1,
+            }],
+        },
+        authored_material_id: material_id.to_owned(),
+    };
+    let recipe = ModelMaterialSeparationDocumentV2 {
+        schema_version: 2,
+        source_sha256: ir.source.sha256.clone(),
+        materials: vec![material("material:sail"), material("material:wood")],
+        component_assignments: Vec::new(),
+        face_assignments: vec![face(0, "material:wood"), face(1, "material:sail")],
+    };
+
+    let report = apply_placeable_authoring_with_material_separation_v2(&mut ir, &document, &recipe)
+        .expect("Face Mode authoring");
+
+    assert_eq!(report.source_triangle_count, 2);
+    assert_eq!(report.output_triangle_count, 2);
+    assert_eq!(ir.primitives.len(), 2);
+    assert!(
+        ir.primitives
+            .iter()
+            .all(|primitive| primitive.indices.len() == 3)
+    );
+    let emitted_material_names = ir
+        .primitives
+        .iter()
+        .map(|primitive| {
+            ir.materials[primitive.material_id.expect("material") as usize]
+                .name
+                .as_deref()
+                .expect("material name")
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        emitted_material_names,
+        ["material:sail", "material:wood"].into()
+    );
 }
 
 #[test]

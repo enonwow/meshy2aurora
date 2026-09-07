@@ -7,17 +7,2891 @@ struct StudioRuntimeCapabilitiesV1<'a> {
     runtime_contract: &'a str,
     creature_source_forward: &'a str,
     creature_triangle_budget: usize,
+    creature_equipment: &'a str,
+    creature_motion_pack: &'a str,
+    creature_materials: &'a str,
+    reference_supermodel_motion: &'a str,
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod item_boundary_tests {
+    use super::{
+        compile_item_part_v1_inner, read_item_uti_v1_json_inner,
+        resolve_item_base_record_v1_json_inner, write_item_icon_layers_v1_inner,
+        write_item_uti_v1_inner,
+    };
+    use m2a_core::item::{
+        ItemAppearanceRecipeV1, ItemBaseRecordV1, ItemCompositionProfileV1, ItemIdentityV1,
+        ItemPartRecipeV1, ItemPartSlotV1, ItemPartTransformV1,
+    };
+    use m2a_core::item_icon::ItemIconLayerInputV1;
+    use m2a_core::item_uti::{ItemUtiBuildRequestV1, ItemUtiPropertiesV1};
+    use m2a_core::{
+        item_part::ItemPartCompileRequestV1,
+        mdl::MdlMaterialTextureBindingV1,
+        model_ir::{
+            AuroraMaterialSourceBindingV1, AuroraModelIrV1, AuroraModelNodeV1,
+            AuroraModelSegmentV1, AuroraSegmentDeformationV1,
+        },
+    };
+    use sha2::{Digest, Sha256};
+
+    const HASH: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+
+    fn request() -> ItemUtiBuildRequestV1 {
+        ItemUtiBuildRequestV1 {
+            schema_version: 1,
+            recipe: ItemAppearanceRecipeV1 {
+                schema_version: 1,
+                base_item: ItemBaseRecordV1 {
+                    schema_version: 1,
+                    source_sha256: HASH.to_owned(),
+                    physical_row_index: 0,
+                    printed_row_label: 0,
+                    profile: ItemCompositionProfileV1::ModelType0,
+                    model_type: 0,
+                    item_class: "AShSw".to_owned(),
+                    gender_specific: false,
+                    inv_slot_width: 2,
+                    inv_slot_height: 2,
+                    equipable_slots: "0x00020".to_owned(),
+                    default_model: None,
+                    default_icon: None,
+                },
+                identity: ItemIdentityV1 {
+                    uti_resref: "m2a_item_wasm".to_owned(),
+                    tag: "M2A_ITEM_WASM".to_owned(),
+                    display_name: "WASM parity item".to_owned(),
+                },
+                gender: None,
+                parts: vec![ItemPartRecipeV1 {
+                    slot: ItemPartSlotV1::Model,
+                    variant: 7,
+                    source_part_id: "model".to_owned(),
+                    source_sha256: HASH.to_owned(),
+                    transform: ItemPartTransformV1::default(),
+                }],
+                colors: None,
+            },
+            properties: ItemUtiPropertiesV1::default(),
+        }
+    }
+
+    #[test]
+    fn baseitems_boundary_matches_core_json_exactly() {
+        let bytes = b"2DA V2.0\n\nItemClass ModelType GenderSpecific InvSlotWidth InvSlotHeight EquipableSlots DefaultModel DefaultIcon\n0 AShSw 0 0 2 2 0x00020 **** ****\n";
+        let limits = m2a_core::two_da::TwoDaLimitsV1::default();
+        let limits_json = serde_json::to_string(&limits).unwrap();
+        let hash = m2a_core::two_da::inspect_two_da_v2(bytes, &limits)
+            .unwrap()
+            .source_sha256;
+        let core = m2a_core::item::resolve_item_base_record_v1(bytes, 0, &hash, &limits).unwrap();
+        let boundary =
+            resolve_item_base_record_v1_json_inner(bytes, 0, &hash, &limits_json).unwrap();
+        assert_eq!(boundary, serde_json::to_string(&core).unwrap());
+    }
+
+    #[test]
+    fn item_uti_boundary_is_byte_and_readback_identical_to_core() {
+        let request = request();
+        let options = m2a_core::gff::GffWriterOptionsV1::default();
+        let request_json = serde_json::to_string(&request).unwrap();
+        let options_json = serde_json::to_string(&options).unwrap();
+        let core = m2a_core::item_uti::write_item_uti_v1(&request, &options).unwrap();
+        let boundary = write_item_uti_v1_inner(&request_json, &options_json).unwrap();
+        assert_eq!(boundary.payload, core.payload);
+        assert_eq!(boundary.report, core.report);
+        assert_eq!(boundary.readback, core.readback);
+        let limits_json = serde_json::to_string(&options.limits).unwrap();
+        assert_eq!(
+            read_item_uti_v1_json_inner(&boundary.payload, 0, &limits_json).unwrap(),
+            serde_json::to_string(&core.readback).unwrap()
+        );
+    }
+
+    #[test]
+    fn item_part_boundary_is_byte_and_readback_identical_to_core() {
+        let identity = [
+            1.0, 0.0, 0.0, 0.0, //
+            0.0, 1.0, 0.0, 0.0, //
+            0.0, 0.0, 1.0, 0.0, //
+            0.0, 0.0, 0.0, 1.0,
+        ];
+        let request = ItemPartCompileRequestV1 {
+            schema_version: 1,
+            recipe_sha256: HASH.to_owned(),
+            part: ItemPartRecipeV1 {
+                slot: ItemPartSlotV1::Model,
+                variant: 7,
+                source_part_id: "model".to_owned(),
+                source_sha256: HASH.to_owned(),
+                transform: ItemPartTransformV1 {
+                    translation: [0.25, 0.5, 0.75],
+                    rotation: [0.0, 0.0, 0.0, 1.0],
+                    scale: 1.5,
+                },
+            },
+            model_resref: "ashsw_007".to_owned(),
+            model: AuroraModelIrV1 {
+                schema_version: 1,
+                profile_id: "wasm-item-part-test".to_owned(),
+                source_sha256: HASH.to_owned(),
+                basis_status: "TEST".to_owned(),
+                engine_facing_proof: "TEST".to_owned(),
+                uv_runtime_proof: "TEST".to_owned(),
+                nodes: vec![AuroraModelNodeV1 {
+                    id: 1,
+                    name: "root".to_owned(),
+                    parent_id: None,
+                    bind_local_matrix: identity,
+                }],
+                material_source_bindings: vec![AuroraMaterialSourceBindingV1 {
+                    slot: 0,
+                    source_material_id: None,
+                    source_material_name: None,
+                }],
+                segments: vec![AuroraModelSegmentV1 {
+                    segment_id: 1,
+                    material_slot: 0,
+                    deformation: AuroraSegmentDeformationV1::Rigid,
+                    parent_node_id: 1,
+                    cast_shadow: true,
+                    positions: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+                    normals: vec![[0.0, 0.0, 1.0]; 3],
+                    tangents: None,
+                    uv0: vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
+                    indices: vec![0, 1, 2],
+                    face_surface_ids: vec![],
+                    weights: vec![],
+                }],
+            },
+            material_textures: vec![MdlMaterialTextureBindingV1 {
+                material_slot: 0,
+                resref: "item_tex".to_owned(),
+            }],
+        };
+        let core = m2a_core::item_part::compile_item_part_v1(&request).unwrap();
+        let boundary =
+            compile_item_part_v1_inner(&serde_json::to_string(&request).unwrap()).unwrap();
+        assert_eq!(boundary.payload, core.payload);
+        assert_eq!(boundary.report, core.report);
+        assert_eq!(boundary.inspection, core.inspection);
+    }
+
+    #[test]
+    fn item_icon_boundary_is_byte_and_report_identical_to_core() {
+        let request = request();
+        let recipe = request.recipe;
+        let pixels = vec![0x7f; 64 * 64 * 4];
+        let layers = vec![ItemIconLayerInputV1 {
+            slot: ItemPartSlotV1::Model,
+            resref: "iashsw_007".to_owned(),
+            source_sha256: format!("{:x}", Sha256::digest(&pixels)),
+            image: m2a_core::tga::TgaImageV1 {
+                schema_version: 1,
+                width: 64,
+                height: 64,
+                pixel_format: m2a_core::tga::TgaPixelFormatV1::Rgba8,
+                pixels,
+            },
+        }];
+        let options = m2a_core::tga::TgaWriterOptionsV1::default();
+        let core =
+            m2a_core::item_icon::write_item_icon_layers_v1(&recipe, &layers, &options).unwrap();
+        let (payload_blob, descriptors_json, reports_json) = write_item_icon_layers_v1_inner(
+            &serde_json::to_string(&recipe).unwrap(),
+            &serde_json::to_string(&layers).unwrap(),
+            &serde_json::to_string(&options).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(payload_blob, core[0].payload);
+        assert_eq!(
+            reports_json,
+            serde_json::to_string(&vec![&core[0].report]).unwrap()
+        );
+        let descriptors: serde_json::Value = serde_json::from_str(&descriptors_json).unwrap();
+        assert_eq!(descriptors[0]["payloadOffset"], 0);
+        assert_eq!(
+            descriptors[0]["payloadSize"],
+            serde_json::json!(core[0].payload.len())
+        );
+        assert_eq!(descriptors[0]["resref"], "iashsw_007");
+    }
 }
 
 #[wasm_bindgen(js_name = studioRuntimeCapabilitiesV1Json)]
 pub fn studio_runtime_capabilities_v1_json() -> String {
     serde_json::to_string(&StudioRuntimeCapabilitiesV1 {
         schema_version: 1,
-        runtime_contract: "M2A_STUDIO_WASM_2026_07_31_V1",
-        creature_source_forward: "CARDINAL_XZ_TO_AURORA_NEGATIVE_Y_V1",
+        runtime_contract: "M2A_STUDIO_WASM_2026_08_19_V3",
+        creature_source_forward: "CARDINAL_XZ_TO_AURORA_POSITIVE_Y_V2",
         creature_triangle_budget: m2a_core::AURORA_MODEL_TRIANGLE_BUDGET_V1,
+        creature_equipment: "COMPLETE_EMBEDDED_GIT_UTC_V2",
+        creature_motion_pack: "SOURCE_BOUND_HUMANOID_QUADRUPED_V1",
+        creature_materials: "ANIMATED_CLASSIC_OR_NWN_EE_MTR_V2",
+        reference_supermodel_motion:
+            "EXACT_REFERENCE_BIND_AND_WEIGHTED_ANCHORS_V3_WITH_MATERIAL_LEDGER",
     })
     .expect("static Studio runtime capability contract serializes")
+}
+
+fn build_exact_reference_supermodel_motion_contract_v3_json_inner(
+    reference_mdl: &[u8],
+    options_json: &str,
+) -> Result<String, String> {
+    let options = serde_json::from_str::<
+        m2a_core::reference_supermodel_motion::ReferenceSupermodelExactContractOptionsV3,
+    >(options_json)
+    .map_err(|_| {
+        serialize_json(&serde_json::json!({
+            "schemaVersion": 3,
+            "code": "M2A-WASM-SUPERMODEL-EXACT-OPTIONS-JSON-INVALID",
+            "path": "optionsJson",
+            "message": "options JSON must satisfy ReferenceSupermodelExactContractOptionsV3"
+        }))
+    })?;
+    let reference = m2a_core::mdl::inspect_binary_mdl(reference_mdl).map_err(|error| {
+        serialize_json(&serde_json::json!({
+            "schemaVersion": 3,
+            "code": "M2A-WASM-SUPERMODEL-REFERENCE-MDL-INVALID",
+            "path": "referenceMdl",
+            "message": error.to_string()
+        }))
+    })?;
+    let contract =
+        m2a_core::reference_supermodel_motion::build_exact_reference_supermodel_motion_contract_v3(
+            &reference, &options,
+        )
+        .map_err(|error| serialize_json(&error))?;
+    Ok(serialize_json(&contract))
+}
+
+/// Builds a supermodel-independent inherited-motion contract from an exact,
+/// read-only binary MDL inspection. The same boundary is used for every
+/// selected Creature supermodel.
+#[wasm_bindgen(js_name = buildExactReferenceSupermodelMotionContractV3Json)]
+pub fn build_exact_reference_supermodel_motion_contract_v3_json(
+    reference_mdl: &[u8],
+    options_json: &str,
+) -> Result<String, JsValue> {
+    build_exact_reference_supermodel_motion_contract_v3_json_inner(reference_mdl, options_json)
+        .map_err(|error| JsValue::from_str(&error))
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MotionCorrectionBoundaryOutputV1<'a> {
+    schema_version: u32,
+    compatibility_level:
+        m2a_core::reference_supermodel_motion::ReferenceSupermodelCompatibilityLevelV2,
+    rig: &'a m2a_core::profile_a::CreatureRigProfileV1,
+    report: &'a m2a_core::reference_supermodel_motion::ReferenceSupermodelCorrectionReportV1,
+}
+
+fn build_motion_corrected_rig_v1_json_inner(
+    target_rig_json: &str,
+    motion_contract_json: &str,
+) -> Result<String, String> {
+    let target = serde_json::from_str::<m2a_core::profile_a::CreatureRigProfileV1>(target_rig_json)
+        .map_err(|_| {
+            serialize_json(&serde_json::json!({
+                "schemaVersion": 2,
+                "code": "M2A-WASM-MOTION-TARGET-RIG-JSON-INVALID",
+                "path": "targetRigJson",
+                "message": "target rig JSON must satisfy the strict CreatureRigProfileV1 schema"
+            }))
+        })?;
+    let contract = serde_json::from_str::<
+        m2a_core::reference_supermodel_motion::ReferenceSupermodelMotionContractV2,
+    >(motion_contract_json)
+    .map_err(|_| {
+        serialize_json(&serde_json::json!({
+            "schemaVersion": 2,
+            "code": "M2A-WASM-MOTION-CONTRACT-JSON-INVALID",
+            "path": "motionContractJson",
+            "message": "motion contract JSON must satisfy the strict ReferenceSupermodelMotionContractV2 schema"
+        }))
+    })?;
+    let artifact =
+        m2a_core::reference_supermodel_motion::build_motion_corrected_rig_v1(&target, &contract)
+            .map_err(|error| serialize_json(&error))?;
+    Ok(serialize_json(&MotionCorrectionBoundaryOutputV1 {
+        schema_version: 1,
+        compatibility_level:
+            m2a_core::reference_supermodel_motion::ReferenceSupermodelCompatibilityLevelV2::TopologyOnly,
+        rig: &artifact.rig,
+        report: &artifact.report,
+    }))
+}
+
+/// Builds the legacy owned correction layer below a carrier hierarchy. Without
+/// an immutable reference MDL this boundary can prove topology only.
+#[wasm_bindgen(js_name = buildMotionCorrectedRigV1Json)]
+pub fn build_motion_corrected_rig_v1_json(
+    target_rig_json: &str,
+    motion_contract_json: &str,
+) -> Result<String, JsValue> {
+    build_motion_corrected_rig_v1_json_inner(target_rig_json, motion_contract_json)
+        .map_err(|error| JsValue::from_str(&error))
+}
+
+fn build_exact_motion_carrier_rig_v3_json_inner(
+    target_rig_json: &str,
+    motion_contract_json: &str,
+    reference_mdl: &[u8],
+) -> Result<String, String> {
+    let target = serde_json::from_str::<m2a_core::profile_a::CreatureRigProfileV1>(target_rig_json)
+        .map_err(|_| {
+            serialize_json(&serde_json::json!({
+                "schemaVersion": 3,
+                "code": "M2A-WASM-MOTION-TARGET-RIG-JSON-INVALID",
+                "path": "targetRigJson",
+                "message": "target rig JSON must satisfy CreatureRigProfileV1"
+            }))
+        })?;
+    let contract = serde_json::from_str::<
+        m2a_core::reference_supermodel_motion::ReferenceSupermodelMotionContractV2,
+    >(motion_contract_json)
+    .map_err(|_| {
+        serialize_json(&serde_json::json!({
+            "schemaVersion": 3,
+            "code": "M2A-WASM-MOTION-CONTRACT-JSON-INVALID",
+            "path": "motionContractJson",
+            "message": "motion contract JSON must satisfy ReferenceSupermodelMotionContractV2"
+        }))
+    })?;
+    let reference = m2a_core::mdl::inspect_binary_mdl(reference_mdl).map_err(|error| {
+        serialize_json(&serde_json::json!({
+            "schemaVersion": 3,
+            "code": "M2A-WASM-SUPERMODEL-REFERENCE-MDL-INVALID",
+            "path": "referenceMdl",
+            "message": error.to_string()
+        }))
+    })?;
+    let artifact = m2a_core::reference_supermodel_motion::build_exact_motion_carrier_rig_v3(
+        &target, &contract, &reference,
+    )
+    .map_err(|error| serialize_json(&error))?;
+    Ok(serialize_json(&MotionCorrectionBoundaryOutputV1 {
+        schema_version: 3,
+        compatibility_level:
+            m2a_core::reference_supermodel_motion::ReferenceSupermodelCompatibilityLevelV2::BindPoseCompatible,
+        rig: &artifact.rig,
+        report: &artifact.report,
+    }))
+}
+
+/// Rebinds an owned target rig to exact inspected carrier matrices and refuses
+/// bind drift before returning `BIND_POSE_COMPATIBLE`.
+#[wasm_bindgen(js_name = buildExactMotionCarrierRigV3Json)]
+pub fn build_exact_motion_carrier_rig_v3_json(
+    target_rig_json: &str,
+    motion_contract_json: &str,
+    reference_mdl: &[u8],
+) -> Result<String, JsValue> {
+    build_exact_motion_carrier_rig_v3_json_inner(
+        target_rig_json,
+        motion_contract_json,
+        reference_mdl,
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+#[wasm_bindgen]
+#[derive(Debug)]
+pub struct ReferenceSupermodelAppliedPreviewWasmArtifactV2 {
+    model_bytes: Vec<u8>,
+    readback_json: String,
+    apply_report_json: String,
+    authoring_json: String,
+    target_rig_json: String,
+}
+
+#[wasm_bindgen]
+impl ReferenceSupermodelAppliedPreviewWasmArtifactV2 {
+    #[wasm_bindgen(js_name = takeModelBytes)]
+    pub fn take_model_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.model_bytes)
+    }
+
+    #[wasm_bindgen(getter, js_name = readbackJson)]
+    pub fn readback_json(&self) -> String {
+        self.readback_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = applyReportJson)]
+    pub fn apply_report_json(&self) -> String {
+        self.apply_report_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = authoringJson)]
+    pub fn authoring_json(&self) -> String {
+        self.authoring_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = targetRigJson)]
+    pub fn target_rig_json(&self) -> String {
+        self.target_rig_json.clone()
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReferenceSupermodelChainBlobDescriptorV2 {
+    resref: String,
+    supermodel_resref: String,
+    format: m2a_core::reference_supermodel_generic::ReferenceSupermodelFormatV2,
+    sha256: String,
+    byte_offset: usize,
+    byte_length: usize,
+}
+
+fn parse_reference_supermodel_chain_blob_v2(
+    blob: &[u8],
+    descriptors_json: &str,
+) -> Result<Vec<m2a_core::reference_supermodel_generic::ReferenceSupermodelChainPayloadV2>, String>
+{
+    let descriptors =
+        serde_json::from_str::<Vec<ReferenceSupermodelChainBlobDescriptorV2>>(descriptors_json)
+            .map_err(|source| {
+                serialize_json(&serde_json::json!({
+                    "schemaVersion": 2,
+                    "code": "M2A-REFERENCE-SUPERMODEL-CHAIN-DESCRIPTORS-JSON",
+                    "path": "referenceChainJson",
+                    "message": source.to_string()
+                }))
+            })?;
+    let mut payloads = Vec::with_capacity(descriptors.len());
+    for (index, descriptor) in descriptors.into_iter().enumerate() {
+        let end = descriptor
+            .byte_offset
+            .checked_add(descriptor.byte_length)
+            .filter(|end| *end <= blob.len())
+            .ok_or_else(|| {
+                serialize_json(&serde_json::json!({
+                    "schemaVersion": 2,
+                    "code": "M2A-REFERENCE-SUPERMODEL-CHAIN-RANGE",
+                    "path": format!("referenceChain[{index}]"),
+                    "message": "descriptor byte range is outside the exact chain blob"
+                }))
+            })?;
+        payloads.push(
+            m2a_core::reference_supermodel_generic::ReferenceSupermodelChainPayloadV2 {
+                resource:
+                    m2a_core::reference_supermodel_generic::ReferenceSupermodelChainResourceV2 {
+                        resref: descriptor.resref,
+                        supermodel_resref: descriptor.supermodel_resref,
+                        format: descriptor.format,
+                        sha256: descriptor.sha256,
+                        byte_length: descriptor.byte_length,
+                    },
+                payload: blob[descriptor.byte_offset..end].to_vec(),
+            },
+        );
+    }
+    Ok(payloads)
+}
+
+fn parse_reference_source_forward_v2(
+    source_forward: &str,
+) -> Result<m2a_core::profile_a::CreatureSourceForwardV1, String> {
+    match source_forward {
+        "POSITIVE_Z" => Ok(m2a_core::profile_a::CreatureSourceForwardV1::PositiveZ),
+        "NEGATIVE_Z" => Ok(m2a_core::profile_a::CreatureSourceForwardV1::NegativeZ),
+        "POSITIVE_X" => Ok(m2a_core::profile_a::CreatureSourceForwardV1::PositiveX),
+        "NEGATIVE_X" => Ok(m2a_core::profile_a::CreatureSourceForwardV1::NegativeX),
+        _ => Err(serialize_json(&serde_json::json!({
+            "schemaVersion": 2,
+            "code": "M2A-REFERENCE-SUPERMODEL-SOURCE-FORWARD-INVALID",
+            "path": "sourceForward",
+            "message": "sourceForward must be one of the four supported cardinal glTF axes"
+        }))),
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ReferenceSupermodelAuthoringInputModeV1<'a> {
+    Automatic,
+    Draft(&'a str),
+    Sealed(&'a str),
+}
+
+#[derive(Clone, Copy)]
+enum ReferenceSupermodelAuthoringInputModeV2<'a> {
+    Automatic,
+    Draft(&'a str),
+    Sealed(&'a str),
+}
+
+struct PreparedReferenceSupermodelRigV1 {
+    source_forward: m2a_core::profile_a::CreatureSourceForwardV1,
+    source: m2a_core::glb::GlbIngestResult,
+    analysis: m2a_core::reference_supermodel_generic::ReferenceSupermodelChainAnalysisArtifactV2,
+    base_rig: m2a_core::reference_supermodel_generic::GenericReferenceRigArtifactV2,
+    exact_chain_sha256: String,
+    authoring: m2a_core::reference_supermodel_authoring::ReferenceSupermodelRigAuthoringDocumentV1,
+    authored: m2a_core::reference_supermodel_authoring::ReferenceSupermodelRigAuthoringArtifactV1,
+    authored_validation: m2a_core::reference_supermodel_generic::GenericReferenceRigAnalysisV2,
+}
+
+struct PreparedReferenceSupermodelRigV2 {
+    source_forward: m2a_core::profile_a::CreatureSourceForwardV1,
+    source: m2a_core::glb::GlbIngestResult,
+    analysis: m2a_core::reference_supermodel_generic::ReferenceSupermodelChainAnalysisArtifactV2,
+    base_rig: m2a_core::reference_supermodel_generic::GenericReferenceRigArtifactV2,
+    exact_chain_sha256: String,
+    authoring: m2a_core::reference_supermodel_authoring::ReferenceSupermodelRigAuthoringDocumentV2,
+    authored: m2a_core::reference_supermodel_authoring::ReferenceSupermodelRigAuthoringArtifactV2,
+    authored_validation: m2a_core::reference_supermodel_generic::GenericReferenceRigAnalysisV2,
+}
+
+fn parse_reference_supermodel_authoring_v1(
+    authoring_json: &str,
+) -> Result<
+    m2a_core::reference_supermodel_authoring::ReferenceSupermodelRigAuthoringDocumentV1,
+    String,
+> {
+    serde_json::from_str::<
+        m2a_core::reference_supermodel_authoring::ReferenceSupermodelRigAuthoringDocumentV1,
+    >(authoring_json)
+    .map_err(|source| {
+        serialize_json(&serde_json::json!({
+            "schemaVersion": 1,
+            "code": "M2A-REFERENCE-SUPERMODEL-AUTHORING-JSON",
+            "path": "authoringJson",
+            "message": source.to_string()
+        }))
+    })
+}
+
+fn parse_reference_supermodel_authoring_v2(
+    authoring_json: &str,
+) -> Result<
+    m2a_core::reference_supermodel_authoring::ReferenceSupermodelRigAuthoringDocumentV2,
+    String,
+> {
+    serde_json::from_str::<
+        m2a_core::reference_supermodel_authoring::ReferenceSupermodelRigAuthoringDocumentV2,
+    >(authoring_json)
+    .map_err(|source| {
+        serialize_json(&serde_json::json!({
+            "schemaVersion": 2,
+            "code": "M2A-REFERENCE-SUPERMODEL-AUTHORING-V2-JSON",
+            "path": "authoringJson",
+            "message": source.to_string()
+        }))
+    })
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ReferenceSupermodelPreparationModeV3 {
+    Diagnostic,
+    Product,
+}
+
+fn reference_supermodel_skinning_options_v1(
+    allow_excessive_branch_boundary_repair: bool,
+) -> m2a_core::reference_supermodel_skinning::ReferenceSupermodelSkinningOptionsV1 {
+    m2a_core::reference_supermodel_skinning::ReferenceSupermodelSkinningOptionsV1 {
+        allow_excessive_branch_boundary_repair,
+        retain_editable_draft_on_quality_failure: true,
+    }
+}
+
+fn prepare_reference_supermodel_rig_v1_inner(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+    authoring_mode: ReferenceSupermodelAuthoringInputModeV1<'_>,
+    mode: ReferenceSupermodelPreparationModeV3,
+    skinning_options: m2a_core::reference_supermodel_skinning::ReferenceSupermodelSkinningOptionsV1,
+) -> Result<PreparedReferenceSupermodelRigV1, String> {
+    let source_forward_text = source_forward;
+    let source_forward = parse_reference_source_forward_v2(source_forward)?;
+    let chain_payloads =
+        parse_reference_supermodel_chain_blob_v2(reference_chain_blob, reference_chain_json)?;
+    let analysis = m2a_core::reference_supermodel_generic::analyze_reference_supermodel_chain_v2(
+        selected_supermodel_resref,
+        &chain_payloads,
+    )
+    .map_err(|error| serialize_json(&error))?;
+    let authoring_supermodel_resref = selected_supermodel_resref.to_ascii_lowercase();
+    let source = m2a_core::glb::ingest_glb(source_glb, &m2a_core::glb::GlbLimits::default())
+        .map_err(|error| serialize_json(&error))?;
+    let registered_source = m2a_core::reference_source_frame::source_uses_reference_bind_frame_v1(
+        source_glb,
+        selected_supermodel_resref,
+        &analysis.report.selected_sha256,
+        source_forward_text,
+    )
+    .map_err(|error| serialize_json(&error))?;
+    let derive_rig = if registered_source {
+        m2a_core::reference_supermodel_generic::derive_registered_reference_supermodel_rig_from_glb_v1
+    } else {
+        m2a_core::reference_supermodel_generic::derive_immutable_reference_supermodel_rig_from_glb_v4
+    };
+    let base_rig = derive_rig(
+        &source,
+        &analysis.motion_contract,
+        &analysis.combined_reference,
+        source_forward,
+        skinning_options,
+    )
+    .map_err(|error| serialize_json(&error))?;
+    let exact_chain_sha256 =
+        m2a_core::reference_supermodel_authoring::reference_supermodel_exact_chain_sha256_v1(
+            &authoring_supermodel_resref,
+            &analysis.report.exact_chain,
+        )
+        .map_err(|error| serialize_json(&error))?;
+    let authoring = match authoring_mode {
+        ReferenceSupermodelAuthoringInputModeV1::Automatic => {
+            m2a_core::reference_supermodel_authoring::new_reference_supermodel_rig_authoring_v1(
+                &source.report.input.sha256,
+                source_forward,
+                &authoring_supermodel_resref,
+                &exact_chain_sha256,
+                &analysis.motion_contract.content_sha256,
+                &base_rig.rig,
+            )
+            .map_err(|error| serialize_json(&error))?
+        }
+        ReferenceSupermodelAuthoringInputModeV1::Draft(authoring_json) => {
+            m2a_core::reference_supermodel_authoring::seal_reference_supermodel_rig_authoring_v1(
+                parse_reference_supermodel_authoring_v1(authoring_json)?,
+            )
+            .map_err(|error| serialize_json(&error))?
+        }
+        ReferenceSupermodelAuthoringInputModeV1::Sealed(authoring_json) => {
+            parse_reference_supermodel_authoring_v1(authoring_json)?
+        }
+    };
+    let authored =
+        m2a_core::reference_supermodel_authoring::apply_reference_supermodel_rig_authoring_v1(
+            &authoring,
+            &source.report.input.sha256,
+            source_forward,
+            &authoring_supermodel_resref,
+            &exact_chain_sha256,
+            &analysis.motion_contract.content_sha256,
+            &base_rig.rig,
+        )
+        .map_err(|error| serialize_json(&error))?;
+    let authored_parts = authoring
+        .joint_overrides
+        .iter()
+        .map(|row| row.carrier_part_number)
+        .collect::<std::collections::BTreeSet<_>>();
+    let authored_validation =
+        m2a_core::reference_supermodel_generic::validate_authored_generic_reference_rig_v3(
+            &analysis.motion_contract,
+            &base_rig.report,
+            &authored.rig,
+            &authored_parts,
+        )
+        .map_err(|error| serialize_json(&error))?;
+    if mode == ReferenceSupermodelPreparationModeV3::Product {
+        require_reference_supermodel_preproduct_rig_v3(&authored_validation)?;
+    }
+    Ok(PreparedReferenceSupermodelRigV1 {
+        source_forward,
+        source,
+        analysis,
+        base_rig,
+        exact_chain_sha256,
+        authoring,
+        authored,
+        authored_validation,
+    })
+}
+
+fn prepare_reference_supermodel_rig_v2_inner(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+    authoring_mode: ReferenceSupermodelAuthoringInputModeV2<'_>,
+    mode: ReferenceSupermodelPreparationModeV3,
+    skinning_options: m2a_core::reference_supermodel_skinning::ReferenceSupermodelSkinningOptionsV1,
+) -> Result<PreparedReferenceSupermodelRigV2, String> {
+    let prepared_v1 = prepare_reference_supermodel_rig_v1_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        ReferenceSupermodelAuthoringInputModeV1::Automatic,
+        ReferenceSupermodelPreparationModeV3::Diagnostic,
+        skinning_options,
+    )?;
+    let supermodel_resref = selected_supermodel_resref.to_ascii_lowercase();
+    let structural_profile_sha256 = &prepared_v1
+        .base_rig
+        .report
+        .structural_profile
+        .content_sha256;
+    let surface_anatomy_sha256 = &prepared_v1.base_rig.report.surface_anatomy.content_sha256;
+    let fitter_algorithm = &prepared_v1.base_rig.report.algorithm;
+    let authoring = match authoring_mode {
+        ReferenceSupermodelAuthoringInputModeV2::Automatic => {
+            m2a_core::reference_supermodel_authoring::new_reference_supermodel_rig_authoring_v2(
+                &prepared_v1.source.report.input.sha256,
+                prepared_v1.source_forward,
+                &supermodel_resref,
+                &prepared_v1.exact_chain_sha256,
+                &prepared_v1.analysis.motion_contract.content_sha256,
+                structural_profile_sha256,
+                surface_anatomy_sha256,
+                fitter_algorithm,
+                &prepared_v1.base_rig.rig,
+            )
+            .map_err(|error| serialize_json(&error))?
+        }
+        ReferenceSupermodelAuthoringInputModeV2::Draft(json) => {
+            m2a_core::reference_supermodel_authoring::seal_reference_supermodel_rig_authoring_v2(
+                parse_reference_supermodel_authoring_v2(json)?,
+            )
+            .map_err(|error| serialize_json(&error))?
+        }
+        ReferenceSupermodelAuthoringInputModeV2::Sealed(json) => {
+            parse_reference_supermodel_authoring_v2(json)?
+        }
+    };
+    let authored =
+        m2a_core::reference_supermodel_authoring::apply_reference_supermodel_rig_authoring_v2(
+            &authoring,
+            &prepared_v1.source.report.input.sha256,
+            prepared_v1.source_forward,
+            &supermodel_resref,
+            &prepared_v1.exact_chain_sha256,
+            &prepared_v1.analysis.motion_contract.content_sha256,
+            structural_profile_sha256,
+            surface_anatomy_sha256,
+            fitter_algorithm,
+            &prepared_v1.base_rig.rig,
+        )
+        .map_err(|error| serialize_json(&error))?;
+    let authored_parts = authoring
+        .joint_overrides
+        .iter()
+        .map(|row| row.carrier_part_number)
+        .chain(
+            authoring
+                .landmark_overrides
+                .iter()
+                .map(|row| row.carrier_part_number),
+        )
+        .collect::<std::collections::BTreeSet<_>>();
+    let authored_validation =
+        m2a_core::reference_supermodel_generic::validate_authored_generic_reference_rig_v3(
+            &prepared_v1.analysis.motion_contract,
+            &prepared_v1.base_rig.report,
+            &authored.rig,
+            &authored_parts,
+        )
+        .map_err(|error| serialize_json(&error))?;
+    if mode == ReferenceSupermodelPreparationModeV3::Product {
+        require_reference_supermodel_preproduct_rig_v3(&authored_validation)?;
+    }
+    Ok(PreparedReferenceSupermodelRigV2 {
+        source_forward: prepared_v1.source_forward,
+        source: prepared_v1.source,
+        analysis: prepared_v1.analysis,
+        base_rig: prepared_v1.base_rig,
+        exact_chain_sha256: prepared_v1.exact_chain_sha256,
+        authoring,
+        authored,
+        authored_validation,
+    })
+}
+
+#[wasm_bindgen]
+#[derive(Debug)]
+pub struct ReferenceSupermodelPreparedRigWasmArtifactV1 {
+    report_json: String,
+    authoring_json: String,
+    target_rig_json: String,
+}
+
+#[wasm_bindgen]
+impl ReferenceSupermodelPreparedRigWasmArtifactV1 {
+    #[wasm_bindgen(getter, js_name = reportJson)]
+    pub fn report_json(&self) -> String {
+        self.report_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = authoringJson)]
+    pub fn authoring_json(&self) -> String {
+        self.authoring_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = targetRigJson)]
+    pub fn target_rig_json(&self) -> String {
+        self.target_rig_json.clone()
+    }
+}
+
+fn prepare_reference_supermodel_rig_artifact_v1_inner(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+) -> Result<ReferenceSupermodelPreparedRigWasmArtifactV1, String> {
+    let prepared = prepare_reference_supermodel_rig_v1_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        ReferenceSupermodelAuthoringInputModeV1::Automatic,
+        ReferenceSupermodelPreparationModeV3::Diagnostic,
+        reference_supermodel_skinning_options_v1(false),
+    )?;
+    let status = if prepared.authored_validation.joint_fit.status == "READY"
+        && prepared.authored_validation.skinning.status == "READY"
+        && prepared.authored_validation.bind_pose.status == "PASS"
+    {
+        "REFERENCE_SUPERMODEL_FITTED_RIG_READY"
+    } else {
+        "REFERENCE_SUPERMODEL_FITTED_RIG_NEEDS_AUTHORING"
+    };
+    let report_json = serialize_json(&serde_json::json!({
+        "schemaVersion": 1,
+        "status": status,
+        "selectedSupermodelResref": prepared.analysis.report.selected_supermodel_resref,
+        "source": prepared.source.report,
+        "exactChainSha256": prepared.exact_chain_sha256,
+        "motionContractSha256": prepared.analysis.motion_contract.content_sha256,
+        "baseRigSha256": prepared.authoring.base_rig_sha256,
+        "outputRigSha256": prepared.authored.report.output_rig_sha256,
+        "exactChain": prepared.analysis.report.exact_chain,
+        "structuralAnalysis": prepared.analysis.report,
+        "rigAnalysis": prepared.base_rig.report,
+        "authoredRigAnalysis": prepared.authored_validation,
+        "rigAuthoring": prepared.authored.report,
+        "motionQuality": "NOT_EVALUATED",
+        "retailPayloadCopied": false
+    }));
+    Ok(ReferenceSupermodelPreparedRigWasmArtifactV1 {
+        report_json,
+        authoring_json: serialize_json(&prepared.authoring),
+        target_rig_json: serialize_json(&prepared.authored.rig),
+    })
+}
+
+/// Performs only exact-chain analysis, anatomy fitting and local skinning.
+/// It intentionally does not build MDL bytes or evaluate all inherited clips,
+/// so Studio can inspect and author the fitted rig before the expensive preview.
+#[wasm_bindgen(js_name = prepareReferenceSupermodelRigV1)]
+pub fn prepare_reference_supermodel_rig_v1(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+) -> Result<ReferenceSupermodelPreparedRigWasmArtifactV1, JsValue> {
+    prepare_reference_supermodel_rig_artifact_v1_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+#[wasm_bindgen]
+#[derive(Debug)]
+pub struct ReferenceSupermodelPreparedRigWasmArtifactV2 {
+    report_json: String,
+    authoring_json: String,
+    target_rig_json: String,
+}
+
+#[wasm_bindgen]
+impl ReferenceSupermodelPreparedRigWasmArtifactV2 {
+    #[wasm_bindgen(getter, js_name = reportJson)]
+    pub fn report_json(&self) -> String {
+        self.report_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = authoringJson)]
+    pub fn authoring_json(&self) -> String {
+        self.authoring_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = targetRigJson)]
+    pub fn target_rig_json(&self) -> String {
+        self.target_rig_json.clone()
+    }
+}
+
+fn prepare_reference_supermodel_rig_artifact_v2_inner(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+    authoring_mode: ReferenceSupermodelAuthoringInputModeV2<'_>,
+    skinning_options: m2a_core::reference_supermodel_skinning::ReferenceSupermodelSkinningOptionsV1,
+) -> Result<ReferenceSupermodelPreparedRigWasmArtifactV2, String> {
+    let prepared = prepare_reference_supermodel_rig_v2_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        authoring_mode,
+        ReferenceSupermodelPreparationModeV3::Diagnostic,
+        skinning_options,
+    )?;
+    let status = if prepared.authored_validation.joint_fit.status == "READY"
+        && prepared.authored_validation.skinning.status == "READY"
+        && prepared.authored_validation.bind_pose.status == "PASS"
+    {
+        "REFERENCE_SUPERMODEL_FITTED_RIG_V2_READY"
+    } else {
+        "REFERENCE_SUPERMODEL_FITTED_RIG_V2_NEEDS_AUTHORING"
+    };
+    Ok(ReferenceSupermodelPreparedRigWasmArtifactV2 {
+        report_json: serialize_json(&serde_json::json!({
+            "schemaVersion": 2,
+            "status": status,
+            "selectedSupermodelResref": prepared.analysis.report.selected_supermodel_resref,
+            "sourceForward": prepared.source_forward,
+            "source": prepared.source.report,
+            "exactChainSha256": prepared.exact_chain_sha256,
+            "motionContractSha256": prepared.analysis.motion_contract.content_sha256,
+            "structuralProfileSha256": prepared.base_rig.report.structural_profile.content_sha256,
+            "surfaceAnatomySha256": prepared.base_rig.report.surface_anatomy.content_sha256,
+            "baseRigSha256": prepared.authoring.base_rig_sha256,
+            "outputRigSha256": prepared.authored.report.output_rig_sha256,
+            "exactChain": prepared.analysis.report.exact_chain,
+            "structuralAnalysis": prepared.analysis.report,
+            "rigAnalysis": prepared.base_rig.report,
+            "authoredRigAnalysis": prepared.authored_validation,
+            "rigAuthoring": prepared.authored.report,
+            "motionQuality": "NOT_EVALUATED",
+            "retailPayloadCopied": false
+        })),
+        authoring_json: serialize_json(&prepared.authoring),
+        target_rig_json: serialize_json(&prepared.authored.rig),
+    })
+}
+
+/// Native release-corpus entrypoint. It runs the exact same diagnostic
+/// preparation as Studio and intentionally produces no MDL/HAK/MOD payload.
+pub fn prepare_reference_supermodel_rig_v2_native(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+) -> Result<ReferenceSupermodelPreparedRigWasmArtifactV2, String> {
+    prepare_reference_supermodel_rig_artifact_v2_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        ReferenceSupermodelAuthoringInputModeV2::Automatic,
+        reference_supermodel_skinning_options_v1(false),
+    )
+}
+
+/// V2 preparation binds editable landmarks, component bindings and region
+/// constraints to the exact structural profile and surface-anatomy hashes.
+#[wasm_bindgen(js_name = prepareReferenceSupermodelRigV2)]
+pub fn prepare_reference_supermodel_rig_v2(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+) -> Result<ReferenceSupermodelPreparedRigWasmArtifactV2, JsValue> {
+    prepare_reference_supermodel_rig_artifact_v2_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        ReferenceSupermodelAuthoringInputModeV2::Automatic,
+        reference_supermodel_skinning_options_v1(false),
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+/// Seals an editable V2 draft and reapplies it to the exact current base rig
+/// without running the inherited-motion oracle.
+#[wasm_bindgen(js_name = prepareReferenceSupermodelAuthoredRigV2)]
+pub fn prepare_reference_supermodel_authored_rig_v2(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+    authoring_json: &str,
+) -> Result<ReferenceSupermodelPreparedRigWasmArtifactV2, JsValue> {
+    prepare_reference_supermodel_rig_artifact_v2_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        ReferenceSupermodelAuthoringInputModeV2::Draft(authoring_json),
+        reference_supermodel_skinning_options_v1(false),
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+/// Validates and applies an already sealed V2 document. This is the same
+/// fail-closed authoring admission used by future preview/product V2 calls.
+#[wasm_bindgen(js_name = validateReferenceSupermodelSealedRigV2)]
+pub fn validate_reference_supermodel_sealed_rig_v2(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+    authoring_json: &str,
+) -> Result<ReferenceSupermodelPreparedRigWasmArtifactV2, JsValue> {
+    prepare_reference_supermodel_rig_artifact_v2_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        ReferenceSupermodelAuthoringInputModeV2::Sealed(authoring_json),
+        reference_supermodel_skinning_options_v1(false),
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+/// V3 exposes the explicit experimental branch-repair policy. The selected
+/// supermodel carrier hierarchy and bind matrices remain immutable.
+#[wasm_bindgen(js_name = prepareReferenceSupermodelRigV3)]
+pub fn prepare_reference_supermodel_rig_v3(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+    allow_excessive_branch_boundary_repair: bool,
+) -> Result<ReferenceSupermodelPreparedRigWasmArtifactV2, JsValue> {
+    prepare_reference_supermodel_rig_artifact_v2_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        ReferenceSupermodelAuthoringInputModeV2::Automatic,
+        reference_supermodel_skinning_options_v1(allow_excessive_branch_boundary_repair),
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+#[wasm_bindgen(js_name = prepareReferenceSupermodelAuthoredRigV3)]
+pub fn prepare_reference_supermodel_authored_rig_v3(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+    authoring_json: &str,
+    allow_excessive_branch_boundary_repair: bool,
+) -> Result<ReferenceSupermodelPreparedRigWasmArtifactV2, JsValue> {
+    prepare_reference_supermodel_rig_artifact_v2_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        ReferenceSupermodelAuthoringInputModeV2::Draft(authoring_json),
+        reference_supermodel_skinning_options_v1(allow_excessive_branch_boundary_repair),
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+#[wasm_bindgen(js_name = validateReferenceSupermodelSealedRigV3)]
+pub fn validate_reference_supermodel_sealed_rig_v3(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+    authoring_json: &str,
+    allow_excessive_branch_boundary_repair: bool,
+) -> Result<ReferenceSupermodelPreparedRigWasmArtifactV2, JsValue> {
+    prepare_reference_supermodel_rig_artifact_v2_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        ReferenceSupermodelAuthoringInputModeV2::Sealed(authoring_json),
+        reference_supermodel_skinning_options_v1(allow_excessive_branch_boundary_repair),
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+fn build_reference_supermodel_applied_preview_v2_inner(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+) -> Result<ReferenceSupermodelAppliedPreviewWasmArtifactV2, String> {
+    build_reference_supermodel_applied_preview_with_authoring_v1_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        None,
+    )
+}
+
+fn build_reference_supermodel_applied_preview_with_authoring_v1_inner(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+    authoring_json: Option<&str>,
+) -> Result<ReferenceSupermodelAppliedPreviewWasmArtifactV2, String> {
+    let prepared = prepare_reference_supermodel_rig_v1_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        authoring_json.map_or(
+            ReferenceSupermodelAuthoringInputModeV1::Automatic,
+            ReferenceSupermodelAuthoringInputModeV1::Draft,
+        ),
+        ReferenceSupermodelPreparationModeV3::Diagnostic,
+        reference_supermodel_skinning_options_v1(false),
+    )?;
+    build_reference_supermodel_applied_preview_from_prepared_v3(
+        source_glb,
+        prepared.source_forward,
+        &prepared.analysis,
+        &prepared.authored_validation,
+        &prepared.authored.rig,
+        serde_json::to_value(&prepared.authored.report).map_err(|error| error.to_string())?,
+        serialize_json(&prepared.authoring),
+    )
+}
+
+fn build_reference_supermodel_applied_preview_from_prepared_v3(
+    source_glb: &[u8],
+    source_forward: m2a_core::profile_a::CreatureSourceForwardV1,
+    analysis: &m2a_core::reference_supermodel_generic::ReferenceSupermodelChainAnalysisArtifactV2,
+    validated_rig_analysis: &m2a_core::reference_supermodel_generic::GenericReferenceRigAnalysisV2,
+    authored_rig: &m2a_core::profile_a::CreatureRigProfileV1,
+    authored_report: serde_json::Value,
+    authoring_json: String,
+) -> Result<ReferenceSupermodelAppliedPreviewWasmArtifactV2, String> {
+    let artifact = m2a_core::reference_supermodel_motion::build_inherited_supermodel_motion_diagnostic_preview_v1(
+        source_glb,
+        authored_rig,
+        &analysis.motion_contract,
+        &analysis.combined_reference,
+        &m2a_core::reference_supermodel_motion::default_reference_supermodel_writer_options_v1(
+            "m2a_refpreview",
+        ),
+        source_forward,
+        &m2a_core::reference_supermodel_motion::ReferenceSupermodelMinimalMtrMaterialOptionsV1 {
+            schema_version: 1,
+            texture_resref: "m2arefprevtex".to_owned(),
+            material_resref: "m2arefprevmtr".to_owned(),
+            material_profile: m2a_core::creature_product::CreatureMaterialProfileV2 {
+                schema_version: 2,
+                target: m2a_core::creature_product::CreatureMaterialTargetV2::NwnEeMtr,
+                normal_maps: false,
+                tangent_space_ready: false,
+                metallic_roughness_to_specular_gloss: false,
+                emissive_to_self_illumination: false,
+                alpha_mode: m2a_core::creature_product::CreatureAlphaModeV2::Opaque,
+                double_sided: true,
+            },
+        },
+    )
+    .map_err(|error| serialize_json(&error))?;
+    let full_product_motion_gate = artifact.report.motion_compatible
+        && artifact.report.carrier_coverage.full_carrier_coverage
+        && artifact.report.carrier_coverage.required_joint_coverage
+        && artifact.report.skin_influence_coverage
+        && artifact.motion_quality.inherited_clip_coverage
+        && artifact.motion_quality.visible_motion_coverage
+        && artifact.motion_quality.seam_pair_violation_count == 0
+        && artifact.motion_quality.status == "PASS";
+    let admission_v3 = m2a_core::reference_supermodel_admission::evaluate_reference_supermodel_admission_v3(
+        &m2a_core::reference_supermodel_admission::ReferenceSupermodelAdmissionInputV3 {
+            schema_version: 3,
+            mode: m2a_core::reference_supermodel_admission::ReferenceSupermodelAdmissionModeV3::Diagnostic,
+            structure_status: analysis.report.status.clone(),
+            surface_anatomy_status: validated_rig_analysis.surface_anatomy.status.clone(),
+            joint_fit_status: validated_rig_analysis.joint_fit.status.clone(),
+            skinning_status: validated_rig_analysis.skinning.status.clone(),
+            bind_pose_status: validated_rig_analysis.bind_pose.status.clone(),
+            motion_quality_status: artifact.motion_quality.status.clone(),
+            exact_chain_validated: analysis.report.structural_errors.is_empty(),
+            full_carrier_coverage: artifact.report.carrier_coverage.full_carrier_coverage,
+            required_joint_coverage: artifact.report.carrier_coverage.required_joint_coverage,
+            skin_influence_coverage: artifact.report.skin_influence_coverage,
+            inherited_clip_coverage: artifact.motion_quality.inherited_clip_coverage,
+            visible_motion_coverage: artifact.motion_quality.visible_motion_coverage,
+            seam_violation_count: artifact.motion_quality.seam_pair_violation_count,
+            motion_compatible: artifact.report.motion_compatible,
+            runtime_readiness: artifact.report.runtime_readiness.clone(),
+            semantic_delta_required: false,
+            semantic_delta_proven: false,
+        },
+    )
+    .map_err(|error| serialize_json(&error))?;
+    let preview_status = if full_product_motion_gate
+        && validated_rig_analysis.surface_anatomy.status == "READY"
+        && validated_rig_analysis.joint_fit.status == "READY"
+        && validated_rig_analysis.skinning.status == "READY"
+        && validated_rig_analysis.bind_pose.status == "PASS"
+    {
+        "APPLIED_PREVIEW_OFFLINE_PASS"
+    } else {
+        "DIAGNOSTIC_BLOCKED"
+    };
+    let apply_report_json = serialize_json(&serde_json::json!({
+        "schemaVersion": 2,
+        "status": preview_status,
+        "supermodelResref": analysis.report.selected_supermodel_resref,
+        "referenceFormat": analysis.report.selected_format,
+        "referenceSha256": analysis.report.selected_sha256,
+        "modelSha256": artifact.model.report.payload_sha256,
+        "localAnimationCount": artifact.model.inspection.animations.len(),
+        "inheritedAnimationCount": analysis.report.inherited_animation_names.len(),
+        "requiredClipCount": analysis.motion_contract.required_clips.len(),
+        "motionCompatible": artifact.report.motion_compatible,
+        "bindPoseCompatible": artifact.report.bind_pose_compatible,
+        "skinBindCompatible": artifact.report.skin_bind_compatible,
+        "fullCarrierCoverage": artifact.report.carrier_coverage.full_carrier_coverage,
+        "requiredJointCoverage": artifact.report.carrier_coverage.required_joint_coverage,
+        "skinInfluenceCoverage": artifact.report.skin_influence_coverage,
+        "inheritedClipCoverage": artifact.motion_quality.inherited_clip_coverage,
+        "visibleMotionCoverage": artifact.motion_quality.visible_motion_coverage,
+        "seamViolationCount": artifact.motion_quality.seam_pair_violation_count,
+        "motionQualityStatus": artifact.motion_quality.status,
+        "runtimeReadiness": artifact.report.runtime_readiness,
+        "exactChain": analysis.report.exact_chain,
+        "structuralAnalysis": analysis.report,
+        "rigAnalysis": validated_rig_analysis,
+        "experimentalAllowExcessiveSkinBranchRepair": validated_rig_analysis.skinning.branch_boundary_repair_limit_bypass_enabled,
+        "admissionV3": admission_v3,
+        "rigAuthoring": authored_report,
+        "retailPayloadCopied": false,
+        "motionBuild": artifact.report,
+        "motionQuality": artifact.motion_quality,
+    }));
+    Ok(ReferenceSupermodelAppliedPreviewWasmArtifactV2 {
+        model_bytes: artifact.model.payload,
+        readback_json: serialize_json(&artifact.model.inspection),
+        apply_report_json,
+        authoring_json,
+        target_rig_json: serialize_json(authored_rig),
+    })
+}
+
+fn build_reference_supermodel_applied_preview_with_authoring_v2_inner(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+    authoring_json: Option<&str>,
+    skinning_options: m2a_core::reference_supermodel_skinning::ReferenceSupermodelSkinningOptionsV1,
+) -> Result<ReferenceSupermodelAppliedPreviewWasmArtifactV2, String> {
+    let prepared = prepare_reference_supermodel_rig_v2_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        authoring_json.map_or(
+            ReferenceSupermodelAuthoringInputModeV2::Automatic,
+            ReferenceSupermodelAuthoringInputModeV2::Draft,
+        ),
+        ReferenceSupermodelPreparationModeV3::Diagnostic,
+        skinning_options,
+    )?;
+    build_reference_supermodel_applied_preview_from_prepared_v3(
+        source_glb,
+        prepared.source_forward,
+        &prepared.analysis,
+        &prepared.authored_validation,
+        &prepared.authored.rig,
+        serde_json::to_value(&prepared.authored.report).map_err(|error| error.to_string())?,
+        serialize_json(&prepared.authoring),
+    )
+}
+
+fn require_reference_supermodel_preproduct_rig_v3(
+    analysis: &m2a_core::reference_supermodel_generic::GenericReferenceRigAnalysisV2,
+) -> Result<(), String> {
+    let blocking = [
+        (analysis.surface_anatomy.status != "READY").then_some((
+            "BLOCKED_SURFACE_ANATOMY",
+            "rigAnalysis.surfaceAnatomy",
+            analysis.surface_anatomy.status.as_str(),
+        )),
+        (analysis.joint_fit.status != "READY").then_some((
+            "BLOCKED_JOINT_FIT",
+            "rigAnalysis.jointFit",
+            analysis.joint_fit.status.as_str(),
+        )),
+        (analysis.skinning.status != "READY").then_some((
+            "BLOCKED_SKINNING",
+            "rigAnalysis.skinning",
+            analysis.skinning.status.as_str(),
+        )),
+        (analysis.bind_pose.status != "PASS").then_some((
+            "BLOCKED_BIND_POSE",
+            "rigAnalysis.bindPose",
+            analysis.bind_pose.status.as_str(),
+        )),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+    if blocking.is_empty() {
+        return Ok(());
+    }
+    let affected_parts = analysis
+        .joint_fit
+        .constraint_violations
+        .iter()
+        .flat_map(|constraint| constraint.part_numbers.iter().copied())
+        .chain(
+            analysis
+                .bind_pose
+                .violations
+                .iter()
+                .flat_map(|violation| violation.part_numbers.iter().copied()),
+        )
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let (code, path, source_status) = blocking[0];
+    Err(serialize_json(&serde_json::json!({
+        "schemaVersion": 3,
+        "code": code,
+        "path": path,
+        "message": "product preparation requires PASS for surface anatomy, joint fit, skinning and bind pose",
+        "sourceStatus": source_status,
+        "blockingCodes": blocking.iter().map(|row| row.0).collect::<Vec<_>>(),
+        "affectedCarrierPartNumbers": affected_parts,
+    })))
+}
+
+/// Native diagnostic entry point for repository examples and offline validation.
+///
+/// The public WASM boundary must translate errors to `JsValue`, but constructing a
+/// `JsValue` is unsupported on non-wasm targets. Native callers therefore use this
+/// string-error adapter so a rejected rig or motion gate is reported instead of
+/// aborting the host process.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn build_reference_supermodel_applied_preview_v2_native(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+) -> Result<ReferenceSupermodelAppliedPreviewWasmArtifactV2, String> {
+    build_reference_supermodel_applied_preview_v2_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+    )
+}
+
+/// Structure-driven applied-preview boundary for any exact catalog selection.
+#[wasm_bindgen(js_name = buildReferenceSupermodelAppliedPreviewV2)]
+pub fn build_reference_supermodel_applied_preview_v2(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+) -> Result<ReferenceSupermodelAppliedPreviewWasmArtifactV2, JsValue> {
+    build_reference_supermodel_applied_preview_v2_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+/// Rebuilds the diagnostic preview from an editable V1 authoring draft. The returned artifact
+/// contains the canonical sealed authoring document that must be passed to the product boundary.
+#[wasm_bindgen(js_name = buildReferenceSupermodelAuthoredPreviewV1)]
+pub fn build_reference_supermodel_authored_preview_v1(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+    authoring_json: &str,
+) -> Result<ReferenceSupermodelAppliedPreviewWasmArtifactV2, JsValue> {
+    build_reference_supermodel_applied_preview_with_authoring_v1_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        Some(authoring_json),
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+/// Builds preview from the structural-profile/anatomy bound Authoring V2
+/// artifact. This is the preview half of the same V2 rig boundary consumed by
+/// the product endpoint below.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn build_reference_supermodel_authored_preview_v2_native(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+    authoring_json: &str,
+) -> Result<ReferenceSupermodelAppliedPreviewWasmArtifactV2, String> {
+    build_reference_supermodel_applied_preview_with_authoring_v2_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        Some(authoring_json),
+        reference_supermodel_skinning_options_v1(false),
+    )
+}
+
+#[wasm_bindgen(js_name = buildReferenceSupermodelAppliedPreviewV3)]
+pub fn build_reference_supermodel_applied_preview_v3(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+) -> Result<ReferenceSupermodelAppliedPreviewWasmArtifactV2, JsValue> {
+    build_reference_supermodel_applied_preview_with_authoring_v2_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        None,
+        reference_supermodel_skinning_options_v1(false),
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+#[wasm_bindgen(js_name = buildReferenceSupermodelAuthoredPreviewV2)]
+pub fn build_reference_supermodel_authored_preview_v2(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+    authoring_json: &str,
+) -> Result<ReferenceSupermodelAppliedPreviewWasmArtifactV2, JsValue> {
+    build_reference_supermodel_applied_preview_with_authoring_v2_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        Some(authoring_json),
+        reference_supermodel_skinning_options_v1(false),
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+/// V4 preview accepts the explicit experimental branch-repair bypass while
+/// preserving every later structural and inherited-motion validation.
+#[wasm_bindgen(js_name = buildReferenceSupermodelAppliedPreviewV4)]
+pub fn build_reference_supermodel_applied_preview_v4(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+    allow_excessive_branch_boundary_repair: bool,
+) -> Result<ReferenceSupermodelAppliedPreviewWasmArtifactV2, JsValue> {
+    build_reference_supermodel_applied_preview_with_authoring_v2_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        None,
+        reference_supermodel_skinning_options_v1(allow_excessive_branch_boundary_repair),
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+#[wasm_bindgen(js_name = buildReferenceSupermodelAuthoredPreviewV3)]
+pub fn build_reference_supermodel_authored_preview_v3(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    source_forward: &str,
+    authoring_json: &str,
+    allow_excessive_branch_boundary_repair: bool,
+) -> Result<ReferenceSupermodelAppliedPreviewWasmArtifactV2, JsValue> {
+    build_reference_supermodel_applied_preview_with_authoring_v2_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        Some(authoring_json),
+        reference_supermodel_skinning_options_v1(allow_excessive_branch_boundary_repair),
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+#[wasm_bindgen]
+#[derive(Debug)]
+pub struct ReferenceSupermodelProductWasmArtifactV1 {
+    hak_bytes: Vec<u8>,
+    model_bytes: Vec<u8>,
+    texture_bytes: Vec<u8>,
+    material_bytes: Vec<u8>,
+    appearance_two_da_bytes: Vec<u8>,
+    report_json: String,
+    manifest_json: String,
+    summary_json: String,
+    readback_json: String,
+}
+
+#[wasm_bindgen]
+impl ReferenceSupermodelProductWasmArtifactV1 {
+    #[wasm_bindgen(js_name = takeHakBytes)]
+    pub fn take_hak_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.hak_bytes)
+    }
+    #[wasm_bindgen(js_name = takeModelBytes)]
+    pub fn take_model_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.model_bytes)
+    }
+    #[wasm_bindgen(js_name = takeTextureBytes)]
+    pub fn take_texture_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.texture_bytes)
+    }
+    #[wasm_bindgen(js_name = takeMaterialBytes)]
+    pub fn take_material_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.material_bytes)
+    }
+    #[wasm_bindgen(js_name = takeAppearanceTwoDaBytes)]
+    pub fn take_appearance_two_da_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.appearance_two_da_bytes)
+    }
+    #[wasm_bindgen(getter, js_name = reportJson)]
+    pub fn report_json(&self) -> String {
+        self.report_json.clone()
+    }
+    #[wasm_bindgen(getter, js_name = manifestJson)]
+    pub fn manifest_json(&self) -> String {
+        self.manifest_json.clone()
+    }
+    #[wasm_bindgen(getter, js_name = summaryJson)]
+    pub fn summary_json(&self) -> String {
+        self.summary_json.clone()
+    }
+    #[wasm_bindgen(getter, js_name = readbackJson)]
+    pub fn readback_json(&self) -> String {
+        self.readback_json.clone()
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+#[doc(hidden)]
+pub fn build_reference_supermodel_creature_product_v2_inner(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    identity_json: &str,
+    source_forward: &str,
+) -> Result<ReferenceSupermodelProductWasmArtifactV1, String> {
+    build_reference_supermodel_creature_product_with_authoring_v3_inner(
+        selected_supermodel_resref,
+        source_glb,
+        appearance_two_da,
+        reference_chain_blob,
+        reference_chain_json,
+        identity_json,
+        source_forward,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_reference_supermodel_creature_product_with_authoring_v3_inner(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    identity_json: &str,
+    source_forward: &str,
+    authoring_json: Option<&str>,
+) -> Result<ReferenceSupermodelProductWasmArtifactV1, String> {
+    let identity = serde_json::from_str::<
+        m2a_core::reference_supermodel_product::ReferenceSupermodelProductIdentityV2,
+    >(identity_json)
+    .map_err(|source| {
+        serialize_json(&serde_json::json!({
+            "schemaVersion": 1,
+            "code": "M2A-REFERENCE-SUPERMODEL-PRODUCT-IDENTITY-JSON",
+            "path": "identityJson",
+            "message": source.to_string()
+        }))
+    })?;
+    let prepared = prepare_reference_supermodel_rig_v1_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        authoring_json.map_or(
+            ReferenceSupermodelAuthoringInputModeV1::Automatic,
+            ReferenceSupermodelAuthoringInputModeV1::Sealed,
+        ),
+        ReferenceSupermodelPreparationModeV3::Product,
+        reference_supermodel_skinning_options_v1(false),
+    )?;
+    build_reference_supermodel_creature_product_from_prepared_v4(
+        source_glb,
+        appearance_two_da,
+        &identity,
+        prepared.source_forward,
+        &prepared.analysis,
+        &prepared.source,
+        &prepared.authored_validation,
+        &prepared.authored.rig,
+        serde_json::to_value(&prepared.authored.report).map_err(|error| error.to_string())?,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_reference_supermodel_creature_product_from_prepared_v4(
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    identity: &m2a_core::reference_supermodel_product::ReferenceSupermodelProductIdentityV2,
+    source_forward: m2a_core::profile_a::CreatureSourceForwardV1,
+    analysis: &m2a_core::reference_supermodel_generic::ReferenceSupermodelChainAnalysisArtifactV2,
+    source: &m2a_core::glb::GlbIngestResult,
+    validated_rig_analysis: &m2a_core::reference_supermodel_generic::GenericReferenceRigAnalysisV2,
+    authored_rig: &m2a_core::profile_a::CreatureRigProfileV1,
+    authored_report: serde_json::Value,
+) -> Result<ReferenceSupermodelProductWasmArtifactV1, String> {
+    let motion = m2a_core::reference_supermodel_motion::bind_static_mesh_for_inherited_supermodel_motion_minimal_twosided_mtr_v1(
+        source_glb,
+        authored_rig,
+        &analysis.motion_contract,
+        &analysis.combined_reference,
+        &m2a_core::reference_supermodel_motion::default_reference_supermodel_writer_options_v1(
+            &identity.model_resref,
+        ),
+        source_forward,
+        &m2a_core::reference_supermodel_motion::ReferenceSupermodelMinimalMtrMaterialOptionsV1 {
+            schema_version: 1,
+            texture_resref: identity.texture_resref.clone(),
+            material_resref: identity.material_resref.clone(),
+            material_profile: m2a_core::creature_product::CreatureMaterialProfileV2 {
+                schema_version: 2,
+                target: m2a_core::creature_product::CreatureMaterialTargetV2::NwnEeMtr,
+                normal_maps: false,
+                tangent_space_ready: false,
+                metallic_roughness_to_specular_gloss: false,
+                emissive_to_self_illumination: false,
+                alpha_mode: m2a_core::creature_product::CreatureAlphaModeV2::Opaque,
+                double_sided: true,
+            },
+        },
+    )
+    .map_err(|error| serialize_json(&error))?;
+    if identity.rejected_baseline.is_some() && identity.semantic_controller_names.is_empty() {
+        return Err(serialize_json(&serde_json::json!({
+            "schemaVersion": 2,
+            "code": "M2A-REFERENCE-SUPERMODEL-SEMANTIC-CONTROLLERS-MISSING",
+            "path": "identity.semanticControllerNames",
+            "message": "a rejected baseline requires explicit repair-area controller names"
+        })));
+    }
+    let visible_surface_sha256 = if identity.semantic_controller_names.is_empty() {
+        None
+    } else {
+        Some(
+            m2a_core::reference_supermodel_motion::visible_controller_surface_semantic_sha256_v1(
+                &motion.model.inspection,
+                &identity.semantic_controller_names,
+            )
+            .map_err(|error| serialize_json(&error))?,
+        )
+    };
+    let semantic_delta = match (&identity.rejected_baseline, &visible_surface_sha256) {
+        (Some(baseline), Some(surface_sha256)) => Some(
+            m2a_core::reference_supermodel_motion::evaluate_reference_supermodel_semantic_delta_v1(
+                baseline,
+                &motion.model.report.payload_sha256,
+                surface_sha256,
+            )
+            .map_err(|error| serialize_json(&error))?,
+        ),
+        _ => None,
+    };
+    let product =
+        m2a_core::reference_supermodel_product::package_reference_supermodel_creature_product_v2(
+            source_glb,
+            appearance_two_da,
+            &analysis.report,
+            validated_rig_analysis,
+            &identity,
+            &motion,
+            identity.rejected_baseline.is_some(),
+            semantic_delta.as_ref(),
+        )
+        .map_err(|error| serialize_json(&error))?;
+    let report_json = serialize_json(&serde_json::json!({
+        "schemaVersion": 2,
+        "status": "REFERENCE_SUPERMODEL_CREATURE_PRODUCT_MATERIALIZED",
+        "selectedSupermodelResref": analysis.report.selected_supermodel_resref,
+        "selectedFormat": analysis.report.selected_format,
+        "identity": product.identity,
+        "source": source.report,
+        "model": motion.model.report,
+        "texture": product.texture.report,
+        "appearance": product.appearance.report,
+        "hak": product.hak.report,
+        "packageManifest": product.package_manifest,
+        "motionBuild": motion.report,
+        "motionQuality": motion.motion_quality,
+        "semanticDelta": semantic_delta,
+        "visibleSurfaceSemanticSha256": visible_surface_sha256,
+        "exactChain": analysis.report.exact_chain,
+        "structuralAnalysis": product.selection_analysis,
+        "rigAnalysis": validated_rig_analysis,
+        "rigAuthoring": authored_report,
+        "appearanceDonorResref": product.appearance_donor_resref,
+        "appearanceDonorPhysicalRow": product.appearance_donor_physical_row,
+        "exportAdmission": product.admission,
+        "admissionV3": product.admission_v3,
+        "retailPayloadCopied": false,
+        "ownerRuntimeProof": "NOT_RUN_HUMAN_OWNED"
+    }));
+    let summary_json = serialize_json(&serde_json::json!({
+        "schemaVersion": 2,
+        "status": "REFERENCE_SUPERMODEL_CREATURE_PRODUCT_MATERIALIZED",
+        "selectedSupermodelResref": analysis.report.selected_supermodel_resref,
+        "selectedFormat": analysis.report.selected_format,
+        "identity": identity,
+        "motionCompatible": true,
+        "runtimeReadiness": "RUNTIME_UNPROVEN",
+        "fullCarrierCoverage": product.admission.full_carrier_coverage,
+        "requiredJointCoverage": product.admission.required_joint_coverage,
+        "skinInfluenceCoverage": product.admission.skin_influence_coverage,
+        "inheritedClipCoverage": product.admission.inherited_clip_coverage,
+        "visibleMotionCoverage": product.admission.visible_motion_coverage,
+        "seamViolationCount": product.admission.seam_violation_count,
+        "ownerRuntimeProof": "NOT_RUN_HUMAN_OWNED"
+    }));
+    let manifest_json = serialize_json(&serde_json::json!({
+        "schemaVersion": 2,
+        "status": "REFERENCE_SUPERMODEL_CREATURE_PRODUCT_MATERIALIZED",
+        "packageManifest": product.package_manifest,
+        "exactChain": analysis.report.exact_chain,
+        "retailPayloadCopied": false
+    }));
+    Ok(ReferenceSupermodelProductWasmArtifactV1 {
+        hak_bytes: product.hak.payload,
+        model_bytes: motion.model.payload,
+        texture_bytes: product.texture.payload,
+        material_bytes: motion.mtr_resource.payload,
+        appearance_two_da_bytes: product.appearance.payload,
+        report_json,
+        manifest_json,
+        summary_json,
+        readback_json: serialize_json(&motion.model.inspection),
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_reference_supermodel_creature_product_with_authoring_v4_inner(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    identity_json: &str,
+    source_forward: &str,
+    authoring_json: &str,
+    skinning_options: m2a_core::reference_supermodel_skinning::ReferenceSupermodelSkinningOptionsV1,
+) -> Result<ReferenceSupermodelProductWasmArtifactV1, String> {
+    let identity = serde_json::from_str::<
+        m2a_core::reference_supermodel_product::ReferenceSupermodelProductIdentityV2,
+    >(identity_json)
+    .map_err(|source| {
+        serialize_json(&serde_json::json!({
+            "schemaVersion": 2,
+            "code": "M2A-REFERENCE-SUPERMODEL-PRODUCT-IDENTITY-JSON",
+            "path": "identityJson",
+            "message": source.to_string()
+        }))
+    })?;
+    let prepared = prepare_reference_supermodel_rig_v2_inner(
+        selected_supermodel_resref,
+        source_glb,
+        reference_chain_blob,
+        reference_chain_json,
+        source_forward,
+        ReferenceSupermodelAuthoringInputModeV2::Sealed(authoring_json),
+        ReferenceSupermodelPreparationModeV3::Product,
+        skinning_options,
+    )?;
+    build_reference_supermodel_creature_product_from_prepared_v4(
+        source_glb,
+        appearance_two_da,
+        &identity,
+        prepared.source_forward,
+        &prepared.analysis,
+        &prepared.source,
+        &prepared.authored_validation,
+        &prepared.authored.rig,
+        serde_json::to_value(&prepared.authored.report).map_err(|error| error.to_string())?,
+    )
+}
+
+/// Native counterpart of the sealed-authoring product boundary. It preserves
+/// all admission gates and returns structured string errors instead of JsValue.
+#[allow(clippy::too_many_arguments)]
+pub fn build_reference_supermodel_creature_product_v4_native(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    identity_json: &str,
+    source_forward: &str,
+    authoring_json: &str,
+) -> Result<ReferenceSupermodelProductWasmArtifactV1, String> {
+    build_reference_supermodel_creature_product_with_authoring_v4_inner(
+        selected_supermodel_resref,
+        source_glb,
+        appearance_two_da,
+        reference_chain_blob,
+        reference_chain_json,
+        identity_json,
+        source_forward,
+        authoring_json,
+        reference_supermodel_skinning_options_v1(false),
+    )
+}
+
+/// Produces the product-only Creature MDL/TGA/MTR/appearance.2da/HAK set.
+/// Diagnostic preview output can never reach this boundary.
+#[wasm_bindgen(js_name = buildReferenceSupermodelCreatureProductV2)]
+pub fn build_reference_supermodel_creature_product_v2(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    identity_json: &str,
+    source_forward: &str,
+) -> Result<ReferenceSupermodelProductWasmArtifactV1, JsValue> {
+    build_reference_supermodel_creature_product_v2_inner(
+        selected_supermodel_resref,
+        source_glb,
+        appearance_two_da,
+        reference_chain_blob,
+        reference_chain_json,
+        identity_json,
+        source_forward,
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+/// Product boundary for a sealed V1 authored target rig. Unlike preview, this boundary never
+/// reseals a draft: stale or modified authoring fails closed before model generation.
+#[wasm_bindgen(js_name = buildReferenceSupermodelCreatureProductV3)]
+pub fn build_reference_supermodel_creature_product_v3(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    identity_json: &str,
+    source_forward: &str,
+    authoring_json: &str,
+) -> Result<ReferenceSupermodelProductWasmArtifactV1, JsValue> {
+    build_reference_supermodel_creature_product_with_authoring_v3_inner(
+        selected_supermodel_resref,
+        source_glb,
+        appearance_two_da,
+        reference_chain_blob,
+        reference_chain_json,
+        identity_json,
+        source_forward,
+        Some(authoring_json),
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+/// Product boundary for a sealed structural-profile/anatomy-bound Authoring
+/// V2 document. It never reseals drafts and consumes the same authored rig as
+/// `buildReferenceSupermodelAuthoredPreviewV2`.
+#[wasm_bindgen(js_name = buildReferenceSupermodelCreatureProductV4)]
+pub fn build_reference_supermodel_creature_product_v4(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    identity_json: &str,
+    source_forward: &str,
+    authoring_json: &str,
+) -> Result<ReferenceSupermodelProductWasmArtifactV1, JsValue> {
+    build_reference_supermodel_creature_product_with_authoring_v4_inner(
+        selected_supermodel_resref,
+        source_glb,
+        appearance_two_da,
+        reference_chain_blob,
+        reference_chain_json,
+        identity_json,
+        source_forward,
+        authoring_json,
+        reference_supermodel_skinning_options_v1(false),
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+/// V5 product boundary carries the same explicit branch-repair policy used by
+/// the accepted V4/V3 preview. All pre-product quality gates remain active.
+#[wasm_bindgen(js_name = buildReferenceSupermodelCreatureProductV5)]
+pub fn build_reference_supermodel_creature_product_v5(
+    selected_supermodel_resref: &str,
+    source_glb: &[u8],
+    appearance_two_da: &[u8],
+    reference_chain_blob: &[u8],
+    reference_chain_json: &str,
+    identity_json: &str,
+    source_forward: &str,
+    authoring_json: &str,
+    allow_excessive_branch_boundary_repair: bool,
+) -> Result<ReferenceSupermodelProductWasmArtifactV1, JsValue> {
+    build_reference_supermodel_creature_product_with_authoring_v4_inner(
+        selected_supermodel_resref,
+        source_glb,
+        appearance_two_da,
+        reference_chain_blob,
+        reference_chain_json,
+        identity_json,
+        source_forward,
+        authoring_json,
+        reference_supermodel_skinning_options_v1(allow_excessive_branch_boundary_repair),
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod reference_supermodel_motion_boundary_tests {
+    use super::{
+        build_exact_reference_supermodel_motion_contract_v3_json_inner,
+        build_reference_supermodel_applied_preview_v2_inner,
+        build_reference_supermodel_applied_preview_with_authoring_v1_inner,
+        build_reference_supermodel_creature_product_v2_inner,
+        build_reference_supermodel_creature_product_with_authoring_v3_inner,
+    };
+    use m2a_core::{
+        mdl::{
+            MdlAnimationClipV1, MdlAnimationInterpolationV1, MdlAnimationSetV1,
+            MdlAnimationTrackPathV1, MdlAnimationTrackV1, MdlFormatProfileV1,
+            MdlMaterialTextureBindingV1, MdlStateProjectionProfileV1, MdlWriterOptionsV1,
+            write_binary_mdl_with_animations,
+        },
+        model_ir::{
+            AuroraModelIrV1, AuroraModelNodeV1, AuroraModelSegmentV1, AuroraSegmentDeformationV1,
+        },
+        reference_supermodel_motion::{
+            ReferenceSupermodelExactContractOptionsV3, ReferenceSupermodelSemanticNodeV3,
+            build_exact_reference_supermodel_motion_contract_v3,
+            default_reference_supermodel_motion_tolerances_v2,
+        },
+    };
+    use sha2::{Digest, Sha256};
+    use std::{
+        env, fs,
+        fs::File,
+        io::{Read, Seek, SeekFrom},
+        path::Path,
+    };
+
+    fn identity() -> [f32; 16] {
+        [
+            1.0, 0.0, 0.0, 0.0, //
+            0.0, 1.0, 0.0, 0.0, //
+            0.0, 0.0, 1.0, 0.0, //
+            0.0, 0.0, 0.0, 1.0,
+        ]
+    }
+
+    #[test]
+    fn reference_supermodel_preview_rejects_an_unknown_source_axis_before_ingest() {
+        let error = build_reference_supermodel_applied_preview_v2_inner(
+            "c_any",
+            b"not-a-glb",
+            b"not-a-chain",
+            "[]",
+            "UP",
+        )
+        .unwrap_err();
+        assert!(error.contains("M2A-REFERENCE-SUPERMODEL-SOURCE-FORWARD-INVALID"));
+    }
+
+    #[test]
+    fn any_family_reaches_structural_analysis_instead_of_a_profile_whitelist() {
+        let error = build_reference_supermodel_applied_preview_v2_inner(
+            "c_unregistered",
+            b"not-a-glb",
+            b"",
+            "[]",
+            "POSITIVE_Z",
+        )
+        .unwrap_err();
+        assert!(error.contains("M2A-REFERENCE-SUPERMODEL-SELECTION-INVALID"));
+        assert!(!error.contains("PROFILE_MISSING"));
+    }
+
+    fn read_key_model_resource(key_path: &Path, resref: &str) -> Vec<u8> {
+        let key_bytes = fs::read(key_path).expect("read the selected NWN KEY");
+        let index = m2a_core::supermodel_catalog::index_nwn_key_models_v1(&key_bytes)
+            .expect("index the selected NWN KEY");
+        let locator = index
+            .models
+            .iter()
+            .find(|model| model.resref.eq_ignore_ascii_case(resref))
+            .expect("find the exact model resref in the selected KEY");
+        let logical_bif = index
+            .bifs
+            .iter()
+            .find(|bif| bif.index == locator.bif_index)
+            .expect("resolve the model BIF from the selected KEY");
+        let key_parent = key_path.parent().expect("KEY has a parent directory");
+        let installation_root = key_parent.parent().unwrap_or(key_parent);
+        let native_relative = logical_bif
+            .logical_name
+            .replace(['\\', '/'], std::path::MAIN_SEPARATOR_STR);
+        let bif_path = [
+            installation_root.join(&native_relative),
+            key_parent.join(&native_relative),
+        ]
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+        .expect("resolve the exact BIF referenced by the selected KEY");
+        let mut bif = File::open(&bif_path).expect("open the exact BIF referenced by the KEY");
+        let mut header = [0_u8; 20];
+        bif.read_exact(&mut header).expect("read the BIF header");
+        let plan = m2a_core::supermodel_catalog::plan_nwn_bif_index_v1(&header)
+            .expect("plan the exact BIF resource-table read");
+        bif.seek(SeekFrom::Start(plan.table_offset as u64))
+            .expect("seek to the BIF resource table");
+        let mut table = vec![0_u8; plan.table_byte_length];
+        bif.read_exact(&mut table)
+            .expect("read the BIF resource table");
+        let bif_index = m2a_core::supermodel_catalog::index_nwn_bif_table_v1(&header, &table)
+            .expect("index the exact BIF resource table");
+        let resource = bif_index
+            .resources
+            .iter()
+            .find(|resource| resource.resource_index == locator.resource_index)
+            .expect("resolve the exact BIF model resource");
+        assert_eq!(
+            resource.resource_type as u16,
+            m2a_core::supermodel_catalog::NWN_MDL_RESOURCE_TYPE
+        );
+        bif.seek(SeekFrom::Start(resource.payload_offset as u64))
+            .expect("seek to the exact BIF model payload");
+        let mut payload = vec![0_u8; resource.payload_size as usize];
+        bif.read_exact(&mut payload)
+            .expect("read the exact BIF model payload");
+        payload
+    }
+
+    fn read_exact_key_supermodel_chain(
+        key_path: &Path,
+        selected_resref: &str,
+    ) -> (Vec<u8>, String) {
+        let mut blob = Vec::new();
+        let mut descriptors = Vec::new();
+        let mut current = selected_resref.to_ascii_lowercase();
+        let mut seen = std::collections::BTreeSet::new();
+        while !current.eq_ignore_ascii_case("NULL") {
+            assert!(
+                seen.insert(current.clone()),
+                "retail chain cycle at {current}"
+            );
+            let payload = read_key_model_resource(key_path, &current);
+            let inspection =
+                m2a_core::reference_supermodel_generic::inspect_reference_supermodel_mdl_v2(
+                    &payload,
+                    m2a_core::reference_supermodel_generic::ReferenceSupermodelFormatV2::Auto,
+                )
+                .expect("inspect exact retail chain resource");
+            let offset = blob.len();
+            let sha256 = format!("{:x}", Sha256::digest(&payload));
+            blob.extend_from_slice(&payload);
+            descriptors.push(serde_json::json!({
+                "resref": current,
+                "supermodelResref": inspection.model.supermodel_name,
+                "format": if inspection.format == "NWN_ASCII_MDL" { "ASCII" } else { "BINARY" },
+                "sha256": sha256,
+                "byteOffset": offset,
+                "byteLength": payload.len()
+            }));
+            current = inspection.model.supermodel_name.to_ascii_lowercase();
+        }
+        (blob, serde_json::to_string(&descriptors).unwrap())
+    }
+
+    fn static_textured_owned_glb() -> Vec<u8> {
+        let glb = m2a_core::owned_fixture::synthetic_owned_m6_glb_v1()
+            .expect("build the owned textured GLB fixture");
+        let json_length = u32::from_le_bytes(glb[12..16].try_into().unwrap()) as usize;
+        let json_end = 20 + json_length;
+        let mut root: serde_json::Value =
+            serde_json::from_slice(&glb[20..json_end]).expect("parse owned GLB JSON");
+        root["skins"] = serde_json::json!([]);
+        root["animations"] = serde_json::json!([]);
+        root["scenes"][0]["nodes"] = serde_json::json!([0]);
+        root["nodes"] = serde_json::json!([{
+            "name": "reference-supermodel-e2e-source",
+            "mesh": 0
+        }]);
+        let attributes = root["meshes"][0]["primitives"][0]["attributes"]
+            .as_object_mut()
+            .expect("primitive attributes");
+        attributes.remove("JOINTS_0");
+        attributes.remove("WEIGHTS_0");
+        let mut json = serde_json::to_vec(&root).expect("serialize static owned GLB JSON");
+        while !json.len().is_multiple_of(4) {
+            json.push(b' ');
+        }
+        let mut result = Vec::new();
+        result.extend_from_slice(b"glTF");
+        result.extend_from_slice(&2_u32.to_le_bytes());
+        result.extend_from_slice(&0_u32.to_le_bytes());
+        result.extend_from_slice(&(json.len() as u32).to_le_bytes());
+        result.extend_from_slice(b"JSON");
+        result.extend_from_slice(&json);
+        result.extend_from_slice(&glb[json_end..]);
+        let total_length = result.len() as u32;
+        result[8..12].copy_from_slice(&total_length.to_le_bytes());
+        result
+    }
+
+    fn disconnected_static_textured_owned_glb() -> Vec<u8> {
+        let mut glb = static_textured_owned_glb();
+        let json_length = u32::from_le_bytes(glb[12..16].try_into().unwrap()) as usize;
+        let json_end = 20 + json_length;
+        let mut root: serde_json::Value =
+            serde_json::from_slice(&glb[20..json_end]).expect("parse static GLB JSON");
+        let centers = [
+            [-1.0_f32, 0.0, 0.5],
+            [1.0, 0.0, 0.5],
+            [0.0, -1.0, 0.5],
+            [0.0, 1.0, 0.5],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 2.0],
+        ];
+        let mut target_positions = Vec::with_capacity(24);
+        for center in centers {
+            for [dx, dy] in [
+                [-0.01_f32, -0.01],
+                [-0.01, 0.01],
+                [0.01, 0.01],
+                [0.01, -0.01],
+            ] {
+                target_positions.push([center[0] + dx, center[1] + dy, center[2]]);
+            }
+        }
+        // Inverse of the POSITIVE_Z Creature basis used by the generic
+        // retargeter: target = [-source.x, source.z, source.y].
+        let source_positions = target_positions
+            .iter()
+            .map(|point| [-point[0], point[2], point[1]])
+            .collect::<Vec<_>>();
+        root["accessors"][0]["min"] = serde_json::json!([-1.01, 0.0, -1.01]);
+        root["accessors"][0]["max"] = serde_json::json!([1.01, 2.0, 1.01]);
+        let position_view = root["accessors"][0]["bufferView"]
+            .as_u64()
+            .expect("position buffer view") as usize;
+        let position_offset = root["bufferViews"][position_view]
+            .get("byteOffset")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0) as usize
+            + root["accessors"][0]
+                .get("byteOffset")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0) as usize;
+        let mut json = serde_json::to_vec(&root).expect("serialize disconnected GLB JSON");
+        while !json.len().is_multiple_of(4) {
+            json.push(b' ');
+        }
+        let old_bin = glb[(json_end + 8)..].to_vec();
+        let mut bin = old_bin;
+        for (vertex, point) in source_positions.iter().enumerate() {
+            for (axis, value) in point.iter().enumerate() {
+                let offset = position_offset + (vertex * 3 + axis) * 4;
+                bin[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+            }
+        }
+        glb.clear();
+        glb.extend_from_slice(b"glTF");
+        glb.extend_from_slice(&2_u32.to_le_bytes());
+        glb.extend_from_slice(&0_u32.to_le_bytes());
+        glb.extend_from_slice(&(json.len() as u32).to_le_bytes());
+        glb.extend_from_slice(b"JSON");
+        glb.extend_from_slice(&json);
+        glb.extend_from_slice(&(bin.len() as u32).to_le_bytes());
+        glb.extend_from_slice(b"BIN\0");
+        glb.extend_from_slice(&bin);
+        let total_length = glb.len() as u32;
+        glb[8..12].copy_from_slice(&total_length.to_le_bytes());
+        glb
+    }
+
+    #[test]
+    fn c_wolf_structural_ground_terminals_are_explicit_when_configured() {
+        let Some(key_path) = env::var_os("M2A_REFERENCE_NWN_KEY") else {
+            eprintln!("skipped: M2A_REFERENCE_NWN_KEY is not configured");
+            return;
+        };
+        let (reference_chain, reference_chain_json) =
+            read_exact_key_supermodel_chain(Path::new(&key_path), "c_wolf");
+        let payloads = super::parse_reference_supermodel_chain_blob_v2(
+            &reference_chain,
+            &reference_chain_json,
+        )
+        .expect("parse exact c_wolf chain");
+        let analysis =
+            m2a_core::reference_supermodel_generic::analyze_reference_supermodel_chain_v2(
+                "c_wolf", &payloads,
+            )
+            .expect("analyze exact c_wolf chain");
+        let terminals = analysis
+            .motion_contract
+            .nodes
+            .iter()
+            .filter(|node| node.structural_role == "LIMB_GROUND_CONTACT_TERMINAL")
+            .map(|node| {
+                serde_json::json!({
+                    "partNumber": node.part_number,
+                    "name": node.name,
+                    "parentPartNumber": node.parent_part_number,
+                    "anchorRole": node.anchor_role,
+                    "localTranslation": [
+                        node.carrier_bind_local_matrix[12],
+                        node.carrier_bind_local_matrix[13],
+                        node.carrier_bind_local_matrix[14]
+                    ],
+                    "dynamicClips": node.dynamic_clips
+                })
+            })
+            .collect::<Vec<_>>();
+        eprintln!("{}", serde_json::json!({ "groundTerminals": terminals }));
+        assert_eq!(terminals.len(), 4);
+    }
+
+    #[test]
+    fn c_wolf_applied_preview_builds_from_real_selected_key_and_source_when_configured() {
+        let Some(key_path) = env::var_os("M2A_REFERENCE_NWN_KEY") else {
+            eprintln!("skipped: M2A_REFERENCE_NWN_KEY is not configured");
+            return;
+        };
+        let Some(source_path) = env::var_os("M2A_CWOLF_PREVIEW_SOURCE_GLB") else {
+            eprintln!("skipped: M2A_CWOLF_PREVIEW_SOURCE_GLB is not configured");
+            return;
+        };
+        let (reference_chain, reference_chain_json) =
+            read_exact_key_supermodel_chain(Path::new(&key_path), "c_wolf");
+        let source = fs::read(&source_path).expect("read the selected source GLB");
+        assert_eq!(source.len(), 29_889_104);
+        assert_eq!(
+            format!("{:x}", Sha256::digest(&source)),
+            "f96be83949dcf06b3942d2c11ec746eb7aa45ded1cbfeb5e8525190c50475dda"
+        );
+
+        let artifact = build_reference_supermodel_applied_preview_v2_inner(
+            "c_wolf",
+            &source,
+            &reference_chain,
+            &reference_chain_json,
+            "POSITIVE_Z",
+        )
+        .expect("build a structure-derived c_wolf applied preview");
+        let readback: serde_json::Value =
+            serde_json::from_str(&artifact.readback_json).expect("parse applied-model readback");
+        let report: serde_json::Value =
+            serde_json::from_str(&artifact.apply_report_json).expect("parse application report");
+        let failed_cells = report["motionQuality"]["jointClipCoverageMatrix"]
+            .as_array()
+            .expect("joint×clip coverage matrix")
+            .iter()
+            .filter(|cell| cell["pass"] == false)
+            .cloned()
+            .collect::<Vec<_>>();
+        let problem_clips = report["motionQuality"]["clips"]
+            .as_array()
+            .expect("motion quality clips")
+            .iter()
+            .filter(|clip| {
+                clip["triangleAreaCollapseCount"].as_u64().unwrap_or(0) > 0
+                    || clip["triangleAreaExpansionCount"].as_u64().unwrap_or(0) > 0
+                    || clip["pawContactViolationCount"].as_u64().unwrap_or(0) > 0
+                    || clip["pawSideViolationCount"].as_u64().unwrap_or(0) > 0
+            })
+            .map(|clip| {
+                serde_json::json!({
+                    "clipName": clip["clipName"],
+                    "triangleAreaCollapseCount": clip["triangleAreaCollapseCount"],
+                    "triangleAreaExpansionCount": clip["triangleAreaExpansionCount"],
+                    "worstTriangleAreaCollapse": clip["worstTriangleAreaCollapse"],
+                    "worstTriangleAreaExpansion": clip["worstTriangleAreaExpansion"],
+                    "pawContactViolationCount": clip["pawContactViolationCount"],
+                    "pawSideViolationCount": clip["pawSideViolationCount"],
+                    "maxEdgeRatio": clip["maxEdgeRatio"],
+                    "minEdgeRatio": clip["minEdgeRatio"]
+                })
+            })
+            .collect::<Vec<_>>();
+        let worst_expansion_clip = report["motionQuality"]["clips"]
+            .as_array()
+            .and_then(|clips| {
+                clips
+                    .iter()
+                    .max_by_key(|clip| clip["triangleAreaExpansionCount"].as_u64().unwrap_or(0))
+            });
+        let worst_collapse_clip = report["motionQuality"]["clips"]
+            .as_array()
+            .and_then(|clips| {
+                clips
+                    .iter()
+                    .max_by_key(|clip| clip["triangleAreaCollapseCount"].as_u64().unwrap_or(0))
+            });
+        eprintln!(
+            "M2A_WORST_AREA_DIAGNOSTICS {}",
+            serde_json::json!({
+                "worstExpansionClip": worst_expansion_clip.map(|clip| serde_json::json!({
+                    "clipName": clip["clipName"],
+                    "count": clip["triangleAreaExpansionCount"],
+                    "triangle": clip["worstTriangleAreaExpansion"]
+                })),
+                "worstCollapseClip": worst_collapse_clip.map(|clip| serde_json::json!({
+                    "clipName": clip["clipName"],
+                    "count": clip["triangleAreaCollapseCount"],
+                    "triangle": clip["worstTriangleAreaCollapse"]
+                }))
+            })
+        );
+        eprintln!(
+            "{}",
+            serde_json::json!({
+                "sourceSha256": format!("{:x}", Sha256::digest(&source)),
+                "modelSha256": report["modelSha256"],
+                "carrierNodeCount": report["rigAnalysis"]["carrierNodeCount"],
+                "activeWeightedBoneCount": report["rigAnalysis"]["activeWeightedBoneCount"],
+                "initialUnweightedRequiredJointNames": report["rigAnalysis"]["initialUnweightedRequiredJointNames"],
+                "surfaceComponentCount": report["rigAnalysis"]["surfaceComponentCount"],
+                "stabilizedSmallComponentCount": report["rigAnalysis"]["stabilizedSmallComponentCount"],
+                "stabilizedSmallComponentVertexCount": report["rigAnalysis"]["stabilizedSmallComponentVertexCount"],
+                "fittedGroundContactChainCount": report["rigAnalysis"]["fittedGroundContactChainCount"],
+                "requiredClipCount": report["motionQuality"]["requiredClipCount"],
+                "sampledClipCount": report["motionQuality"]["sampledClipCount"],
+                "jointClipRequiredCount": report["motionQuality"]["jointClipRequiredCount"],
+                "jointClipPassCount": report["motionQuality"]["jointClipPassCount"],
+                "failedJointClipCells": failed_cells,
+                "seamPairSampleCount": report["motionQuality"]["seamPairSampleCount"],
+                "seamPairViolationCount": report["motionQuality"]["seamPairViolationCount"],
+                "pawContactViolationCount": report["motionQuality"]["pawContactViolationCount"],
+                "pawSideViolationCount": report["motionQuality"]["pawSideViolationCount"],
+                "pawClusterCount": report["motionQuality"]["clips"][0]["pawClusterCount"],
+                "triangleAreaCollapseCount": report["motionQuality"]["triangleAreaCollapseCount"],
+                "triangleAreaCollapseAllowedCount": report["motionQuality"]["triangleAreaCollapseAllowedCount"],
+                "triangleAreaExpansionCount": report["motionQuality"]["triangleAreaExpansionCount"],
+                "triangleAreaExpansionAllowedCount": report["motionQuality"]["triangleAreaExpansionAllowedCount"],
+                "edgeOutsideSoftLimitCount": report["motionQuality"]["edgeOutsideSoftLimitCount"],
+                "edgeSoftSampleCount": report["motionQuality"]["edgeSoftSampleCount"],
+                "edgeOutsideSoftAllowedCount": report["motionQuality"]["edgeOutsideSoftAllowedCount"],
+                "edgeOutsideHardLimitCount": report["motionQuality"]["edgeOutsideHardLimitCount"],
+                "edgeOutsideHardAllowedCount": report["motionQuality"]["edgeOutsideHardAllowedCount"],
+                "problemClipCount": problem_clips.len(),
+                "status": report["motionQuality"]["status"]
+            })
+        );
+        assert_eq!(readback["model"]["supermodelName"], "c_wolf");
+        assert_eq!(readback["animations"].as_array().map(Vec::len), Some(0));
+        assert_eq!(report["inheritedAnimationCount"], 42);
+        assert_eq!(report["requiredClipCount"], 42);
+        assert_eq!(report["bindPoseCompatible"], true);
+        assert_eq!(report["skinBindCompatible"], true);
+        assert_eq!(report["fullCarrierCoverage"], true);
+        assert_eq!(report["requiredJointCoverage"], true);
+        assert_eq!(report["skinInfluenceCoverage"], true);
+        assert_eq!(report["inheritedClipCoverage"], true);
+        assert_eq!(report["visibleMotionCoverage"], true);
+        assert_eq!(report["seamViolationCount"], 0);
+        assert_eq!(report["motionQualityStatus"], "PASS");
+        assert_eq!(report["rigAnalysis"]["carrierNodeCount"], 30);
+        assert_eq!(
+            report["rigAnalysis"]["activeWeightedBoneCount"],
+            report["rigAnalysis"]["allowedBoneCount"]
+        );
+        assert_eq!(
+            report["structuralAnalysis"]["exactChain"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(report["structuralAnalysis"]["retailPayloadCopied"], false);
+        assert!(report["rigAnalysis"]["weightedBoneCount"].as_u64().unwrap() >= 2);
+        assert!(!artifact.model_bytes.is_empty());
+        eprintln!("{}", artifact.apply_report_json);
+    }
+
+    #[test]
+    fn exact_c_wolf_full_skeleton_reaches_product_packaging_when_configured() {
+        let Some(key_path) = env::var_os("M2A_REFERENCE_NWN_KEY") else {
+            eprintln!("skipped: M2A_REFERENCE_NWN_KEY is not configured");
+            return;
+        };
+        let Some(source_path) = env::var_os("M2A_CWOLF_PREVIEW_SOURCE_GLB") else {
+            eprintln!("skipped: M2A_CWOLF_PREVIEW_SOURCE_GLB is not configured");
+            return;
+        };
+        let (reference_chain, reference_chain_json) =
+            read_exact_key_supermodel_chain(Path::new(&key_path), "c_wolf");
+        let source = fs::read(source_path).expect("read exact configured source GLB");
+        let product = build_reference_supermodel_creature_product_v2_inner(
+            "c_wolf",
+            &source,
+            b"2DA V2.0\n\nLABEL MODELTYPE RACE\n0 dummy S c_dog\n",
+            &reference_chain,
+            &reference_chain_json,
+            r#"{"modelResref":"m2acwprod","textureResref":"m2acwtex","materialResref":"m2acwmtr","hakResref":"m2acwhak","appearanceLabel":"M2A_CWOLF_PRODUCT","appearanceDonorResrefs":["c_dog"],"rejectedBaseline":{"modelSha256":"a2749e97a35dd6c41d9dd0cefbb3c20301927d453271b6d90c10ece44bcdfa5f","visibleSurfaceSemanticSha256":"ff75e44d8c903e68fdded68061c594013374cd4255b9b31b356a9c77e64ab15a"},"semanticControllerNames":["Wolf_tail","Wolf_tailend"]}"#,
+            "POSITIVE_Z",
+        )
+        .expect("exact c_wolf full-skeleton product admission");
+        let report: serde_json::Value = serde_json::from_str(&product.report_json).unwrap();
+        assert_eq!(report["selectedSupermodelResref"], "c_wolf");
+        assert_eq!(report["semanticDelta"]["exportDeltaProven"], true);
+        assert_eq!(report["exportAdmission"]["fullCarrierCoverage"], true);
+        assert_eq!(report["exportAdmission"]["requiredJointCoverage"], true);
+        assert_eq!(report["exportAdmission"]["skinInfluenceCoverage"], true);
+        assert_eq!(report["exportAdmission"]["inheritedClipCoverage"], true);
+        assert_eq!(report["exportAdmission"]["visibleMotionCoverage"], true);
+        assert_eq!(report["exportAdmission"]["seamViolationCount"], 0);
+        assert!(!product.hak_bytes.is_empty());
+    }
+
+    #[test]
+    fn real_non_c_wolf_supermodel_completes_analysis_preview_and_product_when_configured() {
+        let Some(key_path) = env::var_os("M2A_REFERENCE_NWN_KEY") else {
+            eprintln!("skipped: M2A_REFERENCE_NWN_KEY is not configured");
+            return;
+        };
+        let selected =
+            env::var("M2A_REFERENCE_NON_CWOLF_RESREF").unwrap_or_else(|_| "c_bat".to_owned());
+        assert_ne!(selected.to_ascii_lowercase(), "c_wolf");
+        let (reference_chain, reference_chain_json) =
+            read_exact_key_supermodel_chain(Path::new(&key_path), &selected);
+        let source = disconnected_static_textured_owned_glb();
+        let preview = build_reference_supermodel_applied_preview_v2_inner(
+            &selected,
+            &source,
+            &reference_chain,
+            &reference_chain_json,
+            "POSITIVE_Z",
+        )
+        .expect("apply a real non-c_wolf supermodel through structural analysis");
+        let preview_report: serde_json::Value =
+            serde_json::from_str(&preview.apply_report_json).unwrap();
+        assert_eq!(preview_report["supermodelResref"], selected);
+        assert_eq!(
+            preview_report["structuralAnalysis"]["status"],
+            "REFERENCE_SUPERMODEL_STRUCTURALLY_READY"
+        );
+        assert_eq!(
+            preview_report["motionQualityStatus"], "PASS",
+            "non-wolf preview report: {}",
+            preview.apply_report_json
+        );
+        let identity_json = serde_json::to_string(&serde_json::json!({
+            "modelResref": "m2arefprod",
+            "textureResref": "m2areftex",
+            "materialResref": "m2arefmtr",
+            "hakResref": "m2arefhak",
+            "appearanceLabel": "M2A_REFERENCE_PRODUCT",
+            "appearanceDonorResrefs": [selected],
+            "semanticControllerNames": []
+        }))
+        .unwrap();
+        let appearance = format!("2DA V2.0\n\nLABEL MODELTYPE RACE\n0 donor S {}\n", selected);
+        let product = build_reference_supermodel_creature_product_v2_inner(
+            &selected,
+            &source,
+            appearance.as_bytes(),
+            &reference_chain,
+            &reference_chain_json,
+            &identity_json,
+            "POSITIVE_Z",
+        )
+        .expect("complete real non-c_wolf offline Creature packaging");
+        let report: serde_json::Value = serde_json::from_str(&product.report_json).unwrap();
+        assert_eq!(report["selectedSupermodelResref"], selected);
+        assert_eq!(
+            report["exportAdmission"]["status"],
+            "REFERENCE_SUPERMODEL_EXPORT_ADMITTED"
+        );
+        assert_eq!(report["retailPayloadCopied"], false);
+        assert!(!product.model_bytes.is_empty());
+        assert!(!product.hak_bytes.is_empty());
+        eprintln!(
+            "{}",
+            serde_json::json!({
+                "selectedSupermodelResref": selected,
+                "referenceSha256": preview_report["referenceSha256"],
+                "modelSha256": preview_report["modelSha256"],
+                "carrierNodeCount": preview_report["rigAnalysis"]["carrierNodeCount"],
+                "activeWeightedBoneCount": preview_report["rigAnalysis"]["activeWeightedBoneCount"],
+                "requiredClipCount": preview_report["requiredClipCount"],
+                "jointClipRequiredCount": preview_report["motionQuality"]["jointClipRequiredCount"],
+                "jointClipPassCount": preview_report["motionQuality"]["jointClipPassCount"],
+                "seamViolationCount": preview_report["seamViolationCount"],
+                "motionQualityStatus": preview_report["motionQualityStatus"],
+                "exportAdmission": report["exportAdmission"]["status"],
+            })
+        );
+    }
+
+    #[test]
+    fn ascii_supermodel_completes_analysis_preview_and_product_offline() {
+        let selected = "c_ascii_e2e";
+        let ascii = br#"newmodel c_ascii_e2e
+setsupermodel c_ascii_e2e NULL
+classification CHARACTER
+setanimationscale 1
+beginmodelgeom c_ascii_e2e
+node dummy c_ascii_e2e
+parent NULL
+position 0 0 0
+endnode
+node dummy branch_l
+parent c_ascii_e2e
+position -0.5 0 0.7
+endnode
+node dummy branch_r
+parent c_ascii_e2e
+position 0.5 0 0.7
+endnode
+endmodelgeom c_ascii_e2e
+newanim cpause1 c_ascii_e2e
+length 1
+animroot c_ascii_e2e
+node dummy c_ascii_e2e
+parent NULL
+positionkey 2
+0 0 0 0
+1 0 0.05 0
+endnode
+node dummy branch_l
+parent c_ascii_e2e
+positionkey 2
+0 -0.5 0 0.7
+1 -0.495 0 0.7
+endnode
+node dummy branch_r
+parent c_ascii_e2e
+positionkey 2
+0 0.5 0 0.7
+1 0.505 0 0.7
+endnode
+doneanim cpause1 c_ascii_e2e
+newanim cwalk c_ascii_e2e
+length 1
+animroot c_ascii_e2e
+node dummy c_ascii_e2e
+parent NULL
+positionkey 2
+0 0 0 0
+1 0 0.2 0
+endnode
+node dummy branch_l
+parent c_ascii_e2e
+positionkey 2
+0 -0.5 0 0.7
+1 -0.49 0 0.7
+endnode
+node dummy branch_r
+parent c_ascii_e2e
+positionkey 2
+0 0.5 0 0.7
+1 0.51 0 0.7
+endnode
+doneanim cwalk c_ascii_e2e
+newanim crun c_ascii_e2e
+length 0.8
+animroot c_ascii_e2e
+node dummy c_ascii_e2e
+parent NULL
+positionkey 2
+0 0 0 0
+0.8 0 0.35 0
+endnode
+node dummy branch_l
+parent c_ascii_e2e
+positionkey 2
+0 -0.5 0 0.7
+0.8 -0.485 0 0.7
+endnode
+node dummy branch_r
+parent c_ascii_e2e
+positionkey 2
+0 0.5 0 0.7
+0.8 0.515 0 0.7
+endnode
+doneanim crun c_ascii_e2e
+donemodel c_ascii_e2e
+"#;
+        let sha256 = format!("{:x}", Sha256::digest(ascii));
+        let chain_json = serde_json::to_string(&vec![serde_json::json!({
+            "resref": selected,
+            "supermodelResref": "NULL",
+            "format": "ASCII",
+            "sha256": sha256,
+            "byteOffset": 0,
+            "byteLength": ascii.len()
+        })])
+        .unwrap();
+        let source = disconnected_static_textured_owned_glb();
+        let preview = build_reference_supermodel_applied_preview_v2_inner(
+            selected,
+            &source,
+            ascii,
+            &chain_json,
+            "POSITIVE_Z",
+        )
+        .expect("apply structural ASCII supermodel");
+        let preview_report: serde_json::Value =
+            serde_json::from_str(&preview.apply_report_json).unwrap();
+        assert_eq!(preview_report["referenceFormat"], "ASCII");
+        assert_eq!(
+            preview_report["motionQualityStatus"], "PASS",
+            "ASCII full-skeleton report: {}",
+            preview.apply_report_json
+        );
+        assert_eq!(
+            preview_report["structuralAnalysis"]["inheritedAnimationNames"],
+            serde_json::json!(["cpause1", "cwalk", "crun"])
+        );
+
+        let target_rig: serde_json::Value = serde_json::from_str(&preview.target_rig_json).unwrap();
+        let mut authoring: serde_json::Value =
+            serde_json::from_str(&preview.authoring_json).unwrap();
+        let authored_node = &target_rig["nodes"][0];
+        authoring["jointOverrides"] = serde_json::json!([{
+            "carrierPartNumber": authored_node["id"],
+            "bindLocalMatrix": authored_node["bindLocalMatrix"],
+            "semanticRole": "rig_root",
+            "jointAxis": [0.0, 1.0, 0.0],
+            "locked": false
+        }]);
+        let authored_preview = build_reference_supermodel_applied_preview_with_authoring_v1_inner(
+            selected,
+            &source,
+            ascii,
+            &chain_json,
+            "POSITIVE_Z",
+            Some(&serde_json::to_string(&authoring).unwrap()),
+        )
+        .expect("seal and rebuild an authored target rig preview");
+        let authored_report: serde_json::Value =
+            serde_json::from_str(&authored_preview.apply_report_json).unwrap();
+        assert_eq!(authored_report["rigAuthoring"]["jointOverrideCount"], 1);
+        assert_eq!(
+            authored_report["rigAuthoring"]["carrierTopologyPreserved"],
+            true
+        );
+
+        let identity_json = serde_json::to_string(&serde_json::json!({
+            "modelResref": "m2aasciiprod",
+            "textureResref": "m2aasciitex",
+            "materialResref": "m2aasciimtr",
+            "hakResref": "m2aasciihak",
+            "appearanceLabel": "M2A_ASCII_REFERENCE_PRODUCT",
+            "appearanceDonorResrefs": [selected],
+            "semanticControllerNames": []
+        }))
+        .unwrap();
+        let appearance = format!("2DA V2.0\n\nLABEL MODELTYPE RACE\n0 donor S {selected}\n");
+        let product = build_reference_supermodel_creature_product_with_authoring_v3_inner(
+            selected,
+            &source,
+            appearance.as_bytes(),
+            ascii,
+            &chain_json,
+            &identity_json,
+            "POSITIVE_Z",
+            Some(&authored_preview.authoring_json),
+        )
+        .expect("package the sealed authored ASCII supermodel Creature product");
+        let report: serde_json::Value = serde_json::from_str(&product.report_json).unwrap();
+        assert_eq!(report["selectedFormat"], "ASCII");
+        assert_eq!(report["rigAuthoring"]["jointOverrideCount"], 1);
+        assert_eq!(
+            report["rigAuthoring"]["authoringSha256"],
+            serde_json::from_str::<serde_json::Value>(&authored_preview.authoring_json).unwrap()["contentSha256"]
+        );
+        assert_eq!(
+            report["exportAdmission"]["status"],
+            "REFERENCE_SUPERMODEL_EXPORT_ADMITTED"
+        );
+        assert!(!product.model_bytes.is_empty());
+        assert!(!product.hak_bytes.is_empty());
+    }
+
+    fn translated_y(y: f32) -> [f32; 16] {
+        let mut matrix = identity();
+        matrix[13] = y;
+        matrix
+    }
+
+    fn exact_reference_fixture() -> m2a_core::BinaryMdlArtifactV1 {
+        write_binary_mdl_with_animations(
+            &AuroraModelIrV1 {
+                schema_version: 1,
+                profile_id: "wasm-exact-supermodel-reference".to_owned(),
+                source_sha256: "0".repeat(64),
+                basis_status: "SYNTHETIC".to_owned(),
+                engine_facing_proof: "SYNTHETIC".to_owned(),
+                uv_runtime_proof: "SYNTHETIC".to_owned(),
+                nodes: vec![
+                    AuroraModelNodeV1 {
+                        id: 1,
+                        name: "c_exact".to_owned(),
+                        parent_id: None,
+                        bind_local_matrix: identity(),
+                    },
+                    AuroraModelNodeV1 {
+                        id: 2,
+                        name: "tail".to_owned(),
+                        parent_id: Some(1),
+                        bind_local_matrix: translated_y(1.25),
+                    },
+                ],
+                material_source_bindings: Vec::new(),
+                segments: vec![AuroraModelSegmentV1 {
+                    segment_id: 1,
+                    material_slot: 0,
+                    deformation: AuroraSegmentDeformationV1::Rigid,
+                    parent_node_id: 1,
+                    cast_shadow: true,
+                    positions: vec![[0.0, 0.0, 0.0], [0.01, 0.0, 0.0], [0.0, 0.01, 0.0]],
+                    normals: vec![[0.0, 0.0, 1.0]; 3],
+                    tangents: None,
+                    uv0: vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
+                    indices: vec![0, 1, 2],
+                    face_surface_ids: Vec::new(),
+                    weights: Vec::new(),
+                }],
+            },
+            &MdlAnimationSetV1 {
+                schema_version: 1,
+                clips: vec![MdlAnimationClipV1 {
+                    name: "cpause1".to_owned(),
+                    animation_root: "c_exact".to_owned(),
+                    length_seconds: 1.0,
+                    transition_seconds: 0.25,
+                    events: Vec::new(),
+                    tracks: vec![MdlAnimationTrackV1 {
+                        target_node_id: 2,
+                        path: MdlAnimationTrackPathV1::Translation,
+                        interpolation: MdlAnimationInterpolationV1::Linear,
+                        times_seconds: vec![0.0, 1.0],
+                        values: vec![vec![0.0, 1.25, 0.0], vec![0.25, 1.25, 0.0]],
+                    }],
+                }],
+            },
+            &MdlWriterOptionsV1 {
+                schema_version: 1,
+                format_profile: MdlFormatProfileV1::M4DirectCreatureExtended64V1,
+                state_projection_profile:
+                    MdlStateProjectionProfileV1::RetailDirectCreatureType5DummyV1,
+                state_projection_provenance: None,
+                model_resource_resref: "c_exact".to_owned(),
+                diffuse_texture_resref_by_material_slot: vec![MdlMaterialTextureBindingV1 {
+                    material_slot: 0,
+                    resref: "cexacttex".to_owned(),
+                }],
+            },
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn exact_contract_boundary_is_generic_and_matches_core_json() {
+        let reference = exact_reference_fixture();
+        let options = ReferenceSupermodelExactContractOptionsV3 {
+            contract_id: "wasm-exact-supermodel-v3".to_owned(),
+            supermodel_resref: "c_exact".to_owned(),
+            source_model_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                .to_owned(),
+            required_clips: vec!["cpause1".to_owned()],
+            required_events: Vec::new(),
+            semantic_nodes: vec![ReferenceSupermodelSemanticNodeV3 {
+                node_name: "tail".to_owned(),
+                anchor_role: Some("tail_tip".to_owned()),
+                joint_axis: Some([0.0, 0.0, 1.0]),
+            }],
+            tolerances: default_reference_supermodel_motion_tolerances_v2(),
+        };
+        let expected =
+            build_exact_reference_supermodel_motion_contract_v3(&reference.inspection, &options)
+                .unwrap();
+        let actual = build_exact_reference_supermodel_motion_contract_v3_json_inner(
+            &reference.payload,
+            &serde_json::to_string(&options).unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(actual, serde_json::to_string(&expected).unwrap());
+        assert_eq!(expected.nodes.len(), 2);
+        assert_eq!(
+            expected.nodes[1].carrier_bind_local_matrix,
+            translated_y(1.25)
+        );
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -199,6 +3073,24 @@ struct ModelMaterialResolutionBoundaryOutputV1 {
     texture_authoring: m2a_core::model_texture_authoring::ModelTextureAuthoringDocumentV1,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelFaceBoundaryOutputV2 {
+    schema_version: u32,
+    capabilities: m2a_core::model_material_capabilities::ModelMaterialCapabilitiesV1,
+    inventory: m2a_core::model_components::ModelComponentInventoryV1,
+    document: m2a_core::model_material_separation::ModelMaterialSeparationDocumentV2,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelMaterialResolutionBoundaryOutputV2 {
+    schema_version: u32,
+    capabilities: m2a_core::model_material_capabilities::ModelMaterialCapabilitiesV1,
+    report: m2a_core::model_material_separation::ModelMaterialSeparationReportV2,
+    texture_authoring: m2a_core::model_texture_authoring::ModelTextureAuthoringDocumentV1,
+}
+
 fn model_material_boundary_error(
     code: &str,
     path: &str,
@@ -206,6 +3098,19 @@ fn model_material_boundary_error(
 ) -> ModelMaterialBoundaryErrorV1 {
     ModelMaterialBoundaryErrorV1 {
         schema_version: 1,
+        code: code.to_owned(),
+        path: path.to_owned(),
+        message: message.into(),
+    }
+}
+
+fn model_material_boundary_error_v2(
+    code: &str,
+    path: &str,
+    message: impl Into<String>,
+) -> ModelMaterialBoundaryErrorV1 {
+    ModelMaterialBoundaryErrorV1 {
+        schema_version: 2,
         code: code.to_owned(),
         path: path.to_owned(),
         message: message.into(),
@@ -227,6 +3132,67 @@ fn parse_model_render_target_v1(
             "target",
             "target must be CREATURE, PLACEABLE, TILE or MODEL_PART",
         )),
+    }
+}
+
+fn parse_aurora_material_profile_v1(
+    profile: &str,
+) -> Result<m2a_core::aurora_material::AuroraMaterialTargetProfileV1, ModelMaterialBoundaryErrorV1>
+{
+    use m2a_core::aurora_material::AuroraMaterialTargetProfileV1;
+    match profile {
+        "AURORA_CLASSIC_SAFE" => Ok(AuroraMaterialTargetProfileV1::AuroraClassicSafe),
+        "NWN_EE_MTR" => Ok(AuroraMaterialTargetProfileV1::NwnEeMtr),
+        _ => Err(model_material_boundary_error(
+            "AURORA-MATERIAL-PROFILE-INVALID",
+            "profile",
+            "profile must be AURORA_CLASSIC_SAFE or NWN_EE_MTR",
+        )),
+    }
+}
+
+fn compile_aurora_materials_v1_json_inner(bytes: &[u8], profile: &str) -> Result<String, String> {
+    let profile =
+        parse_aurora_material_profile_v1(profile).map_err(|error| serialize_json(&error))?;
+    let ingest = m2a_core::glb::ingest_glb(bytes, &m2a_core::glb::GlbLimits::default())
+        .map_err(|error| serialize_json(&error))?;
+    let compiled = m2a_core::aurora_material::compile_gltf_materials_v1(
+        &ingest.ir.source.sha256,
+        &ingest.ir.materials,
+        profile,
+    )
+    .map_err(|error| serialize_json(&error))?;
+    Ok(serialize_json(&compiled))
+}
+
+/// Returns the source-bound Aurora material plan and complete fidelity ledger.
+#[wasm_bindgen(js_name = compileAuroraMaterialsV1Json)]
+pub fn compile_aurora_materials_v1_json(bytes: &[u8], profile: &str) -> Result<String, JsValue> {
+    compile_aurora_materials_v1_json_inner(bytes, profile)
+        .map_err(|error| JsValue::from_str(&error))
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod aurora_material_boundary_tests {
+    use super::compile_aurora_materials_v1_json_inner;
+
+    #[test]
+    fn material_compiler_boundary_is_source_bound_and_rejects_unknown_profiles() {
+        let glb = m2a_core::owned_fixture::synthetic_owned_m6_glb_v1().unwrap();
+        let json = compile_aurora_materials_v1_json_inner(&glb, "AURORA_CLASSIC_SAFE").unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["schemaVersion"], 1);
+        assert_eq!(value["sourceSha256"].as_str().unwrap().len(), 64);
+        assert_eq!(value["targetProfile"], "AURORA_CLASSIC_SAFE");
+        assert!(
+            value["materials"]
+                .as_array()
+                .is_some_and(|items| !items.is_empty())
+        );
+
+        let error = compile_aurora_materials_v1_json_inner(&glb, "MAGIC").unwrap_err();
+        let value: serde_json::Value = serde_json::from_str(&error).unwrap();
+        assert_eq!(value["code"], "AURORA-MATERIAL-PROFILE-INVALID");
     }
 }
 
@@ -305,6 +3271,84 @@ pub fn resolve_model_materials_v1_json(
         .map_err(|error| JsValue::from_str(&error))
 }
 
+fn inspect_model_faces_v2_json_inner(bytes: &[u8], target: &str) -> Result<String, String> {
+    let target = parse_model_render_target_v1(target).map_err(|error| serialize_json(&error))?;
+    let ingest = m2a_core::glb::ingest_glb(bytes, &m2a_core::glb::GlbLimits::default())
+        .map_err(|error| serialize_json(&error))?;
+    let inventory = m2a_core::model_components::inspect_model_components_v1(&ingest.ir)
+        .map_err(|error| serialize_json(&error))?;
+    let document =
+        m2a_core::model_material_separation::default_model_material_separation_v2(&ingest.ir);
+    Ok(serialize_json(&ModelFaceBoundaryOutputV2 {
+        schema_version: 2,
+        capabilities: m2a_core::model_material_capabilities::material_separation_capabilities_v2(
+            target,
+        ),
+        inventory,
+        document,
+    }))
+}
+
+/// Returns Face Mode V2 bootstrap data. Exact face ordinals stay attached to
+/// the source GLB and are selected in the viewport; no per-triangle payload is
+/// copied over the WASM boundary.
+#[wasm_bindgen(js_name = inspectModelFacesV2Json)]
+pub fn inspect_model_faces_v2_json(bytes: &[u8], target: &str) -> Result<String, JsValue> {
+    inspect_model_faces_v2_json_inner(bytes, target).map_err(|error| JsValue::from_str(&error))
+}
+
+fn resolve_model_materials_v2_json_inner(
+    bytes: &[u8],
+    target: &str,
+    document_json: &str,
+) -> Result<String, String> {
+    let target = parse_model_render_target_v1(target).map_err(|error| serialize_json(&error))?;
+    let ingest = m2a_core::glb::ingest_glb(bytes, &m2a_core::glb::GlbLimits::default())
+        .map_err(|error| serialize_json(&error))?;
+    let document = serde_json::from_str::<
+        m2a_core::model_material_separation::ModelMaterialSeparationDocumentV2,
+    >(document_json)
+    .map_err(|_| {
+        serialize_json(&model_material_boundary_error_v2(
+            "MODEL-MATERIAL-DOCUMENT-JSON-INVALID",
+            "documentJson",
+            "material separation document must satisfy the strict Face Mode V2 schema",
+        ))
+    })?;
+    let resolved =
+        m2a_core::model_material_separation::resolve_model_materials_v2(&ingest.ir, &document)
+            .map_err(|error| serialize_json(&error))?;
+    let capabilities =
+        m2a_core::model_material_capabilities::validate_material_separation_counts_v2(
+            target,
+            resolved.report.material_slots.len(),
+            resolved.report.output_section_count,
+        )
+        .map_err(|error| serialize_json(&error))?;
+    let texture_authoring = m2a_core::model_texture_authoring::default_model_texture_authoring_v1(
+        &ingest,
+        resolved.projection_v1(),
+    )
+    .map_err(|error| serialize_json(&error))?;
+    Ok(serialize_json(&ModelMaterialResolutionBoundaryOutputV2 {
+        schema_version: 2,
+        capabilities,
+        report: resolved.report,
+        texture_authoring,
+    }))
+}
+
+/// Validates and resolves an exact Face Mode V2 recipe.
+#[wasm_bindgen(js_name = resolveModelMaterialsV2Json)]
+pub fn resolve_model_materials_v2_json(
+    bytes: &[u8],
+    target: &str,
+    document_json: &str,
+) -> Result<String, JsValue> {
+    resolve_model_materials_v2_json_inner(bytes, target, document_json)
+        .map_err(|error| JsValue::from_str(&error))
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct M7BatchBoundaryOutputV1 {
@@ -334,6 +3378,159 @@ pub fn inspect_binary_mdl(bytes: &[u8]) -> String {
     }
 }
 
+/// Builds the read-only MDL locator inventory from one user-selected KEY V1 file.
+#[wasm_bindgen(js_name = indexNwnKeyModelsV1Json)]
+pub fn index_nwn_key_models_v1_json(bytes: &[u8]) -> String {
+    match m2a_core::supermodel_catalog::index_nwn_key_models_v1(bytes) {
+        Ok(report) => serialize_json(&report),
+        Err(error) => serialize_json(&error),
+    }
+}
+
+/// Catalogues MDL entries inside one user-selected HAK without extracting them.
+#[wasm_bindgen(js_name = indexHakModelsV1Json)]
+pub fn index_hak_models_v1_json(bytes: &[u8]) -> String {
+    match m2a_core::supermodel_catalog::index_hak_models_v1(bytes) {
+        Ok(report) => serialize_json(&report),
+        Err(error) => serialize_json(&error),
+    }
+}
+
+/// Returns the exact variable-resource table range required from a BIFF V1 file.
+#[wasm_bindgen(js_name = planNwnBifIndexV1Json)]
+pub fn plan_nwn_bif_index_v1_json(header: &[u8]) -> String {
+    match m2a_core::supermodel_catalog::plan_nwn_bif_index_v1(header) {
+        Ok(report) => serialize_json(&report),
+        Err(error) => serialize_json(&error),
+    }
+}
+
+/// Parses a BIFF V1 header and the exact table slice requested by the plan adapter.
+#[wasm_bindgen(js_name = indexNwnBifTableV1Json)]
+pub fn index_nwn_bif_table_v1_json(header: &[u8], table: &[u8]) -> String {
+    match m2a_core::supermodel_catalog::index_nwn_bif_table_v1(header, table) {
+        Ok(report) => serialize_json(&report),
+        Err(error) => serialize_json(&error),
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct MdlCatalogHeaderBatchDescriptorV1 {
+    item_id: String,
+    byte_offset: usize,
+    byte_length: usize,
+    declared_payload_size: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MdlCatalogHeaderBatchItemV1 {
+    item_id: String,
+    header: Option<m2a_core::supermodel_catalog::MdlCatalogHeaderV1>,
+    error: Option<m2a_core::supermodel_catalog::SupermodelCatalogErrorV1>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MdlCatalogHeaderBatchV1 {
+    schema_version: u32,
+    items: Vec<MdlCatalogHeaderBatchItemV1>,
+}
+
+/// Inspects a bounded batch of independently sliced MDL metadata prefixes.
+#[wasm_bindgen(js_name = inspectMdlCatalogHeadersV1Json)]
+pub fn inspect_mdl_catalog_headers_v1_json(blob: &[u8], descriptors_json: &str) -> String {
+    let descriptors =
+        match serde_json::from_str::<Vec<MdlCatalogHeaderBatchDescriptorV1>>(descriptors_json) {
+            Ok(value) if value.len() <= 1_024 => value,
+            _ => {
+                return serialize_json(&serde_json::json!({
+                    "schemaVersion": 1,
+                    "code": "M2A-SUPERMODEL-BATCH-DESCRIPTORS",
+                    "offset": 0,
+                    "context": "descriptor JSON must be a strict array with at most 1024 items"
+                }));
+            }
+        };
+    let items = descriptors
+        .into_iter()
+        .map(|descriptor| {
+            let bytes = descriptor
+                .byte_offset
+                .checked_add(descriptor.byte_length)
+                .and_then(|end| blob.get(descriptor.byte_offset..end));
+            let result =
+                bytes.ok_or_else(|| m2a_core::supermodel_catalog::SupermodelCatalogErrorV1 {
+                    schema_version: 1,
+                    code: "M2A-SUPERMODEL-BATCH-RANGE".to_owned(),
+                    offset: descriptor.byte_offset,
+                    context: "descriptor escapes the supplied batch blob".to_owned(),
+                });
+            match result.and_then(|bytes| {
+                m2a_core::supermodel_catalog::inspect_mdl_catalog_header_v1(
+                    bytes,
+                    descriptor.declared_payload_size,
+                )
+            }) {
+                Ok(header) => MdlCatalogHeaderBatchItemV1 {
+                    item_id: descriptor.item_id,
+                    header: Some(header),
+                    error: None,
+                },
+                Err(error) => MdlCatalogHeaderBatchItemV1 {
+                    item_id: descriptor.item_id,
+                    header: None,
+                    error: Some(error),
+                },
+            }
+        })
+        .collect();
+    serialize_json(&MdlCatalogHeaderBatchV1 {
+        schema_version: 1,
+        items,
+    })
+}
+
+/// Builds the deterministic case-insensitive supermodel graph from scanned metadata.
+#[wasm_bindgen(js_name = buildSupermodelCatalogV1Json)]
+pub fn build_supermodel_catalog_v1_json(input_json: &str) -> String {
+    let input = match serde_json::from_str::<
+        m2a_core::supermodel_catalog::SupermodelCatalogBuildInputV1,
+    >(input_json)
+    {
+        Ok(value) => value,
+        Err(_) => {
+            return serialize_json(&serde_json::json!({
+                "schemaVersion": 1,
+                "code": "M2A-SUPERMODEL-CATALOG-INPUT",
+                "offset": 0,
+                "context": "catalog input JSON does not match the strict V1 schema"
+            }));
+        }
+    };
+    serialize_json(&m2a_core::supermodel_catalog::build_supermodel_catalog_v1(
+        &input,
+    ))
+}
+
+#[cfg(test)]
+mod supermodel_catalog_wasm_boundary_tests {
+    use super::{build_supermodel_catalog_v1_json, inspect_mdl_catalog_headers_v1_json};
+
+    #[test]
+    fn invalid_catalog_json_and_batch_ranges_return_stable_json_errors() {
+        let invalid = build_supermodel_catalog_v1_json("{}");
+        assert!(invalid.contains("M2A-SUPERMODEL-CATALOG-INPUT"));
+
+        let report = inspect_mdl_catalog_headers_v1_json(
+            &[0; 8],
+            r#"[{"itemId":"one","byteOffset":7,"byteLength":2,"declaredPayloadSize":2}]"#,
+        );
+        assert!(report.contains("M2A-SUPERMODEL-BATCH-RANGE"));
+    }
+}
+
 /// Inspects a GLB selected by JavaScript with the default project guardrails.
 ///
 /// This adapter owns only the JS/WASM boundary and JSON encoding. GLB parsing,
@@ -358,6 +3555,17 @@ pub fn inspect_glb(bytes: &[u8]) -> String {
 #[wasm_bindgen(js_name = ingestGlbJson)]
 pub fn ingest_glb_json(bytes: &[u8]) -> String {
     match m2a_core::glb::ingest_glb(bytes, &m2a_core::glb::GlbLimits::default()) {
+        Ok(result) => serialize_json(&result),
+        Err(error) => serialize_json(&error),
+    }
+}
+
+/// Produces a compact, diagnostic-only inspection for unusually large GLBs.
+/// The core result is always conversion-ineligible and cannot be used by any
+/// build or package export route.
+#[wasm_bindgen(js_name = inspectHighPolyGlbJson)]
+pub fn inspect_high_poly_glb_json(bytes: &[u8]) -> String {
+    match m2a_core::glb::inspect_high_poly_glb_v1(bytes) {
         Ok(result) => serialize_json(&result),
         Err(error) => serialize_json(&error),
     }
@@ -677,6 +3885,678 @@ fn inspect_two_da_v2_json_inner(bytes: &[u8], limits_json: &str) -> Result<Strin
 #[wasm_bindgen(js_name = inspectTwoDaV2Json)]
 pub fn inspect_two_da_v2_json(bytes: &[u8], limits_json: &str) -> Result<String, JsValue> {
     inspect_two_da_v2_json_inner(bytes, limits_json).map_err(|error| JsValue::from_str(&error))
+}
+
+fn resolve_item_base_record_v1_json_inner(
+    bytes: &[u8],
+    physical_row_index: u32,
+    expected_source_sha256: &str,
+    limits_json: &str,
+) -> Result<String, String> {
+    let limits = parse_two_da_limits_json(limits_json)?;
+    m2a_core::item::resolve_item_base_record_v1(
+        bytes,
+        physical_row_index,
+        expected_source_sha256,
+        &limits,
+    )
+    .map(|record| serialize_json(&record))
+    .map_err(|error| serialize_json(&error))
+}
+
+/// Resolves one exact BaseItem row from a hash-bound `baseitems.2da` input.
+#[wasm_bindgen(js_name = resolveItemBaseRecordV1Json)]
+pub fn resolve_item_base_record_v1_json(
+    bytes: &[u8],
+    physical_row_index: u32,
+    expected_source_sha256: &str,
+    limits_json: &str,
+) -> Result<String, JsValue> {
+    resolve_item_base_record_v1_json_inner(
+        bytes,
+        physical_row_index,
+        expected_source_sha256,
+        limits_json,
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ItemRecipeResolutionBoundaryV1 {
+    schema_version: u32,
+    recipe_sha256: String,
+    required_slots: Vec<m2a_core::item::ItemPartSlotV1>,
+    resource_names: Vec<m2a_core::item::ItemResourceNameV1>,
+}
+
+fn resolve_item_recipe_v1_json_inner(recipe_json: &str) -> Result<String, String> {
+    let recipe: m2a_core::item::ItemAppearanceRecipeV1 = serde_json::from_str(recipe_json)
+        .map_err(|_| {
+            m5_boundary_error(
+                "M2A-ITEM-RECIPE-JSON-INVALID",
+                "recipeJson",
+                "Item recipe JSON does not match the strict public schema",
+            )
+        })?;
+    m2a_core::item::validate_item_recipe_v1(&recipe).map_err(|error| serialize_json(&error))?;
+    let recipe_sha256 =
+        m2a_core::item::item_recipe_sha256_v1(&recipe).map_err(|error| serialize_json(&error))?;
+    let resource_names = m2a_core::item::resolve_item_resource_names_v1(&recipe)
+        .map_err(|error| serialize_json(&error))?;
+    Ok(serialize_json(&ItemRecipeResolutionBoundaryV1 {
+        schema_version: 1,
+        recipe_sha256,
+        required_slots: m2a_core::item::required_item_part_slots_v1(recipe.base_item.profile)
+            .to_vec(),
+        resource_names,
+    }))
+}
+
+/// Validates and hashes one strict Item recipe, then resolves its proven names.
+#[wasm_bindgen(js_name = resolveItemRecipeV1Json)]
+pub fn resolve_item_recipe_v1_json(recipe_json: &str) -> Result<String, JsValue> {
+    resolve_item_recipe_v1_json_inner(recipe_json).map_err(|error| JsValue::from_str(&error))
+}
+
+fn compile_item_part_v1_inner(
+    request_json: &str,
+) -> Result<m2a_core::item_part::ItemPartArtifactV1, String> {
+    let request: m2a_core::item_part::ItemPartCompileRequestV1 = serde_json::from_str(request_json)
+        .map_err(|_| {
+            m5_boundary_error(
+                "M2A-ITEM-PART-REQUEST-JSON-INVALID",
+                "requestJson",
+                "Item part request JSON does not match the strict public schema",
+            )
+        })?;
+    m2a_core::item_part::compile_item_part_v1(&request).map_err(|error| serialize_json(&error))
+}
+
+/// Item-part result returned as binary MDL plus typed compile/readback reports.
+#[wasm_bindgen]
+pub struct ItemPartWasmArtifactV1 {
+    mdl_bytes: Vec<u8>,
+    report_json: String,
+    readback_json: String,
+}
+
+#[wasm_bindgen]
+impl ItemPartWasmArtifactV1 {
+    #[wasm_bindgen(js_name = takeMdlBytes)]
+    pub fn take_mdl_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.mdl_bytes)
+    }
+
+    #[wasm_bindgen(getter, js_name = reportJson)]
+    pub fn report_json(&self) -> String {
+        self.report_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = readbackJson)]
+    pub fn readback_json(&self) -> String {
+        self.readback_json.clone()
+    }
+}
+
+/// Compiles one hash-bound common model IR as a classification-0 Item part.
+#[wasm_bindgen(js_name = compileItemPartV1)]
+pub fn compile_item_part_v1(request_json: &str) -> Result<ItemPartWasmArtifactV1, JsValue> {
+    compile_item_part_v1_inner(request_json)
+        .map(|artifact| ItemPartWasmArtifactV1 {
+            report_json: serialize_json(&artifact.report),
+            readback_json: serialize_json(&artifact.inspection),
+            mdl_bytes: artifact.payload,
+        })
+        .map_err(|error| JsValue::from_str(&error))
+}
+
+fn parse_item_uti_boundary(
+    request_json: &str,
+    options_json: &str,
+) -> Result<
+    (
+        m2a_core::item_uti::ItemUtiBuildRequestV1,
+        m2a_core::gff::GffWriterOptionsV1,
+    ),
+    String,
+> {
+    let request = serde_json::from_str(request_json).map_err(|_| {
+        m5_boundary_error(
+            "M2A-ITEM-UTI-REQUEST-JSON-INVALID",
+            "requestJson",
+            "Item UTI request JSON does not match the strict public schema",
+        )
+    })?;
+    let options = serde_json::from_str(options_json).map_err(|_| {
+        m5_boundary_error(
+            "M2A-ITEM-UTI-OPTIONS-JSON-INVALID",
+            "optionsJson",
+            "GFF writer options JSON does not match the strict public schema",
+        )
+    })?;
+    Ok((request, options))
+}
+
+fn write_item_uti_v1_inner(
+    request_json: &str,
+    options_json: &str,
+) -> Result<m2a_core::item_uti::ItemUtiArtifactV1, String> {
+    let (request, options) = parse_item_uti_boundary(request_json, options_json)?;
+    m2a_core::item_uti::write_item_uti_v1(&request, &options)
+        .map_err(|error| serialize_json(&error))
+}
+
+/// Item UTI result returned as binary bytes plus separate typed reports.
+#[wasm_bindgen]
+pub struct ItemUtiWasmArtifactV1 {
+    uti_bytes: Vec<u8>,
+    report_json: String,
+    readback_json: String,
+}
+
+#[wasm_bindgen]
+impl ItemUtiWasmArtifactV1 {
+    #[wasm_bindgen(js_name = takeUtiBytes)]
+    pub fn take_uti_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.uti_bytes)
+    }
+
+    #[wasm_bindgen(getter, js_name = reportJson)]
+    pub fn report_json(&self) -> String {
+        self.report_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = readbackJson)]
+    pub fn readback_json(&self) -> String {
+        self.readback_json.clone()
+    }
+}
+
+/// Writes a deterministic production UTI for ModelType 0/1/2/3.
+#[wasm_bindgen(js_name = writeItemUtiV1)]
+pub fn write_item_uti_v1(
+    request_json: &str,
+    options_json: &str,
+) -> Result<ItemUtiWasmArtifactV1, JsValue> {
+    write_item_uti_v1_inner(request_json, options_json)
+        .map(|artifact| ItemUtiWasmArtifactV1 {
+            report_json: serialize_json(&artifact.report),
+            readback_json: serialize_json(&artifact.readback),
+            uti_bytes: artifact.payload,
+        })
+        .map_err(|error| JsValue::from_str(&error))
+}
+
+fn read_item_uti_v1_json_inner(
+    bytes: &[u8],
+    model_type: u8,
+    limits_json: &str,
+) -> Result<String, String> {
+    let profile = m2a_core::item::ItemCompositionProfileV1::from_model_type(model_type)
+        .map_err(|error| serialize_json(&error))?;
+    let limits = serde_json::from_str(limits_json).map_err(|_| {
+        m5_boundary_error(
+            "M2A-ITEM-UTI-LIMITS-JSON-INVALID",
+            "limitsJson",
+            "GFF limits JSON does not match the strict public schema",
+        )
+    })?;
+    m2a_core::item_uti::read_item_uti_v1(bytes, profile, &limits)
+        .map(|readback| serialize_json(&readback))
+        .map_err(|error| serialize_json(&error))
+}
+
+/// Reads exact typed Item UTI semantics for one caller-selected ModelType.
+#[wasm_bindgen(js_name = readItemUtiV1Json)]
+pub fn read_item_uti_v1_json(
+    bytes: &[u8],
+    model_type: u8,
+    limits_json: &str,
+) -> Result<String, JsValue> {
+    read_item_uti_v1_json_inner(bytes, model_type, limits_json)
+        .map_err(|error| JsValue::from_str(&error))
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ItemIconOutputDescriptorV1 {
+    slot: m2a_core::item::ItemPartSlotV1,
+    resref: String,
+    report: m2a_core::item_icon::ItemIconLayerReportV1,
+    payload_offset: u32,
+    payload_size: u32,
+}
+
+fn write_item_icon_layers_v1_inner(
+    recipe_json: &str,
+    layers_json: &str,
+    options_json: &str,
+) -> Result<(Vec<u8>, String, String), String> {
+    let recipe = serde_json::from_str(recipe_json).map_err(|_| {
+        m5_boundary_error(
+            "M2A-ITEM-ICON-RECIPE-JSON-INVALID",
+            "recipeJson",
+            "Item recipe JSON does not match the strict public schema",
+        )
+    })?;
+    let layers: Vec<m2a_core::item_icon::ItemIconLayerInputV1> = serde_json::from_str(layers_json)
+        .map_err(|_| {
+            m5_boundary_error(
+                "M2A-ITEM-ICON-LAYERS-JSON-INVALID",
+                "layersJson",
+                "Item icon layers JSON does not match the strict public schema",
+            )
+        })?;
+    let options = serde_json::from_str(options_json).map_err(|_| {
+        m5_boundary_error(
+            "M2A-ITEM-ICON-OPTIONS-JSON-INVALID",
+            "optionsJson",
+            "TGA writer options JSON does not match the strict public schema",
+        )
+    })?;
+    let artifacts = m2a_core::item_icon::write_item_icon_layers_v1(&recipe, &layers, &options)
+        .map_err(|error| serialize_json(&error))?;
+    let mut payload_blob = Vec::new();
+    let mut descriptors = Vec::with_capacity(artifacts.len());
+    let mut reports = Vec::with_capacity(artifacts.len());
+    for artifact in artifacts {
+        let payload_offset = u32::try_from(payload_blob.len()).map_err(|_| {
+            m5_boundary_error(
+                "M2A-ITEM-ICON-PAYLOAD-OVERFLOW",
+                "payloadBlob",
+                "Item icon payload offset exceeds u32",
+            )
+        })?;
+        let payload_size = u32::try_from(artifact.payload.len()).map_err(|_| {
+            m5_boundary_error(
+                "M2A-ITEM-ICON-PAYLOAD-OVERFLOW",
+                "payloadBlob",
+                "Item icon payload size exceeds u32",
+            )
+        })?;
+        payload_blob.extend_from_slice(&artifact.payload);
+        reports.push(artifact.report.clone());
+        descriptors.push(ItemIconOutputDescriptorV1 {
+            slot: artifact.slot,
+            resref: artifact.resref,
+            report: artifact.report,
+            payload_offset,
+            payload_size,
+        });
+    }
+    Ok((
+        payload_blob,
+        serialize_json(&descriptors),
+        serialize_json(&reports),
+    ))
+}
+
+#[wasm_bindgen]
+pub struct ItemIconLayersWasmArtifactV1 {
+    payload_blob: Vec<u8>,
+    descriptors_json: String,
+    reports_json: String,
+}
+
+#[wasm_bindgen]
+impl ItemIconLayersWasmArtifactV1 {
+    #[wasm_bindgen(js_name = takePayloadBlob)]
+    pub fn take_payload_blob(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.payload_blob)
+    }
+
+    #[wasm_bindgen(getter, js_name = descriptorsJson)]
+    pub fn descriptors_json(&self) -> String {
+        self.descriptors_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = reportsJson)]
+    pub fn reports_json(&self) -> String {
+        self.reports_json.clone()
+    }
+}
+
+/// Writes all exact profile-required RGBA8 Item icon layers as TGA payloads.
+#[wasm_bindgen(js_name = writeItemIconLayersV1)]
+pub fn write_item_icon_layers_v1(
+    recipe_json: &str,
+    layers_json: &str,
+    options_json: &str,
+) -> Result<ItemIconLayersWasmArtifactV1, JsValue> {
+    write_item_icon_layers_v1_inner(recipe_json, layers_json, options_json)
+        .map(
+            |(payload_blob, descriptors_json, reports_json)| ItemIconLayersWasmArtifactV1 {
+                payload_blob,
+                descriptors_json,
+                reports_json,
+            },
+        )
+        .map_err(|error| JsValue::from_str(&error))
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ItemPartPayloadDescriptorV1 {
+    slot: m2a_core::item::ItemPartSlotV1,
+    resref: String,
+    source_sha256: String,
+    compile_report: m2a_core::item_part::ItemPartCompileReportV1,
+    payload_offset: u32,
+    payload_size: u32,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ItemIconPayloadDescriptorV1 {
+    slot: m2a_core::item::ItemPartSlotV1,
+    resref: String,
+    report: m2a_core::item_icon::ItemIconLayerReportV1,
+    payload_offset: u32,
+    payload_size: u32,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ItemPackageBoundaryRequestV1 {
+    schema_version: u32,
+    generator_identity: String,
+    recipe: m2a_core::item::ItemAppearanceRecipeV1,
+    namespace: m2a_core::item::EffectiveResourceNamespaceV1,
+    uti: m2a_core::item_uti::ItemUtiBuildRequestV1,
+    parts: Vec<ItemPartPayloadDescriptorV1>,
+    icons: Vec<ItemIconPayloadDescriptorV1>,
+    additional_hak_resources: Vec<HakResourceDescriptorV1>,
+    module_fixture_resources: Vec<HakResourceDescriptorV1>,
+}
+
+fn item_package_range_error(path: &str, message: &str) -> String {
+    m5_boundary_error("M2A-ITEM-PACKAGE-PAYLOAD-RANGE-INVALID", path, message)
+}
+
+fn item_payload_slice<'a>(
+    payload_blob: &'a [u8],
+    offset: u32,
+    size: u32,
+    path: &str,
+) -> Result<&'a [u8], String> {
+    let start = usize::try_from(offset)
+        .map_err(|_| item_package_range_error(path, "payload offset does not fit this platform"))?;
+    let length = usize::try_from(size)
+        .map_err(|_| item_package_range_error(path, "payload size does not fit this platform"))?;
+    let end = start
+        .checked_add(length)
+        .ok_or_else(|| item_package_range_error(path, "payload range overflows this platform"))?;
+    payload_blob
+        .get(start..end)
+        .ok_or_else(|| item_package_range_error(path, "payload range is outside payloadBlob"))
+}
+
+fn validate_item_package_payload_ranges(
+    payload_blob: &[u8],
+    request: &ItemPackageBoundaryRequestV1,
+) -> Result<(), String> {
+    let mut ranges = Vec::new();
+    for (index, descriptor) in request.parts.iter().enumerate() {
+        ranges.push((
+            descriptor.payload_offset,
+            descriptor.payload_size,
+            format!("parts[{index}]"),
+        ));
+    }
+    for (index, descriptor) in request.icons.iter().enumerate() {
+        ranges.push((
+            descriptor.payload_offset,
+            descriptor.payload_size,
+            format!("icons[{index}]"),
+        ));
+    }
+    for (index, descriptor) in request.additional_hak_resources.iter().enumerate() {
+        ranges.push((
+            descriptor.payload_offset,
+            descriptor.payload_size,
+            format!("additionalHakResources[{index}]"),
+        ));
+    }
+    for (index, descriptor) in request.module_fixture_resources.iter().enumerate() {
+        ranges.push((
+            descriptor.payload_offset,
+            descriptor.payload_size,
+            format!("moduleFixtureResources[{index}]"),
+        ));
+    }
+    let mut normalized = Vec::with_capacity(ranges.len());
+    for (offset, size, path) in ranges {
+        let slice = item_payload_slice(payload_blob, offset, size, &path)?;
+        if !slice.is_empty() {
+            normalized.push((offset as usize, offset as usize + slice.len(), path));
+        }
+    }
+    normalized.sort_by_key(|range| (range.0, range.1));
+    let mut cursor = 0usize;
+    for (start, end, path) in normalized {
+        if start != cursor {
+            return Err(item_package_range_error(
+                &path,
+                if start < cursor {
+                    "non-empty payload ranges overlap"
+                } else {
+                    "payload ranges leave an unowned gap"
+                },
+            ));
+        }
+        cursor = end;
+    }
+    if cursor != payload_blob.len() {
+        return Err(item_package_range_error(
+            "payloadBlob",
+            "payload ranges do not consume exact payloadBlob",
+        ));
+    }
+    Ok(())
+}
+
+fn materialize_item_hak_resource(
+    payload_blob: &[u8],
+    descriptor: &HakResourceDescriptorV1,
+    path: &str,
+) -> Result<m2a_core::hak::HakResourceInputV1, String> {
+    Ok(m2a_core::hak::HakResourceInputV1 {
+        resref: descriptor.resref.clone(),
+        resource_type: descriptor.resource_type,
+        payload: item_payload_slice(
+            payload_blob,
+            descriptor.payload_offset,
+            descriptor.payload_size,
+            path,
+        )?
+        .to_vec(),
+    })
+}
+
+fn write_item_package_v1_inner(
+    payload_blob: &[u8],
+    request_json: &str,
+    gff_options_json: &str,
+    archive_options_json: &str,
+) -> Result<m2a_core::item_package::ItemPackageArtifactV1, String> {
+    let boundary: ItemPackageBoundaryRequestV1 =
+        serde_json::from_str(request_json).map_err(|_| {
+            m5_boundary_error(
+                "M2A-ITEM-PACKAGE-REQUEST-JSON-INVALID",
+                "requestJson",
+                "Item package request JSON does not match the strict public schema",
+            )
+        })?;
+    validate_item_package_payload_ranges(payload_blob, &boundary)?;
+    let gff_options = serde_json::from_str(gff_options_json).map_err(|_| {
+        m5_boundary_error(
+            "M2A-ITEM-PACKAGE-GFF-OPTIONS-INVALID",
+            "gffOptionsJson",
+            "GFF options JSON does not match the strict public schema",
+        )
+    })?;
+    let archive_options = serde_json::from_str(archive_options_json).map_err(|_| {
+        m5_boundary_error(
+            "M2A-ITEM-PACKAGE-ARCHIVE-OPTIONS-INVALID",
+            "archiveOptionsJson",
+            "archive options JSON does not match the strict public schema",
+        )
+    })?;
+    let parts = boundary
+        .parts
+        .iter()
+        .enumerate()
+        .map(|(index, descriptor)| {
+            Ok(m2a_core::item_package::ItemCompiledPartInputV1 {
+                slot: descriptor.slot,
+                resref: descriptor.resref.clone(),
+                source_sha256: descriptor.source_sha256.clone(),
+                compile_report: descriptor.compile_report.clone(),
+                payload: item_payload_slice(
+                    payload_blob,
+                    descriptor.payload_offset,
+                    descriptor.payload_size,
+                    &format!("parts[{index}]"),
+                )?
+                .to_vec(),
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let icons = boundary
+        .icons
+        .iter()
+        .enumerate()
+        .map(|(index, descriptor)| {
+            Ok(m2a_core::item_icon::ItemIconLayerArtifactV1 {
+                slot: descriptor.slot,
+                resref: descriptor.resref.clone(),
+                payload: item_payload_slice(
+                    payload_blob,
+                    descriptor.payload_offset,
+                    descriptor.payload_size,
+                    &format!("icons[{index}]"),
+                )?
+                .to_vec(),
+                report: descriptor.report.clone(),
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let additional_hak_resources = boundary
+        .additional_hak_resources
+        .iter()
+        .enumerate()
+        .map(|(index, descriptor)| {
+            materialize_item_hak_resource(
+                payload_blob,
+                descriptor,
+                &format!("additionalHakResources[{index}]"),
+            )
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let module_fixture_resources = boundary
+        .module_fixture_resources
+        .iter()
+        .enumerate()
+        .map(|(index, descriptor)| {
+            materialize_item_hak_resource(
+                payload_blob,
+                descriptor,
+                &format!("moduleFixtureResources[{index}]"),
+            )
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    m2a_core::item_package::write_item_package_v1(
+        &m2a_core::item_package::ItemPackageBuildRequestV1 {
+            schema_version: boundary.schema_version,
+            generator_identity: boundary.generator_identity,
+            recipe: boundary.recipe,
+            namespace: boundary.namespace,
+            uti: boundary.uti,
+            parts,
+            icons,
+            additional_hak_resources,
+            module_fixture_resources,
+        },
+        &gff_options,
+        &archive_options,
+    )
+    .map_err(|error| serialize_json(&error))
+}
+
+#[wasm_bindgen]
+pub struct ItemPackageWasmArtifactV1 {
+    uti_bytes: Vec<u8>,
+    hak_bytes: Vec<u8>,
+    module_bytes: Vec<u8>,
+    manifest_json: Vec<u8>,
+    manifest_sha256: String,
+    uti_report_json: String,
+    uti_readback_json: String,
+}
+
+#[wasm_bindgen]
+impl ItemPackageWasmArtifactV1 {
+    #[wasm_bindgen(js_name = takeUtiBytes)]
+    pub fn take_uti_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.uti_bytes)
+    }
+
+    #[wasm_bindgen(js_name = takeHakBytes)]
+    pub fn take_hak_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.hak_bytes)
+    }
+
+    #[wasm_bindgen(js_name = takeModuleBytes)]
+    pub fn take_module_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.module_bytes)
+    }
+
+    #[wasm_bindgen(js_name = takeManifestBytes)]
+    pub fn take_manifest_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.manifest_json)
+    }
+
+    #[wasm_bindgen(getter, js_name = manifestSha256)]
+    pub fn manifest_sha256(&self) -> String {
+        self.manifest_sha256.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = utiReportJson)]
+    pub fn uti_report_json(&self) -> String {
+        self.uti_report_json.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = utiReadbackJson)]
+    pub fn uti_readback_json(&self) -> String {
+        self.uti_readback_json.clone()
+    }
+}
+
+/// Builds one deterministic Item UTI/HAK/MOD/manifest graph off the UI thread.
+#[wasm_bindgen(js_name = writeItemPackageV1)]
+pub fn write_item_package_v1(
+    payload_blob: &[u8],
+    request_json: &str,
+    gff_options_json: &str,
+    archive_options_json: &str,
+) -> Result<ItemPackageWasmArtifactV1, JsValue> {
+    write_item_package_v1_inner(
+        payload_blob,
+        request_json,
+        gff_options_json,
+        archive_options_json,
+    )
+    .map(|artifact| ItemPackageWasmArtifactV1 {
+        uti_report_json: serialize_json(&artifact.uti.report),
+        uti_readback_json: serialize_json(&artifact.uti.readback),
+        uti_bytes: artifact.uti.payload,
+        hak_bytes: artifact.hak_payload,
+        module_bytes: artifact.module_payload,
+        manifest_json: artifact.manifest_json,
+        manifest_sha256: artifact.manifest_sha256,
+    })
+    .map_err(|error| JsValue::from_str(&error))
 }
 
 fn parse_two_da_append_json(
@@ -1532,23 +5412,62 @@ fn pack_model_texture_artifacts_v1(
     (payload_blob, serialize_json(&descriptors))
 }
 
-fn parse_creature_model_material_authoring_v1(
+enum ParsedCreatureMaterialSeparationV2 {
+    ComponentV1(m2a_core::model_material_separation::ModelMaterialSeparationDocumentV1),
+    FaceV2(m2a_core::model_material_separation::ModelMaterialSeparationDocumentV2),
+}
+
+impl ParsedCreatureMaterialSeparationV2 {
+    fn as_core_input(
+        &self,
+    ) -> m2a_core::model_pipeline::CreatureModelMaterialSeparationInputV2<'_> {
+        match self {
+            Self::ComponentV1(document) => {
+                m2a_core::model_pipeline::CreatureModelMaterialSeparationInputV2::ComponentV1(
+                    document,
+                )
+            }
+            Self::FaceV2(document) => {
+                m2a_core::model_pipeline::CreatureModelMaterialSeparationInputV2::FaceV2(document)
+            }
+        }
+    }
+}
+
+fn parse_creature_model_material_authoring_v2(
     material_separation_json: &str,
     model_texture_authoring_json: &str,
     texture_payload_descriptors_json: &str,
 ) -> Result<
     (
-        m2a_core::model_material_separation::ModelMaterialSeparationDocumentV1,
+        ParsedCreatureMaterialSeparationV2,
         m2a_core::model_texture_authoring::ModelTextureAuthoringDocumentV1,
         Vec<m2a_core::model_texture_authoring::ModelTexturePayloadDescriptorV1>,
     ),
     String,
 > {
-    let separation = serde_json::from_str(material_separation_json).map_err(|_| {
+    let schema_version = serde_json::from_str::<serde_json::Value>(material_separation_json)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("schemaVersion")
+                .and_then(serde_json::Value::as_u64)
+        });
+    let separation = match schema_version {
+        Some(1) => serde_json::from_str(material_separation_json)
+            .map(ParsedCreatureMaterialSeparationV2::ComponentV1),
+        Some(2) => serde_json::from_str(material_separation_json)
+            .map(ParsedCreatureMaterialSeparationV2::FaceV2),
+        _ => Err(serde_json::Error::io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "unsupported Creature Material Separation schema",
+        ))),
+    }
+    .map_err(|_| {
         serialize_json(&model_material_boundary_error(
             "MODEL-MATERIAL-DOCUMENT-JSON-INVALID",
             "materialSeparationJson",
-            "material separation JSON does not match the strict V1 schema",
+            "material separation JSON does not match the strict V1 or Face Mode V2 schema",
         ))
     })?;
     let texture_authoring = serde_json::from_str(model_texture_authoring_json).map_err(|_| {
@@ -1677,7 +5596,7 @@ pub fn build_meshy_procedural_humanoid_product_demo_with_materials_v2(
     texture_payload_blob: &[u8],
     texture_payload_descriptors_json: &str,
 ) -> Result<StudioCreatureProductDemoArtifactV1, JsValue> {
-    let (separation, textures, descriptors) = parse_creature_model_material_authoring_v1(
+    let (separation, textures, descriptors) = parse_creature_model_material_authoring_v2(
         material_separation_json,
         model_texture_authoring_json,
         texture_payload_descriptors_json,
@@ -1691,8 +5610,8 @@ pub fn build_meshy_procedural_humanoid_product_demo_with_materials_v2(
         module_identity_json,
         creature_resref,
         Some(
-            m2a_core::model_pipeline::CreatureModelMaterialAuthoringInputV1 {
-                separation: &separation,
+            m2a_core::model_pipeline::CreatureModelMaterialAuthoringInputV2 {
+                separation: separation.as_core_input(),
                 textures: &textures,
                 texture_payload_blob,
                 texture_payload_descriptors: &descriptors,
@@ -1710,7 +5629,7 @@ fn build_meshy_procedural_humanoid_product_demo_internal_v2(
     build_options_json: &str,
     module_identity_json: &str,
     creature_resref: &str,
-    material_authoring: Option<m2a_core::model_pipeline::CreatureModelMaterialAuthoringInputV1<'_>>,
+    material_authoring: Option<m2a_core::model_pipeline::CreatureModelMaterialAuthoringInputV2<'_>>,
 ) -> Result<StudioCreatureProductDemoArtifactV1, String> {
     let identity = serde_json::from_str::<
         m2a_core::model_pipeline::ProceduralCreatureProductIdentityV2,
@@ -1738,7 +5657,7 @@ fn build_meshy_procedural_humanoid_product_demo_internal_v2(
     })?;
     let build_options = parse_procedural_creature_build_options_v1(build_options_json)?;
     let product = if let Some(material_authoring) = material_authoring {
-        m2a_core::model_pipeline::build_meshy_procedural_humanoid_product_with_materials_v4(
+        m2a_core::model_pipeline::build_meshy_procedural_humanoid_product_with_materials_v5(
             source_glb,
             appearance_two_da,
             &identity,
@@ -1754,10 +5673,12 @@ fn build_meshy_procedural_humanoid_product_demo_internal_v2(
         )
     }
     .map_err(|error| serialize_json(&error))?;
-    let demo = m2a_core::model_pipeline::build_procedural_creature_demo_v2(
+    let demo = m2a_core::model_pipeline::build_procedural_creature_demo_with_authoring_v4(
         &product,
         &module_identity,
         creature_resref,
+        &build_options.held_weapon,
+        build_options.demo_authoring.as_ref(),
     )
     .map_err(|error| serialize_json(&error))?;
     let readback =
@@ -1842,7 +5763,7 @@ pub fn build_meshy_full_native_h1_package_with_materials_v5(
     texture_payload_blob: &[u8],
     texture_payload_descriptors_json: &str,
 ) -> Result<StudioCreatureProductDemoArtifactV1, JsValue> {
-    let (separation, textures, descriptors) = parse_creature_model_material_authoring_v1(
+    let (separation, textures, descriptors) = parse_creature_model_material_authoring_v2(
         material_separation_json,
         model_texture_authoring_json,
         texture_payload_descriptors_json,
@@ -1857,8 +5778,8 @@ pub fn build_meshy_full_native_h1_package_with_materials_v5(
         module_identity_json,
         creature_resref,
         Some(
-            m2a_core::model_pipeline::CreatureModelMaterialAuthoringInputV1 {
-                separation: &separation,
+            m2a_core::model_pipeline::CreatureModelMaterialAuthoringInputV2 {
+                separation: separation.as_core_input(),
                 textures: &textures,
                 texture_payload_blob,
                 texture_payload_descriptors: &descriptors,
@@ -1877,7 +5798,7 @@ fn build_meshy_full_native_h1_package_internal_v5(
     event_authoring_json: &str,
     module_identity_json: &str,
     creature_resref: &str,
-    material_authoring: Option<m2a_core::model_pipeline::CreatureModelMaterialAuthoringInputV1<'_>>,
+    material_authoring: Option<m2a_core::model_pipeline::CreatureModelMaterialAuthoringInputV2<'_>>,
 ) -> Result<StudioCreatureProductDemoArtifactV1, String> {
     let identity = serde_json::from_str::<
         m2a_core::model_pipeline::ProceduralCreatureProductIdentityV2,
@@ -1946,7 +5867,7 @@ fn build_meshy_full_native_h1_package_internal_v5(
         )
     });
     let package = if let Some(material_authoring) = material_authoring {
-        m2a_core::model_pipeline::build_meshy_full_native_h1_package_with_materials_v5(
+        m2a_core::model_pipeline::build_meshy_full_native_h1_package_with_materials_v6(
             source_glb,
             appearance_two_da,
             &runtime_identity,
@@ -2043,6 +5964,46 @@ fn parse_procedural_creature_build_options_v1(
             "procedural creature build options JSON does not match the strict V1 schema",
         )
     })
+}
+
+/// Validates a humanoid or quadruped MotionPack against the exact immutable
+/// GLB node and clip inventory without building or mutating a model.
+#[wasm_bindgen(js_name = inspectCreatureMotionPackSourceV1Json)]
+pub fn inspect_creature_motion_pack_source_v1_json(
+    source_glb: &[u8],
+    motion_pack_json: &str,
+) -> Result<String, String> {
+    let pack: m2a_core::creature_product::CreatureMotionPackV1 =
+        serde_json::from_str(motion_pack_json).map_err(|_| {
+            procedural_creature_json_error(
+                "CREATURE-MOTION-PACK-JSON",
+                "motionPackJson",
+                "motion pack JSON does not match the strict V1 schema",
+            )
+        })?;
+    let ingest = m2a_core::glb::ingest_glb(source_glb, &m2a_core::glb::GlbLimits::default())
+        .map_err(|error| serialize_json(&error))?;
+    let joints = ingest
+        .ir
+        .nodes
+        .iter()
+        .filter_map(|node| node.name.clone())
+        .collect::<Vec<_>>();
+    let clips = ingest
+        .ir
+        .animations
+        .iter()
+        .filter_map(|animation| animation.name.clone())
+        .collect::<Vec<_>>();
+    let report = m2a_core::creature_product::validate_creature_motion_pack_source_v1(
+        &pack,
+        &ingest.ir.source.sha256,
+        &joints,
+        &clips,
+        None,
+    )
+    .map_err(|error| serialize_json(&error))?;
+    Ok(serialize_json(&report))
 }
 
 fn procedural_creature_json_error(code: &str, path: &str, message: &str) -> String {
@@ -2758,6 +6719,355 @@ fn build_meshy_static_placeable_package_v6_inner(
     finish_static_placeable_artifact_v1(artifact, &identity)
 }
 
+#[allow(clippy::too_many_arguments)]
+fn build_meshy_static_placeable_package_v7_inner(
+    source_glb: &[u8],
+    placeables_two_da: &[u8],
+    identity_json: &str,
+    placement_json: &str,
+    palette_id: u8,
+    authoring_json: &str,
+    material_separation_json: &str,
+    model_texture_authoring_json: &str,
+    texture_payload_blob: &[u8],
+    texture_payload_descriptors_json: &str,
+    options_json: &str,
+) -> Result<StudioModelPackageArtifactV1, String> {
+    let identity =
+        serde_json::from_str::<m2a_core::placeable::StaticPlaceableIdentityV1>(identity_json)
+            .map_err(|_| {
+                serialize_json(&model_material_boundary_error_v2(
+                    "PLACEABLE-IDENTITY-JSON-INVALID",
+                    "identityJson",
+                    "identity JSON does not match the strict static Placeable schema",
+                ))
+            })?;
+    let placement = serde_json::from_str::<m2a_core::placeable::PlaceablePlacementV1>(
+        placement_json,
+    )
+    .map_err(|_| {
+        serialize_json(&model_material_boundary_error_v2(
+            "PLACEABLE-PLACEMENT-JSON-INVALID",
+            "placementJson",
+            "placement JSON does not match the strict static Placeable schema",
+        ))
+    })?;
+    let authoring = serde_json::from_str::<
+        m2a_core::placeable_authoring::PlaceableAuthoringDocumentV2,
+    >(authoring_json)
+    .map_err(|_| {
+        serialize_json(&model_material_boundary_error_v2(
+            "PLACEABLE-AUTHORING-JSON-INVALID",
+            "authoringJson",
+            "authoring JSON does not match the strict Placeable V2 schema",
+        ))
+    })?;
+    let material_separation = serde_json::from_str::<
+        m2a_core::model_material_separation::ModelMaterialSeparationDocumentV2,
+    >(material_separation_json)
+    .map_err(|_| {
+        serialize_json(&model_material_boundary_error_v2(
+            "MODEL-MATERIAL-DOCUMENT-JSON-INVALID",
+            "materialSeparationJson",
+            "material separation JSON does not match the strict Face Mode V2 schema",
+        ))
+    })?;
+    let texture_authoring = serde_json::from_str::<
+        m2a_core::model_texture_authoring::ModelTextureAuthoringDocumentV1,
+    >(model_texture_authoring_json)
+    .map_err(|_| {
+        serialize_json(&model_material_boundary_error_v2(
+            "MODEL-TEXTURE-DOCUMENT-JSON-INVALID",
+            "modelTextureAuthoringJson",
+            "model texture JSON does not match the strict V1 schema",
+        ))
+    })?;
+    let descriptors = serde_json::from_str::<
+        Vec<m2a_core::model_texture_authoring::ModelTexturePayloadDescriptorV1>,
+    >(texture_payload_descriptors_json)
+    .map_err(|_| {
+        serialize_json(&model_material_boundary_error_v2(
+            "MODEL-TEXTURE-DESCRIPTORS-JSON-INVALID",
+            "modelTexturePayloadDescriptorsJson",
+            "model texture payload descriptors do not match the strict V1 schema",
+        ))
+    })?;
+    let options =
+        serde_json::from_str::<m2a_core::placeable::StaticPlaceableBuildOptionsV1>(options_json)
+            .map_err(|_| {
+                serialize_json(&model_material_boundary_error_v2(
+                    "PLACEABLE-BUILD-OPTIONS-JSON-INVALID",
+                    "optionsJson",
+                    "build options JSON does not match the strict Placeable schema",
+                ))
+            })?;
+    let artifact = m2a_core::placeable::build_meshy_static_placeable_package_v7(
+        source_glb,
+        placeables_two_da,
+        &identity,
+        placement,
+        palette_id,
+        &authoring,
+        &material_separation,
+        &texture_authoring,
+        texture_payload_blob,
+        &descriptors,
+        &options,
+    )
+    .map_err(|error| serialize_json(&error))?;
+    finish_static_placeable_artifact_v1(artifact, &identity)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_meshy_static_placeable_package_v8_inner(
+    source_glb: &[u8],
+    placeables_two_da: &[u8],
+    identity_json: &str,
+    placement_json: &str,
+    palette_id: u8,
+    authoring_json: &str,
+    material_separation_json: &str,
+    material_uv_projection_json: &str,
+    model_texture_authoring_json: &str,
+    texture_payload_blob: &[u8],
+    texture_payload_descriptors_json: &str,
+    options_json: &str,
+) -> Result<StudioModelPackageArtifactV1, String> {
+    let identity =
+        serde_json::from_str::<m2a_core::placeable::StaticPlaceableIdentityV1>(identity_json)
+            .map_err(|_| {
+                serialize_json(&model_material_boundary_error_v2(
+                    "PLACEABLE-IDENTITY-JSON-INVALID",
+                    "identityJson",
+                    "identity JSON does not match the strict static Placeable schema",
+                ))
+            })?;
+    let placement = serde_json::from_str::<m2a_core::placeable::PlaceablePlacementV1>(
+        placement_json,
+    )
+    .map_err(|_| {
+        serialize_json(&model_material_boundary_error_v2(
+            "PLACEABLE-PLACEMENT-JSON-INVALID",
+            "placementJson",
+            "placement JSON does not match the strict static Placeable schema",
+        ))
+    })?;
+    let authoring = serde_json::from_str::<
+        m2a_core::placeable_authoring::PlaceableAuthoringDocumentV2,
+    >(authoring_json)
+    .map_err(|_| {
+        serialize_json(&model_material_boundary_error_v2(
+            "PLACEABLE-AUTHORING-JSON-INVALID",
+            "authoringJson",
+            "authoring JSON does not match the strict Placeable V2 schema",
+        ))
+    })?;
+    let material_separation = serde_json::from_str::<
+        m2a_core::model_material_separation::ModelMaterialSeparationDocumentV2,
+    >(material_separation_json)
+    .map_err(|_| {
+        serialize_json(&model_material_boundary_error_v2(
+            "MODEL-MATERIAL-DOCUMENT-JSON-INVALID",
+            "materialSeparationJson",
+            "material separation JSON does not match the strict Face Mode V2 schema",
+        ))
+    })?;
+    let material_uv_projection = serde_json::from_str::<
+        m2a_core::model_material_uv_projection::ModelMaterialUvProjectionDocumentV1,
+    >(material_uv_projection_json)
+    .map_err(|_| {
+        serialize_json(&model_material_boundary_error_v2(
+            "MODEL-MATERIAL-UV-PROJECTION-JSON-INVALID",
+            "materialUvProjectionJson",
+            "material UV projection JSON does not match the strict V1 schema",
+        ))
+    })?;
+    let texture_authoring = serde_json::from_str::<
+        m2a_core::model_texture_authoring::ModelTextureAuthoringDocumentV1,
+    >(model_texture_authoring_json)
+    .map_err(|_| {
+        serialize_json(&model_material_boundary_error_v2(
+            "MODEL-TEXTURE-DOCUMENT-JSON-INVALID",
+            "modelTextureAuthoringJson",
+            "model texture JSON does not match the strict V1 schema",
+        ))
+    })?;
+    let descriptors = serde_json::from_str::<
+        Vec<m2a_core::model_texture_authoring::ModelTexturePayloadDescriptorV1>,
+    >(texture_payload_descriptors_json)
+    .map_err(|_| {
+        serialize_json(&model_material_boundary_error_v2(
+            "MODEL-TEXTURE-DESCRIPTORS-JSON-INVALID",
+            "modelTexturePayloadDescriptorsJson",
+            "model texture payload descriptors do not match the strict V1 schema",
+        ))
+    })?;
+    let options =
+        serde_json::from_str::<m2a_core::placeable::StaticPlaceableBuildOptionsV1>(options_json)
+            .map_err(|_| {
+                serialize_json(&model_material_boundary_error_v2(
+                    "PLACEABLE-BUILD-OPTIONS-JSON-INVALID",
+                    "optionsJson",
+                    "build options JSON does not match the strict Placeable schema",
+                ))
+            })?;
+    let artifact = m2a_core::placeable::build_meshy_static_placeable_package_v8(
+        source_glb,
+        placeables_two_da,
+        &identity,
+        placement,
+        palette_id,
+        &authoring,
+        &material_separation,
+        &material_uv_projection,
+        &texture_authoring,
+        texture_payload_blob,
+        &descriptors,
+        &options,
+    )
+    .map_err(|error| serialize_json(&error))?;
+    finish_static_placeable_artifact_v1(artifact, &identity)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_meshy_static_placeable_package_v9_inner(
+    source_glb: &[u8],
+    placeables_two_da: &[u8],
+    identity_json: &str,
+    placement_json: &str,
+    palette_id: u8,
+    authoring_json: &str,
+    material_separation_json: &str,
+    material_uv_projection_json: &str,
+    model_texture_authoring_json: &str,
+    texture_payload_blob: &[u8],
+    texture_payload_descriptors_json: &str,
+    material_profile_json: &str,
+    options_json: &str,
+) -> Result<StudioModelPackageArtifactV1, String> {
+    let identity =
+        serde_json::from_str::<m2a_core::placeable::StaticPlaceableIdentityV1>(identity_json)
+            .map_err(|_| {
+                serialize_json(&model_material_boundary_error_v2(
+                    "PLACEABLE-IDENTITY-JSON-INVALID",
+                    "identityJson",
+                    "identity JSON does not match the strict static Placeable schema",
+                ))
+            })?;
+    let placement = serde_json::from_str::<m2a_core::placeable::PlaceablePlacementV1>(
+        placement_json,
+    )
+    .map_err(|_| {
+        serialize_json(&model_material_boundary_error_v2(
+            "PLACEABLE-PLACEMENT-JSON-INVALID",
+            "placementJson",
+            "placement JSON does not match the strict static Placeable schema",
+        ))
+    })?;
+    let authoring = serde_json::from_str::<
+        m2a_core::placeable_authoring::PlaceableAuthoringDocumentV2,
+    >(authoring_json)
+    .map_err(|_| {
+        serialize_json(&model_material_boundary_error_v2(
+            "PLACEABLE-AUTHORING-JSON-INVALID",
+            "authoringJson",
+            "authoring JSON does not match the strict Placeable V2 schema",
+        ))
+    })?;
+    let material_separation = serde_json::from_str::<
+        m2a_core::model_material_separation::ModelMaterialSeparationDocumentV2,
+    >(material_separation_json)
+    .map_err(|_| {
+        serialize_json(&model_material_boundary_error_v2(
+            "MODEL-MATERIAL-DOCUMENT-JSON-INVALID",
+            "materialSeparationJson",
+            "material separation JSON does not match the strict Face Mode V2 schema",
+        ))
+    })?;
+    let material_uv_projection = if material_uv_projection_json.trim().is_empty() {
+        None
+    } else {
+        Some(
+            serde_json::from_str::<
+                m2a_core::model_material_uv_projection::ModelMaterialUvProjectionDocumentV1,
+            >(material_uv_projection_json)
+            .map_err(|_| {
+                serialize_json(&model_material_boundary_error_v2(
+                    "MODEL-MATERIAL-UV-PROJECTION-JSON-INVALID",
+                    "materialUvProjectionJson",
+                    "material UV projection JSON does not match the strict V1 schema",
+                ))
+            })?,
+        )
+    };
+    let material_profile = serde_json::from_str::<
+        m2a_core::aurora_material::AuroraMaterialTargetProfileV1,
+    >(material_profile_json)
+    .map_err(|_| {
+        serialize_json(&model_material_boundary_error_v2(
+            "AURORA-MATERIAL-PROFILE-JSON-INVALID",
+            "materialProfileJson",
+            "material profile must be AURORA_CLASSIC_SAFE or NWN_EE_MTR",
+        ))
+    })?;
+    let texture_authoring = if model_texture_authoring_json.trim().is_empty() {
+        None
+    } else {
+        Some(
+            serde_json::from_str::<
+                m2a_core::model_texture_authoring::ModelTextureAuthoringDocumentV1,
+            >(model_texture_authoring_json)
+            .map_err(|_| {
+                serialize_json(&model_material_boundary_error_v2(
+                    "MODEL-TEXTURE-DOCUMENT-JSON-INVALID",
+                    "modelTextureAuthoringJson",
+                    "model texture JSON does not match the strict V1 schema",
+                ))
+            })?,
+        )
+    };
+    let descriptors = if texture_authoring.is_some() {
+        serde_json::from_str::<
+            Vec<m2a_core::model_texture_authoring::ModelTexturePayloadDescriptorV1>,
+        >(texture_payload_descriptors_json)
+        .map_err(|_| {
+            serialize_json(&model_material_boundary_error_v2(
+                "MODEL-TEXTURE-DESCRIPTORS-JSON-INVALID",
+                "modelTexturePayloadDescriptorsJson",
+                "model texture payload descriptors do not match the strict V1 schema",
+            ))
+        })?
+    } else {
+        Vec::new()
+    };
+    let options =
+        serde_json::from_str::<m2a_core::placeable::StaticPlaceableBuildOptionsV1>(options_json)
+            .map_err(|_| {
+                serialize_json(&model_material_boundary_error_v2(
+                    "PLACEABLE-BUILD-OPTIONS-JSON-INVALID",
+                    "optionsJson",
+                    "build options JSON does not match the strict Placeable schema",
+                ))
+            })?;
+    let artifact = m2a_core::placeable::build_meshy_static_placeable_package_v9(
+        source_glb,
+        placeables_two_da,
+        &identity,
+        placement,
+        palette_id,
+        &authoring,
+        &material_separation,
+        material_uv_projection.as_ref(),
+        texture_authoring.as_ref(),
+        texture_payload_blob,
+        &descriptors,
+        material_profile,
+        &options,
+    )
+    .map_err(|error| serialize_json(&error))?;
+    finish_static_placeable_artifact_v1(artifact, &identity)
+}
+
 fn resolve_meshy_static_placeable_collision_v1_inner(
     source_glb: &[u8],
     model_resref: &str,
@@ -2816,9 +7126,24 @@ fn finish_static_placeable_artifact_v1(
         )
         .map_err(|error| serialize_json(&error))?
         .to_vec();
+    let material_resource_reports = artifact
+        .report
+        .resources
+        .iter()
+        .filter(|resource| {
+            resource.container == "HAK"
+                && matches!(
+                    resource.resource_type,
+                    m2a_core::placeable::TGA_RESOURCE_TYPE
+                        | m2a_core::placeable::DDS_RESOURCE_TYPE
+                        | m2a_core::mtr::MTR_RESOURCE_TYPE_V1
+                        | m2a_core::txi::TXI_RESOURCE_TYPE_V1
+                )
+        })
+        .collect::<Vec<_>>();
     let mut texture_payload_blob = Vec::new();
-    let mut texture_descriptors = Vec::with_capacity(artifact.report.texture_resources.len());
-    for resource in &artifact.report.texture_resources {
+    let mut texture_descriptors = Vec::with_capacity(material_resource_reports.len());
+    for resource in material_resource_reports {
         let payload = hak
             .find(&resource.resref, resource.resource_type)
             .map_err(|error| serialize_json(&error))?;
@@ -3097,6 +7422,111 @@ pub fn build_meshy_static_placeable_package_v6(
         model_texture_authoring_json,
         texture_payload_blob,
         texture_payload_descriptors_json,
+        options_json,
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+#[allow(clippy::too_many_arguments)]
+#[wasm_bindgen(js_name = buildMeshyStaticPlaceablePackageV7)]
+pub fn build_meshy_static_placeable_package_v7(
+    source_glb: &[u8],
+    placeables_two_da: &[u8],
+    identity_json: &str,
+    placement_json: &str,
+    palette_id: u8,
+    authoring_json: &str,
+    material_separation_json: &str,
+    model_texture_authoring_json: &str,
+    texture_payload_blob: &[u8],
+    texture_payload_descriptors_json: &str,
+    options_json: &str,
+) -> Result<StudioModelPackageArtifactV1, JsValue> {
+    build_meshy_static_placeable_package_v7_inner(
+        source_glb,
+        placeables_two_da,
+        identity_json,
+        placement_json,
+        palette_id,
+        authoring_json,
+        material_separation_json,
+        model_texture_authoring_json,
+        texture_payload_blob,
+        texture_payload_descriptors_json,
+        options_json,
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+/// Executes Face Mode V2 with optional per-material render UV projection.
+/// Collision authoring remains source-derived and is not modified.
+#[allow(clippy::too_many_arguments)]
+#[wasm_bindgen(js_name = buildMeshyStaticPlaceablePackageV8)]
+pub fn build_meshy_static_placeable_package_v8(
+    source_glb: &[u8],
+    placeables_two_da: &[u8],
+    identity_json: &str,
+    placement_json: &str,
+    palette_id: u8,
+    authoring_json: &str,
+    material_separation_json: &str,
+    material_uv_projection_json: &str,
+    model_texture_authoring_json: &str,
+    texture_payload_blob: &[u8],
+    texture_payload_descriptors_json: &str,
+    options_json: &str,
+) -> Result<StudioModelPackageArtifactV1, JsValue> {
+    build_meshy_static_placeable_package_v8_inner(
+        source_glb,
+        placeables_two_da,
+        identity_json,
+        placement_json,
+        palette_id,
+        authoring_json,
+        material_separation_json,
+        material_uv_projection_json,
+        model_texture_authoring_json,
+        texture_payload_blob,
+        texture_payload_descriptors_json,
+        options_json,
+    )
+    .map_err(|error| JsValue::from_str(&error))
+}
+
+/// Executes the production Placeable material pipeline. The optional UV
+/// projection argument is an empty string when no projection document is
+/// selected. Material resources (TGA/MTR/TXI) are returned through the common
+/// descriptor/blob channel.
+#[allow(clippy::too_many_arguments)]
+#[wasm_bindgen(js_name = buildMeshyStaticPlaceablePackageV9)]
+pub fn build_meshy_static_placeable_package_v9(
+    source_glb: &[u8],
+    placeables_two_da: &[u8],
+    identity_json: &str,
+    placement_json: &str,
+    palette_id: u8,
+    authoring_json: &str,
+    material_separation_json: &str,
+    material_uv_projection_json: &str,
+    model_texture_authoring_json: &str,
+    texture_payload_blob: &[u8],
+    texture_payload_descriptors_json: &str,
+    material_profile_json: &str,
+    options_json: &str,
+) -> Result<StudioModelPackageArtifactV1, JsValue> {
+    build_meshy_static_placeable_package_v9_inner(
+        source_glb,
+        placeables_two_da,
+        identity_json,
+        placement_json,
+        palette_id,
+        authoring_json,
+        material_separation_json,
+        material_uv_projection_json,
+        model_texture_authoring_json,
+        texture_payload_blob,
+        texture_payload_descriptors_json,
+        material_profile_json,
         options_json,
     )
     .map_err(|error| JsValue::from_str(&error))
@@ -4250,6 +8680,48 @@ mod m5_native_tests {
 
     const DIRECT_CREATURE_APPEARANCE: &[u8] = b"2DA V2.0\r\n\r\nLABEL MOVERATE MODELTYPE RACE PORTRAIT ENVMAP DefaultPhenoType BLOODCOLR WEAPONSCALE SIZECATEGORY STRING_REF NAME WING_TAIL_SCALE HELMET_SCALE_M HELMET_SCALE_F WALKDIST RUNDIST PERSPACE CREPERSPACE HEIGHT HITDIST PREFATCKDIST TARGETHEIGHT ABORTONPARRY RACIALTYPE HASLEGS HASARMS PERCEPTIONDIST FOOTSTEPTYPE SOUNDAPPTYPE HEADTRACK HEAD_ARC_H HEAD_ARC_V HEAD_NAME BODY_BAG TARGETABLE\r\n0 Existing NORM S c_horror po_Horror **** 0 G **** 4 **** Hook_Horror 1 1 1 2.33 3.5 0.6 1 1 0.4 2.1 H 1 1 1 1 9 4 6 1 60 30 head 0 1\r\n";
 
+    #[test]
+    fn procedural_options_boundary_accepts_and_preserves_manual_weapon_grip_offsets() {
+        let options = super::parse_procedural_creature_build_options_v1(
+            r#"{"schemaVersion":1,"sourceForward":"POSITIVE_Z","textureArtifactCleanup":false,"skinAccessoryStabilization":{"schemaVersion":2,"mode":"AUTO"},"weaponGrip":{"schemaVersion":1,"mode":"AUTO_PLUS_OFFSETS","rightHand":{"rollDegrees":12.5,"pitchDegrees":-3.0,"yawDegrees":7.0},"leftHand":{"rollDegrees":0.0,"pitchDegrees":0.0,"yawDegrees":0.0}}}"#,
+        )
+        .expect("strict RPY build options");
+        assert_eq!(
+            options.weapon_grip.mode,
+            m2a_core::creature_equipment::CreatureWeaponGripModeV1::AutoPlusOffsets
+        );
+        assert_eq!(options.weapon_grip.right_hand.roll_degrees, 12.5);
+        assert_eq!(options.weapon_grip.right_hand.pitch_degrees, -3.0);
+        assert_eq!(options.weapon_grip.right_hand.yaw_degrees, 7.0);
+    }
+
+    #[test]
+    fn procedural_options_boundary_carries_complete_creature_product_contracts() {
+        use m2a_core::creature_product::{
+            CreatureDemoAuthoringV1, CreatureMaterialProfileV2, CreatureMotionClipV1,
+            CreatureMotionPackV1, CreaturePerformancePresetV1, CreatureRuntimeEnvelopePolicyV1,
+        };
+        let mut requested = m2a_core::model_pipeline::ProceduralCreatureBuildOptionsV1 {
+            demo_authoring: Some(CreatureDemoAuthoringV1::active_monster_with_v10_bastard_sword()),
+            runtime_envelope: CreatureRuntimeEnvelopePolicyV1::BoundsDerived,
+            material_profile: CreatureMaterialProfileV2::nwn_ee_mtr(),
+            performance_preset: CreaturePerformancePresetV1::High,
+            ..Default::default()
+        };
+        requested.motion_pack = Some(CreatureMotionPackV1::humanoid_weapon_pack(
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            vec![CreatureMotionClipV1::source("Attack", "c2a1", None)],
+        ));
+        let json = serde_json::to_string(&requested).unwrap();
+        let parsed = super::parse_procedural_creature_build_options_v1(&json)
+            .expect("complete Creature product options");
+        assert_eq!(parsed, requested);
+        assert_eq!(
+            parsed.demo_authoring.unwrap().equipment_loadout.items[0].model_parts,
+            [41, 11, 11]
+        );
+    }
+
     fn tga_image() -> TgaImageV1 {
         TgaImageV1 {
             schema_version: 1,
@@ -5178,6 +9650,32 @@ mod m5_native_tests {
         assert!(!studio_demo.take_proof_module_bytes().is_empty());
         assert!(studio_demo.take_proof_module_bytes().is_empty());
 
+        let mut held_demo =
+            build_meshy_procedural_humanoid_product_demo_with_options_v1_inner(
+                &source,
+                DIRECT_CREATURE_APPEARANCE,
+                identity_json,
+                r#"{"schemaVersion":1,"textureArtifactCleanup":false,"skinAccessoryStabilization":{"schemaVersion":2,"mode":"AUTO"},"heldWeapon":{"schemaVersion":1,"mode":"LEFT_HAND","itemResref":"nw_wswss001"}}"#,
+                r#"{"moduleResref":"m2a_stdemo2","areaResref":"m2a_starea2","hakResref":"m2a_sthak2"}"#,
+                "m2a_stutc2",
+            )
+            .expect("Studio product plus held-item demo");
+        let held_report: serde_json::Value =
+            serde_json::from_str(&held_demo.demo_report_json()).expect("held demo report JSON");
+        assert_eq!(
+            held_report["heldStockWeaponReadback"]["weapon"]["resref"],
+            "nw_wswss001"
+        );
+        assert_eq!(
+            held_report["heldStockWeaponReadback"]["fixtures"][0]["hand"],
+            "left_hand"
+        );
+        assert_eq!(
+            held_report["heldStockWeaponReadback"]["fixtures"][0]["equippedItemResref"],
+            "nw_wswss001"
+        );
+        assert!(!held_demo.take_proof_module_bytes().is_empty());
+
         let options_error = match build_meshy_procedural_humanoid_product_with_options_v3_inner(
             &source,
             DIRECT_CREATURE_APPEARANCE,
@@ -5318,7 +9816,7 @@ mod m5_native_tests {
                 &source,
                 appearance,
                 product_identity_json,
-                r#"{"schemaVersion":1,"textureArtifactCleanup":false,"skinAccessoryStabilization":{"schemaVersion":2,"mode":"AUTO"}}"#,
+                r#"{"schemaVersion":1,"textureArtifactCleanup":false,"skinAccessoryStabilization":{"schemaVersion":2,"mode":"AUTO"},"heldWeapon":{"schemaVersion":1,"mode":"LEFT_HAND","itemResref":"nw_wswss001"}}"#,
                 &event_authoring_json,
                 r#"{"moduleResref":"m2a_evtmod_v2","areaResref":"m2a_evtarea_v2","hakResref":"m2a_evthak_v2"}"#,
                 "m2a_evtutc_v2",
@@ -5341,6 +9839,22 @@ mod m5_native_tests {
             serde_json::from_str(&product_demo.demo_report_json()).expect("demo report JSON");
         assert_eq!(product_demo_report["moduleResref"], "m2a_evtmod_v2");
         assert_eq!(product_demo_report["hakResref"], "m2a_evthak_v2");
+        assert_eq!(
+            product_demo_report["heldStockWeaponReadback"]["fixtures"][0]["hand"],
+            "left_hand"
+        );
+        assert_eq!(
+            product_demo_report["heldStockWeaponReadback"]["weapon"]["resref"],
+            "nw_wswss001"
+        );
+        assert_eq!(
+            product_demo_report["heldStockWeaponReadback"]["weapon"]["resourceScope"],
+            "NWN_BASE_GAME"
+        );
+        assert_eq!(
+            product_report["proofModule"]["sha256"],
+            product_demo_report["sha256"]
+        );
         assert!(!product_demo.take_hak_bytes().is_empty());
         assert!(!product_demo.take_model_bytes().is_empty());
         assert!(!product_demo.take_texture_bytes().is_empty());
@@ -5631,7 +10145,6 @@ mod m5_native_tests {
 
 #[cfg(test)]
 #[path = "../../m2a-core/tests/fixtures/build_synthetic_glb.rs"]
-#[allow(dead_code)]
 mod profile_a_animation_fixtures;
 
 #[cfg(test)]
@@ -6213,6 +10726,54 @@ mod model_material_boundary_tests {
             serde_json::from_str::<serde_json::Value>(&target_error).unwrap()["code"],
             "MODEL-MATERIAL-TARGET-INVALID"
         );
+    }
+
+    #[test]
+    fn face_mode_v2_boundary_exposes_face_capability_and_exact_ranges() {
+        let glb = profile_a_animation_fixtures::one_primitive_two_disconnected_triangles();
+        let inspection: serde_json::Value =
+            serde_json::from_str(&inspect_model_faces_v2_json_inner(&glb, "PLACEABLE").unwrap())
+                .unwrap();
+        assert_eq!(inspection["schemaVersion"], 2);
+        assert_eq!(inspection["capabilities"]["faceSelectionSupported"], true);
+        assert_eq!(
+            inspection["capabilities"]["selectionGranularity"],
+            "CONNECTED_COMPONENTS_AND_FACES"
+        );
+        let source_sha = inspection["inventory"]["sourceSha256"].as_str().unwrap();
+        let document = serde_json::json!({
+            "schemaVersion": 2,
+            "sourceSha256": source_sha,
+            "materials": [{
+                "authoredMaterialId": "material:wood",
+                "displayName": "Wood",
+                "previewColor": "#704020",
+                "sourceFallbackMaterialId": 0,
+                "sourceFallbackImageSha256": null
+            }],
+            "componentAssignments": [],
+            "faceAssignments": [{
+                "selection": {
+                    "sceneId": 0,
+                    "nodeId": 0,
+                    "primitiveId": 0,
+                    "triangleRanges": [{"startTriangle": 1, "triangleCount": 1}]
+                },
+                "authoredMaterialId": "material:wood"
+            }]
+        });
+        let output = resolve_model_materials_v2_json_inner(
+            &glb,
+            "PLACEABLE",
+            &serde_json::to_string(&document).unwrap(),
+        )
+        .unwrap();
+        let value: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(value["schemaVersion"], 2);
+        assert_eq!(value["report"]["assignedFaceCount"], 1);
+        assert_eq!(value["report"]["outputTriangleCount"], 2);
+        assert_eq!(value["report"]["duplicatedBoundaryVertexCount"], 0);
+        assert!(value.get("triangleMaterialMap").is_none());
     }
 }
 

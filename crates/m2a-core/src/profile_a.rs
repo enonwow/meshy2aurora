@@ -187,6 +187,12 @@ pub enum ProfileABasisPolicyV1 {
     GltfYUpPositiveXForwardToAuroraZUpNegativeYForwardV2,
     /// Creature Basis V2 for a model authored facing glTF -X.
     GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2,
+    /// Creature Basis V3: glTF +Y up / selected source front becomes Aurora
+    /// +Z up / +Y forward, matching retail direct-Creature hierarchy evidence.
+    GltfYUpPositiveZForwardToAuroraZUpPositiveYForwardV3,
+    GltfYUpNegativeZForwardToAuroraZUpPositiveYForwardV3,
+    GltfYUpPositiveXForwardToAuroraZUpPositiveYForwardV3,
+    GltfYUpNegativeXForwardToAuroraZUpPositiveYForwardV3,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -298,6 +304,20 @@ pub fn direct_creature_profile_a_options_for_source_forward_v2(
     }
 }
 
+pub fn direct_creature_profile_a_options_v3() -> ProfileAOptionsV1 {
+    direct_creature_profile_a_options_for_source_forward_v3(CreatureSourceForwardV1::PositiveZ)
+}
+
+pub fn direct_creature_profile_a_options_for_source_forward_v3(
+    source_forward: CreatureSourceForwardV1,
+) -> ProfileAOptionsV1 {
+    ProfileAOptionsV1 {
+        basis_policy: creature_basis_policy_for_source_forward_v3(source_forward),
+        winding_policy: ProfileAWindingPolicyV1::CompositeDeterminantV2,
+        ..ProfileAOptionsV1::default()
+    }
+}
+
 fn creature_basis_policy_for_source_forward_v2(
     source_forward: CreatureSourceForwardV1,
 ) -> ProfileABasisPolicyV1 {
@@ -317,8 +337,31 @@ fn creature_basis_policy_for_source_forward_v2(
     }
 }
 
+fn creature_basis_policy_for_source_forward_v3(
+    source_forward: CreatureSourceForwardV1,
+) -> ProfileABasisPolicyV1 {
+    match source_forward {
+        CreatureSourceForwardV1::PositiveZ => {
+            ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpPositiveYForwardV3
+        }
+        CreatureSourceForwardV1::NegativeZ => {
+            ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpPositiveYForwardV3
+        }
+        CreatureSourceForwardV1::PositiveX => {
+            ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpPositiveYForwardV3
+        }
+        CreatureSourceForwardV1::NegativeX => {
+            ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpPositiveYForwardV3
+        }
+    }
+}
+
 pub fn creature_source_forward_mapping_v1(source_forward: CreatureSourceForwardV1) -> &'static str {
     profile_a_forward_mapping_v2(creature_basis_policy_for_source_forward_v2(source_forward))
+}
+
+pub fn creature_source_forward_mapping_v2(source_forward: CreatureSourceForwardV1) -> &'static str {
+    profile_a_forward_mapping_v2(creature_basis_policy_for_source_forward_v3(source_forward))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -700,11 +743,11 @@ pub fn derive_meshy_h1_profile_and_mapping_v1(
 pub(crate) fn derive_meshy_h1_profile_and_mapping_exact_v1(
     source: &GlbIngestResult,
 ) -> Result<(CreatureRigProfileV1, ProfileAAnimationMappingV1), ProfileAConversionFatalError> {
-    derive_meshy_h1_profile_and_mapping_v2(source)
+    derive_meshy_h1_profile_and_mapping_v3(source)
 }
 
-/// Current direct-Creature H1 derivation. It preserves every finite,
-/// non-collinear source face and authors the target rig in Creature Basis V2.
+/// Historical Creature Basis V2 derivation retained for immutable V2 lineages.
+/// New product outputs use `derive_meshy_h1_profile_and_mapping_v3`.
 pub fn derive_meshy_h1_profile_and_mapping_v2(
     source: &GlbIngestResult,
 ) -> Result<(CreatureRigProfileV1, ProfileAAnimationMappingV1), ProfileAConversionFatalError> {
@@ -723,6 +766,27 @@ pub fn derive_meshy_h1_profile_and_mapping_for_source_forward_v2(
         &ProfileALimitsV1::default(),
         MeshySurfaceDegeneracyPolicyV1::ExactFiniteNonCollinear,
         creature_basis_policy_for_source_forward_v2(source_forward),
+    )
+}
+
+pub fn derive_meshy_h1_profile_and_mapping_v3(
+    source: &GlbIngestResult,
+) -> Result<(CreatureRigProfileV1, ProfileAAnimationMappingV1), ProfileAConversionFatalError> {
+    derive_meshy_h1_profile_and_mapping_for_source_forward_v3(
+        source,
+        CreatureSourceForwardV1::PositiveZ,
+    )
+}
+
+pub fn derive_meshy_h1_profile_and_mapping_for_source_forward_v3(
+    source: &GlbIngestResult,
+    source_forward: CreatureSourceForwardV1,
+) -> Result<(CreatureRigProfileV1, ProfileAAnimationMappingV1), ProfileAConversionFatalError> {
+    derive_meshy_h1_profile_and_mapping_with_limits_v1(
+        source,
+        &ProfileALimitsV1::default(),
+        MeshySurfaceDegeneracyPolicyV1::ExactFiniteNonCollinear,
+        creature_basis_policy_for_source_forward_v3(source_forward),
     )
 }
 
@@ -794,7 +858,7 @@ pub(crate) fn derive_meshy_h1_profile_and_mapping_p100k_experiment_for_source_fo
         source,
         &limits,
         MeshySurfaceDegeneracyPolicyV1::ExactFiniteNonCollinear,
-        creature_basis_policy_for_source_forward_v2(source_forward),
+        creature_basis_policy_for_source_forward_v3(source_forward),
     )
 }
 
@@ -828,7 +892,7 @@ pub(crate) fn derive_meshy_h1_profile_and_mapping_p300k_experiment_for_source_fo
         source,
         &limits,
         MeshySurfaceDegeneracyPolicyV1::ExactFiniteNonCollinear,
-        creature_basis_policy_for_source_forward_v2(source_forward),
+        creature_basis_policy_for_source_forward_v3(source_forward),
     )
 }
 
@@ -1135,6 +1199,12 @@ fn derive_meshy_h1_profile_and_mapping_with_limits_v1(
             | ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpNegativeYForwardV2
             | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2 => {
                 "meshy-h1-derived-user-rig-v2"
+            }
+            ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpPositiveYForwardV3
+            | ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpPositiveYForwardV3
+            | ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpPositiveYForwardV3
+            | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpPositiveYForwardV3 => {
+                "meshy-h1-derived-user-rig-v3"
             }
         }
         .to_owned(),
@@ -1665,6 +1735,25 @@ pub fn convert_profile_a(
     )
 }
 
+/// Static Profile A conversion using the product triangle budget together
+/// with exact finite/non-collinear surface validation. This preserves small
+/// authored triangles that are valid at source scale; the legacy V1 entrypoint
+/// remains frozen with its historical absolute epsilon.
+pub fn convert_profile_a_exact_v1(
+    source: &GlbIngestResult,
+    rig: &CreatureRigProfileV1,
+    options: &ProfileAOptionsV1,
+) -> Result<ProfileAConversionOutcomeV1, ProfileAConversionFatalError> {
+    convert_profile_a_impl(
+        source,
+        rig,
+        options,
+        SourceInventoryPolicy::RejectPresent,
+        ProfileATriangleThresholdContractV1::ProductExact,
+        None,
+    )
+}
+
 pub fn convert_profile_a_with_material_separation_v1(
     source: &GlbIngestResult,
     rig: &CreatureRigProfileV1,
@@ -1686,24 +1775,6 @@ pub fn convert_profile_a_with_material_separation_v1(
         SourceInventoryPolicy::RejectPresent,
         ProfileATriangleThresholdContractV1::Product,
         Some(&resolved),
-    )
-}
-
-/// Internal bridge for one source-bound, owner-approved oversized Placeable
-/// materialization. The public Product conversion contract remains unchanged;
-/// the Placeable boundary validates the immutable source identity first.
-pub(crate) fn convert_profile_a_owner_approved_oversized_v1(
-    source: &GlbIngestResult,
-    rig: &CreatureRigProfileV1,
-    options: &ProfileAOptionsV1,
-) -> Result<ProfileAConversionOutcomeV1, ProfileAConversionFatalError> {
-    convert_profile_a_impl(
-        source,
-        rig,
-        options,
-        SourceInventoryPolicy::RejectPresent,
-        ProfileATriangleThresholdContractV1::OwnerApprovedOversized,
-        None,
     )
 }
 
@@ -1733,14 +1804,23 @@ pub fn convert_profile_a_with_animations_and_material_separation_v1(
     let resolved = resolve_model_materials_v1(&source.ir, separation).map_err(|source| {
         ProfileAAnimationFatalError::from(fatal(&source.code, &source.path, source.message))
     })?;
-    validate_material_separation_counts_v1(
-        ModelRenderTargetV1::Creature,
-        resolved.report.material_slots.len(),
-        resolved.report.output_section_count,
+    convert_profile_a_with_animations_and_resolved_materials_v1(
+        source,
+        rig,
+        profile_options,
+        mapping,
+        &resolved,
     )
-    .map_err(|source| {
-        ProfileAAnimationFatalError::from(fatal(&source.code, &source.path, source.message))
-    })?;
+}
+
+pub(crate) fn convert_profile_a_with_animations_and_resolved_materials_v1(
+    source: &GlbIngestResult,
+    rig: &CreatureRigProfileV1,
+    profile_options: &ProfileAOptionsV1,
+    mapping: &ProfileAAnimationMappingV1,
+    resolved: &ResolvedModelMaterialsV1,
+) -> Result<ProfileAAnimatedOutcomeV1, ProfileAAnimationFatalError> {
+    validate_resolved_creature_materials_v1(resolved)?;
     let material_options = profile_a_options_with_material_separation_v1(profile_options);
     convert_profile_a_with_animations_internal_v1(
         source,
@@ -1748,14 +1828,12 @@ pub fn convert_profile_a_with_animations_and_material_separation_v1(
         &material_options,
         mapping,
         ProfileATriangleThresholdContractV1::Product,
-        Some(&resolved),
+        Some(resolved),
     )
 }
 
-/// Current direct-Creature conversion. The policy is intentionally not
-/// caller-selectable: it combines exact finite/non-collinear geometry with
-/// Creature Basis V2 so a product route cannot silently fall back to the
-/// historical reflected facing transform.
+/// Historical Creature Basis V2 conversion retained for immutable V2
+/// lineages. New product outputs use the exact conversion with V3 options.
 pub fn convert_profile_a_with_animations_v2(
     source: &GlbIngestResult,
     rig: &CreatureRigProfileV1,
@@ -1787,24 +1865,14 @@ pub(crate) fn convert_profile_a_with_animations_exact_v1(
     )
 }
 
-pub(crate) fn convert_profile_a_with_animations_exact_and_material_separation_v1(
+pub(crate) fn convert_profile_a_with_animations_exact_and_resolved_materials_v1(
     source: &GlbIngestResult,
     rig: &CreatureRigProfileV1,
     profile_options: &ProfileAOptionsV1,
     mapping: &ProfileAAnimationMappingV1,
-    separation: &ModelMaterialSeparationDocumentV1,
+    resolved: &ResolvedModelMaterialsV1,
 ) -> Result<ProfileAAnimatedOutcomeV1, ProfileAAnimationFatalError> {
-    let resolved = resolve_model_materials_v1(&source.ir, separation).map_err(|source| {
-        ProfileAAnimationFatalError::from(fatal(&source.code, &source.path, source.message))
-    })?;
-    validate_material_separation_counts_v1(
-        ModelRenderTargetV1::Creature,
-        resolved.report.material_slots.len(),
-        resolved.report.output_section_count,
-    )
-    .map_err(|source| {
-        ProfileAAnimationFatalError::from(fatal(&source.code, &source.path, source.message))
-    })?;
+    validate_resolved_creature_materials_v1(resolved)?;
     let material_options = profile_a_options_with_material_separation_v1(profile_options);
     convert_profile_a_with_animations_internal_v1(
         source,
@@ -1812,13 +1880,14 @@ pub(crate) fn convert_profile_a_with_animations_exact_and_material_separation_v1
         &material_options,
         mapping,
         ProfileATriangleThresholdContractV1::ProductExact,
-        Some(&resolved),
+        Some(resolved),
     )
 }
 
 pub(crate) fn convert_profile_a_with_animations_p100k_experiment_v1(
     source: &GlbIngestResult,
     rig: &CreatureRigProfileV1,
+    profile_options: &ProfileAOptionsV1,
     mapping: &ProfileAAnimationMappingV1,
 ) -> Result<ProfileAAnimatedOutcomeV1, ProfileAAnimationFatalError> {
     let options = ProfileAOptionsV1 {
@@ -1827,7 +1896,7 @@ pub(crate) fn convert_profile_a_with_animations_p100k_experiment_v1(
             triangle_blocking_above: MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_CEILING_V1 as u64,
             ..ProfileALimitsV1::default()
         },
-        ..direct_creature_profile_a_options_v2()
+        ..profile_options.clone()
     };
     convert_profile_a_with_animations_internal_v1(
         source,
@@ -1836,49 +1905,13 @@ pub(crate) fn convert_profile_a_with_animations_p100k_experiment_v1(
         mapping,
         ProfileATriangleThresholdContractV1::P100kExperiment,
         None,
-    )
-}
-
-pub(crate) fn convert_profile_a_with_animations_p100k_experiment_and_material_separation_v1(
-    source: &GlbIngestResult,
-    rig: &CreatureRigProfileV1,
-    mapping: &ProfileAAnimationMappingV1,
-    separation: &ModelMaterialSeparationDocumentV1,
-) -> Result<ProfileAAnimatedOutcomeV1, ProfileAAnimationFatalError> {
-    let resolved = resolve_model_materials_v1(&source.ir, separation).map_err(|source| {
-        ProfileAAnimationFatalError::from(fatal(&source.code, &source.path, source.message))
-    })?;
-    validate_material_separation_counts_v1(
-        ModelRenderTargetV1::Creature,
-        resolved.report.material_slots.len(),
-        resolved.report.output_section_count,
-    )
-    .map_err(|source| {
-        ProfileAAnimationFatalError::from(fatal(&source.code, &source.path, source.message))
-    })?;
-    let options = ProfileAOptionsV1 {
-        material_policy: ProfileAMaterialPolicyV1::BoundedSourceSlots,
-        limits: ProfileALimitsV1 {
-            max_unique_materials: PROFILE_A_HARD_MAX_UNIQUE_MATERIALS_V1,
-            triangle_warning_above: 50_000,
-            triangle_blocking_above: MESHY_CREATURE_P100K_EXPERIMENT_TRIANGLE_CEILING_V1 as u64,
-            ..ProfileALimitsV1::default()
-        },
-        ..direct_creature_profile_a_options_v2()
-    };
-    convert_profile_a_with_animations_internal_v1(
-        source,
-        rig,
-        &options,
-        mapping,
-        ProfileATriangleThresholdContractV1::P100kExperiment,
-        Some(&resolved),
     )
 }
 
 pub(crate) fn convert_profile_a_with_animations_p300k_experiment_v1(
     source: &GlbIngestResult,
     rig: &CreatureRigProfileV1,
+    profile_options: &ProfileAOptionsV1,
     mapping: &ProfileAAnimationMappingV1,
 ) -> Result<ProfileAAnimatedOutcomeV1, ProfileAAnimationFatalError> {
     let options = ProfileAOptionsV1 {
@@ -1887,7 +1920,7 @@ pub(crate) fn convert_profile_a_with_animations_p300k_experiment_v1(
             triangle_blocking_above: AURORA_MODEL_TRIANGLE_BUDGET_V1 as u64,
             ..ProfileALimitsV1::default()
         },
-        ..direct_creature_profile_a_options_v2()
+        ..profile_options.clone()
     };
     convert_profile_a_with_animations_internal_v1(
         source,
@@ -1896,43 +1929,6 @@ pub(crate) fn convert_profile_a_with_animations_p300k_experiment_v1(
         mapping,
         ProfileATriangleThresholdContractV1::P300kExperiment,
         None,
-    )
-}
-
-pub(crate) fn convert_profile_a_with_animations_p300k_experiment_and_material_separation_v1(
-    source: &GlbIngestResult,
-    rig: &CreatureRigProfileV1,
-    mapping: &ProfileAAnimationMappingV1,
-    separation: &ModelMaterialSeparationDocumentV1,
-) -> Result<ProfileAAnimatedOutcomeV1, ProfileAAnimationFatalError> {
-    let resolved = resolve_model_materials_v1(&source.ir, separation).map_err(|source| {
-        ProfileAAnimationFatalError::from(fatal(&source.code, &source.path, source.message))
-    })?;
-    validate_material_separation_counts_v1(
-        ModelRenderTargetV1::Creature,
-        resolved.report.material_slots.len(),
-        resolved.report.output_section_count,
-    )
-    .map_err(|source| {
-        ProfileAAnimationFatalError::from(fatal(&source.code, &source.path, source.message))
-    })?;
-    let options = ProfileAOptionsV1 {
-        material_policy: ProfileAMaterialPolicyV1::BoundedSourceSlots,
-        limits: ProfileALimitsV1 {
-            max_unique_materials: PROFILE_A_HARD_MAX_UNIQUE_MATERIALS_V1,
-            triangle_warning_above: AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 as u64,
-            triangle_blocking_above: AURORA_MODEL_TRIANGLE_BUDGET_V1 as u64,
-            ..ProfileALimitsV1::default()
-        },
-        ..direct_creature_profile_a_options_v2()
-    };
-    convert_profile_a_with_animations_internal_v1(
-        source,
-        rig,
-        &options,
-        mapping,
-        ProfileATriangleThresholdContractV1::P300kExperiment,
-        Some(&resolved),
     )
 }
 
@@ -1945,6 +1941,20 @@ fn profile_a_options_with_material_separation_v1(options: &ProfileAOptionsV1) ->
         },
         ..options.clone()
     }
+}
+
+fn validate_resolved_creature_materials_v1(
+    resolved: &ResolvedModelMaterialsV1,
+) -> Result<(), ProfileAAnimationFatalError> {
+    validate_material_separation_counts_v1(
+        ModelRenderTargetV1::Creature,
+        resolved.report.material_slots.len(),
+        resolved.report.output_section_count,
+    )
+    .map(|_| ())
+    .map_err(|source| {
+        ProfileAAnimationFatalError::from(fatal(&source.code, &source.path, source.message))
+    })
 }
 
 fn convert_profile_a_with_animations_internal_v1(
@@ -3880,7 +3890,6 @@ enum ProfileATriangleThresholdContractV1 {
     ProductExact,
     P100kExperiment,
     P300kExperiment,
-    OwnerApprovedOversized,
 }
 
 fn validate_options(
@@ -3896,7 +3905,11 @@ fn validate_options(
             ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpNegativeYForwardV2
                 | ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpNegativeYForwardV2
                 | ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpNegativeYForwardV2
-                | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2,
+                | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2
+                | ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpPositiveYForwardV3
+                | ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpPositiveYForwardV3
+                | ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpPositiveYForwardV3
+                | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpPositiveYForwardV3,
             ProfileAWindingPolicyV1::CompositeDeterminantV2
         )
     );
@@ -3933,10 +3946,6 @@ fn validate_options(
             AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 as u64,
             AURORA_MODEL_TRIANGLE_BUDGET_V1 as u64,
         ),
-        ProfileATriangleThresholdContractV1::OwnerApprovedOversized => (
-            AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1 as u64,
-            limits.triangle_blocking_above,
-        ),
     };
     let triangle_thresholds_are_compiled_profile = (
         limits.triangle_warning_above,
@@ -3956,31 +3965,9 @@ fn validate_options(
         (limits.max_work_bytes, hard.max_work_bytes),
         (limits.max_diagnostics, hard.max_diagnostics),
     ];
-    let exceeds_compiled_maximum = match triangle_threshold_contract {
-        ProfileATriangleThresholdContractV1::OwnerApprovedOversized => {
-            let retained_hard_pairs = [
-                (limits.max_rig_nodes, hard.max_rig_nodes),
-                (limits.max_segments, hard.max_segments),
-                (
-                    limits.max_distance_evaluations,
-                    hard.max_distance_evaluations,
-                ),
-                (limits.max_diagnostics, hard.max_diagnostics),
-            ];
-            retained_hard_pairs
-                .iter()
-                .any(|(value, maximum)| *value == 0 || value > maximum)
-                || limits.max_reference_vertices == 0
-                || limits.max_reference_triangles == 0
-                || limits.max_output_vertices == 0
-                || limits.max_output_indices == 0
-                || limits.max_work_bytes == 0
-                || limits.triangle_blocking_above <= AURORA_MODEL_TRIANGLE_BUDGET_V1 as u64
-        }
-        _ => pairs
-            .iter()
-            .any(|(value, maximum)| *value == 0 || value > maximum),
-    };
+    let exceeds_compiled_maximum = pairs
+        .iter()
+        .any(|(value, maximum)| *value == 0 || value > maximum);
     if exceeds_compiled_maximum
         || !triangle_thresholds_are_compiled_profile
         || limits.max_unique_materials == 0
@@ -4188,8 +4175,7 @@ fn validate_rig(
         | ProfileATriangleThresholdContractV1::P300kExperiment => {
             MeshySurfaceDegeneracyPolicyV1::ExactFiniteNonCollinear
         }
-        ProfileATriangleThresholdContractV1::Product
-        | ProfileATriangleThresholdContractV1::OwnerApprovedOversized => {
+        ProfileATriangleThresholdContractV1::Product => {
             MeshySurfaceDegeneracyPolicyV1::LegacyAbsoluteEpsilon
         }
     };
@@ -6981,6 +6967,18 @@ fn profile_a_basis_transform_v2(policy: ProfileABasisPolicyV1) -> ProfileABasisT
         ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2 => Mat4([
             0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
         ]),
+        ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpPositiveYForwardV3 => Mat4([
+            -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ]),
+        ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpPositiveYForwardV3 => Mat4([
+            1.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ]),
+        ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpPositiveYForwardV3 => Mat4([
+            0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ]),
+        ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpPositiveYForwardV3 => Mat4([
+            0.0, 0.0, -1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ]),
     };
     let inverse = matrix
         .inverse_affine()
@@ -7001,6 +6999,12 @@ fn profile_a_basis_status_v2(policy: ProfileABasisPolicyV1) -> &'static str {
         | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2 => {
             "CREATURE_BASIS_V2_RESOLVED"
         }
+        ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpPositiveYForwardV3
+        | ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpPositiveYForwardV3
+        | ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpPositiveYForwardV3
+        | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpPositiveYForwardV3 => {
+            "CREATURE_BASIS_V3_RESOLVED"
+        }
     }
 }
 
@@ -7012,6 +7016,12 @@ fn profile_a_basis_evidence_v2(policy: ProfileABasisPolicyV1) -> &'static str {
         | ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpNegativeYForwardV2
         | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2 => {
             "SOURCE_HEADFRONT_AND_RETAIL_NATIVE_NEGATIVE_Y"
+        }
+        ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpPositiveYForwardV3
+        | ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpPositiveYForwardV3
+        | ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpPositiveYForwardV3
+        | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpPositiveYForwardV3 => {
+            "SOURCE_HEADFRONT_AND_RETAIL_NATIVE_POSITIVE_Y"
         }
     }
 }
@@ -7031,6 +7041,18 @@ fn profile_a_forward_mapping_v2(policy: ProfileABasisPolicyV1) -> &'static str {
         ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2 => {
             "GLTF_NEGATIVE_X_TO_AURORA_NEGATIVE_Y"
         }
+        ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpPositiveYForwardV3 => {
+            "GLTF_POSITIVE_Z_TO_AURORA_POSITIVE_Y"
+        }
+        ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpPositiveYForwardV3 => {
+            "GLTF_NEGATIVE_Z_TO_AURORA_POSITIVE_Y"
+        }
+        ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpPositiveYForwardV3 => {
+            "GLTF_POSITIVE_X_TO_AURORA_POSITIVE_Y"
+        }
+        ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpPositiveYForwardV3 => {
+            "GLTF_NEGATIVE_X_TO_AURORA_POSITIVE_Y"
+        }
     }
 }
 
@@ -7040,7 +7062,11 @@ fn profile_a_orientation_parity_v2(policy: ProfileABasisPolicyV1) -> &'static st
         ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpNegativeYForwardV2
         | ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpNegativeYForwardV2
         | ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpNegativeYForwardV2
-        | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2 => {
+        | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2
+        | ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpPositiveYForwardV3
+        | ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpPositiveYForwardV3
+        | ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpPositiveYForwardV3
+        | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpPositiveYForwardV3 => {
             "POSITIVE_PROPER_ROTATION_COMPOSITE_DETERMINANT"
         }
     }
@@ -7052,7 +7078,11 @@ fn profile_a_engine_facing_proof_v2(policy: ProfileABasisPolicyV1) -> &'static s
         ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpNegativeYForwardV2
         | ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpNegativeYForwardV2
         | ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpNegativeYForwardV2
-        | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2 => {
+        | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpNegativeYForwardV2
+        | ProfileABasisPolicyV1::GltfYUpPositiveZForwardToAuroraZUpPositiveYForwardV3
+        | ProfileABasisPolicyV1::GltfYUpNegativeZForwardToAuroraZUpPositiveYForwardV3
+        | ProfileABasisPolicyV1::GltfYUpPositiveXForwardToAuroraZUpPositiveYForwardV3
+        | ProfileABasisPolicyV1::GltfYUpNegativeXForwardToAuroraZUpPositiveYForwardV3 => {
             "OWNER_PROOF_REQUIRED"
         }
     }

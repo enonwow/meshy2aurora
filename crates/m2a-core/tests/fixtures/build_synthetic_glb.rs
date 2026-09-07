@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+
+use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
 use serde_json::{Value, json};
 
 pub const MINIMAL_PNG: [u8; 68] = [
@@ -79,6 +82,102 @@ pub fn one_primitive_two_disconnected_triangles_with_embedded_texture() -> Vec<u
     let third_vertex_z = view_offset + accessor_offset + (2 * 3 + 2) * size_of::<f32>();
     bin[third_vertex_z..third_vertex_z + size_of::<f32>()].copy_from_slice(&1.0_f32.to_le_bytes());
     root["accessors"][position_accessor]["max"] = json!([5.0, 1.0, 1.0]);
+    align4(&mut bin);
+    let image_offset = bin.len();
+    bin.extend_from_slice(&OWNED_RED_RGBA_PNG);
+    let image_view_index = root["bufferViews"]
+        .as_array()
+        .expect("synthetic buffer views")
+        .len();
+    root["bufferViews"]
+        .as_array_mut()
+        .expect("synthetic buffer views")
+        .push(view(image_offset, OWNED_RED_RGBA_PNG.len()));
+    root["buffers"][0]["byteLength"] = json!(bin.len());
+    root["images"] = json!([{
+        "name": "embedded-one-pixel",
+        "bufferView": image_view_index,
+        "mimeType": "image/png"
+    }]);
+    root["textures"] = json!([{
+        "name": "base-color",
+        "source": 0
+    }]);
+    root["materials"][0]["pbrMetallicRoughness"]["baseColorTexture"] =
+        json!({"index": 0, "texCoord": 0});
+    root["materials"][0]["alphaMode"] = json!("OPAQUE");
+    make_glb(root, bin)
+}
+
+pub fn one_primitive_two_disconnected_triangles_with_embedded_texture_and_double_sided() -> Vec<u8>
+{
+    one_primitive_two_disconnected_triangles_with_embedded_texture_and_sidedness(true)
+}
+
+pub fn one_primitive_two_disconnected_triangles_with_embedded_texture_and_sidedness(
+    double_sided: bool,
+) -> Vec<u8> {
+    let (mut root, bin) =
+        split_glb(one_primitive_two_disconnected_triangles_with_embedded_texture());
+    root["materials"][0]["doubleSided"] = json!(double_sided);
+    make_glb(root, bin)
+}
+
+#[allow(dead_code)]
+pub fn one_primitive_two_disconnected_boxes_with_embedded_texture() -> Vec<u8> {
+    let positions = [
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [1.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.2],
+        [1.0, 0.0, 0.2],
+        [1.0, 1.0, 0.2],
+        [0.0, 1.0, 0.2],
+        [4.0, 0.0, 0.0],
+        [5.0, 0.0, 0.0],
+        [5.0, 1.0, 0.0],
+        [4.0, 1.0, 0.0],
+        [4.0, 0.0, 0.2],
+        [5.0, 0.0, 0.2],
+        [5.0, 1.0, 0.2],
+        [4.0, 1.0, 0.2],
+    ];
+    let normals = [[0.0, 0.0, 1.0]; 16];
+    let uv0 = [
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [1.0, 1.0],
+        [0.0, 1.0],
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [1.0, 1.0],
+        [0.0, 1.0],
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [1.0, 1.0],
+        [0.0, 1.0],
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [1.0, 1.0],
+        [0.0, 1.0],
+    ];
+    let one_box = [
+        0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 3, 7, 6, 3, 6, 2, 0, 4, 7, 0, 7, 3,
+        1, 2, 6, 1, 6, 5,
+    ];
+    let mut indices = Vec::with_capacity(one_box.len() * 2);
+    indices.extend(one_box);
+    indices.extend(one_box.map(|index| index + 8));
+    let base = geometry_glb(
+        &positions,
+        Some(&normals),
+        Some(&uv0),
+        Some(&indices),
+        4,
+        default_nodes(),
+    );
+    let (mut root, mut bin) = split_glb(base);
     align4(&mut bin);
     let image_offset = bin.len();
     bin.extend_from_slice(&OWNED_RED_RGBA_PNG);
@@ -277,6 +376,117 @@ pub fn material_image_two_primitives() -> Vec<u8> {
         }
     ]);
     make_glb(root, bin)
+}
+
+/// One-material creature regression fixture with three independently declared
+/// source images. All mapped channels use UV0 so the NWN:EE material compiler
+/// must preserve/bake them instead of blocking on an unsupported UV set.
+pub fn material_complete_single_primitive() -> Vec<u8> {
+    material_complete_single_primitive_with_double_sided(true)
+}
+
+pub fn material_complete_single_primitive_with_double_sided(double_sided: bool) -> Vec<u8> {
+    let (mut root, mut bin) = split_glb(minimal_indexed_triangle());
+    align4(&mut bin);
+    let index_offset = bin.len();
+    for index in [0_u16, 1, 2, 0, 1, 2] {
+        bin.extend_from_slice(&index.to_le_bytes());
+    }
+    let index_view = root["bufferViews"]
+        .as_array()
+        .expect("synthetic buffer views")
+        .len();
+    root["bufferViews"]
+        .as_array_mut()
+        .expect("synthetic buffer views")
+        .push(view(index_offset, 12));
+    let index_accessor = root["accessors"]
+        .as_array()
+        .expect("synthetic accessors")
+        .len();
+    root["accessors"]
+        .as_array_mut()
+        .expect("synthetic accessors")
+        .push(json!({
+            "bufferView": index_view,
+            "componentType": 5123,
+            "count": 6,
+            "type": "SCALAR"
+        }));
+    root["meshes"][0]["primitives"][0]["indices"] = json!(index_accessor);
+
+    let images = [
+        checker_rgba_png([245, 245, 245, 255], [25, 25, 25, 255]),
+        checker_rgba_png([128, 128, 255, 255], [96, 160, 255, 255]),
+        checker_rgba_png([32, 220, 64, 255], [224, 32, 192, 255]),
+    ];
+    let mut image_views = Vec::new();
+    for image in &images {
+        align4(&mut bin);
+        let offset = bin.len();
+        bin.extend_from_slice(image);
+        let view_index = root["bufferViews"]
+            .as_array()
+            .expect("synthetic buffer views")
+            .len();
+        root["bufferViews"]
+            .as_array_mut()
+            .expect("synthetic buffer views")
+            .push(view(offset, image.len()));
+        image_views.push(view_index);
+    }
+    root["buffers"][0]["byteLength"] = json!(bin.len());
+    root["samplers"] = json!([{
+        "magFilter": 9729,
+        "minFilter": 9987,
+        "wrapS": 10497,
+        "wrapT": 10497
+    }]);
+    root["images"] = json!([
+        {"name": "base-color-image", "bufferView": image_views[0], "mimeType": "image/png"},
+        {"name": "normal-image", "bufferView": image_views[1], "mimeType": "image/png"},
+        {"name": "metallic-roughness-image", "bufferView": image_views[2], "mimeType": "image/png"}
+    ]);
+    root["textures"] = json!([
+        {"name": "base-color", "sampler": 0, "source": 0},
+        {"name": "normal-map", "sampler": 0, "source": 1},
+        {"name": "metallic-roughness", "sampler": 0, "source": 2}
+    ]);
+    root["materials"] = json!([{
+        "name": "complete-creature-material",
+        "pbrMetallicRoughness": {
+            "baseColorFactor": [1.0, 1.0, 1.0, 1.0],
+            "baseColorTexture": {"index": 0, "texCoord": 0},
+            "metallicFactor": 0.35,
+            "roughnessFactor": 0.65,
+            "metallicRoughnessTexture": {"index": 2, "texCoord": 0}
+        },
+        "normalTexture": {"index": 1, "texCoord": 0},
+        "emissiveFactor": [0.0, 0.0, 0.0],
+        "alphaMode": "OPAQUE",
+        "doubleSided": double_sided
+    }]);
+    root["meshes"][0]["primitives"][0]["material"] = json!(0);
+    make_glb(root, bin)
+}
+
+fn checker_rgba_png(first: [u8; 4], second: [u8; 4]) -> Vec<u8> {
+    let mut pixels = Vec::with_capacity(32 * 32 * 4);
+    for y in 0..32 {
+        for x in 0..32 {
+            let color = if (x / 4 + y / 4) % 2 == 0 {
+                first
+            } else {
+                second
+            };
+            pixels.extend_from_slice(&color);
+        }
+    }
+    let mut output = Vec::new();
+    PngEncoder::new(&mut output)
+        .write_image(&pixels, 32, 32, ExtendedColorType::Rgba8)
+        .expect("encode synthetic checker PNG");
+    output
 }
 
 #[allow(dead_code)]
@@ -541,6 +751,27 @@ pub fn triangle_budget(triangle_count: usize) -> Vec<u8> {
         4,
         default_nodes(),
     )
+}
+
+pub fn triangle_budget_with_double_sided_and_positive_extents(triangle_count: usize) -> Vec<u8> {
+    let (mut root, mut bin) = split_glb(triangle_budget(triangle_count));
+    let position_accessor = root["meshes"][0]["primitives"][0]["attributes"]["POSITION"]
+        .as_u64()
+        .expect("position accessor") as usize;
+    let position_view = root["accessors"][position_accessor]["bufferView"]
+        .as_u64()
+        .expect("position buffer view") as usize;
+    let view_offset = root["bufferViews"][position_view]["byteOffset"]
+        .as_u64()
+        .unwrap_or(0) as usize;
+    let accessor_offset = root["accessors"][position_accessor]["byteOffset"]
+        .as_u64()
+        .unwrap_or(0) as usize;
+    let third_vertex_z = view_offset + accessor_offset + (2 * 3 + 2) * size_of::<f32>();
+    bin[third_vertex_z..third_vertex_z + size_of::<f32>()].copy_from_slice(&1.0_f32.to_le_bytes());
+    root["accessors"][position_accessor]["max"] = json!([1.0, 1.0, 1.0]);
+    root["materials"][0]["doubleSided"] = json!(true);
+    make_glb(root, bin)
 }
 
 pub fn two_primitive_triangle_budget(triangle_count_each: usize) -> Vec<u8> {

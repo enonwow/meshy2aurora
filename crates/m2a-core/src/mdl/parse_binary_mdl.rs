@@ -1314,11 +1314,12 @@ fn read_mesh(
         absolute + MESH_UV0_RAW_OFFSET,
         "uv0",
         checked_array_size(vertex_count, 8, absolute, "mesh UV0")?,
-        vertex_count > 0 && !is_aabb,
+        vertex_count > 0 && !is_aabb && texture_count > 0,
         &mut validated_raw_pointers,
     )?;
+    let mut deferred_uv_pointers = [None; 3];
     for index in 1..4 {
-        read_and_validate_raw_pointer(
+        deferred_uv_pointers[index - 1] = read_and_validate_raw_pointer(
             context,
             absolute + MESH_UV0_RAW_OFFSET + index * 4,
             match index {
@@ -1347,9 +1348,11 @@ fn read_mesh(
         false,
         &mut validated_raw_pointers,
     )?;
+    let mut tangent_pointer = None;
+    let mut tangent_sign_pointer = None;
     for index in 0..6 {
         let element_size = if index == 5 { 4 } else { 12 };
-        read_and_validate_raw_pointer(
+        let pointer = read_and_validate_raw_pointer(
             context,
             absolute + MESH_TEX_ANIM0_RAW_OFFSET + index * 4,
             match index {
@@ -1369,11 +1372,38 @@ fn read_mesh(
             false,
             &mut validated_raw_pointers,
         )?;
+        if index == 3 {
+            tangent_pointer = pointer;
+        } else if index == 5 {
+            tangent_sign_pointer = pointer;
+        }
     }
 
     let vertices = read_raw_vec3_values(context, vertices_pointer, vertex_count, "mesh vertices")?;
     let uv0 = read_raw_vec2_values(context, uv0_pointer, vertex_count, "mesh UV0")?;
+    let uv1 = read_raw_vec2_values(context, deferred_uv_pointers[0], vertex_count, "mesh UV1")?;
+    let uv2 = read_raw_vec2_values(context, deferred_uv_pointers[1], vertex_count, "mesh UV2")?;
+    let uv3 = read_raw_vec2_values(context, deferred_uv_pointers[2], vertex_count, "mesh UV3")?;
     let normals = read_raw_vec3_values(context, normals_pointer, vertex_count, "mesh normals")?;
+    let tangent_xyz =
+        read_raw_vec3_values(context, tangent_pointer, vertex_count, "mesh tangents")?;
+    let tangent_signs = read_raw_f32_values(
+        context,
+        tangent_sign_pointer,
+        vertex_count,
+        "mesh tangent signs",
+    )?;
+    if tangent_xyz.len() != tangent_signs.len() {
+        return Err(ParseError::header(
+            absolute + MESH_TEX_ANIM0_RAW_OFFSET + 3 * 4,
+            "mesh tangent and handedness streams must be both absent or equally sized",
+        ));
+    }
+    let tangents = tangent_xyz
+        .iter()
+        .zip(&tangent_signs)
+        .map(|(value, sign)| [value.x, value.y, value.z, *sign])
+        .collect();
     let vertex_colors = read_raw_rgba_values(context, colors_pointer, vertex_count, "mesh colors")?;
     Ok(MeshReport {
         textures,
@@ -1445,7 +1475,11 @@ fn read_mesh(
         raw_indices,
         vertices,
         uv0,
+        uv1,
+        uv2,
+        uv3,
         normals,
+        tangents,
         vertex_colors,
         validated_raw_pointers,
     })
@@ -1975,6 +2009,22 @@ fn read_raw_vec2_values(
             x: context.reader.read_f32(base, value_context)?,
             y: context.reader.read_f32(base + 4, value_context)?,
         });
+    }
+    Ok(values)
+}
+
+fn read_raw_f32_values(
+    context: &ParseContext<'_, '_>,
+    pointer: Option<usize>,
+    count: usize,
+    label: &str,
+) -> Result<Vec<f32>, ParseError> {
+    let Some(pointer) = pointer else {
+        return Ok(Vec::new());
+    };
+    let mut values = Vec::with_capacity(count);
+    for index in 0..count {
+        values.push(context.reader.read_f32(pointer + index * 4, label)?);
     }
     Ok(values)
 }

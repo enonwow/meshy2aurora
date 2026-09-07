@@ -42,6 +42,25 @@ pub enum ModelTextureAlphaPolicyV1 {
     OpaqueOnly,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum TextureMipReadabilityStatusV1 {
+    Readable,
+    LowContrast,
+    Flat,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TextureMipReadabilityV1 {
+    pub source_width: u32,
+    pub source_height: u32,
+    pub base_luma_stddev_milli: u32,
+    pub mip_16_luma_stddev_milli: u32,
+    pub contrast_retention_basis_points: u32,
+    pub status: TextureMipReadabilityStatusV1,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ModelTextureBindingAuthoringV1 {
@@ -89,7 +108,10 @@ pub struct ResolvedModelTextureBindingV1 {
     pub output_resref: String,
     pub output_sha256: String,
     pub source_alpha_mode: String,
+    pub source_double_sided: bool,
+    pub target_double_sided_policy: String,
     pub ignored_source_pbr_maps: Vec<String>,
+    pub mip_readability: TextureMipReadabilityV1,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -111,6 +133,7 @@ pub struct ModelTextureResolutionReportV1 {
     pub authoring_sha256: String,
     pub alpha_policy: ModelTextureAlphaPolicyV1,
     pub uv_policy: String,
+    pub warnings: Vec<String>,
     pub bindings: Vec<ResolvedModelTextureBindingV1>,
     pub resources: Vec<ResolvedModelTextureResourceV1>,
 }
@@ -168,6 +191,96 @@ fn valid_sha256(value: &str) -> bool {
         && value
             .bytes()
             .all(|value| value.is_ascii_hexdigit() && !value.is_ascii_uppercase())
+}
+
+fn luma(pixel: &[u8]) -> u32 {
+    (54 * u32::from(pixel[0]) + 183 * u32::from(pixel[1]) + 19 * u32::from(pixel[2])) >> 8
+}
+
+fn luma_stddev_milli(values: &[u32]) -> u32 {
+    if values.is_empty() {
+        return 0;
+    }
+    let count = values.len() as f64;
+    let mean = values.iter().map(|value| f64::from(*value)).sum::<f64>() / count;
+    let variance = values
+        .iter()
+        .map(|value| {
+            let delta = f64::from(*value) - mean;
+            delta * delta
+        })
+        .sum::<f64>()
+        / count;
+    (variance.sqrt() * 1_000.0).round() as u32
+}
+
+/// Estimates whether the texture still carries useful macro contrast when it
+/// reaches approximately a 16x16 mip. This is a deterministic preflight
+/// diagnostic, not a replacement for an engine-rendered proof.
+pub fn inspect_texture_mip_readability_v1(image: &TgaImageV1) -> TextureMipReadabilityV1 {
+    let channels = match image.pixel_format {
+        TgaPixelFormatV1::Rgb8 => 3usize,
+        TgaPixelFormatV1::Rgba8 => 4usize,
+    };
+    let width = image.width as usize;
+    let height = image.height as usize;
+    let expected = width.saturating_mul(height).saturating_mul(channels);
+    if width == 0 || height == 0 || image.pixels.len() < expected {
+        return TextureMipReadabilityV1 {
+            source_width: image.width,
+            source_height: image.height,
+            base_luma_stddev_milli: 0,
+            mip_16_luma_stddev_milli: 0,
+            contrast_retention_basis_points: 0,
+            status: TextureMipReadabilityStatusV1::Flat,
+        };
+    }
+
+    let grid_width = width.min(16);
+    let grid_height = height.min(16);
+    let mut base = Vec::with_capacity(width * height);
+    let mut sums = vec![0u64; grid_width * grid_height];
+    let mut counts = vec![0u64; grid_width * grid_height];
+    for y in 0..height {
+        for x in 0..width {
+            let offset = (y * width + x) * channels;
+            let value = luma(&image.pixels[offset..offset + channels]);
+            base.push(value);
+            let grid_x = x * grid_width / width;
+            let grid_y = y * grid_height / height;
+            let cell = grid_y * grid_width + grid_x;
+            sums[cell] += u64::from(value);
+            counts[cell] += 1;
+        }
+    }
+    let mip = sums
+        .into_iter()
+        .zip(counts)
+        .filter_map(|(sum, count)| (count > 0).then_some((sum / count) as u32))
+        .collect::<Vec<_>>();
+    let base_luma_stddev_milli = luma_stddev_milli(&base);
+    let mip_16_luma_stddev_milli = luma_stddev_milli(&mip);
+    let contrast_retention_basis_points = if base_luma_stddev_milli == 0 {
+        0
+    } else {
+        ((u64::from(mip_16_luma_stddev_milli) * 10_000 / u64::from(base_luma_stddev_milli))
+            .min(10_000)) as u32
+    };
+    let status = if base_luma_stddev_milli < 1_000 {
+        TextureMipReadabilityStatusV1::Flat
+    } else if mip_16_luma_stddev_milli < 4_000 || contrast_retention_basis_points < 2_000 {
+        TextureMipReadabilityStatusV1::LowContrast
+    } else {
+        TextureMipReadabilityStatusV1::Readable
+    };
+    TextureMipReadabilityV1 {
+        source_width: image.width,
+        source_height: image.height,
+        base_luma_stddev_milli,
+        mip_16_luma_stddev_milli,
+        contrast_retention_basis_points,
+        status,
+    }
 }
 
 pub fn model_texture_authoring_hash_v1(
@@ -645,6 +758,7 @@ pub(crate) fn resolve_model_texture_authoring_from_report_v1(
     let mut resource_index_by_sha = BTreeMap::<String, usize>::new();
     let mut resource_slots = Vec::<Vec<u32>>::new();
     let mut binding_reports = Vec::with_capacity(slots.len());
+    let mut warnings = BTreeSet::new();
 
     for (material_slot, slot) in slots {
         let binding = authoring_by_slot[&material_slot];
@@ -672,6 +786,15 @@ pub(crate) fn resolve_model_texture_authoring_from_report_v1(
         let source_alpha_mode = source_material
             .map(|material| material.alpha_mode.clone())
             .unwrap_or_else(|| "OPAQUE".to_owned());
+        let source_double_sided = source_material
+            .map(|material| material.double_sided)
+            .unwrap_or(false);
+        if source_double_sided {
+            warnings.insert(format!(
+                "MODEL-MATERIAL-DOUBLE-SIDED-TARGET-UNPROVEN:{}",
+                slot.authored_material_id
+            ));
+        }
         if binding.mode == ModelTextureBindingModeV1::Override && source_alpha_mode != "OPAQUE" {
             return Err(error(
                 "MODEL-TEXTURE-ALPHA-MODE-UNSUPPORTED",
@@ -787,6 +910,18 @@ pub(crate) fn resolve_model_texture_authoring_from_report_v1(
                 source.message,
             )
         })?;
+        let mip_readability = inspect_texture_mip_readability_v1(&image);
+        if mip_readability.status != TextureMipReadabilityStatusV1::Readable {
+            warnings.insert(format!(
+                "MODEL-TEXTURE-MIP-CONTRAST-{}:{}",
+                match mip_readability.status {
+                    TextureMipReadabilityStatusV1::Readable => "READABLE",
+                    TextureMipReadabilityStatusV1::LowContrast => "LOW",
+                    TextureMipReadabilityStatusV1::Flat => "FLAT",
+                },
+                slot.authored_material_id
+            ));
+        }
         let output_sha256 = tga.report.output_sha256.clone();
         let resource_index = if let Some(index) = resource_index_by_sha.get(&output_sha256) {
             *index
@@ -817,7 +952,10 @@ pub(crate) fn resolve_model_texture_authoring_from_report_v1(
             output_resref,
             output_sha256,
             source_alpha_mode,
+            source_double_sided,
+            target_double_sided_policy: "UNSUPPORTED_REPORT_ONLY".to_owned(),
             ignored_source_pbr_maps,
+            mip_readability,
         });
     }
     let resources = textures
@@ -839,10 +977,58 @@ pub(crate) fn resolve_model_texture_authoring_from_report_v1(
             authoring_sha256: model_texture_authoring_hash_v1(authoring)?,
             alpha_policy: ModelTextureAlphaPolicyV1::OpaqueOnly,
             uv_policy: "SOURCE_UV0_UNCHANGED".to_owned(),
+            warnings: warnings.into_iter().collect(),
             bindings: binding_reports,
             resources,
         },
         material_textures,
         textures,
     })
+}
+
+#[cfg(test)]
+mod mip_readability_tests {
+    use super::*;
+
+    fn rgb_image(width: u32, height: u32, pixel: impl Fn(u32, u32) -> [u8; 3]) -> TgaImageV1 {
+        let mut pixels = Vec::with_capacity((width * height * 3) as usize);
+        for y in 0..height {
+            for x in 0..width {
+                pixels.extend_from_slice(&pixel(x, y));
+            }
+        }
+        TgaImageV1 {
+            schema_version: 1,
+            width,
+            height,
+            pixel_format: TgaPixelFormatV1::Rgb8,
+            pixels,
+        }
+    }
+
+    #[test]
+    fn mip_readability_marks_uniform_texture_flat() {
+        let report = inspect_texture_mip_readability_v1(&rgb_image(32, 32, |_, _| [70; 3]));
+        assert_eq!(report.status, TextureMipReadabilityStatusV1::Flat);
+        assert_eq!(report.mip_16_luma_stddev_milli, 0);
+    }
+
+    #[test]
+    fn mip_readability_rejects_high_frequency_noise_that_collapses_at_distance() {
+        let report = inspect_texture_mip_readability_v1(&rgb_image(32, 32, |x, y| {
+            if (x + y) % 2 == 0 { [0; 3] } else { [255; 3] }
+        }));
+        assert_eq!(report.status, TextureMipReadabilityStatusV1::LowContrast);
+        assert!(report.base_luma_stddev_milli > 100_000);
+        assert_eq!(report.mip_16_luma_stddev_milli, 0);
+    }
+
+    #[test]
+    fn mip_readability_accepts_macro_contrast_that_survives_downsampling() {
+        let report = inspect_texture_mip_readability_v1(&rgb_image(32, 32, |x, _| {
+            if x < 16 { [25; 3] } else { [180; 3] }
+        }));
+        assert_eq!(report.status, TextureMipReadabilityStatusV1::Readable);
+        assert!(report.contrast_retention_basis_points > 9_000);
+    }
 }

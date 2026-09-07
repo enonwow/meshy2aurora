@@ -80,6 +80,24 @@ pub struct DirectCreatureAnimationCompletenessV2 {
     pub complete: bool,
 }
 
+/// Combat-demo admission gate. Generic 42-state completeness may fill missing
+/// attacks procedurally, but a demo claiming real attack animation must bind
+/// both primary attack states to explicit source clips.
+pub fn has_preserved_source_combat_attacks_v1(
+    clips: &[DirectCreatureAnimationClipLineageV2],
+) -> bool {
+    ["ca1slashl", "ca1slashr"].into_iter().all(|required| {
+        clips.iter().any(|clip| {
+            clip.clip_name.eq_ignore_ascii_case(required)
+                && clip.origin == DirectCreatureAnimationClipOriginV2::PreservedSource
+                && clip
+                    .source_clip_name
+                    .as_deref()
+                    .is_some_and(|source| source.eq_ignore_ascii_case(required))
+        })
+    })
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProceduralHumanoidRigV1 {
@@ -2444,6 +2462,27 @@ mod procedural_tests {
             .expect("cwalk must remain explicit");
         assert_eq!(preserved_walk.length_seconds, 1.5);
         assert_eq!(preserved_walk.tracks[0].values, walk.tracks[0].values);
+    }
+
+    #[test]
+    fn combat_demo_gate_requires_both_attack_clips_to_be_preserved_source_motion() {
+        let preserved = ["ca1slashl", "ca1slashr"]
+            .into_iter()
+            .map(|name| DirectCreatureAnimationClipLineageV2 {
+                clip_name: name.to_owned(),
+                origin: DirectCreatureAnimationClipOriginV2::PreservedSource,
+                source_clip_name: Some(name.to_owned()),
+            })
+            .collect::<Vec<_>>();
+        assert!(has_preserved_source_combat_attacks_v1(&preserved));
+
+        let mut procedural_regression = preserved.clone();
+        procedural_regression[1].origin = DirectCreatureAnimationClipOriginV2::Procedural;
+        procedural_regression[1].source_clip_name = None;
+        assert!(!has_preserved_source_combat_attacks_v1(
+            &procedural_regression
+        ));
+        assert!(!has_preserved_source_combat_attacks_v1(&preserved[..1]));
     }
 
     #[test]

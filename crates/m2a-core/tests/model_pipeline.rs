@@ -5,6 +5,7 @@ use std::{
 };
 
 use m2a_core::{
+    creature_product::CreatureMaterialProfileV2,
     direct_creature_animation::{
         COMMON_NATIVE_DIRECT_CREATURE_EVENT_PAIRS_V1, DirectCreatureAnimationEventProfileV1,
         DirectCreatureClipEventAuthoringV1, DirectCreatureEventAuthoringV1,
@@ -22,22 +23,23 @@ use m2a_core::{
     mdl::{
         DirectCreatureEngineEnvelopeVerdictV1, MdlAnimationClipV1, MdlAnimationEventV1,
         MdlAnimationSetV1, MdlFormatProfileV1, MdlStateProjectionProfileV1,
-        MdlStateProjectionProvenanceV1, direct_creature_engine_envelope_digest_v1,
+        MdlStateProjectionProvenanceV1, NodeReport, direct_creature_engine_envelope_digest_v1,
         direct_creature_structural_summary_digest_v1, evaluate_skin_deformation_v1,
         inspect_direct_creature_engine_envelope_v1, summarize_direct_creature_structure_v1,
         verify_direct_creature_state_projection_v1,
         verify_direct_creature_state_projection_with_expected_provenance_v1,
     },
     model_pipeline::{
-        DirectCreatureAnimationProfileV1, FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1,
-        M0_APPEARANCE_LABEL, M0_CONTROL_APPEARANCE_LABEL, M0_MODEL_RESREF, M0_TEXTURE_RESREF,
-        M0RuntimeResourceBindingV1, M6_APPEARANCE_LABEL, M6_HAK_FILE_NAME, M6_MODEL_RESREF,
-        M6_PROOF_MODULE_FILE_NAME, M6_TEXTURE_RESREF, ProceduralCreatureBuildOptionsV1,
-        ProceduralCreaturePackageIdentityV1, ProceduralCreatureProductIdentityV2,
-        build_m6_model_package_v1, build_m6_model_package_with_profile_v1,
-        build_m6_model_package_with_profile_v2, build_m6_model_package_with_profile_v3,
-        build_meshy_full_native_h1_package_with_options_v4, build_meshy_h1_model_package_v2,
-        build_meshy_h1_model_package_v3, build_meshy_h1_rigid_runtime_diagnostic_package_v1,
+        CreatureHeldWeaponModeV1, CreatureHeldWeaponOptionsV1, DirectCreatureAnimationProfileV1,
+        FULL_NATIVE_DIRECT_CREATURE_CLIPS_V1, M0_APPEARANCE_LABEL, M0_CONTROL_APPEARANCE_LABEL,
+        M0_MODEL_RESREF, M0_TEXTURE_RESREF, M0RuntimeResourceBindingV1, M6_APPEARANCE_LABEL,
+        M6_HAK_FILE_NAME, M6_MODEL_RESREF, M6_PROOF_MODULE_FILE_NAME, M6_TEXTURE_RESREF,
+        ProceduralCreatureBuildOptionsV1, ProceduralCreaturePackageIdentityV1,
+        ProceduralCreatureProductIdentityV2, build_m6_model_package_v1,
+        build_m6_model_package_with_profile_v1, build_m6_model_package_with_profile_v2,
+        build_m6_model_package_with_profile_v3, build_meshy_full_native_h1_package_with_options_v4,
+        build_meshy_h1_model_package_v2, build_meshy_h1_model_package_v3,
+        build_meshy_h1_rigid_runtime_diagnostic_package_v1,
         build_meshy_m0_canonical_runtime_package_v1,
         build_meshy_m0_canonical_runtime_package_with_identity_and_profile_v2,
         build_meshy_m0_canonical_runtime_package_with_identity_v1,
@@ -45,9 +47,10 @@ use m2a_core::{
         build_meshy_m0_static_rigid_package_v1,
         build_meshy_m0_static_rigid_package_with_profile_v2,
         build_meshy_procedural_humanoid_model_package_with_identity_v1,
-        build_meshy_procedural_humanoid_product_v2, build_procedural_creature_demo_v2,
-        inspect_m0_runtime_mesh_eligibility_v1, materialize_direct_creature_runtime_clips_v1,
-        verify_m0_binary_runtime_fixture_contract_v2,
+        build_meshy_procedural_humanoid_product_v2,
+        build_meshy_procedural_humanoid_product_with_options_v3, build_procedural_creature_demo_v2,
+        build_procedural_creature_demo_with_held_weapon_v3, inspect_m0_runtime_mesh_eligibility_v1,
+        materialize_direct_creature_runtime_clips_v1, verify_m0_binary_runtime_fixture_contract_v2,
         verify_m0_full_runtime_appearance_table_binding_v1, write_m0_canonical_proof_packet_v1,
         write_m0_canonical_runtime_proof_packet_with_profile_v2, write_m0_proof_packet_v1,
         write_m6_proof_packet_v1, write_procedural_creature_product_demo_packet_v2,
@@ -641,8 +644,68 @@ fn procedural_product_and_fixture_module_are_two_separate_build_steps() {
         },
         "product creatures must allow native equipped weapons",
     );
+    let product_model_readback =
+        inspect_binary_mdl(&product.model).expect("product binary MDL readback");
+    for anchor_name in ["rhand", "lhand"] {
+        let anchor = find_mdl_node(&product_model_readback.node_tree.roots, anchor_name)
+            .expect("weapon attachment hook must be present in the product MDL");
+        let position = anchor
+            .controllers
+            .iter()
+            .find(|controller| controller.controller_type == 8)
+            .and_then(|controller| controller.values.first())
+            .expect("weapon hook position controller");
+        let orientation = anchor
+            .controllers
+            .iter()
+            .find(|controller| controller.controller_type == 20)
+            .and_then(|controller| controller.values.first())
+            .expect("weapon hook orientation controller");
+        assert!(
+            position
+                .iter()
+                .map(|value| value * value)
+                .sum::<f32>()
+                .sqrt()
+                > 1.0e-4,
+            "weapon hook must extend beyond the wrist instead of using an identity child",
+        );
+        assert_ne!(
+            orientation.as_slice(),
+            [0.0, 0.0, 0.0, 1.0],
+            "weapon hook must compensate the Meshy bind-world hand basis",
+        );
+        assert!(
+            product_model_readback.animations.iter().all(|animation| {
+                find_mdl_node(&animation.node_tree.roots, anchor_name).is_some()
+            })
+        );
+    }
+    let weapon_anchor_authoring = product
+        .report
+        .weapon_anchor_authoring
+        .as_ref()
+        .expect("product report must retain the exact authored grip transform");
+    assert_eq!(weapon_anchor_authoring.schema_version, 1);
+    assert_eq!(weapon_anchor_authoring.status, "weapon_anchors_ready");
+    assert_eq!(
+        weapon_anchor_authoring.calibration,
+        "MESHY_H1_PALM_CENTER_NATIVE_ITEM_BASIS_V6"
+    );
+    assert_eq!(
+        weapon_anchor_authoring
+            .anchors
+            .iter()
+            .map(|anchor| anchor.anchor_name.as_str())
+            .collect::<Vec<_>>(),
+        ["rhand", "lhand"]
+    );
+    assert!(weapon_anchor_authoring.anchors.iter().all(|anchor| {
+        anchor.weighted_vertex_count == 0
+            && anchor.local_matrix.iter().all(|value| value.is_finite())
+    }));
 
-    assert_eq!(product.report.schema_version, 3);
+    assert_eq!(product.report.schema_version, 4);
     assert_eq!(product.report.identity, product_identity);
     assert_eq!(
         product.summary.status,
@@ -683,6 +746,51 @@ fn procedural_product_and_fixture_module_are_two_separate_build_steps() {
     assert_eq!(
         demo.report.appearance_row,
         product.report.appearance.appended_row_index
+    );
+    assert!(demo.report.held_weapon_readback.is_none());
+    assert!(demo.report.held_stock_weapon_readback.is_none());
+
+    for (mode, expected_slot) in [
+        (CreatureHeldWeaponModeV1::RightHand, 16),
+        (CreatureHeldWeaponModeV1::LeftHand, 32),
+    ] {
+        let equipped = build_procedural_creature_demo_with_held_weapon_v3(
+            &product,
+            &demo_identity,
+            "m2a_prdutc",
+            &CreatureHeldWeaponOptionsV1 {
+                schema_version: 1,
+                mode,
+                item_resref: Some("nw_wswss001".to_owned()),
+            },
+        )
+        .expect("optional held-item demo wrapper");
+        assert!(equipped.report.held_weapon_readback.is_none());
+        let readback = equipped
+            .report
+            .held_stock_weapon_readback
+            .expect("held stock-item semantic readback");
+        assert_eq!(readback.weapon.resref, "nw_wswss001");
+        assert_eq!(readback.weapon.resource_type, 2025);
+        assert_eq!(readback.fixtures.len(), 1);
+        assert_eq!(readback.fixtures[0].hand.native_struct_id(), expected_slot);
+        assert_eq!(readback.fixtures[0].equipped_item_resref, "nw_wswss001");
+    }
+
+    let parser_only_item = build_procedural_creature_demo_with_held_weapon_v3(
+        &product,
+        &demo_identity,
+        "m2a_prdutc",
+        &CreatureHeldWeaponOptionsV1 {
+            schema_version: 1,
+            mode: CreatureHeldWeaponModeV1::RightHand,
+            item_resref: Some("m2a_prditem".to_owned()),
+        },
+    )
+    .expect_err("a parser-visible module-local UTI must not be treated as runtime-resolved");
+    assert_eq!(
+        parser_only_item.code,
+        "M6-HELD-WEAPON-ITEM-RESREF-UNSUPPORTED"
     );
 
     let packet_path = temp_path("procedural-product-demo-v2");
@@ -750,6 +858,54 @@ fn procedural_product_and_fixture_module_are_two_separate_build_steps() {
     let error = build_procedural_creature_demo_v2(&product, &mismatched_identity, "m2a_prdutc")
         .expect_err("demo cannot silently bind another HAK");
     assert_eq!(error.code, "M6-DEMO-HAK-IDENTITY-MISMATCH");
+}
+
+#[test]
+fn procedural_product_mtr_profile_packages_material_resources_and_preserves_animations() {
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("canonical repository root")
+        .to_path_buf();
+    let source = fs::read(repo.join("sample-3d/h2-clockwork-sentinel-1500/source.glb"))
+        .expect("owned H2 humanoid source");
+    let identity = ProceduralCreatureProductIdentityV2 {
+        model_resref: "m2a_mtrmdl".to_owned(),
+        texture_resref: "m2a_mtrtex".to_owned(),
+        hak_resref: "m2a_mtrhak".to_owned(),
+        appearance_label: "M2A_MTR_CREATURE".to_owned(),
+    };
+    let options = ProceduralCreatureBuildOptionsV1 {
+        material_profile: CreatureMaterialProfileV2::nwn_ee_mtr(),
+        ..ProceduralCreatureBuildOptionsV1::default()
+    };
+    let product = build_meshy_procedural_humanoid_product_with_options_v3(
+        &source,
+        &appearance_fixture(),
+        &identity,
+        &options,
+    )
+    .expect("animated Creature MTR product");
+    assert!(product.report.material_extension.is_some());
+    assert!(
+        !inspect_binary_mdl(&product.model)
+            .unwrap()
+            .animations
+            .is_empty()
+    );
+    let archive = ErfArchive::parse(&product.hak).expect("MTR HAK readback");
+    assert!(
+        archive
+            .resources()
+            .iter()
+            .any(|resource| resource.resource_type == 2072)
+    );
+    assert!(
+        archive
+            .resources()
+            .iter()
+            .any(|resource| resource.resource_type == 2022)
+    );
 }
 
 #[test]
@@ -1075,11 +1231,11 @@ fn automatic_h1_v2_accepts_exactly_named_full_source_and_rejects_idle_only_sourc
     .expect("automatic H1 V2 must preserve exact native source animation names");
     assert_eq!(
         full.report.conversion.policies.basis_status,
-        "CREATURE_BASIS_V2_RESOLVED"
+        "CREATURE_BASIS_V3_RESOLVED"
     );
     assert_eq!(
         full.report.conversion.policies.asset_forward_mapping,
-        "GLTF_POSITIVE_Z_TO_AURORA_NEGATIVE_Y"
+        "GLTF_POSITIVE_Z_TO_AURORA_POSITIVE_Y"
     );
     assert_eq!(
         full.report.conversion.policies.engine_facing_proof,
@@ -3246,6 +3402,16 @@ fn collect_mesh_nodes<'a>(node: &'a Value, output: &mut Vec<&'a Value>) {
     for child in node["children"].as_array().into_iter().flatten() {
         collect_mesh_nodes(child, output);
     }
+}
+
+fn find_mdl_node<'a>(nodes: &'a [NodeReport], target: &str) -> Option<&'a NodeReport> {
+    nodes.iter().find_map(|node| {
+        if node.name.eq_ignore_ascii_case(target) {
+            Some(node)
+        } else {
+            find_mdl_node(&node.children, target)
+        }
+    })
 }
 
 fn mutate_glb(mut glb: Vec<u8>, mutation: impl FnOnce(&mut Value)) -> Vec<u8> {

@@ -16,14 +16,25 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     glb::{GlbLimits, ingest_glb},
-    mdl::{BinaryMdlArtifactV1, MdlWriterOptionsV1, write_binary_mdl_with_supermodel},
+    mdl::{
+        BinaryMdlArtifactV1, MdlWriterOptionsV1, write_binary_mdl_with_supermodel,
+        write_binary_mdl_with_supermodel_exact_face_planes_v1,
+    },
+    model_segmentation::segment_model_for_binary_mdl_v1,
     profile_a::{
-        CreatureRigProfileV1, ProfileAConversionOutcomeV1, ProfileAOptionsV1,
-        RigSegmentDeformationV1, convert_profile_a,
+        CreatureRigProfileV1, CreatureSourceForwardV1, ProfileAConversionOutcomeV1,
+        ProfileAOptionsV1, RigSegmentDeformationV1, convert_profile_a, convert_profile_a_exact_v1,
+        direct_creature_profile_a_options_for_source_forward_v3,
     },
 };
 
 pub const REFERENCE_SUPERMODEL_RETARGET_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ReferenceSupermodelCompatibilityLevelV1 {
+    TopologyOnly,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -50,6 +61,7 @@ pub struct ReferenceSupermodelContractV1 {
 #[serde(rename_all = "camelCase")]
 pub struct ReferenceSupermodelRetargetReportV1 {
     pub schema_version: u32,
+    pub compatibility_level: ReferenceSupermodelCompatibilityLevelV1,
     pub source_sha256: String,
     pub rig_profile_sha256: String,
     pub compatibility_contract_sha256: String,
@@ -107,11 +119,73 @@ pub fn canonical_reference_supermodel_contract_sha256_v1(
     Ok(hex_sha256(&bytes))
 }
 
+/// Legacy topology-only route retained for immutable lineages. A successful
+/// result does not prove bind-pose or inherited-motion compatibility.
 pub fn retarget_static_mesh_to_reference_supermodel_v1(
     source_glb: &[u8],
     rig: &CreatureRigProfileV1,
     contract: &ReferenceSupermodelContractV1,
     writer_options: &MdlWriterOptionsV1,
+) -> Result<ReferenceSupermodelRetargetArtifactV1, ReferenceSupermodelRetargetErrorV1> {
+    retarget_static_mesh_to_reference_supermodel_with_options_v1(
+        source_glb,
+        rig,
+        contract,
+        writer_options,
+        &ProfileAOptionsV1::default(),
+        false,
+    )
+}
+
+/// Legacy topology-only route with an explicit source-forward basis. A
+/// successful result does not prove bind-pose or inherited-motion
+/// compatibility.
+pub fn retarget_static_mesh_to_reference_supermodel_v2(
+    source_glb: &[u8],
+    rig: &CreatureRigProfileV1,
+    contract: &ReferenceSupermodelContractV1,
+    writer_options: &MdlWriterOptionsV1,
+    source_forward: CreatureSourceForwardV1,
+) -> Result<ReferenceSupermodelRetargetArtifactV1, ReferenceSupermodelRetargetErrorV1> {
+    let profile_options = direct_creature_profile_a_options_for_source_forward_v3(source_forward);
+    retarget_static_mesh_to_reference_supermodel_with_options_v1(
+        source_glb,
+        rig,
+        contract,
+        writer_options,
+        &profile_options,
+        true,
+    )
+}
+
+/// Honest topology-only name for the V2 implementation. New product code
+/// that needs inherited motion must use
+/// `build_reference_supermodel_creature_package_v1` instead.
+pub fn emit_static_mesh_with_supermodel_topology_v1(
+    source_glb: &[u8],
+    rig: &CreatureRigProfileV1,
+    contract: &ReferenceSupermodelContractV1,
+    writer_options: &MdlWriterOptionsV1,
+    source_forward: CreatureSourceForwardV1,
+) -> Result<ReferenceSupermodelRetargetArtifactV1, ReferenceSupermodelRetargetErrorV1> {
+    let profile_options = direct_creature_profile_a_options_for_source_forward_v3(source_forward);
+    retarget_static_mesh_to_reference_supermodel_with_options_v1(
+        source_glb,
+        rig,
+        contract,
+        writer_options,
+        &profile_options,
+        true,
+    )
+}
+
+fn retarget_static_mesh_to_reference_supermodel_with_options_v1(
+    source_glb: &[u8],
+    rig: &CreatureRigProfileV1,
+    contract: &ReferenceSupermodelContractV1,
+    writer_options: &MdlWriterOptionsV1,
+    profile_options: &ProfileAOptionsV1,
+    exact_surface_validation: bool,
 ) -> Result<ReferenceSupermodelRetargetArtifactV1, ReferenceSupermodelRetargetErrorV1> {
     validate_contract(contract)?;
     validate_rig_topology(rig, contract)?;
@@ -123,8 +197,12 @@ pub fn retarget_static_mesh_to_reference_supermodel_v1(
             format!("{}: {}", error.code, error.message),
         )
     })?;
-    let mut conversion = convert_profile_a(&source, rig, &ProfileAOptionsV1::default())
-        .map_err(|error| retarget_error(error.code, error.path, error.message))?;
+    let mut conversion = if exact_surface_validation {
+        convert_profile_a_exact_v1(&source, rig, profile_options)
+    } else {
+        convert_profile_a(&source, rig, profile_options)
+    }
+    .map_err(|error| retarget_error(error.code, error.path, error.message))?;
     if !conversion.report.conversion_eligible {
         let blocking = conversion
             .report
@@ -166,6 +244,9 @@ pub fn retarget_static_mesh_to_reference_supermodel_v1(
     }
     creature.nodes[0].name = writer_options.model_resource_resref.clone();
 
+    segment_model_for_binary_mdl_v1(creature)
+        .map_err(|error| retarget_error(error.code, error.path, error.message))?;
+
     let skin_segment_count = creature
         .segments
         .iter()
@@ -195,9 +276,16 @@ pub fn retarget_static_mesh_to_reference_supermodel_v1(
         ));
     }
 
-    let model =
+    let model = if exact_surface_validation {
+        write_binary_mdl_with_supermodel_exact_face_planes_v1(
+            creature,
+            &contract.supermodel_resref,
+            writer_options,
+        )
+    } else {
         write_binary_mdl_with_supermodel(creature, &contract.supermodel_resref, writer_options)
-            .map_err(|error| retarget_error(error.code, error.path, error.message))?;
+    }
+    .map_err(|error| retarget_error(error.code, error.path, error.message))?;
     let uniform_scale = conversion.report.transform.scale.ok_or_else(|| {
         retarget_error(
             "M7V5-SOURCE-INELIGIBLE",
@@ -207,6 +295,7 @@ pub fn retarget_static_mesh_to_reference_supermodel_v1(
     })?;
     let report = ReferenceSupermodelRetargetReportV1 {
         schema_version: REFERENCE_SUPERMODEL_RETARGET_SCHEMA_VERSION,
+        compatibility_level: ReferenceSupermodelCompatibilityLevelV1::TopologyOnly,
         source_sha256: conversion.source_sha256.clone(),
         rig_profile_sha256: rig.content_sha256.clone(),
         compatibility_contract_sha256: contract.content_sha256.clone(),

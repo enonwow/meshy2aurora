@@ -629,7 +629,21 @@ fn compare_bind_matrix(
     allow_mesh: bool,
     diff: &mut Vec<String>,
 ) {
-    if (!allow_mesh && node.mesh.is_some()) || node.controllers.len() != 2 {
+    if !allow_mesh && node.mesh.is_some() {
+        diff.push(format!("{path}.bindControllers"));
+        return;
+    }
+    let columns = [
+        [expected[0], expected[1], expected[2]],
+        [expected[4], expected[5], expected[6]],
+        [expected[8], expected[9], expected[10]],
+    ];
+    let lengths = columns.map(|column| {
+        (column[0] * column[0] + column[1] * column[1] + column[2] * column[2]).sqrt()
+    });
+    let expected_scale = (lengths[0] + lengths[1] + lengths[2]) / 3.0;
+    let has_scale = (expected_scale - 1.0).abs() > 1.0e-5;
+    if node.controllers.len() != 2 + usize::from(has_scale) {
         diff.push(format!("{path}.bindControllers"));
         return;
     }
@@ -645,7 +659,12 @@ fn compare_bind_matrix(
         diff.push(format!("{path}.bindControllers"));
         return;
     };
-    if position.times != [0.0]
+    let scale = node
+        .controllers
+        .iter()
+        .find(|controller| controller.controller_type == 36);
+    if has_scale != scale.is_some()
+        || position.times != [0.0]
         || orientation.times != [0.0]
         || position.row_count != 1
         || position.time_index != 0
@@ -663,9 +682,28 @@ fn compare_bind_matrix(
         diff.push(format!("{path}.bindControllerLayout"));
         return;
     }
+    if let Some(scale) = scale
+        && (scale.times != [0.0]
+            || scale.row_count != 1
+            || scale.time_index != 9
+            || scale.data_index != 10
+            || scale.column_count != 1
+            || scale.values.len() != 1
+            || scale.values[0].len() != 1
+            || (scale.values[0][0] - expected_scale).abs() > 1.0e-5)
+    {
+        diff.push(format!("{path}.bindControllerLayout"));
+        return;
+    }
     let p = &position.values[0];
     let q = &orientation.values[0];
-    let actual = matrix_from_quaternion_translation([q[0], q[1], q[2], q[3]], [p[0], p[1], p[2]]);
+    let mut actual =
+        matrix_from_quaternion_translation([q[0], q[1], q[2], q[3]], [p[0], p[1], p[2]]);
+    if has_scale {
+        for index in [0, 1, 2, 4, 5, 6, 8, 9, 10] {
+            actual[index] *= expected_scale;
+        }
+    }
     if actual
         .iter()
         .zip(expected)

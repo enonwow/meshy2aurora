@@ -3,31 +3,39 @@ use m2a_core::{
     AURORA_MODEL_TRIANGLE_BUDGET_V1, AURORA_MODEL_TRIANGLE_WARNING_ABOVE_V1,
     AuroraMaterialSourceBindingV1, AuroraModelIrV1, AuroraModelNodeV1, AuroraModelSegmentV1,
     AuroraSegmentDeformationV1,
+    aurora_material::AuroraMaterialTargetProfileV1,
     erf::ErfArchive,
     gff::{GffLimitsV1, GffValueV1, read_gff_v32},
     glb::{GlbLimits, ingest_glb},
     mdl::MdlMaterialTextureBindingV1,
     model_components::SourceComponentKeyV1,
     model_material_separation::{
-        AuthoredMaterialV1, ModelMaterialAssignmentV1, ModelMaterialSeparationDocumentV1,
-        resolve_model_materials_v1,
+        AuthoredMaterialV1, ModelMaterialAssignmentV1, ModelMaterialFaceAssignmentV2,
+        ModelMaterialSeparationDocumentV1, ModelMaterialSeparationDocumentV2,
+        SourceFaceSelectionV2, SourceTriangleRangeV2, resolve_model_materials_v1,
+        resolve_model_materials_v2,
+    },
+    model_material_uv_projection::{
+        ModelMaterialUvProjectionDocumentV1, ModelMaterialUvProjectionModeV1,
+        ModelMaterialUvProjectionRuleV1,
     },
     model_texture_authoring::{
         ModelTextureBindingModeV1, ModelTexturePayloadDescriptorV1,
         default_model_texture_authoring_v1,
     },
+    mtr::{MTR_RESOURCE_TYPE_V1, parse_mtr_v1},
     owned_fixture::synthetic_owned_m6_glb_v1,
     placeable::{
         ARE_RESOURCE_TYPE, GIC_RESOURCE_TYPE, GIT_RESOURCE_TYPE, IFO_RESOURCE_TYPE,
-        ITP_RESOURCE_TYPE, MDL_RESOURCE_TYPE, OwnerApprovedOversizedPlaceableV1,
-        PLACEABLES_2DA_RESOURCE_TYPE, PWK_RESOURCE_TYPE, PlaceablePlacementV1,
-        PlaceableTextureInputV1, StaticPlaceableBlueprintV1, StaticPlaceableBuildRequestV1,
-        StaticPlaceableIdentityV1, UTP_RESOURCE_TYPE, append_static_placeable_2da_v1,
-        build_meshy_static_placeable_package_v1, build_meshy_static_placeable_package_v2,
-        build_meshy_static_placeable_package_v4, build_meshy_static_placeable_package_v5,
-        build_meshy_static_placeable_package_v6, build_static_placeable_package_v1,
+        ITP_RESOURCE_TYPE, MDL_RESOURCE_TYPE, PLACEABLES_2DA_RESOURCE_TYPE, PWK_RESOURCE_TYPE,
+        PlaceablePlacementV1, PlaceableTextureInputV1, StaticPlaceableBlueprintV1,
+        StaticPlaceableBuildRequestV1, StaticPlaceableIdentityV1, UTP_RESOURCE_TYPE,
+        append_static_placeable_2da_v1, build_meshy_static_placeable_package_v1,
+        build_meshy_static_placeable_package_v2, build_meshy_static_placeable_package_v4,
+        build_meshy_static_placeable_package_v5, build_meshy_static_placeable_package_v6,
+        build_meshy_static_placeable_package_v7, build_meshy_static_placeable_package_v8,
+        build_meshy_static_placeable_package_v9, build_static_placeable_package_v1,
         inspect_meshy_static_placeable_authoring_v1, inspect_meshy_static_placeable_authoring_v3,
-        inspect_meshy_static_placeable_authoring_with_oversized_exception_v1,
         inspect_meshy_static_placeable_textures_v1, resolve_meshy_static_placeable_collision_v1,
         resolve_meshy_static_placeable_textures_v1, static_placeable_glb_limits_v1,
         static_placeable_profile_a_options_v1, write_placeable_palette_itp_v1,
@@ -42,10 +50,10 @@ use m2a_core::{
         PlaceableTexturePayloadDescriptorV1,
     },
     two_da::{TwoDaCellValueV1, TwoDaLimitsV1, read_two_da_row_v2},
+    txi::{TXI_RESOURCE_TYPE_V1, parse_txi_v1},
 };
 use std::{env, fs};
 
-#[allow(dead_code)]
 #[path = "fixtures/build_synthetic_glb.rs"]
 mod build_synthetic_glb;
 
@@ -80,6 +88,150 @@ fn base_placeables_2da() -> Vec<u8> {
         row("ACTIVE_AFTER_RESERVED", "plc_b08"),
     )
     .into_bytes()
+}
+
+#[test]
+fn placeable_v9_packages_ee_materials_with_semantic_readback() {
+    let source = build_synthetic_glb::mutate_json(static_source_glb(), |root| {
+        root["materials"][0]["pbrMetallicRoughness"]
+            .as_object_mut()
+            .expect("PBR material")
+            .remove("baseColorTexture");
+    });
+    let authoring = inspect_meshy_static_placeable_authoring_v3(&source, &Default::default())
+        .expect("V9 authoring")
+        .document;
+    let separation = m2a_core::model_material_separation::default_model_material_separation_v2(
+        &ingest_glb(&source, &GlbLimits::default())
+            .expect("ingest")
+            .ir,
+    );
+    let artifact = build_meshy_static_placeable_package_v9(
+        &source,
+        &base_placeables_2da(),
+        &identity(),
+        PlaceablePlacementV1 {
+            x: 10.0,
+            y: 14.5,
+            z: 0.0,
+            bearing: 0.0,
+        },
+        7,
+        &authoring,
+        &separation,
+        None,
+        None,
+        &[],
+        &[],
+        AuroraMaterialTargetProfileV1::NwnEeMtr,
+        &Default::default(),
+    )
+    .expect("complete Placeable V9");
+
+    assert_eq!(artifact.report.profile, "STATIC_PLACEABLE_V9_NWN_EE_MTR");
+    assert!(artifact.report.material_compilation.is_some());
+    assert!(artifact.report.source_quality.is_some());
+    assert_eq!(
+        artifact.report.material_semantic_readback_status.as_deref(),
+        Some("PASS")
+    );
+    let hak = ErfArchive::parse(&artifact.hak_payload).expect("HAK");
+    let mtr = artifact
+        .report
+        .resources
+        .iter()
+        .find(|item| item.resource_type == MTR_RESOURCE_TYPE_V1)
+        .expect("MTR resource");
+    parse_mtr_v1(
+        hak.find(&mtr.resref, mtr.resource_type)
+            .expect("MTR payload"),
+    )
+    .expect("MTR readback");
+    let txi = artifact
+        .report
+        .resources
+        .iter()
+        .find(|item| item.resource_type == TXI_RESOURCE_TYPE_V1)
+        .expect("TXI resource");
+    parse_txi_v1(
+        hak.find(&txi.resref, txi.resource_type)
+            .expect("TXI payload"),
+    )
+    .expect("TXI readback");
+}
+
+#[test]
+fn placeable_v9_classic_profile_fails_closed_for_two_sided_material() {
+    let source = build_synthetic_glb::mutate_json(static_source_glb(), |root| {
+        root["materials"][0]["doubleSided"] = serde_json::json!(true);
+    });
+    let authoring = inspect_meshy_static_placeable_authoring_v3(&source, &Default::default())
+        .expect("V9 authoring")
+        .document;
+    let separation = m2a_core::model_material_separation::default_model_material_separation_v2(
+        &ingest_glb(&source, &GlbLimits::default())
+            .expect("ingest")
+            .ir,
+    );
+    let error = build_meshy_static_placeable_package_v9(
+        &source,
+        &base_placeables_2da(),
+        &identity(),
+        PlaceablePlacementV1 {
+            x: 10.0,
+            y: 14.5,
+            z: 0.0,
+            bearing: 0.0,
+        },
+        7,
+        &authoring,
+        &separation,
+        None,
+        None,
+        &[],
+        &[],
+        AuroraMaterialTargetProfileV1::AuroraClassicSafe,
+        &Default::default(),
+    )
+    .expect_err("classic profile must reject unsupported two-sided output");
+
+    assert_eq!(error.code, "AURORA-MATERIAL-PACKAGE-COMPILER-BLOCKED");
+}
+
+#[test]
+fn placeable_v9_source_quality_gate_blocks_unreadable_texture_density() {
+    let source = static_source_glb();
+    let authoring = inspect_meshy_static_placeable_authoring_v3(&source, &Default::default())
+        .expect("V9 authoring")
+        .document;
+    let separation = m2a_core::model_material_separation::default_model_material_separation_v2(
+        &ingest_glb(&source, &GlbLimits::default())
+            .expect("ingest")
+            .ir,
+    );
+    let error = build_meshy_static_placeable_package_v9(
+        &source,
+        &base_placeables_2da(),
+        &identity(),
+        PlaceablePlacementV1 {
+            x: 10.0,
+            y: 14.5,
+            z: 0.0,
+            bearing: 0.0,
+        },
+        7,
+        &authoring,
+        &separation,
+        None,
+        None,
+        &[],
+        &[],
+        AuroraMaterialTargetProfileV1::NwnEeMtr,
+        &Default::default(),
+    )
+    .expect_err("unreadable source texture density must block V9");
+
+    assert_eq!(error.code, "AURORA-MATERIAL-PACKAGE-SOURCE-QUALITY-BLOCKED");
 }
 
 fn static_model() -> AuroraModelIrV1 {
@@ -949,6 +1101,213 @@ fn material_separated_placeable_writes_two_textures_and_preserves_pwk_bytes() {
     );
 }
 
+#[test]
+fn face_mode_v2_placeable_preserves_every_triangle_and_pwk_bytes() {
+    let source = multi_material_static_source_glb();
+    let identity = identity();
+    let placement = PlaceablePlacementV1 {
+        x: 10.0,
+        y: 14.5,
+        z: 0.0,
+        bearing: 0.0,
+    };
+    let authoring = inspect_meshy_static_placeable_authoring_v3(&source, &Default::default())
+        .expect("Placeable authoring")
+        .document;
+    let ingest = ingest_glb(&source, &GlbLimits::default()).expect("material source ingest");
+    let fallback_sha = ingest.ir.images[0].sha256.clone();
+    let material = |id: &str| AuthoredMaterialV1 {
+        authored_material_id: id.to_owned(),
+        display_name: id.to_owned(),
+        preview_color: "#806040".to_owned(),
+        source_fallback_material_id: Some(0),
+        source_fallback_image_sha256: Some(fallback_sha.clone()),
+    };
+    let selection = |primitive_id, material_id: &str| ModelMaterialFaceAssignmentV2 {
+        selection: SourceFaceSelectionV2 {
+            scene_id: 0,
+            node_id: 0,
+            primitive_id,
+            triangle_ranges: vec![SourceTriangleRangeV2 {
+                start_triangle: 0,
+                triangle_count: 1,
+            }],
+        },
+        authored_material_id: material_id.to_owned(),
+    };
+    let separation = ModelMaterialSeparationDocumentV2 {
+        schema_version: 2,
+        source_sha256: ingest.ir.source.sha256.clone(),
+        materials: vec![material("material:sail"), material("material:wood")],
+        component_assignments: Vec::new(),
+        face_assignments: vec![selection(0, "material:wood"), selection(1, "material:sail")],
+    };
+    let materials = resolve_model_materials_v2(&ingest.ir, &separation)
+        .expect("Face Mode V2 material separation");
+    let texture_authoring = default_model_texture_authoring_v1(&ingest, materials.projection_v1())
+        .expect("texture authoring");
+    let baseline = build_meshy_static_placeable_package_v4(
+        &source,
+        &base_placeables_2da(),
+        &identity,
+        placement,
+        7,
+        &authoring,
+        &Default::default(),
+    )
+    .expect("baseline Placeable");
+    let separated = build_meshy_static_placeable_package_v7(
+        &source,
+        &base_placeables_2da(),
+        &identity,
+        placement,
+        7,
+        &authoring,
+        &separation,
+        &texture_authoring,
+        &[],
+        &[],
+        &Default::default(),
+    )
+    .expect("Face Mode V2 Placeable");
+
+    assert_eq!(baseline.report.pwk_sha256, separated.report.pwk_sha256);
+    assert_eq!(
+        separated
+            .report
+            .material_separation
+            .as_ref()
+            .expect("V2 projection report")
+            .schema_version,
+        2
+    );
+    assert_eq!(
+        separated
+            .report
+            .material_separation
+            .as_ref()
+            .expect("V2 projection report")
+            .source_triangle_count,
+        separated
+            .report
+            .material_separation
+            .as_ref()
+            .expect("V2 projection report")
+            .output_triangle_count,
+    );
+}
+
+#[test]
+fn material_box_uv_projection_changes_only_the_separated_render_material() {
+    let source = multi_material_static_source_glb();
+    let identity = identity();
+    let placement = PlaceablePlacementV1 {
+        x: 10.0,
+        y: 14.5,
+        z: 0.0,
+        bearing: 0.0,
+    };
+    let authoring = inspect_meshy_static_placeable_authoring_v3(&source, &Default::default())
+        .expect("Placeable authoring")
+        .document;
+    let ingest = ingest_glb(&source, &GlbLimits::default()).expect("material source ingest");
+    let fallback_sha = ingest.ir.images[0].sha256.clone();
+    let material = |id: &str| AuthoredMaterialV1 {
+        authored_material_id: id.to_owned(),
+        display_name: id.to_owned(),
+        preview_color: "#806040".to_owned(),
+        source_fallback_material_id: Some(0),
+        source_fallback_image_sha256: Some(fallback_sha.clone()),
+    };
+    let selection = |primitive_id, material_id: &str| ModelMaterialFaceAssignmentV2 {
+        selection: SourceFaceSelectionV2 {
+            scene_id: 0,
+            node_id: 0,
+            primitive_id,
+            triangle_ranges: vec![SourceTriangleRangeV2 {
+                start_triangle: 0,
+                triangle_count: 1,
+            }],
+        },
+        authored_material_id: material_id.to_owned(),
+    };
+    let separation = ModelMaterialSeparationDocumentV2 {
+        schema_version: 2,
+        source_sha256: ingest.ir.source.sha256.clone(),
+        materials: vec![material("material:sail"), material("material:wood")],
+        component_assignments: Vec::new(),
+        face_assignments: vec![selection(0, "material:wood"), selection(1, "material:sail")],
+    };
+    let materials = resolve_model_materials_v2(&ingest.ir, &separation)
+        .expect("Face Mode V2 material separation");
+    let texture_authoring = default_model_texture_authoring_v1(&ingest, materials.projection_v1())
+        .expect("texture authoring");
+    let projection = ModelMaterialUvProjectionDocumentV1 {
+        schema_version: 1,
+        source_sha256: ingest.ir.source.sha256.clone(),
+        separation_sha256: materials.report.separation_sha256.clone(),
+        rules: vec![ModelMaterialUvProjectionRuleV1 {
+            authored_material_id: "material:wood".to_owned(),
+            mode: ModelMaterialUvProjectionModeV1::MaterialBoxWorld,
+            u_repeats: 0.5,
+            v_min: 0.0,
+            v_max: 1.0,
+            deterministic_u_phase: false,
+        }],
+    };
+    let baseline = build_meshy_static_placeable_package_v7(
+        &source,
+        &base_placeables_2da(),
+        &identity,
+        placement,
+        7,
+        &authoring,
+        &separation,
+        &texture_authoring,
+        &[],
+        &[],
+        &Default::default(),
+    )
+    .expect("Face Mode V2 Placeable");
+    let projected = build_meshy_static_placeable_package_v8(
+        &source,
+        &base_placeables_2da(),
+        &identity,
+        placement,
+        7,
+        &authoring,
+        &separation,
+        &projection,
+        &texture_authoring,
+        &[],
+        &[],
+        &Default::default(),
+    )
+    .expect("material-local UV Placeable");
+
+    assert_eq!(baseline.report.pwk_sha256, projected.report.pwk_sha256);
+    assert_ne!(baseline.report.mdl_sha256, projected.report.mdl_sha256);
+    let report = projected
+        .report
+        .material_uv_projection
+        .as_ref()
+        .expect("UV projection report");
+    assert_eq!(report.source_triangle_count, report.output_triangle_count);
+    assert_eq!(report.projected_triangle_count, 1);
+    assert_eq!(report.projected_material_ids, ["material:wood"]);
+    assert!(report.source_uv0_preserved_for_unprojected_materials);
+    assert!(!report.geometry_cleanup);
+    assert_eq!(
+        projected
+            .report
+            .model_texture_authoring
+            .as_ref()
+            .expect("model texture report")
+            .uv_policy,
+        "MATERIAL_UV_PROJECTION_V1"
+    );
+}
+
 fn hex_sha256(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     Sha256::digest(bytes)
@@ -1161,42 +1520,6 @@ fn placeable_package_rejects_nonfinite_placement_and_unbound_identity_texture() 
     request.model.segments[0].indices = [0_u32, 1, 2].repeat(300_001);
     let error = build_static_placeable_package_v1(&request).expect_err("shared triangle budget");
     assert_eq!(error.code, "PLACEABLE-M2A-MODEL-TRIANGLE-BUDGET-EXCEEDED");
-}
-
-#[test]
-fn owner_approved_oversized_placeable_exception_is_exact_source_bound() {
-    let source = build_synthetic_glb::minimal_indexed_triangle();
-    let exception = OwnerApprovedOversizedPlaceableV1 {
-        schema_version: 1,
-        exact_source_sha256: hex_sha256(&source),
-        authorization_note: "owner-approved test exception".to_owned(),
-        max_input_bytes: source.len(),
-        max_vertices: 3,
-        max_indices: 3,
-        max_decoded_geometry_bytes: 16 * 1024 * 1024,
-        max_triangles: AURORA_MODEL_TRIANGLE_BUDGET_V1 + 1,
-        max_profile_work_bytes: 64 * 1024 * 1024,
-        max_hak_output_bytes: 256 * 1024 * 1024,
-    };
-
-    let bootstrap =
-        inspect_meshy_static_placeable_authoring_with_oversized_exception_v1(&source, &exception)
-            .expect("exact-source exception admits the oversized source");
-    assert_eq!(bootstrap.document.elements.len(), 1);
-
-    let mut wrong_source = exception;
-    wrong_source.exact_source_sha256 = "f".repeat(64);
-    let error = inspect_meshy_static_placeable_authoring_with_oversized_exception_v1(
-        &source,
-        &wrong_source,
-    )
-    .expect_err("exception must not transfer to another source identity");
-    assert_eq!(error.code, "PLACEABLE-OVERSIZED-EXCEPTION-SOURCE-MISMATCH");
-
-    assert_eq!(
-        static_placeable_glb_limits_v1().triangle_blocking_above,
-        AURORA_MODEL_TRIANGLE_BUDGET_V1
-    );
 }
 
 #[test]

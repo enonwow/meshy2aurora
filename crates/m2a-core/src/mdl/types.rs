@@ -181,7 +181,11 @@ pub struct MeshReport {
     pub raw_indices: Vec<Vec<u16>>,
     pub vertices: Vec<Vec3>,
     pub uv0: Vec<Vec2>,
+    pub uv1: Vec<Vec2>,
+    pub uv2: Vec<Vec2>,
+    pub uv3: Vec<Vec2>,
     pub normals: Vec<Vec3>,
+    pub tangents: Vec<[f32; 4]>,
     pub vertex_colors: Vec<[u8; 4]>,
     pub validated_raw_pointers: Vec<RawPointerReport>,
 }

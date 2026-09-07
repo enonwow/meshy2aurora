@@ -15,6 +15,8 @@ use crate::{
 };
 
 pub const GLB_SCHEMA_VERSION: u32 = 1;
+pub const HIGH_POLY_INSPECTION_MODE_V1: &str = "UNSAFE_HIGH_POLY_INSPECTION_V1";
+pub const HIGH_POLY_INSPECTION_TRIANGLE_CAP_V1: usize = 3_000_000;
 pub const MAX_DECODED_IMAGE_DIMENSION_V1: u32 = 16_384;
 pub const MAX_DECODED_IMAGE_PIXELS_V1: u64 = 16 * 1024 * 1024;
 const TGA_CONTAINER_OVERHEAD_V1: u64 = 18 + 26;
@@ -153,6 +155,37 @@ pub struct GlbIngestResult {
     pub schema_version: u32,
     pub ir: AuroraAssetIr,
     pub report: GlbInspectionReport,
+}
+
+/// Compact, inspection-only projection for source GLBs that exceed the
+/// product triangle budget. It intentionally omits decoded geometry so the
+/// WASM boundary never serializes millions of vertices and indices as JSON.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HighPolyGlbInspectionV1 {
+    pub schema_version: u32,
+    pub inspection_mode: String,
+    pub source: IrSource,
+    pub inventory: GlbInventory,
+    pub statistics: GlbStatistics,
+    pub bone_count: usize,
+    pub clips: Vec<HighPolyAnimationClipV1>,
+    pub gates: Vec<GlbGate>,
+    pub diagnostics: Vec<GlbDiagnostic>,
+    pub conversion_eligible: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HighPolyAnimationClipV1 {
+    pub id: u32,
+    pub name: Option<String>,
+    pub duration_seconds: f32,
+    pub sampler_count: usize,
+    pub channel_count: usize,
+    pub keyframe_count: usize,
+    pub target_node_ids: Vec<u32>,
+    pub target_paths: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -634,6 +667,89 @@ fn embedded_image_limit_error(image_index: usize, message: impl Into<String>) ->
 
 pub fn inspect_glb(input: &[u8], limits: &GlbLimits) -> Result<GlbInspectionReport, GlbFatalError> {
     Ok(ingest_glb(input, limits)?.report)
+}
+
+/// Inspects unusually large GLBs inside a bounded diagnostic envelope.
+///
+/// This is not a conversion profile: the returned projection is always
+/// conversion-ineligible, and geometry above the shared product budget gets
+/// the normal blocking budget gate. The larger parser limits exist only so a
+/// user can inspect and preview a selected source before reducing it.
+pub fn inspect_high_poly_glb_v1(input: &[u8]) -> Result<HighPolyGlbInspectionV1, GlbFatalError> {
+    let limits = GlbLimits {
+        max_input_bytes: 256 * 1024 * 1024,
+        max_json_chunk_bytes: 64 * 1024 * 1024,
+        max_vertices: 3_000_000,
+        max_indices: HIGH_POLY_INSPECTION_TRIANGLE_CAP_V1 * 3,
+        max_decoded_geometry_bytes: 768 * 1024 * 1024,
+        triangle_blocking_above: HIGH_POLY_INSPECTION_TRIANGLE_CAP_V1,
+        ..GlbLimits::default()
+    };
+    let GlbIngestResult { ir, mut report, .. } = ingest_glb(input, &limits)?;
+
+    if report.statistics.triangle_count > AURORA_MODEL_TRIANGLE_BUDGET_V1 {
+        report.gates.push(blocking_gate(
+            "M2A-GLB-GEOMETRY-OVER-BUDGET",
+            "statistics.triangleCount",
+            &format!("<= {AURORA_MODEL_TRIANGLE_BUDGET_V1} triangles"),
+            &report.statistics.triangle_count.to_string(),
+            "asset exceeds the shared product conversion triangle budget",
+        ));
+    }
+    report.gates.push(blocking_gate(
+        "M2A-GLB-HIGH-POLY-INSPECTION-ONLY",
+        "inspectionMode",
+        "product conversion with the standard 300,000-triangle safety limit",
+        HIGH_POLY_INSPECTION_MODE_V1,
+        "unsafe high-poly mode permits local inspection only; conversion, packaging, HAK, MOD, and NWN export remain disabled",
+    ));
+    report.conversion_eligible = false;
+
+    let bone_count = ir
+        .skins
+        .iter()
+        .flat_map(|skin| skin.joint_node_ids.iter().copied())
+        .collect::<HashSet<_>>()
+        .len();
+    let clips = ir
+        .animations
+        .iter()
+        .map(|animation| HighPolyAnimationClipV1 {
+            id: animation.id,
+            name: animation.name.clone(),
+            duration_seconds: animation.duration_seconds,
+            sampler_count: animation.samplers.len(),
+            channel_count: animation.channels.len(),
+            keyframe_count: animation
+                .samplers
+                .iter()
+                .map(|sampler| sampler.input_times_seconds.len())
+                .sum(),
+            target_node_ids: animation
+                .channels
+                .iter()
+                .map(|channel| channel.target_node_id)
+                .collect(),
+            target_paths: animation
+                .channels
+                .iter()
+                .map(|channel| channel.target_path.clone())
+                .collect(),
+        })
+        .collect();
+
+    Ok(HighPolyGlbInspectionV1 {
+        schema_version: GLB_SCHEMA_VERSION,
+        inspection_mode: HIGH_POLY_INSPECTION_MODE_V1.to_owned(),
+        source: ir.source,
+        inventory: report.inventory,
+        statistics: report.statistics,
+        bone_count,
+        clips,
+        gates: report.gates,
+        diagnostics: report.diagnostics,
+        conversion_eligible: false,
+    })
 }
 
 pub fn ingest_glb(input: &[u8], limits: &GlbLimits) -> Result<GlbIngestResult, GlbFatalError> {

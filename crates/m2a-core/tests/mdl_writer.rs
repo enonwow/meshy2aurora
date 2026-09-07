@@ -5,8 +5,10 @@ use m2a_core::mdl::{
     MdlAnimationClipV1, MdlAnimationEventV1, MdlAnimationInterpolationV1, MdlAnimationSetV1,
     MdlAnimationTrackPathV1, MdlAnimationTrackV1, MdlFormatProfileV1, MdlMaterialTextureBindingV1,
     MdlStateProjectionProfileV1, MdlStateProjectionProvenanceV1, MdlWriterOptionsV1,
-    NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1, evaluate_skin_deformation_v1, inspect_binary_mdl,
-    verify_direct_creature_state_projection_v1,
+    NWN_EE_MAX_MESH_TRIANGLE_COUNT_V1, evaluate_reference_supermodel_render_deformation_samples_v3,
+    evaluate_reference_supermodel_render_deformation_v2,
+    evaluate_reference_supermodel_skin_deformation_v1, evaluate_skin_deformation_v1,
+    inspect_binary_mdl, verify_direct_creature_state_projection_v1,
     verify_direct_creature_state_projection_with_expected_provenance_v1, write_binary_mdl,
     write_binary_mdl_with_animations,
 };
@@ -948,6 +950,61 @@ fn emitted_skin_motion_has_end_to_end_cpu_deformation_conformance() {
             );
         }
     }
+}
+
+#[test]
+fn inherited_supermodel_clip_uses_target_skin_and_matches_local_oracle() {
+    let animations = cpause1_set(40);
+    let donor = write_binary_mdl_with_animations(&skin_creature(), &animations, &options())
+        .expect("animated supermodel donor");
+    let target = write_binary_mdl(&skin_creature(), &options()).expect("controllerless target");
+
+    let inherited = evaluate_reference_supermodel_skin_deformation_v1(
+        &target.inspection,
+        &donor.inspection,
+        "cpause1",
+        1.0,
+    )
+    .expect("resolved inherited deformation");
+    let local = evaluate_skin_deformation_v1(&donor.inspection, "cpause1", 1.0)
+        .expect("local control deformation");
+
+    assert_eq!(inherited.skin_count, local.skin_count);
+    assert_eq!(inherited.vertex_count, local.vertex_count);
+    assert_eq!(inherited.moved_vertex_count, local.moved_vertex_count);
+    assert!((inherited.max_displacement - local.max_displacement).abs() <= 1.0e-6);
+    assert_eq!(inherited.skins, local.skins);
+}
+
+#[test]
+fn cached_render_deformation_samples_match_repeated_single_sample_evaluation() {
+    let donor = write_binary_mdl_with_animations(&skin_creature(), &cpause1_set(40), &options())
+        .expect("animated supermodel donor");
+    let target = write_binary_mdl(&skin_creature(), &options()).expect("controllerless target");
+    let times = [0.0, 0.125, 0.5, 0.875, 1.0];
+
+    let cached = evaluate_reference_supermodel_render_deformation_samples_v3(
+        &target.inspection,
+        &donor.inspection,
+        "cpause1",
+        &times,
+    )
+    .expect("cached inherited render deformation");
+    let repeated = times
+        .iter()
+        .copied()
+        .map(|time| {
+            evaluate_reference_supermodel_render_deformation_v2(
+                &target.inspection,
+                &donor.inspection,
+                "cpause1",
+                time,
+            )
+            .expect("single inherited render deformation")
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(cached, repeated);
 }
 
 #[test]

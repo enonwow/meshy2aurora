@@ -173,6 +173,10 @@ fn classify_role(
     match resource_type {
         2002 => Ok(PackageResourceRoleV1::Model),
         3 => Ok(PackageResourceRoleV1::Texture),
+        // MTR and TXI are material-sidecar texture resources in the model
+        // package profile. They remain distinct native resource types while
+        // sharing the manifest's texture-family role.
+        2022 | 2072 => Ok(PackageResourceRoleV1::Texture),
         2017 => Err(package_error(
             PACKAGE_RESOURCE_INVALID,
             &format!("resources[{index}].resref"),

@@ -244,6 +244,9 @@ fn void_crystal_knight_auto_stabilizes_four_detached_crystals_without_geometry_l
                 selected_bone_name: None,
                 component_bone_overrides: Vec::new(),
             },
+            weapon_grip: Default::default(),
+            held_weapon: Default::default(),
+            ..ProceduralCreatureBuildOptionsV1::default()
         },
     )
     .expect("Void Crystal Knight stabilized product replay");
@@ -258,6 +261,15 @@ fn void_crystal_knight_auto_stabilizes_four_detached_crystals_without_geometry_l
         artifact.report.geometry.triangle_count,
         artifact.report.model.projection.triangle_count,
     );
+    assert_eq!(
+        artifact.report.conversion.policies.basis_status,
+        "CREATURE_BASIS_V3_RESOLVED"
+    );
+    assert_eq!(
+        artifact.report.conversion.policies.asset_forward_mapping,
+        "GLTF_POSITIVE_Z_TO_AURORA_POSITIVE_Y"
+    );
+    assert_eq!(artifact.report.conversion.transform.determinant, 1.0);
     let report = &artifact.report.skin_accessory_stabilization;
     assert_eq!(
         report.audited_clip_count, 42,

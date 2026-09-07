@@ -1,5 +1,4 @@
 #[path = "fixtures/build_synthetic_glb.rs"]
-#[allow(dead_code)]
 mod fixtures;
 
 use m2a_core::{
@@ -9,13 +8,15 @@ use m2a_core::{
     },
     profile_a::{
         Bounds3V1, CreatureRigNodeV1, CreatureRigProfileV1, CreatureRigSegmentV1,
-        RigProvenanceAttestationsV1, RigProvenanceKindV1, RigProvenanceV1, RigSegmentDeformationV1,
-        RigWeightInfluenceV1, canonical_profile_sha256,
+        CreatureSourceForwardV1, RigProvenanceAttestationsV1, RigProvenanceKindV1, RigProvenanceV1,
+        RigSegmentDeformationV1, RigWeightInfluenceV1, canonical_profile_sha256,
     },
     reference_supermodel::{
-        ReferenceSupermodelContractV1, ReferenceSupermodelNodeV1,
-        canonical_reference_supermodel_contract_sha256_v1,
+        ReferenceSupermodelCompatibilityLevelV1, ReferenceSupermodelContractV1,
+        ReferenceSupermodelNodeV1, canonical_reference_supermodel_contract_sha256_v1,
+        emit_static_mesh_with_supermodel_topology_v1,
         retarget_static_mesh_to_reference_supermodel_v1,
+        retarget_static_mesh_to_reference_supermodel_v2,
     },
 };
 
@@ -23,6 +24,93 @@ fn identity() -> [f32; 16] {
     [
         1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
     ]
+}
+
+#[test]
+fn topology_only_route_uses_resolved_positive_y_basis_and_reports_its_limit() {
+    let artifact = emit_static_mesh_with_supermodel_topology_v1(
+        &fixtures::minimal_indexed_triangle(),
+        &owned_skin_profile(),
+        &contract(),
+        &writer_options(),
+        CreatureSourceForwardV1::PositiveZ,
+    )
+    .unwrap();
+
+    assert_eq!(
+        artifact.conversion.report.policies.basis_status,
+        "CREATURE_BASIS_V3_RESOLVED"
+    );
+    assert_eq!(
+        artifact.conversion.report.policies.asset_forward_mapping,
+        "GLTF_POSITIVE_Z_TO_AURORA_POSITIVE_Y"
+    );
+    assert_eq!(artifact.conversion.report.transform.determinant, 1.0);
+    assert_eq!(
+        artifact.report.compatibility_level,
+        ReferenceSupermodelCompatibilityLevelV1::TopologyOnly
+    );
+}
+
+#[test]
+fn v2_accepts_small_but_exactly_non_collinear_reference_triangles() {
+    let mut rig = owned_skin_profile();
+    rig.segments[0].surface_positions = vec![
+        [0.0, 0.0, 0.0],
+        [0.000_001, 0.0, 0.0],
+        [0.0, 0.000_001, 0.0],
+    ];
+    rig.content_sha256.clear();
+    rig.content_sha256 = canonical_profile_sha256(&rig).unwrap();
+
+    let legacy_error = retarget_static_mesh_to_reference_supermodel_v1(
+        &fixtures::minimal_indexed_triangle(),
+        &rig,
+        &contract(),
+        &writer_options(),
+    )
+    .unwrap_err();
+    assert_eq!(legacy_error.code, "M3A-PROFILE-SEGMENT-INVALID");
+
+    retarget_static_mesh_to_reference_supermodel_v2(
+        &fixtures::minimal_indexed_triangle(),
+        &rig,
+        &contract(),
+        &writer_options(),
+        CreatureSourceForwardV1::PositiveZ,
+    )
+    .unwrap();
+}
+
+#[test]
+fn v2_partitions_weighted_geometry_at_the_binary_mdl_stream_boundary() {
+    let triangle_count = 21_846;
+    let mut rig = owned_skin_profile();
+    rig.segments[0].surface_indices = (0..triangle_count).flat_map(|_| [0_u32, 1, 2]).collect();
+    rig.content_sha256.clear();
+    rig.content_sha256 = canonical_profile_sha256(&rig).unwrap();
+
+    let artifact = retarget_static_mesh_to_reference_supermodel_v2(
+        &fixtures::triangle_budget(triangle_count),
+        &rig,
+        &contract(),
+        &writer_options(),
+        CreatureSourceForwardV1::PositiveZ,
+    )
+    .unwrap();
+
+    assert_eq!(artifact.report.skin_segment_count, 2);
+    let emitted_triangles = artifact
+        .model
+        .inspection
+        .node_tree
+        .roots
+        .iter()
+        .flat_map(|root| &root.children)
+        .filter_map(|node| node.mesh.as_ref())
+        .map(|mesh| mesh.faces.len())
+        .sum::<usize>();
+    assert_eq!(emitted_triangles, triangle_count);
 }
 
 fn owned_skin_profile() -> CreatureRigProfileV1 {
