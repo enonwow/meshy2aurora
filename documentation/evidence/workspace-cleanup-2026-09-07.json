@@ -1,0 +1,88 @@
+{
+  "schema": "meshy2aurora.workspace-cleanup/v1",
+  "date": "2026-09-07",
+  "baseCommit": "6672f568b0787031f259d3a9362b82c40b8e4b6f",
+  "beforeBytes": 134385481021,
+  "afterBytes": 42923443169,
+  "observedReductionBytes": 91462037852,
+  "removedCargoTargets": [
+    {
+      "Path": "C:\\Projects\\meshy2aurora\\target",
+      "Bytes": 57082535643,
+      "Files": 49184
+    },
+    {
+      "Path": "C:\\Projects\\meshy2aurora\\.worktrees\\creature-supermodel-remediation\\target",
+      "Bytes": 34380317765,
+      "Files": 25859
+    }
+  ],
+  "removedCaches": [
+    {
+      "path": "C:\\Projects\\meshy2aurora\\.tmp",
+      "bytes": 1058164,
+      "files": 397
+    },
+    {
+      "path": "C:\\Projects\\meshy2aurora\\tools\\__pycache__",
+      "bytes": 42731,
+      "files": 4
+    }
+  ],
+  "operations": [
+    "cargo clean --manifest-path C:\\Projects\\meshy2aurora\\Cargo.toml --target-dir C:\\Projects\\meshy2aurora\\target",
+    "cargo clean --manifest-path C:\\Projects\\meshy2aurora\\.worktrees\\creature-supermodel-remediation\\Cargo.toml --target-dir C:\\Projects\\meshy2aurora\\.worktrees\\creature-supermodel-remediation\\target",
+    "git clean -ndX -- .tmp tools/__pycache__",
+    "git clean -fdX -- .tmp tools/__pycache__"
+  ],
+  "targetsAbsent": [
+    {
+      "Path": "C:\\Projects\\meshy2aurora\\target",
+      "Absent": true
+    },
+    {
+      "Path": "C:\\Projects\\meshy2aurora\\.worktrees\\creature-supermodel-remediation\\target",
+      "Absent": true
+    }
+  ],
+  "worktreeStatusChecks": [
+    {
+      "Root": "C:/Projects/meshy2aurora",
+      "Unchanged": true
+    },
+    {
+      "Root": "C:/Projects/meshy2aurora/.worktrees/animation",
+      "Unchanged": true
+    },
+    {
+      "Root": "C:/Projects/meshy2aurora/.worktrees/creature-supermodel-remediation",
+      "Unchanged": true
+    },
+    {
+      "Root": "C:/Projects/meshy2aurora/.worktrees/items",
+      "Unchanged": true
+    },
+    {
+      "Root": "C:/Projects/meshy2aurora/.worktrees/items-agent-remediation",
+      "Unchanged": true
+    },
+    {
+      "Root": "C:/Projects/meshy2aurora/.worktrees/items-agent-remediation-final",
+      "Unchanged": true
+    },
+    {
+      "Root": "C:/Users/enonw/.codex/worktrees/3d38/meshy2aurora",
+      "Unchanged": true
+    }
+  ],
+  "preserved": [
+    "sample-3d",
+    "proof-output",
+    "artifacts",
+    "documentation",
+    "local-reference-assets",
+    ".git",
+    "registered worktrees and their tracked/untracked source changes"
+  ],
+  "fullBuildRepeated": false
+}

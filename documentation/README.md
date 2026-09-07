@@ -1,5 +1,7 @@
 # Documentation
 
+- [Czyszczenie workspace — 2026-09-07](czyszczenie-workspace-2026-09-07.md) — usunięcie 91,46 GB odtwarzalnych buildów i cache; źródła, proofy oraz lokalne zmiany worktree zachowane.
+
 - [Audyt higieny Git — 2026-09-07](audyt-higieny-git-2026-09-07.md) — klasyfikacja lokalnych payloadów, porządki `.gitignore`, zachowanie plików po usunięciu z indeksu i wyniki bramek jakości przed push.
 
 - [Creature remediation and authoring plan — 2026-09-05](brainstorm/creature-remediation-and-authoring-plan-2026-09-05.md) - proposed CR-00–CR-13 delivery backlog covering all 19 current audit findings, durable Creature projects, materials/export fidelity, animation/event authoring, visual weight repair, reusable recipes and owned supermodels; includes dependencies, tests, research gates and owner-verification boundaries.
